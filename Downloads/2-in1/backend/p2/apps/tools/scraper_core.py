@@ -55,6 +55,8 @@ CANONICAL_SERP_KEYS = (
     'serp_provider',
     'dataforseo_login',
     'dataforseo_password',
+    'dataforseo_detail',
+    'dataforseo_realtime',
     'google_cse_key',
     'google_cse_cx',
 )
@@ -80,6 +82,14 @@ def normalize_serp_config(config: Optional[Dict[str, Any]] = None) -> Dict[str, 
         or raw_cfg.get('dfs_pass')
         or raw_cfg.get('password')
     )
+    normalized['dataforseo_detail'] = (
+        raw_cfg.get('dataforseo_detail')
+        or raw_cfg.get('dfs_detail')
+    )
+    if 'dataforseo_realtime' in raw_cfg:
+        normalized['dataforseo_realtime'] = raw_cfg.get('dataforseo_realtime')
+    elif 'dfs_realtime' in raw_cfg:
+        normalized['dataforseo_realtime'] = raw_cfg.get('dfs_realtime')
 
     # Google CSE aliases
     normalized['google_cse_key'] = (
@@ -558,58 +568,115 @@ def search_google_official(keyword: str, api_key: str, cx: str, num_results: int
     return results[:num_results]
 
 # --- DATAFORSEO API ---
-def search_dataforseo(keyword: str, login: str, passw: str, num_results: int = 10, lang: str = 'es', country: str = 'es') -> List[Dict[str, Any]]:
-    results = []
+def _normalize_depth(num_results: int) -> int:
+    safe_num_results = max(int(num_results or 0), 1)
+    return max(10, ((safe_num_results + 9) // 10) * 10)
+
+
+def _get_dataforseo_location_name(country: str) -> str:
+    location_name = "Spain"
+    country_code = (country or "").lower()
+    if country_code in ['us', 'en', 'usa', 'united states']:
+        location_name = "United States"
+    elif country_code in ['fr', 'france']:
+        location_name = "France"
+    elif country_code in ['de', 'germany']:
+        location_name = "Germany"
+    elif country_code in ['it', 'italy']:
+        location_name = "Italy"
+    return location_name
+
+
+def _extract_dataforseo_organic_results(data: Dict[str, Any], num_results: int) -> List[Dict[str, Any]]:
+    results: List[Dict[str, Any]] = []
+    for task in data.get('tasks', []):
+        for result in task.get('result', []):
+            for item in result.get('items', []):
+                if item.get('type') != 'organic':
+                    continue
+                results.append({
+                    'url': item.get('url'),
+                    'title': item.get('title', 'Sin título'),
+                    'snippet': item.get('description', ''),
+                    'rank': item.get('rank_group', 0)
+                })
+                if len(results) >= num_results:
+                    return results
+    return results
+
+
+def search_dataforseo(
+    keyword: str,
+    login: str,
+    passw: str,
+    num_results: int = 10,
+    lang: str = 'es',
+    country: str = 'es',
+    detail: str = 'regular',
+    realtime: bool = True,
+    poll_attempts: int = 8,
+    poll_delay: float = 1.5
+) -> List[Dict[str, Any]]:
+    normalized_detail = 'advanced' if detail == 'advanced' else 'regular'
     try:
-        increment_api_usage(1)
-        url = "https://api.dataforseo.com/v3/serp/google/organic/live/advanced"
-
-        # Mapeo simple de país. DataForSEO usa location_code o location_name.
-        # Por defecto usamos 'Spain' si es 'es'.
-        location_name = "Spain"
-        if country.lower() in ['us', 'en', 'usa', 'united states']: location_name = "United States"
-        elif country.lower() in ['fr', 'france']: location_name = "France"
-        elif country.lower() in ['de', 'germany']: location_name = "Germany"
-        elif country.lower() in ['it', 'italy']: location_name = "Italy"
-        # Se puede extender según necesidad
-
-        # Codificar keyword en base64 - NO NECESARIO PARA ESTE ENDPOINT
         auth_b64 = base64.b64encode(f"{login}:{passw}".encode('utf-8')).decode('utf-8')
-
         payload = [{
             "keyword": keyword,
-            "language_code": lang[:2],
-            "location_name": location_name,
-            "depth": max(num_results, 10)
+            "language_code": (lang or 'es')[:2],
+            "location_name": _get_dataforseo_location_name(country),
+            "depth": _normalize_depth(num_results)
         }]
-
         headers = {
             'Authorization': f"Basic {auth_b64}",
             'Content-Type': 'application/json'
         }
 
-        response = requests.post(url, json=payload, headers=headers, timeout=60)
-        data = response.json()
+        if realtime:
+            increment_api_usage(1)
+            live_url = f"https://api.dataforseo.com/v3/serp/google/organic/live/{normalized_detail}"
+            response = requests.post(live_url, json=payload, headers=headers, timeout=60)
+            data = response.json()
+            if data.get('status_code') != 20000:
+                logging.error(f"DataForSEO Live response error: {data.get('status_message')}")
+                return []
+            return _extract_dataforseo_organic_results(data, num_results)[:num_results]
 
-        if data.get('status_code') == 20000:
-            for task in data.get('tasks', []):
-                if task.get('result') and task['result'][0].get('items'):
-                    for item in task['result'][0]['items']:
-                        if item.get('type') == 'organic':
-                            results.append({
-                                'url': item.get('url'),
-                                'title': item.get('title', 'Sin título'),
-                                'snippet': item.get('description', ''),
-                                'rank': item.get('rank_group', 0)
-                            })
-                            if len(results) >= num_results: break
-        else:
-            logging.error(f"DataForSEO Error: {data.get('status_message')}")
+        increment_api_usage(1)
+        task_post_url = "https://api.dataforseo.com/v3/serp/google/organic/task_post"
+        task_post_response = requests.post(task_post_url, json=payload, headers=headers, timeout=60)
+        task_post_data = task_post_response.json()
+        if task_post_data.get('status_code') != 20000:
+            logging.error(f"DataForSEO Standard POST error: {task_post_data.get('status_message')}")
+            return []
 
+        tasks = task_post_data.get('tasks') or []
+        task_id = tasks[0].get('id') if tasks else None
+        if not task_id:
+            logging.error("DataForSEO Standard missing task_id in POST response")
+            return []
+
+        safe_poll_attempts = max(int(poll_attempts or 1), 1)
+        task_get_url = f"https://api.dataforseo.com/v3/serp/google/organic/task_get/{normalized_detail}/{task_id}"
+        for attempt in range(safe_poll_attempts):
+            task_get_response = requests.get(task_get_url, headers=headers, timeout=60)
+            task_get_data = task_get_response.json()
+
+            if task_get_data.get('status_code') != 20000:
+                logging.error(f"DataForSEO Standard GET response error: {task_get_data.get('status_message')}")
+                return []
+
+            extracted = _extract_dataforseo_organic_results(task_get_data, num_results)
+            if extracted:
+                return extracted[:num_results]
+
+            if attempt < safe_poll_attempts - 1:
+                time.sleep(max(float(poll_delay or 0), 0))
+
+        logging.error(f"DataForSEO Standard polling timeout for task_id={task_id}")
     except Exception as e:
         logging.error(f"DataForSEO Exception: {sanitize_log_message(str(e))}")
 
-    return results[:num_results]
+    return []
 
 # --- SERPAPI ---
 def search_serpapi(keyword: str, api_key: str, num_results: int = 10, gl: str = 'es', hl: str = 'es') -> List[Dict[str, Any]]:
@@ -676,11 +743,22 @@ def smart_serp_search(keyword: str, config: Optional[Dict] = None, num_results: 
     """
     cfg = normalize_serp_config(config)
 
+    def _resolve_dataforseo_mode(local_cfg: Dict[str, Any]) -> Dict[str, Any]:
+        detail = 'advanced' if local_cfg.get('dataforseo_detail') == 'advanced' else 'regular'
+        realtime = bool(local_cfg.get('dataforseo_realtime', True))
+        return {
+            'detail': detail,
+            'realtime': realtime,
+            'provider_name': f"dataforseo_{'live' if realtime else 'standard'}_{detail}"
+        }
+
     # Fallback chain único: config explícita -> sesión -> DB
     if has_request_context():
         fallback_from_session = {
             'dataforseo_login': session.get('dataforseo_login'),
             'dataforseo_password': session.get('dataforseo_password') or session.get('dataforseo_pass'),
+            'dataforseo_detail': session.get('dataforseo_detail'),
+            'dataforseo_realtime': session.get('dataforseo_realtime'),
             'google_cse_key': session.get('google_cse_key'),
             'google_cse_cx': session.get('google_cse_cx'),
             'cookie': session.get('scraping_cookie'),
@@ -697,6 +775,8 @@ def smart_serp_search(keyword: str, config: Optional[Dict] = None, num_results: 
         fallback_from_db = {
             'dataforseo_login': settings.get('dataforseo_login'),
             'dataforseo_password': settings.get('dataforseo_password'),
+            'dataforseo_detail': settings.get('dataforseo_detail'),
+            'dataforseo_realtime': settings.get('dataforseo_realtime'),
             'google_cse_key': settings.get('google_cse_key'),
             'google_cse_cx': settings.get('google_cse_cx'),
             'cookie': settings.get('scraping_cookie'),
@@ -750,7 +830,20 @@ def smart_serp_search(keyword: str, config: Optional[Dict] = None, num_results: 
         return _return(search_serpapi(keyword, cfg['serpapi_key'], num_results, gl=country, hl=lang), provider_name='serpapi')
 
     if mode == 'dataforseo' and cfg.get('dataforseo_login') and cfg.get('dataforseo_password'):
-        return _return(search_dataforseo(keyword, cfg['dataforseo_login'], cfg['dataforseo_password'], num_results, lang, country), provider_name='dataforseo')
+        dfs_mode = _resolve_dataforseo_mode(cfg)
+        return _return(
+            search_dataforseo(
+                keyword,
+                cfg['dataforseo_login'],
+                cfg['dataforseo_password'],
+                num_results,
+                lang,
+                country,
+                detail=dfs_mode['detail'],
+                realtime=dfs_mode['realtime'],
+            ),
+            provider_name=dfs_mode['provider_name']
+        )
 
     if mode == 'google_official':
          api_key = cfg.get('google_cse_key')
@@ -770,7 +863,20 @@ def smart_serp_search(keyword: str, config: Optional[Dict] = None, num_results: 
 
         # DataForSEO Preference
         if provider == 'dataforseo' and cfg.get('dataforseo_login') and cfg.get('dataforseo_password'):
-             return _return(search_dataforseo(keyword, cfg['dataforseo_login'], cfg['dataforseo_password'], num_results, lang, country), provider_name='dataforseo')
+             dfs_mode = _resolve_dataforseo_mode(cfg)
+             return _return(
+                 search_dataforseo(
+                     keyword,
+                     cfg['dataforseo_login'],
+                     cfg['dataforseo_password'],
+                     num_results,
+                     lang,
+                     country,
+                     detail=dfs_mode['detail'],
+                     realtime=dfs_mode['realtime'],
+                 ),
+                 provider_name=dfs_mode['provider_name']
+             )
 
         # Google Official Preference
         if provider == 'google_official':
@@ -791,7 +897,20 @@ def smart_serp_search(keyword: str, config: Optional[Dict] = None, num_results: 
     dfs_pass = cfg.get('dataforseo_password') or Config.DATAFORSEO_PASSWORD
 
     if dfs_login and dfs_pass:
-        return _return(search_dataforseo(keyword, dfs_login, dfs_pass, num_results, lang, country), provider_name='dataforseo')
+        dfs_mode = _resolve_dataforseo_mode(cfg)
+        return _return(
+            search_dataforseo(
+                keyword,
+                dfs_login,
+                dfs_pass,
+                num_results,
+                lang,
+                country,
+                detail=dfs_mode['detail'],
+                realtime=dfs_mode['realtime'],
+            ),
+            provider_name=dfs_mode['provider_name']
+        )
 
     # 3.2 Google API Oficial
     api_key = cfg.get('google_cse_key')
