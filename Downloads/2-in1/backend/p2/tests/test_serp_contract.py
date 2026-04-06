@@ -51,7 +51,16 @@ def test_smart_serp_search_prefers_canonical_dataforseo_keys(mock_dfs):
     )
 
     assert len(result) == 1
-    mock_dfs.assert_called_once_with("test keyword", "canonical-login", "canonical-password", 1, "es", "es")
+    mock_dfs.assert_called_once_with(
+        "test keyword",
+        "canonical-login",
+        "canonical-password",
+        1,
+        "es",
+        "es",
+        detail="regular",
+        realtime=True,
+    )
 
 
 @patch("apps.tools.scraper_core.scrape_google_serp")

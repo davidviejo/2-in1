@@ -58,7 +58,14 @@ class TestAIConfig(unittest.TestCase):
                 smart_serp_search('test', config={'mode': 'dataforseo'})
 
                 mock_search.assert_called_with(
-                    'test', 'session-login', 'session-pass', 10, 'es', 'es'
+                    'test',
+                    'session-login',
+                    'session-pass',
+                    10,
+                    'es',
+                    'es',
+                    detail='regular',
+                    realtime=True,
                 )
 
 if __name__ == '__main__':

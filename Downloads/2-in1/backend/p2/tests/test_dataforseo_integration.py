@@ -73,7 +73,7 @@ class TestDataForSEOIntegration(unittest.TestCase):
 
         # Verify requests.post was called with correct URL and auth
         args, kwargs = self.mock_post.call_args
-        self.assertEqual(args[0], "https://api.dataforseo.com/v3/serp/google/organic/live/advanced")
+        self.assertEqual(args[0], "https://api.dataforseo.com/v3/serp/google/organic/live/regular")
 
         # Verify result parsing
         self.assertEqual(len(results), 1)
