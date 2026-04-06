@@ -158,6 +158,8 @@ def init_db() -> None:
             anthropic_key TEXT,
             dataforseo_login TEXT,
             dataforseo_password TEXT,
+            dataforseo_detail TEXT DEFAULT 'regular',
+            dataforseo_execution_mode TEXT DEFAULT 'standard',
             serpapi_key TEXT,
             serp_provider TEXT DEFAULT 'dataforseo',
             google_cse_key TEXT,
@@ -369,6 +371,8 @@ def init_db() -> None:
         "ALTER TABLE user_settings ADD COLUMN google_cse_key TEXT",
         "ALTER TABLE user_settings ADD COLUMN google_cse_cx TEXT",
         "ALTER TABLE user_settings ADD COLUMN scraping_cookie TEXT",
+        "ALTER TABLE user_settings ADD COLUMN dataforseo_detail TEXT DEFAULT 'regular'",
+        "ALTER TABLE user_settings ADD COLUMN dataforseo_execution_mode TEXT DEFAULT 'standard'",
     ):
         try:
             c.execute(query)
@@ -486,7 +490,7 @@ def upsert_user_settings(user_id: str, data: Dict[str, Any]) -> None:
         # Filter only valid columns to avoid SQL injection or errors
         valid_columns = [
             'default_model', 'privacy_mode', 'openai_key', 'anthropic_key',
-            'dataforseo_login', 'dataforseo_password', 'serpapi_key',
+            'dataforseo_login', 'dataforseo_password', 'dataforseo_detail', 'dataforseo_execution_mode', 'serpapi_key',
             'serp_provider', 'google_cse_key', 'google_cse_cx', 'scraping_cookie',
             'memory_limit', 'system_prompt'
         ]

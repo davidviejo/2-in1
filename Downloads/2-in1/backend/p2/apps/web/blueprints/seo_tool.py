@@ -23,14 +23,18 @@ job_status = {
     'results': [],
     'logs': [],
     'error': None,
-    'diagnostics': {
-        'keywords': {},
-        'session': {
-            'queries_total': 0,
-            'queries_blocked': 0,
-            'blocked_ratio': 0.0,
+        'diagnostics': {
+            'keywords': {},
+            'session': {
+                'queries_total': 0,
+                'queries_blocked': 0,
+                'blocked_ratio': 0.0,
+                'estimated_cost_total': 0.0,
+                'actual_cost_total': 0.0,
+                'last_execution_mode': None,
+                'last_detail': None,
+            }
         }
-    }
 }
 _status_lock = threading.Lock()
 
@@ -409,6 +413,10 @@ def worker(kws, file, cfg):
                 'queries_total': 0,
                 'queries_blocked': 0,
                 'blocked_ratio': 0.0,
+                'estimated_cost_total': 0.0,
+                'actual_cost_total': 0.0,
+                'last_execution_mode': None,
+                'last_detail': None,
             }
         }
     )
@@ -457,12 +465,28 @@ def worker(kws, file, cfg):
                     'queries_total': 0,
                     'queries_blocked': 0,
                     'blocked_ratio': 0.0,
+                    'estimated_cost_total': 0.0,
+                    'actual_cost_total': 0.0,
+                    'last_execution_mode': None,
+                    'last_detail': None,
                 })
                 session_diag['queries_total'] += 1
                 if blocked:
                     session_diag['queries_blocked'] += 1
                 total_q = max(1, session_diag['queries_total'])
                 session_diag['blocked_ratio'] = round(session_diag['queries_blocked'] / total_q, 4)
+                session_diag['estimated_cost_total'] = round(
+                    float(session_diag.get('estimated_cost_total', 0.0)) + float(diag.get('estimated_cost') or 0.0),
+                    4
+                )
+                session_diag['actual_cost_total'] = round(
+                    float(session_diag.get('actual_cost_total', 0.0)) + float(diag.get('actual_cost') or 0.0),
+                    4
+                )
+                if diag.get('execution_mode'):
+                    session_diag['last_execution_mode'] = diag.get('execution_mode')
+                if diag.get('detail'):
+                    session_diag['last_detail'] = diag.get('detail')
 
             if status == 'blocked':
                 cause = f"{provider}: bloqueo detectado (http={http_status or 'n/a'}, t={elapsed_ms or 'n/a'}ms)"
@@ -610,6 +634,8 @@ def start():
         # DataForSEO params (opcional, si no está en settings global)
         'dataforseo_login': request.form.get('dataforseo_login') or request.form.get('dfs_login'),
         'dataforseo_password': request.form.get('dataforseo_password') or request.form.get('dfs_pass'),
+        'dataforseo_detail': request.form.get('dataforseo_detail') or 'regular',
+        'dataforseo_execution_mode': request.form.get('dataforseo_execution_mode') or 'standard',
 
         'delay': float(request.form.get('delay', 3)),
         'tos': int(request.form.get('tos', 15)),

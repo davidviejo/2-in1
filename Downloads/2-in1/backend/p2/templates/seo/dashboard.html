@@ -123,6 +123,34 @@
                                 </div>
                                 <div class="small mt-1">Por defecto se usan las credenciales guardadas en Ajustes.</div>
                             </details>
+                            <div id="dfsStrategyPanel" class="alert alert-light border mb-2">
+                                <div class="row g-2">
+                                    <div class="col-md-4">
+                                        <label class="fw-bold">DataForSEO detail:</label>
+                                        <select name="dataforseo_detail" class="form-select form-select-sm" id="dfsDetailSelect">
+                                            <option value="regular" selected>regular (recomendado)</option>
+                                            <option value="advanced">advanced</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="fw-bold">Execution mode:</label>
+                                        <select name="dataforseo_execution_mode" class="form-select form-select-sm" id="dfsModeSelect">
+                                            <option value="standard" selected>standard (recomendado)</option>
+                                            <option value="priority">priority</option>
+                                            <option value="live">live</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="fw-bold">Latencia esperada:</label>
+                                        <div class="small mt-2" id="dfsLatencyHint">
+                                            standard: más barato, más lento.
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="small text-muted mt-2">
+                                    Recomendación por defecto: <strong>standard + regular</strong> para minimizar coste.
+                                </div>
+                            </div>
 
                             <!-- OPCIONES COOKIE -->
                             <div id="optsCookie" style="display:none;" class="mb-2">
@@ -145,6 +173,14 @@
                                         <option value="3">3 (más estricto)</option>
                                         <option value="2">2 (más laxo)</option>
                                     </select>
+                                </div>
+                            </div>
+                            <div class="card border-info mt-3">
+                                <div class="card-body py-2">
+                                    <div class="fw-bold mb-2">Estimador de coste (antes de ejecutar)</div>
+                                    <div id="dfsCostEstimator" class="small text-muted">
+                                        Calculando...
+                                    </div>
                                 </div>
                             </div>
 
@@ -174,6 +210,7 @@
             </div>
 
             <div id="resultsPanel" style="display:none;">
+                <div class="alert alert-info small d-none" id="costResultPanel"></div>
                 <div class="d-flex justify-content-between mb-3 flex-wrap gap-2">
                     <button class="btn btn-secondary" onclick="location.reload()">⬅️ Nuevo</button>
                     <div class="d-flex flex-wrap gap-2">
@@ -234,6 +271,8 @@ let lastResults = [];
 let lastBulkResults = [];
 
 const modeSel   = document.getElementById('modeSelect');
+const dfsDetailSel = document.getElementById('dfsDetailSelect');
+const dfsModeSel = document.getElementById('dfsModeSelect');
 const form      = document.getElementById('runForm');
 const startBtn  = document.getElementById('startBtn');
 const alertBox  = document.getElementById('statusAlert');
@@ -247,6 +286,8 @@ modeSel.addEventListener('change', () => {
     document.getElementById('cxContainer').style.visibility = val === 'serpapi' ? 'hidden' : 'visible';
 
     document.getElementById('optsCookie').style.display = val === 'google_nuclear' ? 'block' : 'none';
+    document.getElementById('dfsStrategyPanel').style.display = val === 'dataforseo' ? 'block' : 'none';
+    renderCostEstimator();
 
 });
 
@@ -262,7 +303,76 @@ window.addEventListener('load', () => {
         // Forzar opciones según modo
         modeSel.dispatchEvent(new Event('change'));
     }
+    renderCostEstimator();
 });
+
+function normalizeDepth(numResults){
+    const safe = Math.max(parseInt(numResults || 0, 10) || 1, 1);
+    return Math.max(10, Math.ceil(safe / 10) * 10);
+}
+
+function estimateDfsCost({numResults, detail, executionMode, queriesCount}) {
+    const depth = normalizeDepth(numResults);
+    const table = {
+        'standard:regular': 0.90,
+        'standard:advanced': 1.30,
+        'priority:regular': 1.15,
+        'priority:advanced': 1.60,
+        'live:regular': 1.45,
+        'live:advanced': 2.10
+    };
+    const key = `${executionMode}:${detail}`;
+    const unit = table[key] || 0.90;
+    const blocks = Math.max(1, Math.floor(depth / 10));
+    const perRun = +(unit * blocks).toFixed(4);
+    const total = +(perRun * Math.max(queriesCount || 1, 1)).toFixed(4);
+    return { depth, perRun, total };
+}
+
+function renderDfsLatencyHint(){
+    const hint = document.getElementById('dfsLatencyHint');
+    if (!hint) return;
+    const mode = dfsModeSel.value;
+    if (mode === 'live') {
+        hint.innerText = 'live: más rápido, más caro.';
+    } else if (mode === 'priority') {
+        hint.innerText = 'priority: equilibrio coste/latencia.';
+    } else {
+        hint.innerText = 'standard: más barato, más lento.';
+    }
+}
+
+function renderCostEstimator(){
+    const target = document.getElementById('dfsCostEstimator');
+    if (!target) return;
+    const provider = modeSel.value;
+    const topN = form.elements['top_n'].value;
+    const detail = dfsDetailSel.value || 'regular';
+    const executionMode = dfsModeSel.value || 'standard';
+    const queriesCount = form.elements['keywords'].value
+        .split('\n')
+        .map(x => x.trim())
+        .filter(Boolean).length || 1;
+
+    renderDfsLatencyHint();
+    if (provider !== 'dataforseo') {
+        target.innerHTML = 'Proveedor actual no es DataForSEO. El estimador de DataForSEO se desactiva.';
+        return;
+    }
+    const estimate = estimateDfsCost({ numResults: topN, detail, executionMode, queriesCount });
+    target.innerHTML = `
+        <div>Proveedor: <strong>DataForSEO</strong></div>
+        <div>detail: <strong>${detail}</strong> | mode: <strong>${executionMode}</strong></div>
+        <div>Top N: <strong>${topN}</strong> | depth efectivo: <strong>${estimate.depth}</strong></div>
+        <div>Coste estimado / ejecución: <strong>${estimate.perRun} credits</strong></div>
+        <div>Coste estimado total (${queriesCount} búsquedas): <strong>${estimate.total} credits</strong></div>
+    `;
+}
+
+dfsDetailSel.addEventListener('change', renderCostEstimator);
+dfsModeSel.addEventListener('change', renderCostEstimator);
+form.elements['top_n'].addEventListener('input', renderCostEstimator);
+form.elements['keywords'].addEventListener('input', renderCostEstimator);
 
 // Helper: mostrar alerta global
 function showAlert(msg) {
@@ -323,7 +433,7 @@ form.addEventListener('submit', e => {
 
 function poll(){
     const i = setInterval(()=>{
-        fetch('/seo/status')
+        fetch('/seo/status?diagnostics=1')
             .then(r=>r.json())
             .then(d=>{
                 document.getElementById('progressBar').style.width = d.progress+'%';
@@ -350,6 +460,7 @@ function poll(){
 
                 if(!d.active){ 
                     clearInterval(i); 
+                    renderCostResult(d.diagnostics || {});
                     render(d.results || []); 
                     document.getElementById('progressPanel').style.display='none'; 
                     document.getElementById('resultsPanel').style.display='block'; 
@@ -360,6 +471,25 @@ function poll(){
                 clearInterval(i);
             });
     },1000);
+}
+
+function renderCostResult(diagnostics){
+    const panel = document.getElementById('costResultPanel');
+    if (!panel) return;
+    const sessionDiag = (diagnostics && diagnostics.session) || {};
+    if (!sessionDiag.last_execution_mode && !sessionDiag.last_detail) {
+        panel.classList.add('d-none');
+        panel.innerHTML = '';
+        return;
+    }
+    panel.classList.remove('d-none');
+    panel.innerHTML = `
+        <strong>Coste real de ejecución:</strong>
+        <span class="ms-2">actual: <strong>${(sessionDiag.actual_cost_total || 0).toFixed(4)} credits</strong></span>
+        <span class="ms-2">estimado: <strong>${(sessionDiag.estimated_cost_total || 0).toFixed(4)} credits</strong></span>
+        <span class="ms-2">modo usado: <strong>${sessionDiag.last_execution_mode || 'n/a'}</strong></span>
+        <span class="ms-2">detail usado: <strong>${sessionDiag.last_detail || 'n/a'}</strong></span>
+    `;
 }
 
 function render(list){

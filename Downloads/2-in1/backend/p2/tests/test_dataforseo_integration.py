@@ -68,8 +68,8 @@ class TestDataForSEOIntegration(unittest.TestCase):
         }
         self.mock_post.return_value = mock_response
 
-        # Call smart_serp_search with implicit mode (auto)
-        results = smart_serp_search("test keyword", config={})
+        # Call smart_serp_search forcing live mode for this contract test
+        results = smart_serp_search("test keyword", config={"dataforseo_execution_mode": "live"})
 
         # Verify requests.post was called with correct URL and auth
         args, kwargs = self.mock_post.call_args
@@ -92,7 +92,7 @@ class TestDataForSEOIntegration(unittest.TestCase):
         self.mock_post.return_value = mock_response
 
         # Call with explicit mode
-        smart_serp_search("test", config={'mode': 'dataforseo'})
+        smart_serp_search("test", config={'mode': 'dataforseo', 'dataforseo_execution_mode': 'live'})
 
         self.mock_post.assert_called_once()
 

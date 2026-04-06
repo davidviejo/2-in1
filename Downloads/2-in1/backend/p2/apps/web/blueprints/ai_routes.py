@@ -171,7 +171,7 @@ def update_settings_api():
         updates = {}
         valid_fields = [
             'default_model', 'privacy_mode', 'openai_key', 'anthropic_key',
-            'dataforseo_login', 'dataforseo_password', 'serpapi_key',
+            'dataforseo_login', 'dataforseo_password', 'dataforseo_detail', 'dataforseo_execution_mode', 'serpapi_key',
             'serp_provider', 'google_cse_key', 'google_cse_cx', 'scraping_cookie',
             'memory_limit', 'system_prompt'
         ]
@@ -206,6 +206,8 @@ def update_settings_api():
         session['dataforseo_login'] = new_state.get('dataforseo_login')
         session['dataforseo_password'] = new_state.get('dataforseo_password')
         session['dataforseo_pass'] = new_state.get('dataforseo_password')
+        session['dataforseo_detail'] = new_state.get('dataforseo_detail', 'regular')
+        session['dataforseo_execution_mode'] = new_state.get('dataforseo_execution_mode', 'standard')
         session['serpapi_key'] = new_state.get('serpapi_key')
         session['serp_provider'] = new_state.get('serp_provider', 'dataforseo')
         session['google_cse_key'] = new_state.get('google_cse_key')
@@ -253,6 +255,8 @@ def dashboard():
         'google_key': session.get('google_key', ''),
         'dataforseo_login': session.get('dataforseo_login', ''),
         'dataforseo_password': session.get('dataforseo_password', session.get('dataforseo_pass', '')),
+        'dataforseo_detail': session.get('dataforseo_detail', 'regular'),
+        'dataforseo_execution_mode': session.get('dataforseo_execution_mode', 'standard'),
         'google_cse_key': session.get('google_cse_key', ''),
         'google_cse_cx': session.get('google_cse_cx', ''),
         'scraping_cookie': session.get('scraping_cookie', ''),
@@ -318,6 +322,7 @@ def set_preference():
     global_keys = [
         'openai_key', 'anthropic_key', 'google_key',
         'dataforseo_login', 'dataforseo_password', 'dataforseo_pass',
+        'dataforseo_detail', 'dataforseo_execution_mode',
         'google_cse_key', 'google_cse_cx',
         'scraping_cookie', 'memory_context_window',
         'serp_provider', 'serpapi_key'
