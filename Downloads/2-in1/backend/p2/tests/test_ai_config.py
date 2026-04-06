@@ -65,7 +65,8 @@ class TestAIConfig(unittest.TestCase):
                     'es',
                     'es',
                     detail='regular',
-                    realtime=True,
+                    execution_mode='standard',
+                    return_metadata=True,
                 )
 
 if __name__ == '__main__':

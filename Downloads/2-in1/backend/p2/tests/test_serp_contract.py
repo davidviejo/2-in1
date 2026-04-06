@@ -59,7 +59,8 @@ def test_smart_serp_search_prefers_canonical_dataforseo_keys(mock_dfs):
         "es",
         "es",
         detail="regular",
-        realtime=True,
+        execution_mode="standard",
+        return_metadata=True,
     )
 
 
