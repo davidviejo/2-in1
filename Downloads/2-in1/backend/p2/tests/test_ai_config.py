@@ -52,7 +52,16 @@ class TestAIConfig(unittest.TestCase):
 
             from unittest.mock import patch
             with patch('apps.tools.scraper_core.search_dataforseo') as mock_search:
-                mock_search.return_value = []
+                mock_search.return_value = {
+                    'results': [],
+                    'execution_mode': 'standard',
+                    'detail': 'regular',
+                    'depth': 10,
+                    'estimated_cost': 0.0,
+                    'actual_cost': 0.0,
+                    'task_id': None,
+                    'elapsed_ms': 1.0,
+                }
 
                 # Call with mode='dataforseo' to force DFS path
                 smart_serp_search('test', config={'mode': 'dataforseo'})
@@ -65,7 +74,8 @@ class TestAIConfig(unittest.TestCase):
                     'es',
                     'es',
                     detail='regular',
-                    realtime=True,
+                    execution_mode='standard',
+                    return_meta=True,
                 )
 
 if __name__ == '__main__':

@@ -56,6 +56,7 @@ CANONICAL_SERP_KEYS = (
     'dataforseo_login',
     'dataforseo_password',
     'dataforseo_detail',
+    'dataforseo_execution_mode',
     'dataforseo_realtime',
     'google_cse_key',
     'google_cse_cx',
@@ -90,6 +91,10 @@ def normalize_serp_config(config: Optional[Dict[str, Any]] = None) -> Dict[str, 
         normalized['dataforseo_realtime'] = raw_cfg.get('dataforseo_realtime')
     elif 'dfs_realtime' in raw_cfg:
         normalized['dataforseo_realtime'] = raw_cfg.get('dfs_realtime')
+    normalized['dataforseo_execution_mode'] = (
+        raw_cfg.get('dataforseo_execution_mode')
+        or raw_cfg.get('dfs_execution_mode')
+    )
 
     # Google CSE aliases
     normalized['google_cse_key'] = (
@@ -605,6 +610,50 @@ def _extract_dataforseo_organic_results(data: Dict[str, Any], num_results: int) 
     return results
 
 
+def _extract_dataforseo_actual_cost(data: Dict[str, Any]) -> Optional[float]:
+    raw_costs: List[float] = []
+    top_level_cost = data.get('cost')
+    if isinstance(top_level_cost, (int, float)):
+        raw_costs.append(float(top_level_cost))
+
+    for task in data.get('tasks', []):
+        task_cost = task.get('cost')
+        if isinstance(task_cost, (int, float)):
+            raw_costs.append(float(task_cost))
+
+    if not raw_costs:
+        return None
+    return round(sum(raw_costs), 6)
+
+
+def estimate_dataforseo_cost(
+    execution_mode: str,
+    detail: str,
+    depth: int,
+    extra_flags: Optional[Dict[str, Any]] = None
+) -> float:
+    """
+    Estimación orientativa de coste para DataForSEO.
+    Nota: los precios reales dependen del plan/endpoint y pueden variar.
+    """
+    normalized_mode = execution_mode if execution_mode in {'live', 'standard', 'priority'} else 'standard'
+    normalized_detail = 'advanced' if detail == 'advanced' else 'regular'
+    normalized_depth = _normalize_depth(depth)
+    blocks = max(1, normalized_depth // 10)
+
+    base_per_block = {
+        'standard': {'regular': 0.0006, 'advanced': 0.0012},
+        'priority': {'regular': 0.0009, 'advanced': 0.0015},
+        'live': {'regular': 0.0012, 'advanced': 0.0020},
+    }
+    estimated = base_per_block[normalized_mode][normalized_detail] * blocks
+
+    flags = extra_flags or {}
+    if flags.get('include_ai_overview'):
+        estimated *= 1.15
+    return round(estimated, 6)
+
+
 def search_dataforseo(
     keyword: str,
     login: str,
@@ -613,33 +662,59 @@ def search_dataforseo(
     lang: str = 'es',
     country: str = 'es',
     detail: str = 'regular',
-    realtime: bool = True,
+    execution_mode: str = 'live',
     poll_attempts: int = 8,
-    poll_delay: float = 1.5
-) -> List[Dict[str, Any]]:
+    poll_delay: float = 1.5,
+    return_meta: bool = False,
+) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
     normalized_detail = 'advanced' if detail == 'advanced' else 'regular'
+    normalized_mode = execution_mode if execution_mode in {'live', 'standard', 'priority'} else 'standard'
+    depth = _normalize_depth(num_results)
+    started_at = time.perf_counter()
+    meta: Dict[str, Any] = {
+        'results': [],
+        'execution_mode': normalized_mode,
+        'detail': normalized_detail,
+        'depth': depth,
+        'estimated_cost': estimate_dataforseo_cost(normalized_mode, normalized_detail, depth),
+        'actual_cost': None,
+        'task_id': None,
+        'elapsed_ms': None,
+    }
+
+    def _finish(results: Optional[List[Dict[str, Any]]] = None) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
+        meta['results'] = (results or [])[:num_results]
+        meta['elapsed_ms'] = round((time.perf_counter() - started_at) * 1000, 2)
+        if return_meta:
+            return meta
+        return meta['results']
+
     try:
         auth_b64 = base64.b64encode(f"{login}:{passw}".encode('utf-8')).decode('utf-8')
         payload = [{
             "keyword": keyword,
             "language_code": (lang or 'es')[:2],
             "location_name": _get_dataforseo_location_name(country),
-            "depth": _normalize_depth(num_results)
+            "depth": depth
         }]
         headers = {
             'Authorization': f"Basic {auth_b64}",
             'Content-Type': 'application/json'
         }
 
-        if realtime:
+        if normalized_mode == 'priority':
+            payload[0]['priority'] = 2
+
+        if normalized_mode == 'live':
             increment_api_usage(1)
             live_url = f"https://api.dataforseo.com/v3/serp/google/organic/live/{normalized_detail}"
             response = requests.post(live_url, json=payload, headers=headers, timeout=60)
             data = response.json()
             if data.get('status_code') != 20000:
                 logging.error(f"DataForSEO Live response error: {data.get('status_message')}")
-                return []
-            return _extract_dataforseo_organic_results(data, num_results)[:num_results]
+                return _finish([])
+            meta['actual_cost'] = _extract_dataforseo_actual_cost(data)
+            return _finish(_extract_dataforseo_organic_results(data, num_results))
 
         increment_api_usage(1)
         task_post_url = "https://api.dataforseo.com/v3/serp/google/organic/task_post"
@@ -647,13 +722,15 @@ def search_dataforseo(
         task_post_data = task_post_response.json()
         if task_post_data.get('status_code') != 20000:
             logging.error(f"DataForSEO Standard POST error: {task_post_data.get('status_message')}")
-            return []
+            return _finish([])
+        meta['actual_cost'] = _extract_dataforseo_actual_cost(task_post_data)
 
         tasks = task_post_data.get('tasks') or []
         task_id = tasks[0].get('id') if tasks else None
         if not task_id:
             logging.error("DataForSEO Standard missing task_id in POST response")
-            return []
+            return _finish([])
+        meta['task_id'] = task_id
 
         safe_poll_attempts = max(int(poll_attempts or 1), 1)
         task_get_url = f"https://api.dataforseo.com/v3/serp/google/organic/task_get/{normalized_detail}/{task_id}"
@@ -663,20 +740,24 @@ def search_dataforseo(
 
             if task_get_data.get('status_code') != 20000:
                 logging.error(f"DataForSEO Standard GET response error: {task_get_data.get('status_message')}")
-                return []
+                return _finish([])
+
+            polled_cost = _extract_dataforseo_actual_cost(task_get_data)
+            if polled_cost is not None:
+                meta['actual_cost'] = polled_cost
 
             extracted = _extract_dataforseo_organic_results(task_get_data, num_results)
             if extracted:
-                return extracted[:num_results]
+                return _finish(extracted)
 
             if attempt < safe_poll_attempts - 1:
                 time.sleep(max(float(poll_delay or 0), 0))
 
-        logging.error(f"DataForSEO Standard polling timeout for task_id={task_id}")
+        logging.error(f"DataForSEO {normalized_mode} polling timeout for task_id={task_id}")
     except Exception as e:
         logging.error(f"DataForSEO Exception: {sanitize_log_message(str(e))}")
 
-    return []
+    return _finish([])
 
 # --- SERPAPI ---
 def search_serpapi(keyword: str, api_key: str, num_results: int = 10, gl: str = 'es', hl: str = 'es') -> List[Dict[str, Any]]:
@@ -745,11 +826,16 @@ def smart_serp_search(keyword: str, config: Optional[Dict] = None, num_results: 
 
     def _resolve_dataforseo_mode(local_cfg: Dict[str, Any]) -> Dict[str, Any]:
         detail = 'advanced' if local_cfg.get('dataforseo_detail') == 'advanced' else 'regular'
-        realtime = bool(local_cfg.get('dataforseo_realtime', True))
+        execution_mode = local_cfg.get('dataforseo_execution_mode')
+        if execution_mode not in {'live', 'standard', 'priority'}:
+            if 'dataforseo_realtime' in local_cfg:
+                execution_mode = 'live' if bool(local_cfg.get('dataforseo_realtime')) else 'standard'
+            else:
+                execution_mode = 'standard'
         return {
             'detail': detail,
-            'realtime': realtime,
-            'provider_name': f"dataforseo_{'live' if realtime else 'standard'}_{detail}"
+            'execution_mode': execution_mode,
+            'provider_name': f"dataforseo_{execution_mode}_{detail}"
         }
 
     # Fallback chain único: config explícita -> sesión -> DB
@@ -758,6 +844,7 @@ def smart_serp_search(keyword: str, config: Optional[Dict] = None, num_results: 
             'dataforseo_login': session.get('dataforseo_login'),
             'dataforseo_password': session.get('dataforseo_password') or session.get('dataforseo_pass'),
             'dataforseo_detail': session.get('dataforseo_detail'),
+            'dataforseo_execution_mode': session.get('dataforseo_execution_mode'),
             'dataforseo_realtime': session.get('dataforseo_realtime'),
             'google_cse_key': session.get('google_cse_key'),
             'google_cse_cx': session.get('google_cse_cx'),
@@ -776,6 +863,7 @@ def smart_serp_search(keyword: str, config: Optional[Dict] = None, num_results: 
             'dataforseo_login': settings.get('dataforseo_login'),
             'dataforseo_password': settings.get('dataforseo_password'),
             'dataforseo_detail': settings.get('dataforseo_detail'),
+            'dataforseo_execution_mode': settings.get('dataforseo_execution_mode'),
             'dataforseo_realtime': settings.get('dataforseo_realtime'),
             'google_cse_key': settings.get('google_cse_key'),
             'google_cse_cx': settings.get('google_cse_cx'),
@@ -810,6 +898,12 @@ def smart_serp_search(keyword: str, config: Optional[Dict] = None, num_results: 
             "blocked": bool(diagnostics.get('blocked')) if diagnostics else False,
             "results_count": len(results or []),
             "elapsed_ms": diagnostics.get('elapsed_ms') if diagnostics else None,
+            "execution_mode": diagnostics.get('execution_mode') if diagnostics else None,
+            "detail": diagnostics.get('detail') if diagnostics else None,
+            "depth": diagnostics.get('depth') if diagnostics else None,
+            "estimated_cost": diagnostics.get('estimated_cost') if diagnostics else None,
+            "actual_cost": diagnostics.get('actual_cost') if diagnostics else None,
+            "task_id": diagnostics.get('task_id') if diagnostics else None,
         }
         logging.info("SERP_EVENT %s", event)
 
@@ -831,18 +925,29 @@ def smart_serp_search(keyword: str, config: Optional[Dict] = None, num_results: 
 
     if mode == 'dataforseo' and cfg.get('dataforseo_login') and cfg.get('dataforseo_password'):
         dfs_mode = _resolve_dataforseo_mode(cfg)
+        dfs_meta = search_dataforseo(
+            keyword,
+            cfg['dataforseo_login'],
+            cfg['dataforseo_password'],
+            num_results,
+            lang,
+            country,
+            detail=dfs_mode['detail'],
+            execution_mode=dfs_mode['execution_mode'],
+            return_meta=True,
+        )
         return _return(
-            search_dataforseo(
-                keyword,
-                cfg['dataforseo_login'],
-                cfg['dataforseo_password'],
-                num_results,
-                lang,
-                country,
-                detail=dfs_mode['detail'],
-                realtime=dfs_mode['realtime'],
-            ),
-            provider_name=dfs_mode['provider_name']
+            dfs_meta.get('results', []),
+            provider_name=dfs_mode['provider_name'],
+            diagnostics={
+                'execution_mode': dfs_meta.get('execution_mode'),
+                'detail': dfs_meta.get('detail'),
+                'depth': dfs_meta.get('depth'),
+                'estimated_cost': dfs_meta.get('estimated_cost'),
+                'actual_cost': dfs_meta.get('actual_cost'),
+                'task_id': dfs_meta.get('task_id'),
+                'elapsed_ms': dfs_meta.get('elapsed_ms'),
+            }
         )
 
     if mode == 'google_official':
@@ -864,18 +969,29 @@ def smart_serp_search(keyword: str, config: Optional[Dict] = None, num_results: 
         # DataForSEO Preference
         if provider == 'dataforseo' and cfg.get('dataforseo_login') and cfg.get('dataforseo_password'):
              dfs_mode = _resolve_dataforseo_mode(cfg)
+             dfs_meta = search_dataforseo(
+                 keyword,
+                 cfg['dataforseo_login'],
+                 cfg['dataforseo_password'],
+                 num_results,
+                 lang,
+                 country,
+                 detail=dfs_mode['detail'],
+                 execution_mode=dfs_mode['execution_mode'],
+                 return_meta=True,
+             )
              return _return(
-                 search_dataforseo(
-                     keyword,
-                     cfg['dataforseo_login'],
-                     cfg['dataforseo_password'],
-                     num_results,
-                     lang,
-                     country,
-                     detail=dfs_mode['detail'],
-                     realtime=dfs_mode['realtime'],
-                 ),
-                 provider_name=dfs_mode['provider_name']
+                 dfs_meta.get('results', []),
+                 provider_name=dfs_mode['provider_name'],
+                 diagnostics={
+                     'execution_mode': dfs_meta.get('execution_mode'),
+                     'detail': dfs_meta.get('detail'),
+                     'depth': dfs_meta.get('depth'),
+                     'estimated_cost': dfs_meta.get('estimated_cost'),
+                     'actual_cost': dfs_meta.get('actual_cost'),
+                     'task_id': dfs_meta.get('task_id'),
+                     'elapsed_ms': dfs_meta.get('elapsed_ms'),
+                 }
              )
 
         # Google Official Preference
@@ -898,18 +1014,29 @@ def smart_serp_search(keyword: str, config: Optional[Dict] = None, num_results: 
 
     if dfs_login and dfs_pass:
         dfs_mode = _resolve_dataforseo_mode(cfg)
+        dfs_meta = search_dataforseo(
+            keyword,
+            dfs_login,
+            dfs_pass,
+            num_results,
+            lang,
+            country,
+            detail=dfs_mode['detail'],
+            execution_mode=dfs_mode['execution_mode'],
+            return_meta=True,
+        )
         return _return(
-            search_dataforseo(
-                keyword,
-                dfs_login,
-                dfs_pass,
-                num_results,
-                lang,
-                country,
-                detail=dfs_mode['detail'],
-                realtime=dfs_mode['realtime'],
-            ),
-            provider_name=dfs_mode['provider_name']
+            dfs_meta.get('results', []),
+            provider_name=dfs_mode['provider_name'],
+            diagnostics={
+                'execution_mode': dfs_meta.get('execution_mode'),
+                'detail': dfs_meta.get('detail'),
+                'depth': dfs_meta.get('depth'),
+                'estimated_cost': dfs_meta.get('estimated_cost'),
+                'actual_cost': dfs_meta.get('actual_cost'),
+                'task_id': dfs_meta.get('task_id'),
+                'elapsed_ms': dfs_meta.get('elapsed_ms'),
+            }
         )
 
     # 3.2 Google API Oficial

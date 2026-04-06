@@ -38,7 +38,16 @@ def test_smart_serp_search_supports_google_mode_alias(mock_google):
 
 @patch("apps.tools.scraper_core.search_dataforseo")
 def test_smart_serp_search_prefers_canonical_dataforseo_keys(mock_dfs):
-    mock_dfs.return_value = [{"url": "https://example.com", "title": "ok", "snippet": "", "rank": 1}]
+    mock_dfs.return_value = {
+        "results": [{"url": "https://example.com", "title": "ok", "snippet": "", "rank": 1}],
+        "execution_mode": "standard",
+        "detail": "regular",
+        "depth": 10,
+        "estimated_cost": 0.0,
+        "actual_cost": 0.0,
+        "task_id": None,
+        "elapsed_ms": 5.0,
+    }
 
     result = smart_serp_search(
         "test keyword",
@@ -59,7 +68,8 @@ def test_smart_serp_search_prefers_canonical_dataforseo_keys(mock_dfs):
         "es",
         "es",
         detail="regular",
-        realtime=True,
+        execution_mode="standard",
+        return_meta=True,
     )
 
 

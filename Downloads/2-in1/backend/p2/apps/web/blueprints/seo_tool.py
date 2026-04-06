@@ -7,7 +7,11 @@ from difflib import SequenceMatcher
 from collections import Counter
 
 from apps.core_monitor import update_global, reset_global
-from apps.tools.scraper_core import smart_serp_search, GoogleSERPBlockedError
+from apps.tools.scraper_core import (
+    smart_serp_search,
+    GoogleSERPBlockedError,
+    estimate_dataforseo_cost,
+)
 from apps.tools.credentials import (
     MISSING_DFS_CREDENTIALS_MESSAGE,
     resolve_dataforseo_credentials,
@@ -29,6 +33,9 @@ job_status = {
             'queries_total': 0,
             'queries_blocked': 0,
             'blocked_ratio': 0.0,
+            'estimated_cost_total': 0.0,
+            'actual_cost_total': 0.0,
+            'last_dataforseo': {},
         }
     }
 }
@@ -235,6 +242,11 @@ def dispatcher(kw, cfg):
         return {'status': 'error', 'results': [], 'error': str(e)}
 
 
+def _normalize_depth_for_panel(num_results: int) -> int:
+    safe_num_results = max(int(num_results or 0), 1)
+    return max(10, ((safe_num_results + 9) // 10) * 10)
+
+
 # --- HISTÓRICO DESDE EXCEL ---
 
 def load_history(f):
@@ -409,6 +421,9 @@ def worker(kws, file, cfg):
                 'queries_total': 0,
                 'queries_blocked': 0,
                 'blocked_ratio': 0.0,
+                'estimated_cost_total': 0.0,
+                'actual_cost_total': 0.0,
+                'last_dataforseo': {},
             }
         }
     )
@@ -457,12 +472,29 @@ def worker(kws, file, cfg):
                     'queries_total': 0,
                     'queries_blocked': 0,
                     'blocked_ratio': 0.0,
+                    'estimated_cost_total': 0.0,
+                    'actual_cost_total': 0.0,
+                    'last_dataforseo': {},
                 })
                 session_diag['queries_total'] += 1
                 if blocked:
                     session_diag['queries_blocked'] += 1
                 total_q = max(1, session_diag['queries_total'])
                 session_diag['blocked_ratio'] = round(session_diag['queries_blocked'] / total_q, 4)
+                if provider.startswith('dataforseo_'):
+                    estimated_cost = float(diag.get('estimated_cost') or 0)
+                    actual_cost = float(diag.get('actual_cost') or 0)
+                    session_diag['estimated_cost_total'] = round(session_diag.get('estimated_cost_total', 0.0) + estimated_cost, 6)
+                    session_diag['actual_cost_total'] = round(session_diag.get('actual_cost_total', 0.0) + actual_cost, 6)
+                    session_diag['last_dataforseo'] = {
+                        'provider': provider,
+                        'execution_mode': diag.get('execution_mode'),
+                        'detail': diag.get('detail'),
+                        'depth': diag.get('depth'),
+                        'estimated_cost': diag.get('estimated_cost'),
+                        'actual_cost': diag.get('actual_cost'),
+                        'task_id': diag.get('task_id'),
+                    }
 
             if status == 'blocked':
                 cause = f"{provider}: bloqueo detectado (http={http_status or 'n/a'}, t={elapsed_ms or 'n/a'}ms)"
@@ -610,6 +642,8 @@ def start():
         # DataForSEO params (opcional, si no está en settings global)
         'dataforseo_login': request.form.get('dataforseo_login') or request.form.get('dfs_login'),
         'dataforseo_password': request.form.get('dataforseo_password') or request.form.get('dfs_pass'),
+        'dataforseo_detail': request.form.get('dataforseo_detail', 'regular'),
+        'dataforseo_execution_mode': request.form.get('dataforseo_execution_mode', 'standard'),
 
         'delay': float(request.form.get('delay', 3)),
         'tos': int(request.form.get('tos', 15)),
@@ -645,6 +679,37 @@ def start():
     t.start()
 
     return jsonify({'status': 'ok'})
+
+
+@seo_bp.route('/estimate_cost', methods=['POST'])
+def estimate_cost():
+    payload = request.get_json(silent=True) or {}
+    provider = payload.get('provider', 'dataforseo')
+    num_results = int(payload.get('num_results', 10))
+    keywords_count = int(payload.get('keywords_count', 1))
+    detail = payload.get('dataforseo_detail', 'regular')
+    execution_mode = payload.get('dataforseo_execution_mode', 'standard')
+
+    depth = _normalize_depth_for_panel(num_results)
+    estimated_per_query = 0.0
+    if provider == 'dataforseo':
+        estimated_per_query = estimate_dataforseo_cost(
+            execution_mode=execution_mode,
+            detail=detail,
+            depth=depth
+        )
+
+    return jsonify({
+        'status': 'ok',
+        'provider': provider,
+        'detail': 'advanced' if detail == 'advanced' else 'regular',
+        'execution_mode': execution_mode if execution_mode in ('live', 'standard', 'priority') else 'standard',
+        'num_results': num_results,
+        'depth': depth,
+        'keywords_count': keywords_count,
+        'estimated_cost_per_query': round(estimated_per_query, 6),
+        'estimated_cost_total': round(estimated_per_query * max(1, keywords_count), 6),
+    })
 
 
 @seo_bp.route('/status')

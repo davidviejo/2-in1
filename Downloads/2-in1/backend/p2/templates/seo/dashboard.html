@@ -123,6 +123,30 @@
                                 </div>
                                 <div class="small mt-1">Por defecto se usan las credenciales guardadas en Ajustes.</div>
                             </details>
+                            <div id="dfsCostControls" class="alert alert-warning p-2 mb-2">
+                                <div class="row g-2">
+                                    <div class="col-md-6">
+                                        <label class="small fw-bold">DataForSEO detail</label>
+                                        <select name="dataforseo_detail" class="form-select form-select-sm" id="dfsDetailSelect">
+                                            <option value="regular" selected>regular (más barato)</option>
+                                            <option value="advanced">advanced (más caro)</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="small fw-bold">Execution mode</label>
+                                        <select name="dataforseo_execution_mode" class="form-select form-select-sm" id="dfsExecutionModeSelect">
+                                            <option value="standard" selected>standard (recomendado)</option>
+                                            <option value="priority">priority (intermedio)</option>
+                                            <option value="live">live (más rápido)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="small mt-2 text-muted">
+                                    Latencia esperada: <strong>standard</strong> = más barato/más lento ·
+                                    <strong>priority</strong> = intermedio ·
+                                    <strong>live</strong> = más rápido/más caro.
+                                </div>
+                            </div>
 
                             <!-- OPCIONES COOKIE -->
                             <div id="optsCookie" style="display:none;" class="mb-2">
@@ -156,6 +180,13 @@
                                     Se usará para marcar clusters <strong>OWNED</strong> (donde ya rankeas) vs <strong>OPPORTUNITY</strong>.
                                 </div>
                             </div>
+                            <div id="dfsCostEstimator" class="alert alert-light border mt-3">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <strong>💸 Estimador de coste SERP</strong>
+                                    <span class="badge text-bg-success">Default recomendado: standard + regular</span>
+                                </div>
+                                <div class="small mt-2" id="dfsCostEstimatorText">Calculando...</div>
+                            </div>
                         </div>
                     </div>
                     <button type="submit" class="btn btn-primary w-100 mt-3 fw-bold" id="startBtn">INICIAR</button>
@@ -182,6 +213,7 @@
                         <a href="/seo/download" class="btn btn-success fw-bold">💾 Excel</a>
                     </div>
                 </div>
+                <div id="dfsRunSummary" class="alert alert-info py-2 px-3 mb-3 small d-none"></div>
                 <div id="summaryStats" class="alert alert-secondary py-2 px-3 mb-3 small"></div>
                 <div id="clusterList"></div>
             </div>
@@ -237,6 +269,9 @@ const modeSel   = document.getElementById('modeSelect');
 const form      = document.getElementById('runForm');
 const startBtn  = document.getElementById('startBtn');
 const alertBox  = document.getElementById('statusAlert');
+const dfsCostEstimator = document.getElementById('dfsCostEstimator');
+const dfsCostEstimatorText = document.getElementById('dfsCostEstimatorText');
+const dfsRunSummary = document.getElementById('dfsRunSummary');
 
 modeSel.addEventListener('change', () => {
     const val = modeSel.value;
@@ -247,6 +282,9 @@ modeSel.addEventListener('change', () => {
     document.getElementById('cxContainer').style.visibility = val === 'serpapi' ? 'hidden' : 'visible';
 
     document.getElementById('optsCookie').style.display = val === 'google_nuclear' ? 'block' : 'none';
+    document.getElementById('dfsCostControls').style.display = val === 'dataforseo' ? 'block' : 'none';
+    dfsCostEstimator.style.display = val === 'dataforseo' ? 'block' : 'none';
+    refreshCostEstimate();
 
 });
 
@@ -262,6 +300,7 @@ window.addEventListener('load', () => {
         // Forzar opciones según modo
         modeSel.dispatchEvent(new Event('change'));
     }
+    refreshCostEstimate();
 });
 
 // Helper: mostrar alerta global
@@ -290,6 +329,7 @@ form.addEventListener('submit', e => {
         showAlert('Introduce al menos 2 keywords (una por línea).');
         return;
     }
+    hideRunSummary();
 
     // Guardar config (incluye target_domain)
     const data = {};
@@ -323,7 +363,7 @@ form.addEventListener('submit', e => {
 
 function poll(){
     const i = setInterval(()=>{
-        fetch('/seo/status')
+        fetch('/seo/status?diagnostics=1')
             .then(r=>r.json())
             .then(d=>{
                 document.getElementById('progressBar').style.width = d.progress+'%';
@@ -353,6 +393,7 @@ function poll(){
                     render(d.results || []); 
                     document.getElementById('progressPanel').style.display='none'; 
                     document.getElementById('resultsPanel').style.display='block'; 
+                    renderRunSummary(d.diagnostics || {});
                 }
             })
             .catch(()=>{
@@ -361,6 +402,76 @@ function poll(){
             });
     },1000);
 }
+
+function hideRunSummary() {
+    if (!dfsRunSummary) return;
+    dfsRunSummary.classList.add('d-none');
+    dfsRunSummary.innerText = '';
+}
+
+function renderRunSummary(diag) {
+    if (!dfsRunSummary) return;
+    const session = (diag || {}).session || {};
+    const last = session.last_dataforseo || {};
+    if (!last.provider) {
+        hideRunSummary();
+        return;
+    }
+    const actualTotal = Number(session.actual_cost_total || 0).toFixed(6);
+    const estimatedTotal = Number(session.estimated_cost_total || 0).toFixed(6);
+    dfsRunSummary.classList.remove('d-none');
+    dfsRunSummary.innerText = `Modo usado: ${last.execution_mode || '-'} | Detail: ${last.detail || '-'} | ` +
+        `Depth: ${last.depth || '-'} | Coste estimado total: ${estimatedTotal} USD | ` +
+        `Coste real total: ${actualTotal} USD`;
+}
+
+function getKeywordsCount() {
+    return form.elements['keywords'].value
+        .split('\n')
+        .map(x => x.trim())
+        .filter(Boolean)
+        .length || 1;
+}
+
+function refreshCostEstimate() {
+    if (!dfsCostEstimatorText || modeSel.value !== 'dataforseo') return;
+    const payload = {
+        provider: modeSel.value,
+        dataforseo_detail: (form.elements['dataforseo_detail'] || {}).value || 'regular',
+        dataforseo_execution_mode: (form.elements['dataforseo_execution_mode'] || {}).value || 'standard',
+        num_results: Number((form.elements['top_n'] || {}).value || 10),
+        keywords_count: getKeywordsCount()
+    };
+    fetch('/seo/estimate_cost', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status !== 'ok') return;
+        dfsCostEstimatorText.innerHTML = `
+            Proveedor: <strong>${data.provider}</strong> ·
+            detail: <strong>${data.detail}</strong> ·
+            modo: <strong>${data.execution_mode}</strong><br>
+            Top N: <strong>${data.num_results}</strong> ·
+            depth efectivo: <strong>${data.depth}</strong> ·
+            keywords: <strong>${data.keywords_count}</strong><br>
+            Coste estimado por query: <strong>${Number(data.estimated_cost_per_query).toFixed(6)} USD</strong> ·
+            Coste estimado total: <strong>${Number(data.estimated_cost_total).toFixed(6)} USD</strong>
+        `;
+    })
+    .catch(() => {
+        dfsCostEstimatorText.innerText = 'No se pudo calcular el coste estimado.';
+    });
+}
+
+['keywords', 'top_n', 'dataforseo_detail', 'dataforseo_execution_mode', 'mode'].forEach(name => {
+    const input = form.elements[name];
+    if (!input) return;
+    input.addEventListener('input', refreshCostEstimate);
+    input.addEventListener('change', refreshCostEstimate);
+});
 
 function render(list){
     lastResults = list || [];
