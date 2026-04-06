@@ -580,7 +580,7 @@ def search_dataforseo(keyword: str, login: str, passw: str, num_results: int = 1
             "keyword": keyword,
             "language_code": lang[:2],
             "location_name": location_name,
-            "depth": max(10) # DataForSEO cuenta todos los elementos. Un depth bajo puede omitir orgánicos.
+            "depth": max(num_results, 10)
         }]
 
         headers = {
