@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}NLP Advanced{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>🧠 NLP Analyzer <span class="badge bg-dark">Spacy AI</span></h2>
+    <div class="row">
+        <div class="col-md-3">
+            <div class="card p-3">
+                <label class="fw-bold">URLs:</label>
+                <textarea id="u" class="form-control mb-3" rows="10" placeholder="https://..."></textarea>
+                <button onclick="run()" class="btn btn-info w-100">Analizar Semántica</button>
+            </div>
+        </div>
+        <div class="col-md-9">
+            <div id="loading" class="text-center py-5" style="display:none;">
+                <div class="spinner-border text-info"></div>
+                <p>La IA está leyendo el contenido...</p>
+            </div>
+            <div id="res"></div>
+        </div>
+    </div>
+</div>
+<script>
+function run(){
+    const u = document.getElementById('u').value.split('\n');
+    document.getElementById('loading').style.display='block';
+    document.getElementById('res').innerHTML='';
+    
+    fetch('/api/v1/nlp/analyze_bulk', {
+        method:'POST', headers:{'Content-Type':'application/json'}, 
+        body:JSON.stringify({urls:u})
+    })
+    .then(r=>r.json()).then(d=>{
+        document.getElementById('loading').style.display='none';
+        let h = '';
+        d.data.forEach(i=>{
+            if(i.error) {
+                h += `<div class="alert alert-danger">${i.url}: ${i.error}</div>`;
+                return;
+            }
+            
+            // Etiquetas N-Grams
+            let grams = i.top_bigrams.map(x=>`<span class="badge bg-light text-dark border">${x[0]}</span>`).join(' ');
+            
+            // Etiquetas Entidades (Nuevo)
+            let ents = i.top_entities.map(x=>`<span class="badge bg-primary bg-opacity-75 border-0">${x[0]} (${x[1]})</span>`).join(' ');
+            
+            h += `
+            <div class="card mb-3 shadow-sm">
+                <div class="card-header bg-white d-flex justify-content-between">
+                    <strong>${i.url}</strong>
+                    <span class="badge bg-dark">${i.word_count} palabras</span>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center mb-3">
+                        <div class="col border-end">
+                            <small class="text-muted">Legibilidad</small><br>
+                            <b>${i.readability_label}</b> (${i.readability_score})
+                        </div>
+                        <div class="col">
+                            <small class="text-muted">Acción (Verbos)</small><br>
+                            <b>${i.verb_count}</b>
+                        </div>
+                    </div>
+                    <h6 class="small fw-bold text-primary">ENTIDADES (Personas, Marcas, Lugares)</h6>
+                    <div class="mb-3">${ents || '<span class="text-muted">No detectadas</span>'}</div>
+                    
+                    <h6 class="small fw-bold text-secondary">PATRONES DE TEXTO</h6>
+                    <div>${grams}</div>
+                </div>
+            </div>`;
+        });
+        document.getElementById('res').innerHTML = h;
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Draft{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>📝 Draft Editor</h2>
+    <input id="kw" class="form-control mb-2" placeholder="Keyword">
+    <textarea id="txt" class="form-control mb-2" rows="15"></textarea>
+    <button onclick="run()" class="btn btn-dark">Check</button>
+    <div id="res" class="mt-2"></div>
+</div>
+<script>
+function run(){
+    fetch('/api/v1/draft/analyze', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({text:document.getElementById('txt').value, keyword:document.getElementById('kw').value})})
+    .then(r=>r.json()).then(d=>{
+        const r=d.data;
+        document.getElementById('res').innerHTML=`<b>Words:</b> ${r.wc} | <b>Density:</b> ${r.dens}% (${r.kwc})<br><b>Top:</b> ${JSON.stringify(r.top)}`;
+    });
+}
+</script>
+{% endblock %}

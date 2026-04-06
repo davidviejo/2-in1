@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}MediaFlow SEO Suite{% endblock %}</title>
+
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+
+    <!-- Bootstrap CSS (Legacy Support) -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+          corePlugins: {
+            preflight: false, // Disable preflight to avoid breaking Bootstrap in legacy pages
+            visibility: false, // Disable visibility plugin to prevent conflict with Bootstrap collapse
+          },
+          theme: {
+            extend: {
+              colors: {
+                slate: {
+                  50: '#f8fafc',
+                  100: '#f1f5f9',
+                  200: '#e2e8f0',
+                  300: '#cbd5e1',
+                  400: '#94a3b8',
+                  500: '#64748b',
+                  600: '#475569',
+                  700: '#334155',
+                  800: '#1e293b',
+                  900: '#0f172a',
+                }
+              },
+              fontFamily: {
+                sans: ['Inter', 'sans-serif'],
+              }
+            }
+          }
+        }
+    </script>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+            margin: 0; /* Reset body margin manually since preflight is off */
+        }
+
+        /* Manual Reset for Tailwind components since Preflight is off */
+        *, ::before, ::after {
+            box-sizing: border-box;
+            border-width: 0;
+            border-style: solid;
+            border-color: #e5e7eb;
+        }
+
+        /* Custom scrollbar */
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 20px; }
+
+        /* Bootstrap Conflict Resolution */
+        .nav-link { display: block; } /* Fix Bootstrap nav-link if used */
+        a { text-decoration: none; }
+
+        /* Sidebar Links */
+        .nav-item-custom {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem; /* 12px */
+            padding: 0.5rem 1rem; /* px-4 py-2 */
+            border-radius: 0.75rem; /* rounded-xl */
+            color: #64748b; /* text-slate-500 */
+            transition: all 0.2s;
+            font-size: 0.875rem; /* text-sm */
+            font-weight: 500;
+        }
+        .nav-item-custom:hover {
+            background-color: #f1f5f9; /* hover:bg-slate-100 */
+            color: #2563eb; /* hover:text-blue-600 */
+        }
+        .nav-item-custom i, .nav-item-custom span.icon {
+            width: 1.25rem;
+            text-align: center;
+        }
+
+        .sidebar-header-custom {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #94a3b8;
+            font-weight: 700;
+            margin-top: 1.5rem;
+            margin-bottom: 0.5rem;
+            padding-left: 1rem;
+        }
+
+        /* Fix Bootstrap container causing horizontal scroll sometimes */
+        .container-fluid { padding-left: 0; padding-right: 0; overflow-x: hidden; }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+
+        @keyframes blob {
+            0% { transform: translate(0px, 0px) scale(1); }
+            33% { transform: translate(30px, -50px) scale(1.1); }
+            66% { transform: translate(-20px, 20px) scale(0.9); }
+            100% { transform: translate(0px, 0px) scale(1); }
+        }
+        .animate-blob {
+            animation: blob 7s infinite;
+        }
+        .animation-delay-2000 {
+            animation-delay: 2s;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 overflow-hidden">
+
+    <div class="flex h-screen overflow-hidden">
+
+        <!-- SIDEBAR -->
+        <aside class="w-72 bg-white border-r border-slate-200 flex flex-col flex-shrink-0 z-20">
+
+            <!-- Header & Widgets -->
+            <div class="p-5 border-b border-slate-100 flex flex-col gap-4 bg-white">
+
+                <!-- Logo -->
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-blue-500/20">
+                        M
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-slate-800 text-lg leading-tight">MediaFlow</h1>
+                        <p class="text-xs text-slate-400 font-medium">SEO Suite v17</p>
+                    </div>
+                </div>
+
+                <!-- Active Project Widget -->
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-[10px] uppercase font-bold text-slate-400">Proyecto Activo</span>
+                        <a href="/projects/manager" class="text-[10px] text-blue-600 hover:underline">Cambiar</a>
+                    </div>
+                    {% if current_project and current_project.id != 0 %}
+                        <div class="font-bold text-slate-800 truncate" title="{{ current_project.name }}">
+                            {{ current_project.name }}
+                        </div>
+                        <div class="text-xs text-slate-500 truncate">{{ current_project.domain }}</div>
+                    {% else %}
+                        <div class="font-bold text-amber-600">Sin Asignar</div>
+                        <div class="text-xs text-slate-400">Selecciona cliente</div>
+                    {% endif %}
+                </div>
+
+                <!-- API Usage -->
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-[10px] uppercase font-bold text-slate-400">API Usage</span>
+                        <span class="text-[10px] font-mono text-slate-500"><span id="apiCount">0</span>/100</span>
+                    </div>
+                    <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                        <div id="apiBar" class="h-full bg-blue-500 rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <!-- AI Model Selector -->
+                <div class="mt-2">
+                    <a href="/settings" class="w-full flex items-center justify-between px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-bold text-slate-600 transition-colors">
+                        <span class="flex items-center gap-2">
+                            <i class="fas fa-robot text-purple-500"></i> Configuración & IA
+                        </span>
+                        <i class="fas fa-cog text-slate-400"></i>
+                    </a>
+                    <div class="text-[10px] text-center text-slate-400 mt-1 truncate px-1" id="currentModelLabel">Default</div>
+                </div>
+
+                <!-- Global Progress (Hidden by default) -->
+                <div id="globalProgressWidget" class="hidden bg-slate-900 text-white rounded-xl p-3 shadow-lg">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-xs font-bold text-blue-300 truncate" id="globalToolName">...</span>
+                        <span class="text-xs font-mono" id="globalPercent">0%</span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mb-1">
+                        <div id="globalProgressBar" class="h-full bg-blue-400 rounded-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                    <div class="text-[10px] text-slate-400 truncate" id="globalAction">Iniciando...</div>
+                </div>
+
+            </div>
+
+            <!-- Navigation -->
+            <div class="flex-1 overflow-y-auto custom-scrollbar p-3">
+                <nav class="space-y-0.5">
+                    <a href="/" class="nav-item-custom">
+                        <span class="icon">🏠</span> <span>Inicio / Resumen</span>
+                    </a>
+
+                    <!-- Featured -->
+                    <a href="/workflow/master" class="nav-item-custom bg-slate-50 text-slate-700 font-bold border border-slate-200 mt-2 mb-1">
+                        <i class="fas fa-project-diagram text-amber-500"></i> <span>WORKFLOW MAESTRO</span>
+                    </a>
+                    <a href="/autopilot/dashboard" class="nav-item-custom bg-blue-50 text-blue-700 font-bold border border-blue-100 mb-3">
+                        <i class="fas fa-robot text-blue-500"></i> <span>AUTO-PILOT</span>
+                    </a>
+
+                    <!-- Estrategia -->
+                    <div class="sidebar-header-custom">Estrategia</div>
+                    <a href="/trends/media" class="nav-item-custom"><i class="fas fa-chart-line text-cyan-500"></i> <span>Tendencias & News</span></a>
+                    <a href="/seo" class="nav-item-custom"><span class="icon">🚀</span> <span>Cluster & Analisis SERP</span></a>
+                    <a href="/suggest" class="nav-item-custom"><span class="icon">💡</span> <span>KW Discovery</span></a>
+                    <a href="/kw_intent" class="nav-item-custom"><span class="icon">🧠</span> <span>KW Intent</span></a>
+                    <a href="/gap" class="nav-item-custom"><span class="icon">⚖️</span> <span>Content Gap</span></a>
+                    <a href="/overlap" class="nav-item-custom"><span class="icon">⚖️</span> <span>SERP Overlap</span></a>
+                    <a href="/benchmark" class="nav-item-custom"><span class="icon">📊</span> <span>SERP Analyzer</span></a>
+
+                    <!-- Auditoría -->
+                    <div class="sidebar-header-custom">Auditoría</div>
+                    <a href="/audit" class="nav-item-custom"><span class="icon">🕸️</span> <span>Auditor Técnico</span></a>
+                    <a href="/checklist" class="nav-item-custom"><span class="icon">✅</span> <span>Checklist Auto</span></a>
+                    <a href="/fast" class="nav-item-custom"><span class="icon">⚡</span> <span>Fast Status</span></a>
+                    <a href="/index_guard" class="nav-item-custom"><span class="icon">🔍</span> <span>Index Guard</span></a>
+                    <a href="/indexer" class="nav-item-custom"><span class="icon">🔍</span> <span>Index Checker</span></a>
+                    <a href="/robots" class="nav-item-custom"><span class="icon">🤖</span> <span>Robots.txt</span></a>
+                    <a href="/eeat" class="nav-item-custom"><span class="icon">🛡️</span> <span>E-E-A-T Trust</span></a>
+                    <a href="/tech" class="nav-item-custom"><span class="icon">🕵️</span> <span>Tech Spy</span></a>
+                    <a href="/headers" class="nav-item-custom"><span class="icon">📡</span> <span>SSL & Headers</span></a>
+                    <a href="/schema_detector" class="nav-item-custom"><span class="icon">🧬</span> <span>Schema Inventory</span></a>
+
+                    <!-- On-Page -->
+                    <div class="sidebar-header-custom">On-Page</div>
+                    <a href="/nlp" class="nav-item-custom"><span class="icon">🧠</span> <span>NLP Analyzer</span></a>
+                    <a href="/prominence" class="nav-item-custom"><span class="icon">🎯</span> <span>KW Prominence</span></a>
+                    <a href="/snippet" class="nav-item-custom"><span class="icon">🎯</span> <span>Snippet Target</span></a>
+                    <a href="/readability" class="nav-item-custom"><span class="icon">👶</span> <span>Readability</span></a>
+                    <a href="/draft" class="nav-item-custom"><span class="icon">📝</span> <span>Draft Editor</span></a>
+                    <a href="/duplicate" class="nav-item-custom"><span class="icon">👯</span> <span>Duplicity</span></a>
+                    <a href="/decay" class="nav-item-custom"><span class="icon">📉</span> <span>Content Decay</span></a>
+                    <a href="/entities/dashboard" class="nav-item-custom"><i class="fas fa-dna text-cyan-500"></i> <span>Entity Explorer</span></a>
+
+                    <!-- Arquitectura -->
+                    <div class="sidebar-header-custom">Arquitectura</div>
+                    <a href="/graph" class="nav-item-custom"><span class="icon">🕸️</span> <span>Link Graph</span></a>
+                    <a href="/depth" class="nav-item-custom"><span class="icon">📉</span> <span>Click Depth</span></a>
+                    <a href="/sculpting" class="nav-item-custom"><span class="icon">🗿</span> <span>Link Sculpting</span></a>
+                    <a href="/anchor" class="nav-item-custom"><span class="icon">⚓</span> <span>Anchor Audit</span></a>
+                    <a href="/orphan" class="nav-item-custom"><span class="icon">🏝️</span> <span>Orphan Hunter</span></a>
+                    <a href="/structure" class="nav-item-custom"><span class="icon">🗺️</span> <span>Header Map</span></a>
+                    <a href="/opps" class="nav-item-custom"><span class="icon">🔗</span> <span>Link Opps</span></a>
+                    <a href="/health" class="nav-item-custom"><span class="icon">🚑</span> <span>Link Health</span></a>
+                    <a href="/redirect" class="nav-item-custom"><span class="icon">🔀</span> <span>Redirect Path</span></a>
+
+                    <!-- Utilidades -->
+                    <div class="sidebar-header-custom">Utilidades</div>
+                    <a href="/wpo" class="nav-item-custom"><span class="icon">⚡</span> <span>WPO Lab</span></a>
+                    <a href="/image_audit" class="nav-item-custom"><span class="icon">🖼️</span> <span>Image Audit</span></a>
+                    <a href="/ratio" class="nav-item-custom"><span class="icon">🔢</span> <span>Code Ratio</span></a>
+                    <a href="/roi" class="nav-item-custom"><span class="icon">💰</span> <span>ROI Projector</span></a>
+                    <a href="/meta_gen" class="nav-item-custom"><span class="icon">📝</span> <span>Meta Gen</span></a>
+                    <a href="/ctr" class="nav-item-custom"><span class="icon">🔥</span> <span>CTR Magnet</span></a>
+                    <a href="/pixel" class="nav-item-custom"><span class="icon">📏</span> <span>Pixel Counter</span></a>
+                    <a href="/extra/serp_sim" class="nav-item-custom"><span class="icon">🎨</span> <span>SERP Sim</span></a>
+                    <a href="/extra/schema_gen" class="nav-item-custom"><span class="icon">🏗️</span> <span>Schema FAQ Gen</span></a>
+                    <a href="/schema_tool" class="nav-item-custom"><span class="icon">🧬</span> <span>Schema Extract</span></a>
+                    <a href="/hreflang" class="nav-item-custom"><span class="icon">🌍</span> <span>Hreflang</span></a>
+                    <a href="/bot_sim" class="nav-item-custom"><span class="icon">🕷️</span> <span>Bot Sim</span></a>
+                    <a href="/utm" class="nav-item-custom"><span class="icon">🏷️</span> <span>UTM Builder</span></a>
+                    <a href="/local" class="nav-item-custom"><span class="icon">📍</span> <span>Local Mixer</span></a>
+                    <a href="/nap" class="nav-item-custom"><span class="icon">📍</span> <span>NAP Validator</span></a>
+                    <a href="/leads" class="nav-item-custom"><span class="icon">🕵️</span> <span>Outreach</span></a>
+                    <a href="/expired" class="nav-item-custom"><span class="icon">🗑️</span> <span>Expired</span></a>
+                    <a href="/diff" class="nav-item-custom"><span class="icon">🆚</span> <span>Diff Checker</span></a>
+                    <a href="/crawler" class="nav-item-custom"><span class="icon">🗺️</span> <span>Sitemap Gen</span></a>
+                    <a href="/extract" class="nav-item-custom"><span class="icon">📄</span> <span>AI Prep</span></a>
+                    <a href="/social" class="nav-item-custom"><span class="icon">📢</span> <span>Social Preview</span></a>
+                    <a href="/dorks" class="nav-item-custom"><span class="icon">🕵️</span> <span>Dorks</span></a>
+                    <a href="/log" class="nav-item-custom"><span class="icon">🗂️</span> <span>Log Analyzer</span></a>
+
+                    <!-- Operaciones -->
+                    <div class="sidebar-header-custom">Operaciones</div>
+                    <a href="/frameworks" class="nav-item-custom"><span class="icon">📚</span> <span>Frameworks</span></a>
+                    <a href="/cleaner" class="nav-item-custom"><span class="icon">🧹</span> <span>Data Cleaner</span></a>
+                    <a href="/gsc/dashboard" class="nav-item-custom"><i class="fab fa-google text-blue-500"></i> <span>GSC Tracker</span></a>
+                </nav>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <main class="flex-1 overflow-auto bg-slate-50 relative w-full">
+            <div class="p-4 lg:p-8 min-h-full">
+                <!-- Bootstrap Container Wrapper for Legacy Support -->
+                <!-- We add 'container-fluid' class to ensure Bootstrap grids work inside this block -->
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+
+    </div>
+
+    <!-- Legacy JS: Bootstrap -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Global Monitoring Scripts -->
+    <script>
+    document.addEventListener("DOMContentLoaded", function() {
+        updateApiStats();
+        setInterval(updateApiStats, 30000); // API Counter every 30s
+        setInterval(checkGlobalProgress, 1000); // Progress Bar every 1s
+    });
+
+    function updateApiStats(){
+        fetch('/api/v1/usage/stats').then(r=>r.json()).then(d=>{
+            const c=document.getElementById('apiCount'), b=document.getElementById('apiBar');
+            if(c&&b){
+                c.innerText = d.count;
+                b.style.width = d.percent+'%';
+
+                // Map legacy bootstrap color classes to Tailwind bg colors
+                b.className = 'h-full rounded-full transition-all duration-500'; // Reset base classes
+                if (d.color === 'bg-success') b.classList.add('bg-green-500');
+                else if (d.color === 'bg-warning') b.classList.add('bg-amber-500');
+                else if (d.color === 'bg-danger') b.classList.add('bg-red-500');
+                else b.classList.add('bg-blue-500'); // Default
+            }
+        }).catch(()=>{});
+    }
+
+    function checkGlobalProgress(){
+        fetch('/global-status').then(r=>r.json()).then(d=>{
+            const widget = document.getElementById('globalProgressWidget');
+            if(d.active){
+                widget.classList.remove('hidden');
+                document.getElementById('globalToolName').innerText = d.tool_name;
+                document.getElementById('globalAction').innerText = d.action;
+                document.getElementById('globalPercent').innerText = d.progress + '%';
+                document.getElementById('globalProgressBar').style.width = d.progress + '%';
+            } else {
+                widget.classList.add('hidden');
+            }
+        }).catch(()=>{});
+    }
+    </script>
+
+
+    <!-- AI Config Script -->
+    <script>
+    let availableModels = [];
+    let currentModelId = 'default';
+
+    // Auto-load config on start to update sidebar label
+    document.addEventListener("DOMContentLoaded", function() {
+        // Init Load just for the label
+        fetch('/api/v1/ai/config').then(r=>r.json()).then(d=>{
+            availableModels = d.models;
+            currentModelId = d.current_model;
+            updateLabel();
+        });
+    });
+
+    function updateLabel() {
+        const active = availableModels.find(m => m.id === currentModelId);
+        const label = document.getElementById('currentModelLabel');
+        if(label) label.innerText = active ? active.name : (currentModelId === 'default' ? 'Default' : currentModelId);
+    }
+    </script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

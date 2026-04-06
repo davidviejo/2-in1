@@ -1,0 +1,152 @@
+{
+    "id": "1768233332_1768237626",
+    "project": "AGENCIASEO.EU",
+    "date": "12/01/2026 18:07",
+    "data": [
+        {
+            "url": "https://AGENCIASEO.EU/",
+            "metrics": {
+                "status": 200,
+                "ttfb": 304,
+                "internal_links": 0,
+                "words": 2250,
+                "kw_density": 0
+            },
+            "issues": [],
+            "score_tech": 100,
+            "score_content": 100,
+            "score_perf": 90,
+            "score_global": 96,
+            "intent_detected": "N/A",
+            "title": "Agencia SEO \u2022 Empresa Experta en Posicionamiento Web",
+            "meta_desc": "La Agencia de SEO \u2b50 y Marketing Digital que dar\u00e1 el Impulso Definitivo a tu negocio \u2714\ufe0f Contenidos \u00bb Anal\u00edtica Web \u00bb PPC \u00bb CRO \u261d \u00a1ENTRA!",
+            "canonical": "https://agenciaseo.eu/",
+            "robots": "follow, index, max-snippet:-1, max-video-preview:-1, max-image-preview:large",
+            "headers_tree": [
+                {
+                    "type": "H1",
+                    "text": "AGENCIA SEO"
+                },
+                {
+                    "type": "H2",
+                    "text": "La primera agencia de posicionamiento web que no tiene v\u00e9rtigo."
+                },
+                {
+                    "type": "H2",
+                    "text": "\u00bfPor qu\u00e9 nosotros entre todas las agencias SEOde Espa\u00f1a?"
+                },
+                {
+                    "type": "H2",
+                    "text": "Nuestros servicios"
+                },
+                {
+                    "type": "H3",
+                    "text": "Servicios SEO"
+                },
+                {
+                    "type": "H3",
+                    "text": "Campa\u00f1as PPC"
+                },
+                {
+                    "type": "H3",
+                    "text": "Anal\u00edtica Web"
+                },
+                {
+                    "type": "H3",
+                    "text": "Marketing Automation"
+                },
+                {
+                    "type": "H3",
+                    "text": "Inteligencia Artificial"
+                },
+                {
+                    "type": "H2",
+                    "text": "\u00bfHacemos despegartu web?"
+                },
+                {
+                    "type": "H2",
+                    "text": "Queremos ser tu empresa de SEO y c\u00f3mplice de tu \u00e9xito"
+                },
+                {
+                    "type": "H3",
+                    "text": "AGENCIA SEO BASADA EN DATOS, IDEAS Y RESULTADOS"
+                },
+                {
+                    "type": "H2",
+                    "text": "Clientesfelices"
+                },
+                {
+                    "type": "H2",
+                    "text": "Algunos casos de \u00e9xito"
+                },
+                {
+                    "type": "H2",
+                    "text": "Aut\u00e9ntica pasi\u00f3n por las personas"
+                },
+                {
+                    "type": "H2",
+                    "text": "Sigue las tendencias SEO  en tu blog favorito"
+                },
+                {
+                    "type": "H3",
+                    "text": "Trucos y consejos de SEO para empresas como la tuya. \u00datiles y Efectivos"
+                },
+                {
+                    "type": "H3",
+                    "text": "C\u00f3mo hacer fichas de producto optimizadas para SEO en tu eCommerce"
+                },
+                {
+                    "type": "H3",
+                    "text": "SEO para PYMES: beneficios y consejos"
+                },
+                {
+                    "type": "H3",
+                    "text": "SEO para ecommerce y tiendas online: funcionamiento y tips"
+                },
+                {
+                    "type": "H3",
+                    "text": "Gu\u00eda de Google Business Profile: crea y optimiza tu negocio para el SEO local con el Perfil de Empre"
+                },
+                {
+                    "type": "H3",
+                    "text": "SEO para Startups: Gu\u00eda estrat\u00e9gica para escalar tu visibilidad en 2026"
+                },
+                {
+                    "type": "H2",
+                    "text": "Juntos hacemos de cada proyecto un \u00e9xito"
+                },
+                {
+                    "type": "H3",
+                    "text": "Madrid"
+                },
+                {
+                    "type": "H3",
+                    "text": "Valencia"
+                },
+                {
+                    "type": "H3",
+                    "text": "Madrid"
+                },
+                {
+                    "type": "H3",
+                    "text": "Valencia"
+                },
+                {
+                    "type": "H3",
+                    "text": "Blog de SEO"
+                },
+                {
+                    "type": "H3",
+                    "text": "Servicios"
+                },
+                {
+                    "type": "H3",
+                    "text": "M\u00e1s de agenciaSEO"
+                }
+            ],
+            "name": "Home",
+            "target_kw": "",
+            "comparison": {}
+        }
+    ]
+}

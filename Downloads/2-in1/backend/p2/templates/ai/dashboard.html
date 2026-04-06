@@ -1,0 +1,465 @@
+{% extends "base.html" %}
+
+{% block title %}Centro de Control AI & APIs{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="text-2xl font-bold text-slate-800 flex items-center gap-3">
+            <i class="fas fa-sliders-h text-purple-600"></i>
+            Configuración & IA
+        </h1>
+        <button onclick="saveGlobalConfig()" class="px-4 py-2 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 text-sm flex items-center gap-2">
+            <i class="fas fa-save"></i> Guardar Todo
+        </button>
+    </div>
+
+    <!-- Tabs Header -->
+    <div class="flex space-x-1 bg-slate-200 p-1 rounded-xl mb-6 w-fit">
+        <button onclick="switchTab('models')" id="tab-btn-models" class="px-4 py-2 rounded-lg text-sm font-bold transition-all bg-white text-slate-800 shadow-sm">
+            <i class="fas fa-robot mr-2"></i> Modelos IA
+        </button>
+        <button onclick="switchTab('apis')" id="tab-btn-apis" class="px-4 py-2 rounded-lg text-sm font-bold text-slate-600 hover:bg-white/50 transition-all">
+            <i class="fas fa-key mr-2"></i> APIs & Credenciales
+        </button>
+        <button onclick="switchTab('system')" id="tab-btn-system" class="px-4 py-2 rounded-lg text-sm font-bold text-slate-600 hover:bg-white/50 transition-all">
+            <i class="fas fa-memory mr-2"></i> Memoria & Sistema
+        </button>
+    </div>
+
+    <!-- TAB 1: MODELS (Existing Layout) -->
+    <div id="tab-models" class="tab-content">
+        <div class="bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200 flex flex-col md:flex-row min-h-[500px]">
+            <!-- Sidebar List -->
+            <div class="w-full md:w-1/3 border-r border-slate-200 bg-slate-50 flex flex-col">
+                <div class="p-4 border-b border-slate-200 bg-white sticky top-0 z-10">
+                    <div class="form-check form-switch m-0">
+                        <input class="form-check-input cursor-pointer" type="checkbox" id="highPrivacyToggle" onchange="filterModels()" {% if high_privacy %}checked{% endif %}>
+                        <label class="form-check-label text-sm font-bold text-slate-600 cursor-pointer select-none" for="highPrivacyToggle">
+                            <i class="fas fa-user-secret text-slate-800 mr-1"></i> Modo Alta Privacidad
+                        </label>
+                    </div>
+                </div>
+                <div class="flex-1 overflow-y-auto custom-scrollbar" id="aiModelList">
+                    <!-- List Content Rendered via JS -->
+                </div>
+            </div>
+
+            <!-- Details Panel -->
+            <div class="w-full md:w-2/3 p-6 md:p-8 bg-white relative">
+                <div id="aiModelDetails" class="h-full">
+                    <div class="flex flex-col items-center justify-center h-full text-slate-400 text-center opacity-50">
+                        <i class="fas fa-mouse-pointer text-5xl mb-4 text-slate-300"></i>
+                        <p class="text-lg font-medium text-slate-600">Selecciona un modelo</p>
+                        <p class="text-sm">Configura tus preferencias de IA para toda la suite.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 2: APIs -->
+    <div id="tab-apis" class="tab-content hidden">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- LLM Providers -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <i class="fas fa-brain text-purple-500"></i> Proveedores LLM
+                </h3>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">OpenAI API Key</label>
+                        <div class="relative">
+                            <i class="fas fa-key absolute left-3 top-2.5 text-slate-400"></i>
+                            <input type="password" id="input_openai_key" value="{{ config.openai_key }}" class="w-full pl-10 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-purple-500 transition-colors" placeholder="sk-...">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Anthropic API Key</label>
+                        <div class="relative">
+                            <i class="fas fa-key absolute left-3 top-2.5 text-slate-400"></i>
+                            <input type="password" id="input_anthropic_key" value="{{ config.anthropic_key }}" class="w-full pl-10 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-purple-500 transition-colors" placeholder="sk-ant-...">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Google Gemini API Key</label>
+                        <div class="relative">
+                            <i class="fas fa-key absolute left-3 top-2.5 text-slate-400"></i>
+                            <input type="password" id="input_google_key" value="{{ config.google_key }}" class="w-full pl-10 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-purple-500 transition-colors" placeholder="AIza...">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search Providers -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <i class="fas fa-search text-blue-500"></i> Buscadores & SERP
+                </h3>
+                <div class="space-y-4">
+                    <!-- Global Selector -->
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Proveedor SERP Global</label>
+                        <select id="input_serp_provider" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500 transition-colors">
+                            <option value="dataforseo" {% if config.serp_provider == 'dataforseo' or not config.serp_provider %}selected{% endif %}>DataForSEO (Predeterminado)</option>
+                            <option value="auto" {% if config.serp_provider == 'auto' %}selected{% endif %}>Automático</option>
+                            <option value="serpapi" {% if config.serp_provider == 'serpapi' %}selected{% endif %}>SerpApi (Google)</option>
+                            <option value="google_official" {% if config.serp_provider == 'google_official' %}selected{% endif %}>Google API (Custom Search)</option>
+                            <option value="google_scraping" {% if config.serp_provider == 'google_scraping' %}selected{% endif %}>Google Scraping (Directo)</option>
+                        </select>
+                        <p class="text-xs text-slate-400 mt-1">Define qué servicio se usará para analizar rankings y SERPs en todas las herramientas.</p>
+                    </div>
+
+                    <div class="p-3 bg-blue-50 rounded-xl border border-blue-100">
+                        <label class="block text-xs font-bold text-blue-800 uppercase mb-1">DataForSEO (Recomendado)</label>
+                        <div class="grid grid-cols-2 gap-2">
+                            <input type="text" id="input_dfs_login" value="{{ config.dataforseo_login }}" class="w-full px-3 py-2 bg-white border border-blue-200 rounded-lg text-sm focus:outline-none focus:border-blue-500 transition-colors" placeholder="Login / Email">
+                            <input type="password" id="input_dfs_pass" value="{{ config.dataforseo_password }}" class="w-full px-3 py-2 bg-white border border-blue-200 rounded-lg text-sm focus:outline-none focus:border-blue-500 transition-colors" placeholder="Password">
+                        </div>
+                    </div>
+
+                    <div class="p-3 bg-orange-50 rounded-xl border border-orange-100">
+                        <label class="block text-xs font-bold text-orange-800 uppercase mb-1">SerpApi Key</label>
+                        <div class="relative">
+                            <i class="fas fa-key absolute left-3 top-2.5 text-orange-400"></i>
+                            <input type="password" id="input_serpapi_key" value="{{ config.serpapi_key }}" class="w-full pl-10 px-3 py-2 bg-white border border-orange-200 rounded-lg text-sm focus:outline-none focus:border-orange-500 transition-colors" placeholder="SerpApi Key...">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Google Custom Search (Legacy)</label>
+                        <div class="grid grid-cols-1 gap-2">
+                            <div class="relative">
+                                <i class="fas fa-key absolute left-3 top-2.5 text-slate-400"></i>
+                                <input type="password" id="input_cse_key" value="{{ config.google_cse_key }}" class="w-full pl-10 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-purple-500 transition-colors" placeholder="API Key (AIza...)">
+                            </div>
+                            <div class="relative">
+                                <i class="fas fa-id-badge absolute left-3 top-2.5 text-slate-400"></i>
+                                <input type="text" id="input_cse_cx" value="{{ config.google_cse_cx }}" class="w-full pl-10 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-purple-500 transition-colors" placeholder="CX ID (0123...)">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 3: SYSTEM -->
+    <div id="tab-system" class="tab-content hidden">
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 max-w-2xl mx-auto">
+            <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <i class="fas fa-memory text-green-600"></i> Memoria & Privacidad
+            </h3>
+
+            <div class="space-y-6">
+                <!-- Privacy Toggle -->
+                 <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
+                    <div>
+                        <div class="font-bold text-slate-800">Modo Alta Privacidad Global</div>
+                        <div class="text-xs text-slate-500">Evita guardar logs y minimiza el rastro en servidores externos.</div>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input cursor-pointer" type="checkbox" id="globalPrivacyToggle" {% if high_privacy %}checked{% endif %}>
+                    </div>
+                </div>
+
+                <!-- Memory Context -->
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-2">Ventana de Contexto (Memoria)</label>
+                    <select id="input_memory_window" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-purple-500">
+                        <option value="short" {% if config.memory_context_window == 'short' %}selected{% endif %}>Corta (4k tokens) - Más rápido</option>
+                        <option value="standard" {% if config.memory_context_window == 'standard' or not config.memory_context_window %}selected{% endif %}>Estándar (16k tokens) - Equilibrado</option>
+                        <option value="long" {% if config.memory_context_window == 'long' %}selected{% endif %}>Larga (128k tokens) - Análisis profundo</option>
+                    </select>
+                    <p class="text-xs text-slate-500 mt-1">Define cuánta información previa se envía al modelo en conversaciones largas.</p>
+                </div>
+
+                <!-- Scraping Cookie -->
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-2">Cookie de Google (Scraping)</label>
+                    <textarea id="input_scraping_cookie" rows="4" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:border-purple-500 transition-colors" placeholder="Pegar cookie completa aquí...">{{ config.scraping_cookie }}</textarea>
+                    <p class="text-xs text-slate-500 mt-1">Usada para evitar captchas en scraping masivo (Google Nuclear).</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let availableModels = {{ models | tojson }};
+    let currentModelId = {{ current_model | tojson }};
+
+    // Tab Logic
+    function switchTab(tab) {
+        // Hide all
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+        document.querySelectorAll('[id^="tab-btn-"]').forEach(el => {
+            el.classList.remove('bg-white', 'text-slate-800', 'shadow-sm');
+            el.classList.add('text-slate-600');
+        });
+
+        // Show active
+        document.getElementById('tab-' + tab).classList.remove('hidden');
+        const btn = document.getElementById('tab-btn-' + tab);
+        btn.classList.remove('text-slate-600');
+        btn.classList.add('bg-white', 'text-slate-800', 'shadow-sm');
+    }
+
+    function saveGlobalConfig() {
+        // Sync toggles if needed (optional)
+        // const privacy = document.getElementById('globalPrivacyToggle').checked;
+
+        const payload = {
+            // Keys
+            openai_key: document.getElementById('input_openai_key').value,
+            anthropic_key: document.getElementById('input_anthropic_key').value,
+            google_key: document.getElementById('input_google_key').value,
+            dataforseo_login: document.getElementById('input_dfs_login').value,
+            dataforseo_password: document.getElementById('input_dfs_pass').value,
+            google_cse_key: document.getElementById('input_cse_key').value,
+            google_cse_cx: document.getElementById('input_cse_cx').value,
+            scraping_cookie: document.getElementById('input_scraping_cookie').value,
+
+            // New Keys
+            serpapi_key: document.getElementById('input_serpapi_key').value,
+            serp_provider: document.getElementById('input_serp_provider').value,
+
+            // System
+            memory_context_window: document.getElementById('input_memory_window').value,
+            high_privacy: document.getElementById('globalPrivacyToggle').checked
+        };
+
+        const btn = document.querySelector('button[onclick="saveGlobalConfig()"]');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Guardando...';
+        btn.disabled = true;
+
+        fetch('/api/v1/ai/preference', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        })
+        .then(r => r.json())
+        .then(d => {
+            alert('Configuración guardada correctamente.');
+            location.reload();
+        })
+        .catch(e => {
+            alert('Error al guardar: ' + e);
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        });
+    }
+
+    // --- AI MODEL SELECTOR LOGIC (Legacy) ---
+
+    document.addEventListener("DOMContentLoaded", function() {
+        renderModelList(); // Initial Render
+        if(currentModelId && currentModelId !== 'default') {
+            showModelDetails(currentModelId);
+        } else {
+            selectModel('default');
+        }
+    });
+
+    function filterModels() {
+        renderModelList();
+    }
+
+    function renderModelList() {
+        const list = document.getElementById('aiModelList');
+        // Use local toggle for filtering list
+        const privacyMode = document.getElementById('highPrivacyToggle').checked;
+
+        // Sync Global Toggle if user interacts with sidebar (Optional UX polish)
+        const globalToggle = document.getElementById('globalPrivacyToggle');
+        if(globalToggle) globalToggle.checked = privacyMode;
+
+        list.innerHTML = '';
+
+        // Add Default Option
+        if (!privacyMode) {
+            const isDefault = currentModelId === 'default';
+            list.innerHTML += `
+                <div class="p-4 border-b border-slate-200 cursor-pointer hover:bg-white transition-all duration-200 ${isDefault ? 'bg-purple-50 border-l-4 border-l-purple-500' : 'border-l-4 border-l-transparent'}" onclick="selectModel('default')">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <div class="text-sm font-bold text-slate-800">Default (OpenAI)</div>
+                            <div class="text-xs text-slate-500 mt-1">Configuración estándar del sistema</div>
+                        </div>
+                        ${isDefault ? '<i class="fas fa-check-circle text-purple-500"></i>' : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Helper to render a model item
+        const renderItem = (m) => {
+             const isActive = currentModelId === m.id;
+             return `
+                <div class="p-4 border-b border-slate-200 cursor-pointer hover:bg-white transition-all duration-200 ${isActive ? 'bg-purple-50 border-l-4 border-l-purple-500' : 'border-l-4 border-l-transparent'}" onclick="showModelDetails('${m.id}')">
+                    <div class="flex justify-between items-start mb-1">
+                        <div class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                            ${m.category === 'paid' ? '<i class="fas fa-crown text-amber-500 text-xs" title="Modelo de Pago"></i>' : ''}
+                            ${m.name}
+                        </div>
+                        ${isActive ? '<i class="fas fa-check-circle text-purple-500 text-sm"></i>' : ''}
+                    </div>
+                    <div class="flex flex-wrap gap-1 mb-1">
+                        <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 font-medium border border-slate-300">${m.anonymity_label.split(' ')[0]}</span>
+                        <span class="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium border border-blue-200">${m.provider}</span>
+                    </div>
+                    <div class="text-xs text-slate-500 truncate">${m.specialty}</div>
+                </div>
+            `;
+        };
+
+        // Render Free Models
+        const freeModels = availableModels.filter(m => m.category === 'free' || !m.category);
+        if(freeModels.some(m => !privacyMode || (m.anonymity !== 'low' && m.anonymity !== 'medium'))) {
+             list.innerHTML += `<div class="px-4 py-2 bg-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wider">Modelos Gratuitos</div>`;
+             freeModels.forEach(m => {
+                 if (privacyMode && (m.anonymity === 'low' || m.anonymity === 'medium')) return;
+                 list.innerHTML += renderItem(m);
+             });
+        }
+
+        // Render Paid Models
+        const paidModels = availableModels.filter(m => m.category === 'paid');
+        if(paidModels.length > 0 && !privacyMode) {
+             list.innerHTML += `<div class="px-4 py-2 bg-amber-50 text-xs font-bold text-amber-600 uppercase tracking-wider border-t border-amber-100">Modelos Premium</div>`;
+             paidModels.forEach(m => {
+                 list.innerHTML += renderItem(m);
+             });
+        }
+    }
+
+    function showModelDetails(id) {
+        const m = availableModels.find(mod => mod.id === id);
+        if(!m) return;
+
+        const details = document.getElementById('aiModelDetails');
+        const isActive = currentModelId === id;
+        const isPaid = m.category === 'paid';
+
+        details.innerHTML = `
+            <div class="animate-fade-in h-full flex flex-col">
+                <div class="flex items-center gap-4 mb-6 pb-6 border-b border-slate-100">
+                    <div class="w-16 h-16 bg-gradient-to-br ${isPaid ? 'from-amber-50 to-white border-amber-200' : 'from-slate-100 to-white border-slate-200'} rounded-2xl shadow-sm border flex items-center justify-center text-3xl">
+                        ${m.id === 'pollinations' ? '🎨' : (m.id === 'duckduckgo' ? '🦆' : (isPaid ? '👑' : '🤖'))}
+                    </div>
+                    <div>
+                        <h2 class="font-bold text-2xl text-slate-800 leading-tight flex items-center gap-2">
+                            ${m.name}
+                            ${isPaid ? '<span class="bg-amber-100 text-amber-700 text-xs px-2 py-1 rounded-full border border-amber-200 uppercase tracking-wide">Premium</span>' : ''}
+                        </h2>
+                        <div class="text-sm text-slate-500 flex items-center gap-2 mt-1">
+                            <span class="px-2 py-0.5 bg-slate-100 rounded text-slate-600 border border-slate-200 text-xs font-bold">${m.provider}</span>
+                            <span class="text-slate-400">&bull;</span>
+                            <span>${m.anonymity_label}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="space-y-6 flex-1">
+                    <div class="bg-blue-50 text-blue-900 p-4 rounded-xl text-sm border border-blue-100 flex items-start gap-3">
+                        <i class="fas fa-info-circle text-blue-500 mt-0.5"></i>
+                        <div>
+                            <strong class="block mb-1 text-blue-700">Especialidad</strong>
+                            ${m.specialty}
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                        <h4 class="text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider flex items-center gap-2">
+                            <i class="fas fa-shield-alt"></i> Nota de Privacidad
+                        </h4>
+                        <p class="text-sm text-slate-700 leading-relaxed">${m.privacy_note}</p>
+                    </div>
+
+                    ${m.requires_key ? `
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-2">API Key (${m.provider})</label>
+                        <div class="relative">
+                            <i class="fas fa-key absolute left-3 top-3 text-slate-400"></i>
+                            <input type="password" id="apiKeyInput_${m.id}" class="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all shadow-sm" placeholder="sk-..." value="">
+                        </div>
+                        <p class="text-xs text-slate-500 mt-2 flex items-center gap-1">
+                            <i class="fas fa-lock text-slate-400"></i> La clave se guarda temporalmente en tu sesión cifrada.
+                        </p>
+                    </div>
+                    ` : ''}
+                </div>
+
+                <div class="pt-6 mt-6 border-t border-slate-100">
+                    ${isActive ?
+                        `<button class="w-full py-3 bg-green-500 text-white rounded-xl font-bold text-base shadow-lg shadow-green-500/20 cursor-default flex items-center justify-center gap-2 transition-transform hover:scale-[1.01]"><i class="fas fa-check-circle"></i> Modelo Activo</button>` :
+                        `<button onclick="activateModel('${m.id}')" class="w-full py-3 bg-slate-900 text-white rounded-xl font-bold text-base hover:bg-slate-800 transition-all shadow-lg shadow-slate-900/20 flex items-center justify-center gap-2 hover:translate-y-[-2px]">Activar Modelo</button>`
+                    }
+                </div>
+            </div>
+        `;
+    }
+
+    function selectModel(id) {
+        if(id === 'default') {
+             // Show default view
+             const details = document.getElementById('aiModelDetails');
+             const isActive = currentModelId === 'default';
+             details.innerHTML = `
+                <div class="animate-fade-in h-full flex flex-col justify-center items-center text-center p-8">
+                    <div class="w-20 h-20 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-4xl mb-6 shadow-sm">
+                        <i class="fas fa-robot"></i>
+                    </div>
+                    <h2 class="text-2xl font-bold text-slate-800 mb-2">Configuración Default</h2>
+                    <p class="text-slate-500 max-w-md mx-auto mb-8">El sistema utilizará la configuración estándar definida en el servidor (normalmente OpenAI GPT-3.5/4 o Anthropic Claude).</p>
+
+                    ${isActive ?
+                        `<div class="bg-green-50 text-green-700 px-6 py-2 rounded-full font-bold border border-green-100 flex items-center gap-2"><i class="fas fa-check-circle"></i> Actualmente Activo</div>` :
+                        `<button onclick="activateModel('default')" class="px-8 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition-all shadow-lg shadow-slate-900/20">Restaurar Default</button>`
+                    }
+                </div>
+             `;
+             return;
+        }
+        showModelDetails(id);
+    }
+
+    function activateModel(id) {
+        const toggle = document.getElementById('highPrivacyToggle');
+        const payload = {
+            model_id: id,
+            high_privacy: toggle ? toggle.checked : false
+        };
+
+        if (id !== 'default') {
+            const keyInput = document.getElementById(`apiKeyInput_${id}`);
+            if (keyInput && keyInput.value) {
+                payload.api_key = keyInput.value;
+            }
+        }
+
+        // Show loading state
+        const btn = document.querySelector('button[onclick^="activateModel"]');
+        if(btn) {
+            btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Guardando...';
+            btn.disabled = true;
+        }
+
+        fetch('/api/v1/ai/preference', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        })
+        .then(r => r.json())
+        .then(d => {
+            currentModelId = id;
+            renderModelList(); // Refresh list to show active state
+            if(id === 'default') selectModel('default');
+            else showModelDetails(id);
+        });
+    }
+</script>
+{% endblock %}

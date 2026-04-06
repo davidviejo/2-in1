@@ -1,0 +1,54 @@
+[
+    {
+        "id": "100",
+        "name": "diego-casas",
+        "domain": "https://www.diegocasas.es/",
+        "geo": "ES",
+        "competitors": "",
+        "brand_name": "",
+        "sitemap_url": "",
+        "business_type": "blog",
+        "clusters": [
+            {
+                "name": "Zaragoza",
+                "url": "https://www.diegocasas.es/rinoplastia-en-zaragoza/mejor-cirujano/",
+                "target_kw": "mejor cirujano rinoplastia zaragoza"
+            },
+            {
+                "name": "Antes y despues",
+                "url": "https://www.diegocasas.es/rinoplastia-en-zaragoza/antes-despues/",
+                "target_kw": "antes y despues"
+            },
+            {
+                "name": "Zaragoza",
+                "url": "https://www.diegocasas.es/rinoplastia-en-zaragoza/precio/",
+                "target_kw": "rinoplastia zaragoza"
+            }
+        ]
+    },
+    {
+        "id": "1765962498",
+        "name": "Genotipia",
+        "domain": "https://genotipia.com/",
+        "geo": "ES",
+        "competitors": "",
+        "clusters": [
+            {
+                "name": "M\u00e1steres",
+                "url": "https://campus.genotipia.com/master-medicina-precision-y-genetica-clinica/",
+                "target_kw": "M\u00e1ster en Medicina de Precisi\u00f3n y Gen\u00e9tica Cl\u00ednica"
+            }
+        ]
+    },
+    {
+        "id": "1768233332",
+        "name": "AGENCIASEO.EU",
+        "domain": "AGENCIASEO.EU",
+        "geo": "ES",
+        "competitors": "",
+        "brand_name": "",
+        "sitemap_url": "",
+        "business_type": "blog",
+        "clusters": []
+    }
+]

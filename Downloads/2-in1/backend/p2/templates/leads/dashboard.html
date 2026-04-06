@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Leads{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>🕵️ Outreach Hunter</h2>
+    <textarea id="u" class="form-control mb-2" rows="5" placeholder="Dominios..."></textarea>
+    <button onclick="run()" class="btn btn-dark">Buscar Contacto</button>
+    <div id="res" class="mt-3"></div>
+</div>
+<script>
+function run(){
+    const u = document.getElementById('u').value.split('\n');
+    fetch('/api/v1/leads/hunt', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({urls:u})})
+    .then(r=>r.json()).then(d=>{
+        let h = '';
+        d.data.forEach(i=>{
+            h += `<div class="card mb-2 p-2"><b>${i.url}</b><br>📧 ${i.emails.join(', ')}<br>🔗 ${i.social.length} Social | Contact: ${i.contact||'-'}</div>`;
+        });
+        document.getElementById('res').innerHTML=h;
+    });
+}
+</script>
+{% endblock %}

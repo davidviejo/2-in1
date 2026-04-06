@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}EEAT{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>🛡️ E-E-A-T Auditor</h2>
+    <textarea id="u" class="form-control mb-3" rows="10" placeholder="URLs..."></textarea>
+    <button onclick="run()" class="btn btn-success">Analizar</button>
+    <div id="res" class="mt-3"></div>
+</div>
+<script>
+function run(){
+    const u = document.getElementById('u').value.split('\n');
+    fetch('/api/v1/eeat/analyze_bulk', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({urls:u})})
+    .then(r=>r.json()).then(d=>{
+        let h='';
+        d.data.forEach(i=>{
+            let c = i.score>7?'bg-success':(i.score>4?'bg-warning':'bg-danger');
+            h+=`<div class="card mb-2 p-2"><b>${i.url}</b> <span class="badge ${c}">${i.score}/10</span><br><small class="text-success">${i.signals.join(', ')}</small> <small class="text-danger">${i.warnings.join(', ')}</small></div>`;
+        });
+        document.getElementById('res').innerHTML=h;
+    });
+}
+</script>
+{% endblock %}

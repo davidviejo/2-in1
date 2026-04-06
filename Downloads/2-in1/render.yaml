@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: mediaflow-backend
+    env: python
+    rootDir: backend/p2
+    buildCommand: pip install -r requirements.txt && python -m spacy download es_core_news_sm
+    startCommand: gunicorn run:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: FLASK_DEBUG
+        value: false
+      - key: PYTHONPATH
+        value: backend/p2
+      - key: FRONTEND_URL
+        value: https://agenciaseo.davidviejo.com
+      - key: CLIENTS_AREA_PASSWORD
+        sync: false
+      - key: OPERATOR_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+
+  - type: web
+    name: mediaflow-frontend
+    env: static
+    buildCommand: cd frontend/m3 && npm install && npm run build
+    staticPublishPath: frontend/m3/dist
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: mediaflow-backend
+          property: url

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Snippet{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>🎯 Snippet Optimizer</h2>
+    <input id="url" class="form-control mb-2" placeholder="URL">
+    <input id="kw" class="form-control mb-2" placeholder="Pregunta (H2)">
+    <button onclick="run()" class="btn btn-primary">Analizar</button>
+    <div id="res" class="mt-3 p-3 bg-light border"></div>
+</div>
+<script>
+function run(){
+    fetch('/api/v1/snippet/check', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url:document.getElementById('url').value, keyword:document.getElementById('kw').value})})
+    .then(r=>r.json()).then(d=>{
+        const r = d.data;
+        document.getElementById('res').innerHTML = `<h5>Score: ${r.score}</h5><p>${r.text}</p><small>${r.msg.join(', ')}</small>`;
+    });
+}
+</script>
+{% endblock %}

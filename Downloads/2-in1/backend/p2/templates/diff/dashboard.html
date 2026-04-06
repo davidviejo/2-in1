@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Diff{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>🆚 Diff Checker</h2>
+    <input id="ua" class="form-control mb-2" placeholder="URL A (Original)">
+    <input id="ub" class="form-control mb-2" placeholder="URL B (Staging)">
+    <button onclick="run()" class="btn btn-dark">Comparar</button>
+    <div id="res" class="mt-3"></div>
+</div>
+<script>
+function run(){
+    fetch('/api/v1/diff/compare', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url_a:document.getElementById('ua').value, url_b:document.getElementById('ub').value})})
+    .then(r=>r.json()).then(d=>{
+        const a = d.a; const b = d.b;
+        let html = `<table class="table"><tr><th>Campo</th><th>URL A</th><th>URL B</th></tr>`;
+        ['status','title','h1','robots'].forEach(k=>{
+            let c = a[k] == b[k] ? '' : 'bg-warning bg-opacity-25';
+            html += `<tr class="${c}"><td>${k}</td><td>${a[k]}</td><td>${b[k]}</td></tr>`;
+        });
+        document.getElementById('res').innerHTML = html + '</table>';
+    });
+}
+</script>
+{% endblock %}

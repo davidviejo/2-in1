@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Fast Status{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>⚡ Fast Status</h2>
+    <div class="row">
+        <div class="col-4"><textarea id="u" class="form-control" rows="10"></textarea><button onclick="run()" class="btn btn-warning w-100 mt-2">Check</button></div>
+        <div class="col-8"><div id="res"></div></div>
+    </div>
+</div>
+<script>
+function run(){
+    const u = document.getElementById('u').value.split('\n');
+    fetch('/api/v1/fast/run', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({urls:u})})
+    .then(r=>r.json()).then(d=>{
+        let h = '<table class="table table-sm"><tr><th>URL</th><th>Status</th></tr>';
+        d.data.forEach(r=>{
+            let c = r.status===200?'bg-success':'bg-danger';
+            h += `<tr><td>${r.url}</td><td><span class="badge ${c}">${r.status}</span></td></tr>`;
+        });
+        document.getElementById('res').innerHTML = h + '</table>';
+    });
+}
+</script>
+{% endblock %}

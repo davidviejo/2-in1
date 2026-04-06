@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Prominence{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>🎯 KW Prominence</h2>
+    <textarea id="data" class="form-control mb-3" rows="5" placeholder="URL ; Keyword"></textarea>
+    <button onclick="run()" class="btn btn-success">Check</button>
+    <div id="res" class="mt-3"><table class="table"><tbody id="tb"></tbody></table></div>
+</div>
+<script>
+function run(){
+    fetch('/api/v1/prominence/analyze', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({input_data:document.getElementById('data').value})})
+    .then(r=>r.json()).then(d=>{
+        let h = '';
+        d.data.forEach(r=>{
+            h += `<tr><td>${r.url}<br><small>${r.keyword}</small></td><td><h3>${r.score}</h3></td><td>Title: ${r.checks.Title?'✅':'❌'} | H1: ${r.checks.H1?'✅':'❌'}</td></tr>`;
+        });
+        document.getElementById('tb').innerHTML = h;
+    });
+}
+</script>
+{% endblock %}

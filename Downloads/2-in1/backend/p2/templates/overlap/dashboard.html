@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Overlap{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>⚖️ SERP Overlap</h2>
+    <div class="row">
+        <div class="col-4">
+            <div class="card p-3">
+                <input id="ka" class="form-control mb-2" placeholder="Keyword A">
+                <input id="kb" class="form-control mb-2" placeholder="Keyword B">
+                <hr>
+                <select id="mode" class="form-select mb-2">
+                    <option value="dataforseo" selected>DataForSEO</option>
+                    <option value="ddg">DuckDuckGo</option>
+                    <option value="google_official">Google API</option>
+                    <option value="serpapi">SerpApi</option>
+                    <option value="google_scraping">Google Scraping</option>
+                    <option value="google_nuclear">Google Nuclear</option>
+                </select>
+                <div id="apiBox" style="display:none" class="mb-2">
+                    <input id="key" class="form-control form-control-sm mb-1" placeholder="API Key">
+                    <input id="cx" class="form-control form-control-sm" placeholder="CX ID">
+                </div>
+                <div id="cookBox" style="display:none" class="mb-2">
+                    <input id="cook" class="form-control form-control-sm" placeholder="Cookie">
+                </div>
+                <input id="del" type="number" class="form-control" value="3" placeholder="Delay">
+                <button onclick="run()" class="btn btn-primary w-100 mt-3">Comparar</button>
+            </div>
+        </div>
+        <div class="col-8" id="res" style="display:none;">
+            <h1 class="text-center" id="sc">0%</h1><h4 class="text-center" id="vd"></h4>
+            <div class="row mt-3">
+                <div class="col-6"><h6>SERP A</h6><ul id="la" class="list-group small"></ul></div>
+                <div class="col-6"><h6>SERP B</h6><ul id="lb" class="list-group small"></ul></div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+const m = document.getElementById('mode');
+m.addEventListener('change', ()=>{
+    document.getElementById('apiBox').style.display = (m.value==='google_official' || m.value==='serpapi')?'block':'none';
+    document.getElementById('cookBox').style.display = m.value==='google_nuclear'?'block':'none';
+    document.getElementById('cx').style.display = m.value==='google_official'?'block':'none';
+});
+function run(){
+    fetch('/api/v1/overlap/analyze', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({
+        kw_a:document.getElementById('ka').value, kw_b:document.getElementById('kb').value,
+        mode:m.value, delay:document.getElementById('del').value,
+        cookie:document.getElementById('cook').value, cse_key:document.getElementById('key').value, cse_cx:document.getElementById('cx').value
+    })}).then(r=>r.json()).then(d=>{
+        document.getElementById('sc').innerText=d.score+'%'; document.getElementById('vd').innerText=d.verdict;
+        const ren=(i,l,c)=>{document.getElementById(i).innerHTML=l.map(u=>`<li class="list-group-item ${c.includes(u)?'bg-warning':''}">${u}</li>`).join('')};
+        ren('la',d.list_a,d.common); ren('lb',d.list_b,d.common);
+        document.getElementById('res').style.display='block';
+    });
+}
+</script>
+{% endblock %}

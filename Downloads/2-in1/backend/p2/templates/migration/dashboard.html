@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Migration{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>🛠️ Migration Helper</h2>
+    <div class="row">
+        <div class="col-6">
+            <h5>Redirecciones</h5>
+            <textarea id="red" class="form-control mb-2" rows="5" placeholder="/old /new"></textarea>
+            <select id="srv" class="form-select mb-2"><option value="apache">Apache</option><option value="nginx">Nginx</option></select>
+            <button onclick="genRed()" class="btn btn-primary">Generar</button>
+            <textarea id="outRed" class="form-control mt-2" rows="5"></textarea>
+        </div>
+        <div class="col-6">
+            <h5>Slugify</h5>
+            <textarea id="tit" class="form-control mb-2" rows="5" placeholder="Títulos..."></textarea>
+            <button onclick="genSlug()" class="btn btn-success">Generar</button>
+            <textarea id="outSlug" class="form-control mt-2" rows="5"></textarea>
+        </div>
+    </div>
+</div>
+<script>
+function genRed(){
+    fetch('/api/v1/migration/generate_redirects', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({pairs:document.getElementById('red').value, server:document.getElementById('srv').value})})
+    .then(r=>r.json()).then(d=>document.getElementById('outRed').value=d.code);
+}
+function genSlug(){
+    fetch('/api/v1/migration/slugify_bulk', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({titles:document.getElementById('tit').value.split('\n')})})
+    .then(r=>r.json()).then(d=>{ document.getElementById('outSlug').value = d.data.map(x=>x.slug).join('\n'); });
+}
+</script>
+{% endblock %}

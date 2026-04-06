@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Sim{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>🎨 SERP Simulator</h2>
+    <input id="ti" class="form-control mb-2" placeholder="Title" oninput="upd()">
+    <textarea id="de" class="form-control mb-2" placeholder="Description" oninput="upd()"></textarea>
+    <div class="card p-3 mt-3" style="max-width:600px">
+        <a href="#" style="color:#1a0dab;font-size:20px;text-decoration:none" id="pt">Title</a>
+        <div style="color:#4d5156;font-size:14px" id="pd">Desc</div>
+    </div>
+</div>
+<script>
+function upd(){
+    document.getElementById('pt').innerText = document.getElementById('ti').value || 'Title';
+    document.getElementById('pd').innerText = document.getElementById('de').value || 'Description';
+}
+</script>
+{% endblock %}

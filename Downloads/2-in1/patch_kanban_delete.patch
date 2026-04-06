@@ -1,0 +1,25 @@
+--- frontend/m3/src/pages/KanbanBoard.tsx
++++ frontend/m3/src/pages/KanbanBoard.tsx
+@@ -282,6 +282,21 @@
+                               <h4 className="text-sm font-medium text-slate-800 dark:text-slate-200 mb-3 leading-snug">
+                                 {item.task.title}
+                               </h4>
++
++                              {item.task.status === 'completed' && (
++                                <div className="flex justify-end mb-2 opacity-0 group-hover:opacity-100 transition-opacity">
++                                  <button
++                                    onClick={(e) => {
++                                      e.stopPropagation();
++                                      if (window.confirm('¿Seguro que quieres eliminar esta tarea completada del tablero?')) {
++                                        deleteTask(item.moduleId, item.task.id);
++                                      }
++                                    }}
++                                    className="text-slate-400 hover:text-rose-500 transition-colors p-1"
++                                    title="Eliminar tarea completada"
++                                  >
++                                    <Trash2 size={14} />
++                                  </button>
++                                </div>
++                              )}
+
+                               {/* Task Details Edit */}

@@ -1,0 +1,92 @@
+{
+  "app": {
+    "title": "MediaFlow",
+    "subtitle": "Madurez SEO"
+  },
+  "nav": {
+    "dashboard": "Panel de Control",
+    "dashboard_sub": "Resumen",
+    "module_prefix": "M",
+    "client_roadmap": "Roadmap Cliente",
+    "client_roadmap_sub": "Personalizado",
+    "kanban_board": "Tablero Kanban",
+    "kanban_board_sub": "Flujo de Trabajo",
+    "ai_roadmap": "Roadmap IA",
+    "ai_roadmap_sub": "Estrategia Generativa",
+    "settings": "Ajustes",
+    "settings_sub": "Configuración",
+    "breaking_sim": "Simulador Breaking",
+    "breaking_sim_sub": "Entrenamiento",
+    "completed_tasks": "Tareas Realizadas",
+    "completed_tasks_sub": "Historial",
+    "seo_checklist": "Checklist SEO",
+    "seo_checklist_sub": "URLs",
+    "notes": "Notas",
+    "shortcuts": "Atajos",
+    "emergency_index": "INDEX DE EMERGENCIA",
+    "indexing": "INDEXANDO...",
+    "ia_visibility": "Visibilidad IA",
+    "ia_visibility_sub": "SERP & Evolución"
+  },
+  "global_score": "Puntuación Global",
+  "feedback": {
+    "toast": {
+      "success_action": "{{action}} completada correctamente.",
+      "error_action": "No se pudo completar: {{action}}.",
+      "warning_action": "Revisa esta acción: {{action}}."
+    },
+    "actions": {
+      "delete_history_entry": "Eliminar registro del historial",
+      "delete_task_card": "Eliminar ficha",
+      "delete_column": "Eliminar columna",
+      "delete_completed_task": "Eliminar tarea completada",
+      "restore_data": "Restaurar datos",
+      "import_backup": "Importar backup",
+      "read_json_file": "Leer archivo JSON",
+      "update_batch_job": "Actualizar lote",
+      "apply_batch_result": "Aplicar resultado del lote",
+      "send_emergency_index_request": "Enviar indexación de emergencia"
+    },
+    "confirm": {
+      "confirm_button": "Confirmar",
+      "cancel_button": "Cancelar",
+      "delete_history_title": "Eliminar registro",
+      "delete_history_message": "¿Seguro que quieres eliminar este registro del historial? Esta acción no se puede deshacer.",
+      "delete_task_title": "Eliminar ficha",
+      "delete_task_message": "¿Estás seguro de que quieres eliminar esta ficha? Esta acción no se puede deshacer.",
+      "delete_column_title": "Eliminar columna",
+      "delete_column_message": "¿Borrar esta columna? Las tareas volverán a Pendiente.",
+      "delete_completed_task_title": "Eliminar tarea completada",
+      "delete_completed_task_message": "¿Seguro que quieres eliminar esta tarea completada del tablero?",
+      "restore_backup_title": "Restaurar backup",
+      "restore_backup_message": "Se restaurarán proyectos, checklists SEO, URLs, kanban, tareas, notas y configuración. Los datos locales actuales serán reemplazados.",
+      "emergency_index_title": "Confirmar indexación de emergencia",
+      "emergency_index_message": "Esto enviará un ping a la API de Indexing para URLs críticas recientes."
+    }
+  },
+  "ia_visibility": {
+    "title": "Visibilidad IA",
+    "subtitle": "Monitorea keywords, cambios y evolución histórica por cliente.",
+    "client_selector": "Cliente actual",
+    "current_client": "Cliente en análisis",
+    "results_title": "Resultados de visibilidad",
+    "history_title": "Histórico de análisis",
+    "no_results": "No hay resultados para los filtros actuales.",
+    "filters": {
+      "keyword": "Filtro por keyword o URL",
+      "keyword_placeholder": "Buscar keyword o URL...",
+      "status": "Estado",
+      "all": "Todos",
+      "up": "Sube",
+      "stable": "Estable",
+      "down": "Baja"
+    },
+    "table": {
+      "keyword": "Keyword",
+      "url": "URL",
+      "position": "Posición",
+      "change": "Cambio",
+      "status": "Estado"
+    }
+  }
+}

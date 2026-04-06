@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}NAP{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>📍 NAP Consistency</h2>
+    <div class="row">
+        <div class="col-3">
+            <input id="n" class="form-control mb-1" placeholder="Nombre">
+            <input id="p" class="form-control mb-1" placeholder="Teléfono">
+            <input id="a" class="form-control mb-1" placeholder="Dirección">
+            <textarea id="u" class="form-control mb-2" rows="5" placeholder="URLs..."></textarea>
+            <button onclick="run()" class="btn btn-primary w-100">Check</button>
+        </div>
+        <div class="col-9"><div id="res"></div></div>
+    </div>
+</div>
+<script>
+function run(){
+    fetch('/api/v1/nap/check', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({
+        urls:document.getElementById('u').value.split('\n'), name:document.getElementById('n').value,
+        phone:document.getElementById('p').value, address:document.getElementById('a').value
+    })}).then(r=>r.json()).then(d=>{
+        let h = '<ul class="list-group">';
+        d.data.forEach(i=>{ h+=`<li class="list-group-item d-flex justify-content-between"><span>${i.url}</span><span class="badge ${i.score==100?'bg-success':'bg-danger'}">${i.score}% (${i.matches.join(',')})</span></li>`; });
+        document.getElementById('res').innerHTML=h+'</ul>';
+    });
+}
+</script>
+{% endblock %}

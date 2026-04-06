@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Images{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>🖼️ Image Auditor</h2>
+    <textarea id="u" class="form-control mb-2" rows="5"></textarea>
+    <button onclick="run()" class="btn btn-info">Scan Images</button>
+    <button onclick="dl()" class="btn btn-success">Excel</button>
+    <div id="res" class="mt-3"></div>
+</div>
+<script>
+let cd=[];
+function run(){
+    const u = document.getElementById('u').value.split('\n');
+    fetch('/api/v1/image_audit/scan', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({urls:u})})
+    .then(r=>r.json()).then(d=>{
+        cd=d.data;
+        let h='';
+        d.data.forEach(p=>{
+            h+=`<h5>${p.url}</h5><ul>`;
+            p.images.forEach(i=>{ 
+                let c = i.size>100?'text-danger':'text-success';
+                h+=`<li><a href="${i.src}" target="_blank">${i.src.split('/').pop()}</a> <b class="${c}">${i.size} KB</b> (Alt: ${i.alt})</li>`; 
+            });
+            h+='</ul>';
+        });
+        document.getElementById('res').innerHTML=h;
+    });
+}
+function dl(){
+    fetch('/api/v1/image_audit/download', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({data:cd})})
+    .then(r=>r.blob()).then(b=>{const u=window.URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download="img.xlsx";a.click();});
+}
+</script>
+{% endblock %}

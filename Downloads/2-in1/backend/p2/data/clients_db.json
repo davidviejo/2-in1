@@ -1,0 +1,16 @@
+[
+  {
+    "slug": "diego-casas",
+    "name": "Diego Casas",
+    "status": "active",
+    "description": "Proyecto Diego Casas.",
+    "project_password_hash": "$2b$12$ZJyhtsDZULSIcsi5z8sarOlM2nsj/ewNJg0E4.wpfE.8f.7ySdWLi"
+  },
+  {
+    "slug": "demo-project",
+    "name": "Demo Project",
+    "status": "active",
+    "description": "A demo project.",
+    "project_password_hash": "$2b$12$6wseTwxisB2XcDtI3uWNVOr9EwoIpnjBA2NoQzmcZPwV99F46ytXW"
+  }
+]

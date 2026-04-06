@@ -1,0 +1,744 @@
+{% extends "base.html" %}
+{% block title %}SEO Suite{% endblock %}
+{% block content %}
+<style>
+    .console { 
+        background: #000; 
+        color: #0f0; 
+        font-family: monospace; 
+        font-size: 0.8rem; 
+        height: 150px; 
+        overflow-y: auto; 
+        padding: 10px; 
+    }
+    .structure-box { 
+        background: #f8f9fa; 
+        border: 1px solid #ccc; 
+        padding: 10px; 
+        max-height: 200px; 
+        overflow-y: auto; 
+        font-family: monospace; 
+        font-size: 0.7rem; 
+        white-space: pre-wrap; 
+    }
+    .url-list { 
+        max-height: 200px; 
+        overflow-y: auto; 
+        font-size: 0.85rem; 
+    }
+</style>
+
+<div class="container-fluid">
+    <h2 class="mb-4 d-flex align-items-center gap-3">
+        🌍 SEO Suite 
+        <span class="badge bg-success">v17</span>
+    </h2>
+
+    <!-- ALERTA GLOBAL DE ERRORES -->
+    <div id="statusAlert" class="alert alert-danger d-none" role="alert"></div>
+
+    <ul class="nav nav-tabs mb-4" id="myTab" role="tablist">
+        <li class="nav-item">
+            <button class="nav-link active fw-bold" data-bs-toggle="tab" data-bs-target="#home">1. Estrategia</button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link fw-bold" data-bs-toggle="tab" data-bs-target="#lab">2. Laboratorio</button>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+        <!-- TAB ESTRATEGIA -->
+        <div class="tab-pane fade show active" id="home">
+            <!-- Mini guía pestaña estrategia -->
+            <div class="alert alert-light border small mb-3">
+                <strong>Cómo funciona esta pestaña:</strong><br>
+                1) Pega tus keywords y, si tienes, un Excel histórico de clusters. <br>
+                2) Elige país, idioma y motor de búsqueda (Google oficial, scraping o DuckDuckGo).<br>
+                3) Define <strong>Top N</strong> (nº de resultados por keyword) y <strong>Strict</strong> (qué tan exigente es el match entre keywords).<br>
+                4) Opcional: indica tu <strong>dominio objetivo</strong> para ver en qué clusters ya rankeas (<em>OWNED</em>) y cuáles son oportunidad.
+            </div>
+
+            <div class="card shadow p-4 mb-4" id="configPanel">
+                <form id="runForm">
+                    <div class="row g-3">
+                        <div class="col-md-5 border-end">
+                            <label class="fw-bold">Keywords:</label>
+                            <textarea name="keywords" class="form-control mb-2" rows="6" required placeholder="Una keyword por línea"></textarea>
+                            <div class="small text-muted mb-2">Tip: pega aquí tu lista de keywords, mínimo 2.</div>
+                            <label>Excel Histórico:</label>
+                            <input type="file" name="history_file" class="form-control form-control-sm">
+                        </div>
+                        <div class="col-md-7">
+                            <!-- GEO -->
+                            <div class="row mb-2">
+                                <div class="col">
+                                    <label class="fw-bold">País:</label>
+                                    <select name="gl" class="form-select">
+                                        <option value="es">🇪🇸 España</option>
+                                        <option value="us">🇺🇸 USA</option>
+                                    </select>
+                                </div>
+                                <div class="col">
+                                    <label class="fw-bold">Idioma:</label>
+                                    <select name="hl" class="form-select">
+                                        <option value="es">Español</option>
+                                        <option value="en">Inglés</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <label class="fw-bold mt-2">Motor:</label>
+                            <select name="mode" class="form-select mb-2" id="modeSelect">
+                                <option value="dataforseo" selected>DataForSEO (Predeterminado)</option>
+                                <option value="ddg">DuckDuckGo (Gratis)</option>
+                                <option value="google_official">Google API Oficial</option>
+                                <option value="serpapi">SerpApi (Google)</option>
+                                <option value="google_scraping">Google Scraping (Sin Cookie)</option>
+                                <option value="google_nuclear">Google Nuclear (Con Cookie)</option>
+                            </select>
+                            
+                            <!-- OPCIONES API GOOGLE -->
+                            <div id="optsCSE" style="display:none;" class="alert alert-info p-2 mb-2">
+                                <div class="row g-1">
+                                    <div class="col-6">
+                                        <input type="text" name="google_cse_key" class="form-control form-control-sm" placeholder="API Key">
+                                    </div>
+                                    <div class="col-6" id="cxContainer">
+                                        <input type="text" name="google_cse_cx" class="form-control form-control-sm" placeholder="CX ID">
+                                    </div>
+                                </div>
+                                <div class="small mt-1">Necesitas un motor de búsqueda personalizado (CSE) de Google o SerpApi Key.</div>
+                            </div>
+
+                            <!-- OPCIONES DataForSEO (override avanzado explícito) -->
+                            <details id="optsDFS" class="alert alert-warning p-2 mb-2">
+                                <summary class="fw-semibold">Override avanzado de credenciales DataForSEO (opcional)</summary>
+                                <div class="row g-1 mt-2">
+                                    <div class="col-6">
+                                        <input type="text" name="dataforseo_login" class="form-control form-control-sm" placeholder="Login (Email)">
+                                    </div>
+                                    <div class="col-6">
+                                        <input type="password" name="dataforseo_password" class="form-control form-control-sm" placeholder="Password (API Pass)">
+                                    </div>
+                                </div>
+                                <div class="small mt-1">Por defecto se usan las credenciales guardadas en Ajustes.</div>
+                            </details>
+
+                            <!-- OPCIONES COOKIE -->
+                            <div id="optsCookie" style="display:none;" class="mb-2">
+                                <input type="text" name="cookie" class="form-control form-control-sm" placeholder="Cookie Google">
+                                <div class="small text-muted mt-1">Pega una cookie válida si usas modo nuclear.</div>
+                            </div>
+
+                            <div class="row g-2 mt-2">
+                                <div class="col">
+                                    <label>Top N:</label>
+                                    <input type="number" name="top_n" class="form-control form-control-sm" value="10" min="1" max="50">
+                                </div>
+                                <div class="col">
+                                    <label>TOS (s):</label>
+                                    <input type="number" name="tos" class="form-control form-control-sm" value="15" min="1">
+                                </div>
+                                <div class="col">
+                                    <label>Strict:</label>
+                                    <select name="strict" class="form-select form-select-sm">
+                                        <option value="3">3 (más estricto)</option>
+                                        <option value="2">2 (más laxo)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- NUEVO: DOMINIO OBJETIVO -->
+                            <div class="mt-3">
+                                <label class="fw-bold">Dominio objetivo:</label>
+                                <input type="text" name="target_domain" class="form-control form-control-sm" placeholder="midominio.com (sin https)">
+                                <div class="small text-muted mt-1">
+                                    Se usará para marcar clusters <strong>OWNED</strong> (donde ya rankeas) vs <strong>OPPORTUNITY</strong>.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100 mt-3 fw-bold" id="startBtn">INICIAR</button>
+                </form>
+            </div>
+
+            <div class="card p-3 mb-3" id="progressPanel" style="display:none;">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div class="progress flex-grow-1 me-3">
+                        <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%"></div>
+                    </div>
+                    <span class="badge bg-secondary" id="progressPct">0%</span>
+                </div>
+                <div class="small text-muted mb-2" id="currentAction">Preparando...</div>
+                <div class="console" id="consoleBox"></div>
+            </div>
+
+            <div id="resultsPanel" style="display:none;">
+                <div class="d-flex justify-content-between mb-3 flex-wrap gap-2">
+                    <button class="btn btn-secondary" onclick="location.reload()">⬅️ Nuevo</button>
+                    <div class="d-flex flex-wrap gap-2">
+                        <input type="text" id="clusterFilter" class="form-control form-control-sm" placeholder="Filtrar clusters por keyword...">
+                        <button class="btn btn-outline-primary btn-sm" id="analyzeAllBtn" onclick="analyzeAll()">📊 Analizar todos</button>
+                        <a href="/seo/download" class="btn btn-success fw-bold">💾 Excel</a>
+                    </div>
+                </div>
+                <div id="summaryStats" class="alert alert-secondary py-2 px-3 mb-3 small"></div>
+                <div id="clusterList"></div>
+            </div>
+        </div>
+
+                <!-- TAB LABORATORIO -->
+        <!-- Mini guía pestaña estrategia -->
+            <div class="alert alert-light border small mb-3">
+                <strong>Cómo funciona esta pestaña:</strong><br>
+                1) Pega las URLs de tus competidores <br>
+                2) Analiza todos los competidores<br>
+            </div>
+        <div class="tab-pane fade" id="lab">
+            <div class="card shadow p-4">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="text-primary mb-0">Analizador Masivo</h5>
+                    <span class="badge bg-secondary">On-page rápido</span>
+                </div>
+
+                <!-- Barra de herramientas -->
+                <div class="d-flex flex-wrap gap-2 mb-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="pasteFromClipboard()">
+                        📋 Pegar desde portapapeles
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="fillSampleUrls()">
+                        🧪 Cargar ejemplo
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="clearLab()">
+                        🧹 Limpiar
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-success" onclick="exportBulkLab()">
+                        ⬇️ Exportar CSV
+                    </button>
+                </div>
+
+                <textarea id="manualUrls" class="form-control mb-2" rows="6" placeholder="https://tu-url-1.com
+https://tu-url-2.com"></textarea>
+                <div class="small text-muted mb-3">
+                    Una URL por línea. Útil para auditar rápidamente competidores o URLs propias (title, H1, headings, palabras, imágenes, entidades…).
+                </div>
+
+                <button class="btn btn-dark w-100 mb-3" id="bulkBtn" onclick="runBulk()">🕵️ Analizar</button>
+
+                <div id="bulkResults" class="mt-2 row"></div>
+            </div>
+        </div>
+
+<script>
+let lastResults = [];
+let lastBulkResults = [];
+
+const modeSel   = document.getElementById('modeSelect');
+const form      = document.getElementById('runForm');
+const startBtn  = document.getElementById('startBtn');
+const alertBox  = document.getElementById('statusAlert');
+
+modeSel.addEventListener('change', () => {
+    const val = modeSel.value;
+    const isApi = val === 'google_official' || val === 'serpapi';
+    document.getElementById('optsCSE').style.display = isApi ? 'block' : 'none';
+
+    // Hide CX for SerpApi
+    document.getElementById('cxContainer').style.visibility = val === 'serpapi' ? 'hidden' : 'visible';
+
+    document.getElementById('optsCookie').style.display = val === 'google_nuclear' ? 'block' : 'none';
+
+});
+
+// Cargar config desde localStorage
+window.addEventListener('load', () => {
+    const saved = localStorage.getItem('seoConfig');
+    if (saved) {
+        const data = JSON.parse(saved);
+        Object.entries(data).forEach(([k,v])=>{
+            const el = form.elements[k];
+            if (el) el.value = v;
+        });
+        // Forzar opciones según modo
+        modeSel.dispatchEvent(new Event('change'));
+    }
+});
+
+// Helper: mostrar alerta global
+function showAlert(msg) {
+    if (!alertBox) return;
+    alertBox.textContent = msg || '';
+    alertBox.classList.remove('d-none');
+}
+function hideAlert() {
+    if (!alertBox) return;
+    alertBox.classList.add('d-none');
+    alertBox.textContent = '';
+}
+
+// Guardar + validar + lanzar
+form.addEventListener('submit', e => {
+    e.preventDefault();
+    hideAlert();
+
+    const kws = form.elements['keywords'].value
+        .split('\n')
+        .map(x=>x.trim())
+        .filter(x=>x);
+
+    if (kws.length < 2) {
+        showAlert('Introduce al menos 2 keywords (una por línea).');
+        return;
+    }
+
+    // Guardar config (incluye target_domain)
+    const data = {};
+    Array.from(form.elements).forEach(el => {
+        if (el.name) data[el.name] = el.value;
+    });
+    localStorage.setItem('seoConfig', JSON.stringify(data));
+
+    // Evitar dobles envíos
+    startBtn.disabled = true;
+    startBtn.innerText = 'Procesando...';
+
+    document.getElementById('configPanel').style.display='none';
+    document.getElementById('progressPanel').style.display='block';
+
+    fetch('/seo/start', {method:'POST', body:new FormData(e.target)})
+        .then(r=>r.json())
+        .then(d=>{
+            if(d.status==='ok') {
+                poll();
+            } else if (d.status === 'busy') {
+                showAlert('Ya hay un proceso en marcha. Espera a que termine antes de lanzar otro.');
+            } else {
+                showAlert(d.message || 'Error inesperado al iniciar el proceso.');
+            }
+        })
+        .catch(()=>{
+            showAlert('No se ha podido conectar con el servidor.');
+        });
+});
+
+function poll(){
+    const i = setInterval(()=>{
+        fetch('/seo/status')
+            .then(r=>r.json())
+            .then(d=>{
+                document.getElementById('progressBar').style.width = d.progress+'%';
+                document.getElementById('progressPct').innerText   = d.progress+'%';
+                document.getElementById('currentAction').innerText = d.current_action || '';
+
+                // Colorear logs + timestamp
+                const now = new Date();
+                const ts  = now.toTimeString().split(' ')[0];
+                const logsHtml = (d.logs || []).map(l => {
+                    let cls = 'text-success';
+                    if (l.includes('⛔')) cls = 'text-danger';
+                    else if (l.includes('⚠️')) cls = 'text-warning';
+                    return `<div class="${cls}">[${ts}] ${l}</div>`;
+                }).join('');
+                const consoleBox = document.getElementById('consoleBox');
+                consoleBox.innerHTML = logsHtml;
+                consoleBox.scrollTop = consoleBox.scrollHeight;
+
+                // Si el backend devuelve d.error, lo mostramos
+                if (d.error) {
+                    showAlert('Error en el proceso: ' + d.error);
+                }
+
+                if(!d.active){ 
+                    clearInterval(i); 
+                    render(d.results || []); 
+                    document.getElementById('progressPanel').style.display='none'; 
+                    document.getElementById('resultsPanel').style.display='block'; 
+                }
+            })
+            .catch(()=>{
+                showAlert('Error consultando el estado del proceso.');
+                clearInterval(i);
+            });
+    },1000);
+}
+
+function render(list){
+    lastResults = list || [];
+    updateSummary(lastResults);
+    paintClusters(lastResults);
+    setupFilter();
+}
+
+function setupFilter(){
+    const filterInput = document.getElementById('clusterFilter');
+    if (!filterInput) return;
+    filterInput.oninput = e => {
+        const q = e.target.value.toLowerCase();
+        const filtered = lastResults.filter(x => {
+            const parentMatch = (x.parent || '').toLowerCase().includes(q);
+            const childMatch = (x.children || []).some(ch => ch.toLowerCase().includes(q));
+            return parentMatch || childMatch;
+        });
+        updateSummary(filtered);
+        paintClusters(filtered);
+    };
+}
+
+function updateSummary(list){
+    const summary = document.getElementById('summaryStats');
+    const totalClusters = list.length;
+    let totalKeywords = 0;
+    let owned = 0;
+    let opp   = 0;
+
+    list.forEach(x => {
+        totalKeywords += 1 + ((x.children || []).length);
+        if (x.coverage === 'OWNED') owned++;
+        else if (x.coverage === 'OPPORTUNITY') opp++;
+    });
+
+    summary.innerText = `Clusters: ${totalClusters} | Keywords totales: ${totalKeywords} | OWNED: ${owned} | Oportunidad: ${opp}`;
+}
+
+function paintClusters(list){
+    const c = document.getElementById('clusterList'); 
+    c.innerHTML = '';
+    list.forEach(x=>{
+        const an = x.analyzed;
+        const children = x.children || [];
+        const urlsCount = (x.serp_dump || []).length;
+
+        const coverage = x.coverage || '-';
+        const ownCount = x.own_count || 0;
+        const intent   = x.intent   || '-';
+
+        let covClass = 'bg-secondary';
+        if (coverage === 'OWNED') covClass = 'bg-success';
+        else if (coverage === 'OPPORTUNITY') covClass = 'bg-warning text-dark';
+
+        let uL = '<ul class="list-group list-group-flush small">';
+        if(x.serp_dump) {
+            x.serp_dump.slice(0,10).forEach(u=>{
+                uL += `<li class="list-group-item py-1 text-truncate">
+                    <span class="badge bg-secondary me-2">${u.rank}</span>
+                    <a href="${u.url}" target="_blank" rel="noopener noreferrer">${u.title||u.url}</a>
+                </li>`;
+            });
+        }
+        uL+='</ul>';
+
+        const info = an 
+            ? `<div class="bg-white p-3 mt-2 border rounded">
+                    <div class="row">
+                        <div class="col">📝 ${x.avg_words}w</div>
+                        <div class="col">🖼️ ${x.avg_imgs}i</div>
+                    </div>
+                    <div class="mt-2 small">🔑 ${x.entities}</div>
+                    <div class="structure-box mt-2">${x.top_structure}</div>
+                    <button class="btn btn-outline-secondary btn-sm mt-2" onclick="copyStructure('${x.id}')">📋 Copiar estructura</button>
+               </div>` 
+            : '<div class="mt-2 small text-muted">Aún no analizado. Pulsa 👁️ para analizar este cluster.</div>';
+
+        const childrenBadges = children.slice(0,10)
+            .map(ch => `<span class="badge bg-light text-dark me-1 mb-1">${ch}</span>`)
+            .join('');
+        const more = children.length > 10 ? ` <span class="small text-muted">+${(children.length - 10)} más</span>` : '';
+        const childrenHtml = childrenBadges 
+            ? `<div class="mt-2 small">${childrenBadges}${more}</div>` 
+            : '';
+
+        c.innerHTML += `
+        <div class="card shadow-sm mb-3">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h5 class="fw-bold text-primary mb-1">${x.id} | ${x.parent}</h5>
+                        <div class="small text-muted mb-1">
+                            <span class="badge bg-info text-dark me-1">Variaciones: ${children.length}</span>
+                            <span class="badge bg-secondary me-1">URLs: ${urlsCount}</span>
+                            <span class="badge ${covClass} me-1">Cobertura: ${coverage}</span>
+                            <span class="badge bg-dark me-1">Propias: ${ownCount}</span>
+                            <span class="badge bg-primary me-1">Intención: ${intent}</span>
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#u-${x.id}">URLs</button>
+                        <button onclick="analyzeClust('${x.id}')" class="btn btn-sm ${an?'btn-success':'btn-primary'}" id="btn-${x.id}">
+                            ${an ? '✅' : '👁️'}
+                        </button>
+                    </div>
+                </div>
+                ${childrenHtml}
+                <div class="collapse mt-2" id="u-${x.id}">${uL}</div>
+                <div id="cnt-${x.id}">${info}</div>
+            </div>
+        </div>`;
+    });
+}
+
+// Versión interna reutilizable que devuelve una Promise
+function analyzeClustInternal(id, updateButtonUI){
+    const btn = document.getElementById(`btn-${id}`);
+    if (updateButtonUI && btn) {
+        btn.innerText='⏳';
+        btn.disabled = true;
+    }
+
+    return fetch('/seo/analyze_cluster', {
+        method:'POST', 
+        headers:{'Content-Type':'application/json'}, 
+        body:JSON.stringify({id:id})
+    })
+    .then(r=>r.json())
+    .then(d=>{ 
+        if(d.status==='ok'){
+            const x = d.data;
+            // Actualizar el objeto en lastResults
+            lastResults = lastResults.map(c => c.id === x.id ? x : c);
+
+            // Actualizar solo el bloque de info
+            const cnt = document.getElementById(`cnt-${x.id}`);
+            if (cnt) {
+                cnt.innerHTML = `
+                <div class="bg-white p-3 mt-2 border rounded">
+                    <div class="row">
+                        <div class="col">📝 ${x.avg_words}w</div>
+                        <div class="col">🖼️ ${x.avg_imgs}i</div>
+                    </div>
+                    <div class="mt-2 small">🔑 ${x.entities}</div>
+                    <div class="structure-box mt-2">${x.top_structure}</div>
+                    <button class="btn btn-outline-secondary btn-sm mt-2" onclick="copyStructure('${x.id}')">📋 Copiar estructura</button>
+                </div>`;
+            }
+
+            if (btn && updateButtonUI) {
+                btn.classList.remove('btn-primary');
+                btn.classList.add('btn-success');
+                btn.innerText = '✅';
+            }
+        }
+    })
+    .catch(()=>{
+        showAlert('Error analizando el cluster ' + id);
+    })
+    .finally(()=>{
+        if (btn && updateButtonUI) {
+            btn.disabled = false;
+        }
+    });
+}
+
+// Mantener firma anterior para el botón de la tarjeta
+function analyzeClust(id){
+    analyzeClustInternal(id, true);
+}
+
+// Analizar todos los clusters no analizados, en serie
+async function analyzeAll(){
+    if (!lastResults.length) return;
+    hideAlert();
+
+    const btn = document.getElementById('analyzeAllBtn');
+    if (!btn) return;
+
+    const pendingIds = lastResults.filter(x => !x.analyzed).map(x => x.id);
+    if (!pendingIds.length) {
+        showAlert('Todos los clusters ya están analizados.');
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerText = 'Analizando...';
+
+    for (const id of pendingIds) {
+        await analyzeClustInternal(id, false);
+    }
+
+    // Repintar UI por si acaso
+    updateSummary(lastResults);
+    paintClusters(lastResults);
+
+    btn.disabled = false;
+    btn.innerText = '📊 Analizar todos';
+}
+
+// Copiar estructura de un cluster al portapapeles
+function copyStructure(id){
+    const el = document.querySelector(`#cnt-${id} .structure-box`);
+    if (!el) return;
+    const text = el.innerText || el.textContent || '';
+    if (!navigator.clipboard) {
+        alert('Portapapeles no disponible en este navegador.');
+        return;
+    }
+    navigator.clipboard.writeText(text)
+        .then(()=> alert('Estructura copiada al portapapeles.'))
+        .catch(()=> alert('No se pudo copiar la estructura.'));
+}
+
+function runBulk(){
+    hideAlert();
+    const urlsRaw = document.getElementById('manualUrls').value.trim();
+    if (!urlsRaw) {
+        showAlert('Introduce al menos una URL en el laboratorio.');
+        return;
+    }
+
+    let urls = urlsRaw.split('\n')
+        .map(u => u.trim())
+        .filter(u => u);
+
+    if (!urls.length){
+        showAlert('No se han detectado URLs válidas.');
+        return;
+    }
+
+    // Quitar duplicados
+    urls = Array.from(new Set(urls));
+
+    const resDiv  = document.getElementById('bulkResults'); 
+    const bulkBtn = document.getElementById('bulkBtn');
+
+    bulkBtn.disabled = true;
+    bulkBtn.innerText = 'Analizando...';
+    resDiv.innerHTML = '<div class="text-center small">Cargando...</div>';
+
+    fetch('/seo/analyze_bulk', {
+        method:'POST', 
+        headers:{'Content-Type':'application/json'}, 
+        body:JSON.stringify({urls:urls})
+    })
+    .then(r=>r.json())
+    .then(d=>{
+        lastBulkResults = d.data || [];
+        resDiv.innerHTML = lastBulkResults.map(i=>{
+            const headings = (i.headings || []).slice(0, 10).map(h => `
+                <div class="small mb-1">
+                    <span class="badge bg-light text-dark me-1">${h.tag}</span>
+                    ${h.text}
+                </div>
+            `).join('') || '<div class="small text-muted">Sin encabezados (H1–H3) detectados.</div>';
+
+            const entities = (i.entities || []).slice(0, 15).join(', ') || '—';
+
+            return `
+            <div class="col-md-6 mb-3">
+                <div class="card h-100">
+                    <div class="card-header small text-truncate bg-dark text-white" title="${i.url}">
+                        ${i.url}
+                    </div>
+                    <div class="card-body p-2">
+                        <div class="small mb-1">
+                            <strong>Title:</strong> ${i.title || '—'}
+                        </div>
+                        <div class="small mb-2">
+                            <strong>H1:</strong> ${i.h1 || '—'}
+                        </div>
+                        <div class="d-flex justify-content-center fw-bold mb-2 small">
+                            <span class="me-3">W: ${i.words}</span>
+                            <span>Img: ${i.imgs}</span>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <div class="small fw-bold mb-1">Headings (H1–H3)</div>
+                                <div class="structure-box" style="height:140px;">${headings}</div>
+                            </div>
+                            <div class="col-6">
+                                <div class="small fw-bold mb-1">Estructura texto</div>
+                                <div class="structure-box" style="height:140px;">${i.structure}</div>
+                            </div>
+                        </div>
+                        <div class="small mt-2">
+                            <strong>Entidades:</strong> ${entities}
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+    })
+    .catch(()=>{
+        showAlert('Error analizando las URLs del laboratorio.');
+    })
+    .finally(()=>{
+        bulkBtn.disabled = false;
+        bulkBtn.innerText = '🕵️ Analizar';
+    });
+}
+
+// --- Helpers del laboratorio ---
+
+function exportBulkLab() {
+    if (!lastBulkResults || lastBulkResults.length === 0) {
+        showAlert('No hay datos para exportar. Analiza algunas URLs primero.');
+        return;
+    }
+
+    const headers = ["URL", "Title", "H1", "Words", "Images", "Headings (H1-H3)", "Entities"];
+    const rows = [];
+    rows.push(headers.map(h => `"${h}"`).join(','));
+
+    lastBulkResults.forEach(i => {
+        const url = (i.url || '').replace(/"/g, '""');
+        const title = (i.title || '').replace(/"/g, '""');
+        const h1 = (i.h1 || '').replace(/"/g, '""');
+        const words = i.words || 0;
+        const imgs = i.imgs || 0;
+
+        const headingsText = (i.headings || []).map(h => `${h.tag}: ${h.text}`).join('\n').replace(/"/g, '""');
+        const entitiesText = (i.entities || []).join(', ').replace(/"/g, '""');
+
+        const row = [
+            `"${url}"`,
+            `"${title}"`,
+            `"${h1}"`,
+            words,
+            imgs,
+            `"${headingsText}"`,
+            `"${entitiesText}"`
+        ];
+        rows.push(row.join(','));
+    });
+
+    const csvContent = rows.join('\n');
+    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'laboratorio_resultados.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+}
+
+function clearLab(){
+    document.getElementById('manualUrls').value = '';
+    document.getElementById('bulkResults').innerHTML = '';
+}
+
+function fillSampleUrls(){
+    const sample = [
+        'https://www.wikipedia.org/',
+        'https://www.python.org/',
+        'https://www.mozilla.org/'
+    ].join('\n');
+    document.getElementById('manualUrls').value = sample;
+}
+
+function pasteFromClipboard(){
+    if (!navigator.clipboard || !navigator.clipboard.readText) {
+        alert('El portapapeles no está disponible en este navegador.');
+        return;
+    }
+    navigator.clipboard.readText()
+        .then(text => {
+            if (!text) return;
+            const textarea = document.getElementById('manualUrls');
+            textarea.value = text;
+        })
+        .catch(() => {
+            alert('No se ha podido leer del portapapeles.');
+        });
+}
+</script>
+{% endblock %}

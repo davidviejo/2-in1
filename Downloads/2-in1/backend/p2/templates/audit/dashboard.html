@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Auditor{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2 class="mb-4">🕸️ Auditor Técnico</h2>
+    <div class="card p-4 mb-4">
+        <div class="input-group">
+            <input type="text" id="sitemapUrl" class="form-control" placeholder="https://miweb.com/sitemap.xml">
+            <button class="btn btn-dark" onclick="startAudit()">Escanear</button>
+        </div>
+    </div>
+    <div id="loading" style="display:none;" class="text-center py-5"><div class="spinner-border"></div></div>
+    <div id="resultsArea" style="display:none;">
+        <button class="btn btn-success mb-2" onclick="downloadExcel()">Descargar Excel</button>
+        <div class="table-responsive border rounded" style="max-height:600px; overflow-y: auto;">
+            <table class="table table-hover table-sm mb-0 small"><thead class="table-dark sticky-top"><tr><th>Status</th><th>URL</th><th>H1</th><th>Words</th><th>Notas</th></tr></thead><tbody id="tableBody"></tbody></table>
+        </div>
+    </div>
+</div>
+<script>
+let currentData=[];
+function startAudit(){
+    const url=document.getElementById('sitemapUrl').value;
+    document.getElementById('loading').style.display='block';
+    document.getElementById('resultsArea').style.display='none';
+    const fd=new FormData(); fd.append('sitemap_url', url);
+    fetch('/api/v1/audit/scan', {method:'POST', body:fd}).then(r=>r.json()).then(d=>{
+        document.getElementById('loading').style.display='none';
+        currentData=d.data;
+        let html='';
+        d.data.forEach(r=>{
+            html+=`<tr><td>${r.status}</td><td>${r.url}</td><td>${r.h1}</td><td>${r.words}</td><td>${r.notes.join(', ')}</td></tr>`;
+        });
+        document.getElementById('tableBody').innerHTML=html;
+        document.getElementById('resultsArea').style.display='block';
+    });
+}
+function downloadExcel(){
+    fetch('/api/v1/audit/download_report', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({data:currentData})})
+    .then(r=>r.blob()).then(b=>{const u=window.URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download="audit.xlsx"; a.click();});
+}
+</script>
+{% endblock %}

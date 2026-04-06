@@ -1,0 +1,270 @@
+{% extends "base.html" %}
+
+{% block title %}Configuración Centralizada{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-bold text-slate-800 flex items-center gap-3">
+                <i class="fas fa-sliders-h text-purple-600"></i>
+                Configuración & IA
+            </h1>
+            <p class="text-slate-500 text-sm mt-1">Administra tus modelos de IA, credenciales y preferencias del sistema.</p>
+        </div>
+        <button onclick="saveAllSettings()" class="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 text-sm flex items-center gap-2">
+            <i class="fas fa-save"></i> Guardar Todo
+        </button>
+    </div>
+
+    <!-- Tabs Navigation -->
+    <div class="flex space-x-1 bg-slate-200 p-1 rounded-xl mb-6 w-fit">
+        <button onclick="switchTab('ai')" id="tab-btn-ai" class="px-5 py-2 rounded-lg text-sm font-bold transition-all bg-white text-slate-800 shadow-sm flex items-center gap-2">
+            <i class="fas fa-robot text-purple-500"></i> Modelos IA
+        </button>
+        <button onclick="switchTab('api')" id="tab-btn-api" class="px-5 py-2 rounded-lg text-sm font-bold text-slate-600 hover:bg-white/50 transition-all flex items-center gap-2">
+            <i class="fas fa-key text-blue-500"></i> APIs & Credenciales
+        </button>
+        <button onclick="switchTab('system')" id="tab-btn-system" class="px-5 py-2 rounded-lg text-sm font-bold text-slate-600 hover:bg-white/50 transition-all flex items-center gap-2">
+            <i class="fas fa-memory text-green-500"></i> Memoria & Sistema
+        </button>
+    </div>
+
+    <!-- TAB 1: AI Models -->
+    <div id="tab-ai" class="tab-content">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <!-- Selector de Modelo -->
+            <div class="md:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                <h3 class="text-lg font-bold text-slate-800 mb-4">Modelo Predeterminado</h3>
+                <div class="grid grid-cols-1 gap-3">
+                    {% for m in models %}
+                    <label class="relative flex items-start p-4 border rounded-xl cursor-pointer hover:bg-slate-50 transition-colors {% if settings.default_model == m.id %}border-purple-500 bg-purple-50 ring-1 ring-purple-500{% else %}border-slate-200{% endif %}">
+                        <input type="radio" name="default_model" value="{{ m.id }}" class="mt-1 mr-3" {% if settings.default_model == m.id %}checked{% endif %}>
+                        <div class="flex-1">
+                            <div class="flex justify-between items-center">
+                                <span class="font-bold text-slate-800">{{ m.name }}</span>
+                                <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 border border-slate-300">{{ m.provider }}</span>
+                            </div>
+                            <p class="text-xs text-slate-500 mt-1">{{ m.specialty }}</p>
+                        </div>
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Privacidad y Keys IA -->
+            <div class="md:col-span-1 space-y-6">
+                <!-- Privacy Toggle -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h3 class="text-lg font-bold text-slate-800 mb-3 flex items-center gap-2">
+                        <i class="fas fa-user-secret text-slate-800"></i> Privacidad
+                    </h3>
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm text-slate-600">Modo Alta Privacidad</span>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input cursor-pointer" type="checkbox" id="input_privacy_mode" {% if settings.privacy_mode %}checked{% endif %}>
+                        </div>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-2">Evita guardar logs detallados de tus interacciones.</p>
+                </div>
+
+                <!-- OpenAI & Anthropic Keys -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h3 class="text-lg font-bold text-slate-800 mb-4">Llaves IA (Opcional)</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 uppercase mb-1">OpenAI Key</label>
+                            <input type="password" id="input_openai_key" value="{{ settings.openai_key or '' }}" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-purple-500 transition-colors" placeholder="sk-...">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Anthropic Key</label>
+                            <input type="password" id="input_anthropic_key" value="{{ settings.anthropic_key or '' }}" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-purple-500 transition-colors" placeholder="sk-ant-...">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 2: APIs & Credenciales -->
+    <div id="tab-api" class="tab-content hidden">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- DataForSEO -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-10 h-10 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center text-xl"><i class="fas fa-database"></i></div>
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-800">DataForSEO</h3>
+                        <p class="text-xs text-slate-500">Proveedor principal de datos SERP.</p>
+                    </div>
+                </div>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Login / Email</label>
+                        <input type="text" id="input_dfs_login" value="{{ settings.dataforseo_login or '' }}" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500 transition-colors">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Password</label>
+                        <input type="password" id="input_dfs_pass" value="{{ settings.dataforseo_password or '' }}" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500 transition-colors">
+                    </div>
+                </div>
+            </div>
+
+            <!-- SerpApi -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-10 h-10 rounded-lg bg-orange-100 text-orange-600 flex items-center justify-center text-xl"><i class="fab fa-google"></i></div>
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-800">SerpApi</h3>
+                        <p class="text-xs text-slate-500">Búsquedas en Google en tiempo real.</p>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">API Key</label>
+                    <input type="password" id="input_serpapi_key" value="{{ settings.serpapi_key or '' }}" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-orange-500 transition-colors" placeholder="Pegar SerpApi Key aquí...">
+                </div>
+            </div>
+
+            <!-- Motor SERP por defecto -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 md:col-span-2">
+                <h3 class="text-lg font-bold text-slate-800 mb-4">Proveedor SERP por defecto</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Proveedor</label>
+                        <select id="input_serp_provider" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-indigo-500 transition-colors">
+                            <option value="dataforseo" {% if settings.serp_provider == 'dataforseo' %}selected{% endif %}>DataForSEO</option>
+                            <option value="auto" {% if settings.serp_provider == 'auto' %}selected{% endif %}>Auto</option>
+                            <option value="serpapi" {% if settings.serp_provider == 'serpapi' %}selected{% endif %}>SerpApi</option>
+                            <option value="google_official" {% if settings.serp_provider == 'google_official' %}selected{% endif %}>Google official</option>
+                            <option value="google_scraping" {% if settings.serp_provider == 'google_scraping' %}selected{% endif %}>Scraping</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Google CSE API Key</label>
+                        <input type="password" id="input_google_cse_key" value="{{ settings.google_cse_key or '' }}" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-indigo-500 transition-colors" placeholder="AIza...">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Google CSE CX</label>
+                        <input type="text" id="input_google_cse_cx" value="{{ settings.google_cse_cx or '' }}" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-indigo-500 transition-colors" placeholder="Custom Search Engine ID">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Cookie para scraping</label>
+                        <input type="password" id="input_scraping_cookie" value="{{ settings.scraping_cookie or '' }}" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-indigo-500 transition-colors" placeholder="CONSENT=...">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 3: Memoria & Sistema -->
+    <div id="tab-system" class="tab-content hidden">
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 max-w-3xl">
+            <h3 class="text-lg font-bold text-slate-800 mb-6 border-b border-slate-100 pb-2">Configuración del Sistema</h3>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-2">Límite de Memoria (Tokens)</label>
+                    <select id="input_memory_limit" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-green-500">
+                        <option value="4096" {% if settings.memory_limit == 4096 %}selected{% endif %}>4,096 (Estándar)</option>
+                        <option value="8192" {% if settings.memory_limit == 8192 %}selected{% endif %}>8,192 (Extendido)</option>
+                        <option value="16384" {% if settings.memory_limit == 16384 %}selected{% endif %}>16,384 (Largo Plazo)</option>
+                        <option value="32768" {% if settings.memory_limit == 32768 %}selected{% endif %}>32,768 (Máximo)</option>
+                    </select>
+                    <p class="text-xs text-slate-500 mt-2">Define el tamaño de la ventana de contexto para el historial de chat.</p>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-2">System Prompt Global</label>
+                    <textarea id="input_system_prompt" rows="5" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:border-green-500 transition-colors" placeholder="Instrucciones base para la IA...">{{ settings.system_prompt or '' }}</textarea>
+                    <p class="text-xs text-slate-500 mt-2">Instrucciones que se inyectarán en todas las interacciones con la IA.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Tab Logic
+    function switchTab(tab) {
+        // Hide all tabs
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+
+        // Reset buttons
+        document.querySelectorAll('[id^="tab-btn-"]').forEach(el => {
+            el.classList.remove('bg-white', 'text-slate-800', 'shadow-sm');
+            el.classList.add('text-slate-600', 'hover:bg-white/50');
+        });
+
+        // Show active tab
+        document.getElementById('tab-' + tab).classList.remove('hidden');
+
+        // Highlight active button
+        const btn = document.getElementById('tab-btn-' + tab);
+        btn.classList.remove('text-slate-600', 'hover:bg-white/50');
+        btn.classList.add('bg-white', 'text-slate-800', 'shadow-sm');
+    }
+
+    // Save Logic
+    function saveAllSettings() {
+        const btn = document.querySelector('button[onclick="saveAllSettings()"]');
+        const originalContent = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Guardando...';
+        btn.disabled = true;
+
+        // Get selected radio for default model
+        const selectedModel = document.querySelector('input[name="default_model"]:checked');
+
+        const payload = {
+            default_model: selectedModel ? selectedModel.value : 'default',
+            privacy_mode: document.getElementById('input_privacy_mode').checked ? 1 : 0,
+            openai_key: document.getElementById('input_openai_key').value,
+            anthropic_key: document.getElementById('input_anthropic_key').value,
+            dataforseo_login: document.getElementById('input_dfs_login').value,
+            dataforseo_password: document.getElementById('input_dfs_pass').value,
+            serpapi_key: document.getElementById('input_serpapi_key').value,
+            serp_provider: document.getElementById('input_serp_provider').value,
+            google_cse_key: document.getElementById('input_google_cse_key').value,
+            google_cse_cx: document.getElementById('input_google_cse_cx').value,
+            scraping_cookie: document.getElementById('input_scraping_cookie').value,
+            memory_limit: document.getElementById('input_memory_limit').value,
+            system_prompt: document.getElementById('input_system_prompt').value
+        };
+
+        fetch('/api/settings/update', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        })
+        .then(r => r.json())
+        .then(d => {
+            btn.innerHTML = '<i class="fas fa-check"></i> Guardado!';
+            setTimeout(() => {
+                btn.innerHTML = originalContent;
+                btn.disabled = false;
+            }, 2000);
+
+            // Optional: Show toast or alert
+            // alert('Configuración guardada correctamente.');
+        })
+        .catch(e => {
+            console.error(e);
+            btn.innerHTML = '<i class="fas fa-times"></i> Error';
+            btn.classList.remove('bg-blue-600');
+            btn.classList.add('bg-red-600');
+
+            setTimeout(() => {
+                btn.innerHTML = originalContent;
+                btn.disabled = false;
+                btn.classList.add('bg-blue-600');
+                btn.classList.remove('bg-red-600');
+            }, 3000);
+
+            alert('Error al guardar configuración.');
+        });
+    }
+</script>
+{% endblock %}

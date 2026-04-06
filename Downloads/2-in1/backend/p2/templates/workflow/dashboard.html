@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <div class="d-flex justify-content-between align-items-center mb-5">
+        <div>
+            <h2 class="fw-bold text-dark">🧪 Workflow Maestro SEO</h2>
+            <p class="text-muted mb-0">Metodología: <span class="badge bg-dark">50 / 20 / 20 / 10</span></p>
+        </div>
+        <button class="btn btn-outline-secondary btn-sm" onclick="location.reload()">Refrescar</button>
+    </div>
+
+    <div id="workflowContainer" class="row g-4">
+        <div class="col-12 text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() { loadWorkflow(); });
+    async function loadWorkflow() {
+        try {
+            const res = await fetch('/api/v1/workflow/data');
+            const data = await res.json();
+            renderWorkflow(data);
+        } catch (error) { console.error(error); }
+    }
+    function renderWorkflow(phases) {
+        const container = document.getElementById('workflowContainer');
+        container.innerHTML = '';
+        phases.forEach(phase => {
+            let stepsHtml = '';
+            phase.steps.forEach(step => {
+                stepsHtml += `
+                    <a href="${step.url}" class="list-group-item list-group-item-action d-flex align-items-center p-3 border-0 border-bottom">
+                        <div class="me-3 text-${phase.color}" style="font-size: 1.2rem; width: 30px;"><i class="fas ${step.icon}"></i></div>
+                        <div class="flex-grow-1"><h6 class="mb-0 fw-bold text-dark">${step.name}</h6><small class="text-muted">${step.desc}</small></div>
+                        <div><i class="fas fa-chevron-right text-muted opacity-50"></i></div>
+                    </a>`;
+            });
+            container.innerHTML += `
+                <div class="col-xl-3 col-md-6">
+                    <div class="card h-100 shadow-sm border-top border-4 border-${phase.color}">
+                        <div class="card-header bg-white py-3">
+                            <h5 class="m-0 fw-bold text-${phase.color}">${phase.phase}</h5>
+                            <small class="text-muted">${phase.desc}</small>
+                        </div>
+                        <div class="list-group list-group-flush">${stepsHtml}</div>
+                    </div>
+                </div>`;
+        });
+    }
+</script>
+{% endblock %}

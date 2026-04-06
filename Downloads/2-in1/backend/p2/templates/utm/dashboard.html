@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}UTM{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>🏷️ UTM Builder</h2>
+    <input id="s" class="form-control mb-1" placeholder="Source">
+    <input id="m" class="form-control mb-1" placeholder="Medium">
+    <input id="c" class="form-control mb-1" placeholder="Campaign">
+    <textarea id="u" class="form-control mb-2" rows="5" placeholder="URLs"></textarea>
+    <button onclick="run()" class="btn btn-dark">Tag</button>
+    <textarea id="out" class="form-control mt-3" rows="10"></textarea>
+</div>
+<script>
+function run(){
+    fetch('/api/v1/utm/generate', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({
+        urls:document.getElementById('u').value, source:document.getElementById('s').value,
+        medium:document.getElementById('m').value, campaign:document.getElementById('c').value
+    })}).then(r=>r.json()).then(d=>{ document.getElementById('out').value = d.urls.join('\n'); });
+}
+</script>
+{% endblock %}

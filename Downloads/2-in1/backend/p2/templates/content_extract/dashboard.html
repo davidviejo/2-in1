@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Extract{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>📄 AI Prep</h2>
+    <textarea id="u" class="form-control mb-2" rows="5"></textarea>
+    <button onclick="run()" class="btn btn-dark">Extraer Markdown</button>
+    <textarea id="out" class="form-control mt-3 bg-light font-monospace" rows="15"></textarea>
+</div>
+<script>
+function run(){
+    fetch('/api/v1/extract/run', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({urls:document.getElementById('u').value.split('\n')})})
+    .then(r=>r.json()).then(d=>{ document.getElementById('out').value = d.combined; });
+}
+</script>
+{% endblock %}

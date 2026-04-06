@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}KW Intent{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2 class="mb-4">🧠 Keyword Intent Classifier</h2>
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card shadow-sm p-4 border-0 h-100">
+                <label class="fw-bold">Keywords:</label>
+                <textarea id="kwInput" class="form-control mb-3" rows="12"></textarea>
+                <button class="btn btn-primary w-100 fw-bold" onclick="runIntent()">Clasificar</button>
+            </div>
+        </div>
+        <div class="col-md-8">
+            <div id="resultsArea" style="display:none;">
+                <div class="row text-center mb-3 g-2">
+                    <div class="col"><div class="p-2 bg-success text-white rounded small">Transaccional<br><strong id="sTrans">0</strong></div></div>
+                    <div class="col"><div class="p-2 bg-primary text-white rounded small">Comercial<br><strong id="sComm">0</strong></div></div>
+                    <div class="col"><div class="p-2 bg-info text-dark rounded small">Info<br><strong id="sInfo">0</strong></div></div>
+                    <div class="col"><div class="p-2 bg-warning text-dark rounded small">Nav<br><strong id="sNav">0</strong></div></div>
+                </div>
+                <button class="btn btn-success btn-sm mb-2" onclick="downloadExcel()">Descargar Excel</button>
+                <div class="card shadow-sm border-0">
+                    <div class="table-responsive" style="max-height: 500px;">
+                        <table class="table table-hover align-middle mb-0 small"><tbody id="tableBody"></tbody></table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+let currentData = [];
+function runIntent(){
+    const kws = document.getElementById('kwInput').value;
+    fetch('/api/v1/kw_intent/classify', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({keywords:kws})})
+    .then(r=>r.json()).then(d=>{
+        currentData = d.data;
+        document.getElementById('sTrans').innerText = d.stats.trans;
+        document.getElementById('sComm').innerText = d.stats.comm;
+        document.getElementById('sInfo').innerText = d.stats.info;
+        document.getElementById('sNav').innerText = d.stats.nav;
+        let html = '';
+        d.data.forEach(r=>{ html += `<tr><td class="fw-bold">${r.keyword}</td><td class="text-center"><span class="badge bg-${r.color}">${r.intent}</span></td></tr>`; });
+        document.getElementById('tableBody').innerHTML = html;
+        document.getElementById('resultsArea').style.display='block';
+    });
+}
+function downloadExcel(){
+    fetch('/api/v1/kw_intent/download', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({data:currentData})})
+    .then(r=>r.blob()).then(blob=>{ const url = window.URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download="intent.xlsx"; document.body.appendChild(a); a.click(); a.remove(); });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid">
+    <h2>🗺️ Sitemap Crawler</h2>
+    <input id="u" class="form-control mb-2" placeholder="https://miweb.com">
+    <button onclick="run()" class="btn btn-primary">Rastrear</button>
+    <div id="res" class="mt-3"></div>
+</div>
+<script>
+let urls=[];
+function run(){
+    fetch('/api/v1/crawler/run', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url:document.getElementById('u').value})})
+    .then(r=>r.json()).then(d=>{
+        urls=d.urls;
+        document.getElementById('res').innerHTML = `<p>Encontradas: ${d.count}</p><textarea class="form-control" rows="10">${d.urls.join('\n')}</textarea><button onclick="dl()" class="btn btn-success mt-2">XML</button>`;
+    });
+}
+function dl(){
+    fetch('/api/v1/crawler/download_xml', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({urls:urls})})
+    .then(r=>r.blob()).then(b=>{const u=window.URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download="sitemap.xml";a.click();});
+}
+</script>
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Health{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>🚑 Link Health</h2>
+    <input id="u" class="form-control mb-2" placeholder="URL a auditar">
+    <button onclick="run()" class="btn btn-danger">Escanear Enlaces</button>
+    <div id="res" class="mt-3 table-responsive"><table class="table table-sm"><tbody id="tb"></tbody></table></div>
+</div>
+<script>
+function run(){
+    fetch('/api/v1/health/scan', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url:document.getElementById('u').value})})
+    .then(r=>r.json()).then(d=>{
+        let h = '';
+        d.data.sort((a,b)=>a.status=='Err'? -1 : 1).forEach(i=>{
+            let c = i.status===200?'bg-success':'bg-danger';
+            h += `<tr><td>${i.url}</td><td><span class="badge ${c}">${i.status}</span></td></tr>`;
+        });
+        document.getElementById('tb').innerHTML = h;
+    });
+}
+</script>
+{% endblock %}

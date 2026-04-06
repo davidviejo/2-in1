@@ -1,0 +1,877 @@
+{% extends "base.html" %}
+
+{% block title %}Trends Dashboard | MediaFlow SEO Suite{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 px-lg-4 py-4">
+  <style>
+    .tm-shell {
+      min-height: calc(100vh - 120px);
+      background: #f8fafc;
+      border-radius: 24px;
+      overflow: hidden;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.6);
+    }
+    .tm-app {
+      display: flex;
+      min-height: calc(100vh - 120px);
+    }
+    .tm-sidebar {
+      width: 272px;
+      background: linear-gradient(180deg, #0f172a 0%, #111827 100%);
+      color: #cbd5e1;
+      padding: 1.5rem 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      box-shadow: 18px 0 36px rgba(15, 23, 42, 0.12);
+      z-index: 2;
+    }
+    .tm-brand {
+      padding: .5rem .75rem 1rem;
+      border-bottom: 1px solid rgba(148,163,184,.15);
+    }
+    .tm-brand-title {
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+      color: #fff;
+      font-weight: 700;
+      font-size: 1.1rem;
+    }
+    .tm-brand-mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      background: #2563eb;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-weight: 800;
+      font-size: .8rem;
+    }
+    .tm-nav-btn {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+      border: 0;
+      background: transparent;
+      color: #94a3b8;
+      padding: .95rem 1rem;
+      border-radius: 14px;
+      text-align: left;
+      font-weight: 600;
+      transition: .18s ease;
+    }
+    .tm-nav-btn:hover,
+    .tm-nav-btn.active {
+      background: #2563eb;
+      color: #fff;
+      box-shadow: 0 10px 24px rgba(37,99,235,.28);
+    }
+    .tm-system-box {
+      margin-top: auto;
+      background: rgba(30,41,59,.75);
+      border: 1px solid rgba(148,163,184,.12);
+      border-radius: 16px;
+      padding: .95rem;
+      font-size: .84rem;
+    }
+    .tm-main {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      background: #f8fafc;
+    }
+    .tm-header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(255,255,255,.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid #e2e8f0;
+      padding: 1.25rem 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+    }
+    .tm-header-actions { display:flex; gap:.75rem; align-items:center; }
+    .tm-content { padding: 1.5rem; }
+    .tm-view { display: none; }
+    .tm-view.active { display: block; }
+    .tm-card {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 18px;
+      box-shadow: 0 8px 24px rgba(15,23,42,.05);
+    }
+    .tm-hero {
+      background: linear-gradient(135deg,#0f172a 0%,#1d4ed8 62%,#0ea5e9 100%);
+      color: #fff;
+      padding: 1.5rem;
+      border-radius: 20px;
+      overflow: hidden;
+      position: relative;
+    }
+    .tm-hero::after {
+      content: "";
+      position: absolute;
+      width: 280px;
+      height: 280px;
+      border-radius: 999px;
+      right: -90px;
+      top: -110px;
+      background: rgba(255,255,255,.08);
+    }
+    .tm-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: .35rem;
+      border-radius: 999px;
+      padding: .35rem .7rem;
+      font-size: .75rem;
+      font-weight: 700;
+      border: 1px solid transparent;
+    }
+    .tm-chip-neutral { background:#f1f5f9; color:#475569; }
+    .tm-chip-live { background:rgba(255,255,255,.14); color:#fff; border-color:rgba(255,255,255,.16); }
+    .tm-chip-p1 { background:#fee2e2; color:#b91c1c; }
+    .tm-chip-p2 { background:#fef3c7; color:#b45309; }
+    .tm-chip-p3 { background:#dbeafe; color:#1d4ed8; }
+    .tm-chip-discard { background:#e2e8f0; color:#475569; }
+    .tm-btn-primary,
+    .tm-btn-secondary {
+      border: 0;
+      border-radius: 12px;
+      padding: .78rem 1rem;
+      font-weight: 600;
+      transition: .18s ease;
+    }
+    .tm-btn-primary { background:#2563eb; color:#fff; }
+    .tm-btn-primary:hover:not(:disabled) { background:#1d4ed8; }
+    .tm-btn-secondary { background:#eef2ff; color:#334155; }
+    .tm-btn-primary:disabled { opacity:.7; cursor:not-allowed; }
+    .tm-stat-grid { display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:1rem; }
+    .tm-stat-card { padding:1.1rem; display:flex; gap:1rem; align-items:center; }
+    .tm-stat-icon {
+      width:48px; height:48px; border-radius:14px; display:inline-flex; align-items:center; justify-content:center;
+      font-size:1.1rem;
+    }
+    .tm-section-title { font-size:.78rem; letter-spacing:.08em; text-transform:uppercase; font-weight:700; color:#64748b; }
+    .tm-chart-row { display:grid; grid-template-columns: 1.1fr .9fr; gap:1rem; margin-top:1rem; }
+    .tm-bar-list { display:flex; flex-direction:column; gap:1rem; }
+    .tm-bar-track { height:10px; border-radius:999px; background:#e2e8f0; overflow:hidden; }
+    .tm-bar-fill { height:100%; background:linear-gradient(90deg,#3b82f6,#0ea5e9); }
+    .tm-table thead th { background:#f8fafc; color:#64748b; text-transform:uppercase; font-size:.74rem; letter-spacing:.05em; }
+    .tm-rank {
+      width:2rem; height:2rem; border-radius:999px; background:#eff6ff; color:#2563eb; font-weight:700;
+      display:inline-flex; align-items:center; justify-content:center;
+    }
+    .tm-table-wrap { overflow:auto; }
+    .tm-empty { padding:3rem 1.5rem; text-align:center; color:#64748b; }
+    .tm-empty-icon {
+      width:64px; height:64px; border-radius:999px; background:#eff6ff; color:#2563eb;
+      display:inline-flex; align-items:center; justify-content:center; font-size:1.4rem; margin-bottom:1rem;
+    }
+    .tm-loader {
+      width:40px;height:40px;border:4px solid #dbeafe;border-top-color:#2563eb;border-radius:999px;animation:tmSpin .8s linear infinite;
+    }
+    @keyframes tmSpin { to { transform: rotate(360deg);} }
+    .tm-brief-list { display:flex; flex-direction:column; gap:1rem; }
+    .tm-brief-card { padding:1.25rem; }
+    .tm-discard-list > * + * { border-top:1px solid #f1f5f9; }
+    .tm-discard-item { padding:1rem; }
+    .tm-form-control {
+      width:100%; border:1px solid #cbd5e1; border-radius:12px; padding:.8rem .9rem; background:#fff;
+    }
+    .tm-form-control:focus { outline:none; border-color:#60a5fa; box-shadow:0 0 0 .2rem rgba(59,130,246,.14); }
+    .tm-settings-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:1rem; }
+    .tm-settings-box { padding:1.25rem; }
+    .tm-log {
+      background:#0f172a;color:#7dd3fc;border-radius:16px;padding:1rem;max-height:240px;overflow:auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size:.84rem;
+    }
+    .tm-log-entry + .tm-log-entry { margin-top:.5rem; padding-top:.5rem; border-top:1px solid rgba(148,163,184,.12); }
+    .tm-source-pill {
+      display:inline-flex; padding:.35rem .65rem; border-radius:999px; border:1px solid #e2e8f0; background:#fff; font-size:.75rem; font-weight:600; margin:.15rem;
+    }
+    @media (max-width: 1200px) {
+      .tm-stat-grid, .tm-chart-row, .tm-settings-grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 991px) {
+      .tm-app { flex-direction: column; }
+      .tm-sidebar { width: 100%; }
+      .tm-stat-grid, .tm-chart-row, .tm-settings-grid { grid-template-columns: 1fr; }
+      .tm-header { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+
+  <div class="tm-shell">
+    <div class="tm-app">
+      <aside class="tm-sidebar">
+        <div class="tm-brand">
+          <div class="tm-brand-title">
+            <span class="tm-brand-mark">E3</span>
+            <span>Eco3 Automator</span>
+          </div>
+          <div class="small text-secondary mt-2">Editorial Automation v1.0</div>
+        </div>
+
+        <div class="d-grid gap-2">
+          <button class="tm-nav-btn active" data-view="dashboardView"><i class="fas fa-chart-pie"></i><span>Dashboard</span></button>
+          <button class="tm-nav-btn" data-view="briefView"><i class="fas fa-newspaper"></i><span>Generar Brief</span></button>
+          <button class="tm-nav-btn" data-view="settingsView"><i class="fas fa-sliders"></i><span>Configuración</span></button>
+        </div>
+
+        <div class="tm-system-box">
+          <div class="fw-semibold text-white mb-2">Estado del Sistema</div>
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="tm-chip tm-chip-neutral" id="systemStatusChip"><i class="fas fa-circle"></i> Listo</span>
+          </div>
+          <div class="text-secondary small">Última ejecución</div>
+          <div class="text-white fw-semibold mt-1" id="sidebarLastRun">Pendiente</div>
+        </div>
+      </aside>
+
+      <main class="tm-main">
+        <header class="tm-header">
+          <div>
+            <h2 class="h4 fw-bold mb-1" id="headerTitle">Panel de Control</h2>
+            <p class="text-muted mb-0" id="headerSubtitle">Comunidad Valenciana • Noticias & Eventos</p>
+          </div>
+          <div class="tm-header-actions">
+            <button class="tm-btn-primary" id="headerRunBtn" onclick="startPipeline()">
+              <i class="fas fa-rotate me-2"></i><span id="headerRunText">Analizar SERPs</span>
+            </button>
+            <button class="tm-btn-secondary" onclick="switchView('settingsView')">
+              <i class="fas fa-gear"></i>
+            </button>
+          </div>
+        </header>
+
+        <div class="tm-content">
+          <section id="dashboardView" class="tm-view active">
+            <div class="tm-hero tm-card border-0 mb-4">
+              <div class="row g-4 align-items-center position-relative">
+                <div class="col-lg-7">
+                  <div class="d-flex flex-wrap gap-2 mb-3">
+                    <span class="tm-chip tm-chip-live"><i class="fas fa-broadcast-tower"></i> En tiempo real</span>
+                    <span class="tm-chip tm-chip-live"><i class="fas fa-layer-group"></i> Tendencias + brief + settings</span>
+                  </div>
+                  <h1 class="display-6 fw-bold mb-3">Radar editorial unificado para detectar tendencias y convertirlas en decisiones de contenidos.</h1>
+                  <p class="mb-0 text-white-50 fs-5">Migra el flujo de Tendencias-medios a una sola vista: dashboard, pipeline, brief editorial y configuración persistente.</p>
+                </div>
+                <div class="col-lg-5">
+                  <div class="row g-3">
+                    <div class="col-sm-6">
+                      <div class="p-3 rounded-4 border border-white border-opacity-10 bg-white bg-opacity-10 h-100">
+                        <div class="small text-uppercase text-white-50 fw-semibold mb-2">Mercado</div>
+                        <div class="fw-bold fs-2" id="heroGeo">{{ current_project.geo or 'ES' }}</div>
+                        <div class="small text-white-50 mt-2">País activo para el escaneo.</div>
+                      </div>
+                    </div>
+                    <div class="col-sm-6">
+                      <div class="p-3 rounded-4 border border-white border-opacity-10 bg-white bg-opacity-10 h-100">
+                        <div class="small text-uppercase text-white-50 fw-semibold mb-2">Resultados</div>
+                        <div class="fw-bold fs-2" id="heroCount">0</div>
+                        <div class="small text-white-50 mt-2">Clusters disponibles.</div>
+                      </div>
+                    </div>
+                    <div class="col-12">
+                      <div class="p-3 rounded-4 border border-white border-opacity-10 bg-white bg-opacity-10 h-100">
+                        <div class="small text-uppercase text-white-50 fw-semibold mb-2">Última ejecución</div>
+                        <div class="fw-bold fs-5" id="heroLastRun">Pendiente</div>
+                        <div class="small text-white-50 mt-2">Revisa el brief y vuelve a actualizar cuando cambie el contexto.</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="tm-stat-grid mb-4">
+              <div class="tm-card tm-stat-card"><div class="tm-stat-icon bg-primary-subtle text-primary"><i class="fas fa-layer-group"></i></div><div><div class="text-muted small">Fuentes Escaneadas</div><div class="fs-3 fw-bold" id="sourcesScanned">0</div></div></div>
+              <div class="tm-card tm-stat-card"><div class="tm-stat-icon bg-warning-subtle text-warning"><i class="fas fa-signal"></i></div><div><div class="text-muted small">Items Detectados</div><div class="fs-3 fw-bold" id="itemsFound">0</div></div></div>
+              <div class="tm-card tm-stat-card"><div class="tm-stat-icon bg-danger-subtle text-danger"><i class="fas fa-fire"></i></div><div><div class="text-muted small">Alta Prioridad (P1)</div><div class="fs-3 fw-bold" id="highPriority">0</div></div></div>
+              <div class="tm-card tm-stat-card"><div class="tm-stat-icon bg-success-subtle text-success"><i class="fas fa-check-circle"></i></div><div><div class="text-muted small">Filtrados / Baja prioridad</div><div class="fs-3 fw-bold" id="duplicatesRemoved">0</div></div></div>
+            </div>
+
+            <div class="tm-chart-row mb-4">
+              <div class="tm-card p-4">
+                <div class="d-flex justify-content-between align-items-center mb-4 gap-3">
+                  <div>
+                    <div class="tm-section-title">Tendencias de búsqueda</div>
+                    <h3 class="h5 fw-bold mb-0">Google Trends en tiempo real</h3>
+                  </div>
+                  <span class="tm-chip tm-chip-p1">En tiempo real</span>
+                </div>
+                <div id="trendsBars" class="tm-bar-list">
+                  <div class="text-muted small">No hay datos todavía. Ejecuta el pipeline.</div>
+                </div>
+              </div>
+
+              <div class="tm-card p-4">
+                <div class="d-flex justify-content-between align-items-center mb-3 gap-3">
+                  <div>
+                    <div class="tm-section-title">Pipeline</div>
+                    <h3 class="h5 fw-bold mb-0">Ejecución actual</h3>
+                  </div>
+                  <span class="tm-chip tm-chip-neutral" id="pipelineModeChip">Idle</span>
+                </div>
+                <div id="pipelineProgressWrap" class="d-none mb-3">
+                  <div class="progress rounded-pill" style="height:12px;">
+                    <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" style="width:0%"></div>
+                  </div>
+                  <div class="small text-muted mt-2" id="statusText">Preparando...</div>
+                </div>
+                <div id="dashboardEmpty" class="tm-empty">
+                  <div class="tm-empty-icon"><i class="fas fa-play"></i></div>
+                  <p class="mb-3">Pipeline listo. Inicia el análisis para buscar tendencias, puntuarlas y generar un brief.</p>
+                  <button class="tm-btn-primary" onclick="startPipeline()"><i class="fas fa-play me-2"></i>Iniciar Pipeline</button>
+                </div>
+                <div id="dashboardLogWrap" class="d-none">
+                  <div class="tm-log" id="logContent"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="tm-card overflow-hidden">
+              <div class="px-4 py-3 border-bottom d-flex justify-content-between align-items-center bg-light-subtle gap-3">
+                <h3 class="h5 fw-bold mb-0">Últimas Noticias Detectadas</h3>
+                <span class="small text-muted" id="resultsCountText">0 clusters</span>
+              </div>
+              <div id="dashboardTableEmpty" class="tm-empty">
+                <div class="tm-empty-icon"><i class="fas fa-chart-line"></i></div>
+                <p class="mb-0">No hay datos analizados todavía.</p>
+              </div>
+              <div id="dashboardTableWrap" class="tm-table-wrap d-none">
+                <table class="table align-middle mb-0 tm-table">
+                  <thead>
+                    <tr>
+                      <th class="px-4 py-3">Prio</th>
+                      <th class="px-4 py-3">Score</th>
+                      <th class="px-4 py-3">Titular sugerido</th>
+                      <th class="px-4 py-3">Cluster</th>
+                      <th class="px-4 py-3">Fuente Top</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dashboardTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section id="briefView" class="tm-view">
+            <div id="briefLoading" class="tm-empty d-none">
+              <div class="d-flex justify-content-center mb-3"><div class="tm-loader"></div></div>
+              <h3 class="h4 fw-bold">Analizando con IA editorial...</h3>
+              <p class="text-muted" id="briefLoadingText">Procesando datos...</p>
+            </div>
+
+            <div id="briefEmpty" class="tm-empty">
+              <div class="tm-empty-icon"><i class="fas fa-rotate"></i></div>
+              <h2 class="h3 fw-bold mb-2">Generador de Briefs</h2>
+              <p class="text-muted mb-4">Pipeline listo. Inicia el análisis para buscar noticias en tiempo real, agruparlas y puntuarlas.</p>
+              <button class="tm-btn-primary" onclick="startPipeline()"><i class="fas fa-play me-2"></i>Iniciar Pipeline</button>
+            </div>
+
+            <div id="briefContentWrap" class="d-none">
+              <div class="tm-card p-4 mb-4 d-flex justify-content-between align-items-center gap-3">
+                <div>
+                  <h2 class="h5 fw-bold mb-1"><span class="text-success me-2">●</span>Brief Generado</h2>
+                  <p class="text-muted small mb-0"><span id="briefMetaText">0 clusters</span></p>
+                </div>
+                <button class="tm-btn-primary" onclick="sendToEditorial()"><i class="fas fa-paper-plane me-2"></i>Enviar a Redacción</button>
+              </div>
+
+              <div class="row g-4">
+                <div class="col-lg-8">
+                  <div class="tm-brief-list" id="briefList"></div>
+                </div>
+                <div class="col-lg-4">
+                  <div class="tm-card p-4 mb-4">
+                    <div class="tm-section-title">Resumen</div>
+                    <h3 class="h5 fw-bold mb-3">Estado del brief</h3>
+                    <div class="d-grid gap-3">
+                      <div><div class="small text-muted">Clusters totales</div><div class="fw-bold fs-3" id="briefTotal">0</div></div>
+                      <div><div class="small text-muted">Temas prioritarios</div><div class="fw-bold fs-3" id="briefPriority">0</div></div>
+                      <div><div class="small text-muted mb-2">Fuentes objetivo</div><div id="briefSources">Sin configurar</div></div>
+                    </div>
+                  </div>
+                  <div class="tm-card p-4">
+                    <div class="tm-section-title">Descartados</div>
+                    <h3 class="h5 fw-bold mb-3">Parking editorial</h3>
+                    <div id="discardList" class="tm-discard-list text-muted small">Todavía no hay items descartados.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section id="settingsView" class="tm-view">
+            <div class="tm-settings-grid">
+              <div class="tm-card tm-settings-box">
+                <h3 class="h5 fw-bold mb-4"><i class="fas fa-sliders text-primary me-2"></i>Estrategia base</h3>
+                <label class="form-label fw-semibold mt-3">País por defecto</label>
+                <input id="settingsGeo" class="tm-form-control" maxlength="2" placeholder="ES, US, MX...">
+                <label class="form-label fw-semibold mt-3">Categoría por defecto</label>
+                <select id="settingsCategory" class="tm-form-control">
+                  <option value="h">General</option>
+                  <option value="b">Economía / Negocios</option>
+                  <option value="m">Salud</option>
+                  <option value="t">Ciencia / Tecnología</option>
+                  <option value="s">Deportes</option>
+                  <option value="e">Entretenimiento</option>
+                </select>
+                <details class="mt-3">
+                  <summary class="small fw-semibold text-warning">Override avanzado DataForSEO (opcional)</summary>
+                  <label class="form-label fw-semibold mt-3">DataForSEO Login</label>
+                  <input id="settingsLogin" class="tm-form-control" placeholder="Solo para override puntual">
+                  <label class="form-label fw-semibold mt-3">DataForSEO Password</label>
+                  <input id="settingsPassword" type="password" class="tm-form-control" placeholder="Solo para override puntual">
+                  <div class="small text-muted mt-2">Para el flujo normal, configura credenciales en Ajustes globales.</div>
+                </details>
+              </div>
+
+              <div class="tm-card tm-settings-box">
+                <h3 class="h5 fw-bold mb-4"><i class="fas fa-search text-success me-2"></i>Configuración editorial</h3>
+                <label class="form-label fw-semibold">Modo de priorización</label>
+                <select id="settingsRankingMode" class="tm-form-control">
+                  <option value="balanced">Balanceado</option>
+                  <option value="strict">Estricto</option>
+                  <option value="discovery">Exploración</option>
+                </select>
+                <label class="form-label fw-semibold mt-3">Queries automatizadas</label>
+                <textarea id="settingsQueries" rows="6" class="tm-form-control" placeholder="Una query por línea"></textarea>
+                <label class="form-label fw-semibold mt-3">Temas prioritarios</label>
+                <textarea id="settingsFocusTerms" rows="4" class="tm-form-control" placeholder="medios, streaming, IA, publicidad digital"></textarea>
+                <label class="form-label fw-semibold mt-3">Fuentes objetivo</label>
+                <textarea id="settingsTargetSources" rows="5" class="tm-form-control" placeholder="Una fuente por línea"></textarea>
+              </div>
+            </div>
+
+            <div class="tm-card p-4 mt-4">
+              <div class="d-flex flex-wrap gap-2 align-items-center">
+                <button class="tm-btn-primary" onclick="saveAppSettings()"><i class="fas fa-floppy-disk me-2"></i>Guardar Configuración</button>
+                <button class="tm-btn-secondary" onclick="applySettingsToForm(true)"><i class="fas fa-rotate me-2"></i>Aplicar al formulario</button>
+                <button class="btn btn-light border rounded-3 px-4 py-2 fw-semibold" onclick="resetStoredSettings()"><i class="fas fa-trash-can me-2"></i>Restablecer defaults</button>
+                <span id="settingsFeedback" class="small text-success d-none">Guardado.</span>
+              </div>
+            </div>
+
+            <div class="tm-card p-4 mt-4">
+              <h3 class="h5 fw-bold mb-3">Formulario de ejecución</h3>
+              <div class="row g-3">
+                <div class="col-md-6"><label class="form-label fw-semibold">Geo</label><input id="geoInput" class="tm-form-control" maxlength="2"></div>
+                <div class="col-md-6"><label class="form-label fw-semibold">Categoría</label><select id="catInput" class="tm-form-control"><option value="h">General</option><option value="b">Economía / Negocios</option><option value="m">Salud</option><option value="t">Ciencia / Tecnología</option><option value="s">Deportes</option><option value="e">Entretenimiento</option></select></div>
+                <div class="col-md-6"><label class="form-label fw-semibold">Modo de priorización</label><select id="rankingModeInput" class="tm-form-control"><option value="balanced">Balanceado</option><option value="strict">Estricto</option><option value="discovery">Exploración</option></select></div>
+                <div class="col-md-6"><label class="form-label fw-semibold">Focus terms</label><input id="focusTermsInput" class="tm-form-control"></div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+
+<script>
+  let intervalId = null;
+  let currentJobId = null;
+  let latestResults = [];
+  let pipelineStatus = 'idle';
+  const STORAGE_KEY = 'trends_medios_migrated_settings_v2';
+  const DEFAULT_SETTINGS = {
+    geo: '{{ current_project.geo or "ES" }}',
+    category: 'h',
+    ranking_mode: 'balanced',
+    focus_terms: '',
+    dataforseo_login: '',
+    dataforseo_password: '',
+    search_queries: [
+      'medios españa tendencias',
+      'streaming audiencias españa',
+      'publicidad digital españa',
+      'television audiencia tendencias',
+      'podcasts españa negocio'
+    ],
+    target_sources: ['Economía 3', 'Expansión', 'Cinco Días', 'El Confidencial', 'MarketingDirecto']
+  };
+  const VIEW_TITLES = {
+    dashboardView: ['Panel de Control', 'Comunidad Valenciana • Noticias & Eventos'],
+    briefView: ['Generador de Contenido', 'Brief editorial priorizado y accionable'],
+    settingsView: ['Configuración', 'Queries, reglas editoriales y overrides avanzados']
+  };
+
+  function getStoredSettings() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+      const parsed = JSON.parse(raw);
+      return { ...JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), ...parsed };
+    } catch (e) {
+      return JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+    }
+  }
+
+  function saveStoredSettings(settings) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  }
+
+  function switchView(viewId) {
+    document.querySelectorAll('.tm-view').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.tm-nav-btn').forEach(el => el.classList.remove('active'));
+    document.getElementById(viewId).classList.add('active');
+    document.querySelector(`.tm-nav-btn[data-view="${viewId}"]`)?.classList.add('active');
+    const [title, subtitle] = VIEW_TITLES[viewId] || VIEW_TITLES.dashboardView;
+    document.getElementById('headerTitle').textContent = title;
+    document.getElementById('headerSubtitle').textContent = subtitle;
+  }
+
+  function priorityMeta(item) {
+    const score = Number(item.relevance_score || 0);
+    if (score >= 60) return { label: 'P1', chip: 'tm-chip-p1', fit: item.fit_label || 'Alta prioridad' };
+    if (score >= 25) return { label: 'P2', chip: 'tm-chip-p2', fit: item.fit_label || 'Media prioridad' };
+    if (score > 0) return { label: 'P3', chip: 'tm-chip-p3', fit: item.fit_label || 'Exploratoria' };
+    return { label: 'DISCARD', chip: 'tm-chip-discard', fit: item.fit_label || 'Descartar' };
+  }
+
+  function renderSources(targetSources) {
+    const wrapper = document.getElementById('briefSources');
+    if (!targetSources || !targetSources.length) {
+      wrapper.textContent = 'Sin configurar';
+      return;
+    }
+    wrapper.innerHTML = targetSources.map(s => `<span class="tm-source-pill">${s}</span>`).join('');
+  }
+
+  function hydrateSettings(settings = getStoredSettings()) {
+    document.getElementById('settingsLogin').value = settings.dataforseo_login || '';
+    document.getElementById('settingsPassword').value = settings.dataforseo_password || '';
+    document.getElementById('settingsGeo').value = (settings.geo || DEFAULT_SETTINGS.geo).toUpperCase();
+    document.getElementById('settingsCategory').value = settings.category || 'h';
+    document.getElementById('settingsRankingMode').value = settings.ranking_mode || 'balanced';
+    document.getElementById('settingsQueries').value = (settings.search_queries || []).join('\n');
+    document.getElementById('settingsFocusTerms').value = settings.focus_terms || '';
+    document.getElementById('settingsTargetSources').value = (settings.target_sources || []).join('\n');
+    renderSources(settings.target_sources || []);
+  }
+
+  function applySettingsToForm(showFeedback = false) {
+    const settings = getStoredSettings();
+    document.getElementById('geoInput').value = (settings.geo || DEFAULT_SETTINGS.geo).toUpperCase();
+    document.getElementById('catInput').value = settings.category || 'h';
+    document.getElementById('rankingModeInput').value = settings.ranking_mode || 'balanced';
+    document.getElementById('focusTermsInput').value = settings.focus_terms || '';
+    hydrateSettings(settings);
+    updateHeroSummary();
+    if (showFeedback) flashSettings('Configuración aplicada al formulario.');
+  }
+
+  function saveAppSettings() {
+    const settings = {
+      geo: (document.getElementById('settingsGeo').value || DEFAULT_SETTINGS.geo).trim().toUpperCase(),
+      category: document.getElementById('settingsCategory').value,
+      ranking_mode: document.getElementById('settingsRankingMode').value,
+      focus_terms: document.getElementById('settingsFocusTerms').value.trim(),
+      dataforseo_login: document.getElementById('settingsLogin').value.trim(),
+      dataforseo_password: document.getElementById('settingsPassword').value.trim(),
+      search_queries: document.getElementById('settingsQueries').value.split('\n').map(v => v.trim()).filter(Boolean),
+      target_sources: document.getElementById('settingsTargetSources').value.split('\n').map(v => v.trim()).filter(Boolean)
+    };
+    saveStoredSettings(settings);
+    applySettingsToForm();
+    flashSettings('Configuración guardada correctamente.');
+  }
+
+  function resetStoredSettings() {
+    saveStoredSettings(DEFAULT_SETTINGS);
+    applySettingsToForm();
+    flashSettings('Se restauraron los valores por defecto.');
+  }
+
+  function flashSettings(message) {
+    const feedback = document.getElementById('settingsFeedback');
+    feedback.textContent = message;
+    feedback.classList.remove('d-none');
+    clearTimeout(flashSettings.timer);
+    flashSettings.timer = setTimeout(() => feedback.classList.add('d-none'), 2200);
+  }
+
+  function setPipelineState(state, message = '') {
+    pipelineStatus = state;
+    const chip = document.getElementById('pipelineModeChip');
+    const systemChip = document.getElementById('systemStatusChip');
+    const runBtn = document.getElementById('headerRunBtn');
+    const runText = document.getElementById('headerRunText');
+    chip.className = 'tm-chip';
+    systemChip.className = 'tm-chip';
+    if (state === 'fetching' || state === 'analyzing') {
+      chip.classList.add('tm-chip-p3');
+      systemChip.classList.add('tm-chip-p3');
+      chip.textContent = state === 'fetching' ? 'Escaneando' : 'Analizando';
+      systemChip.innerHTML = '<i class="fas fa-circle"></i> En proceso';
+      runBtn.disabled = true;
+      runText.textContent = 'Analizando...';
+    } else if (state === 'done') {
+      chip.classList.add('tm-chip-p2');
+      systemChip.classList.add('tm-chip-p2');
+      chip.textContent = 'Completado';
+      systemChip.innerHTML = '<i class="fas fa-circle"></i> Actualizado';
+      runBtn.disabled = false;
+      runText.textContent = latestResults.length ? 'Actualizar SERPs' : 'Analizar SERPs';
+    } else if (state === 'error') {
+      chip.classList.add('tm-chip-p1');
+      systemChip.classList.add('tm-chip-p1');
+      chip.textContent = 'Error';
+      systemChip.innerHTML = '<i class="fas fa-circle"></i> Error';
+      runBtn.disabled = false;
+      runText.textContent = 'Reintentar';
+    } else {
+      chip.classList.add('tm-chip-neutral');
+      systemChip.classList.add('tm-chip-neutral');
+      chip.textContent = 'Idle';
+      systemChip.innerHTML = '<i class="fas fa-circle"></i> Listo';
+      runBtn.disabled = false;
+      runText.textContent = latestResults.length ? 'Actualizar SERPs' : 'Analizar SERPs';
+    }
+    if (message) document.getElementById('statusText').textContent = message;
+  }
+
+  function setLastRun() {
+    const value = new Intl.DateTimeFormat('es-ES', { dateStyle: 'short', timeStyle: 'short' }).format(new Date());
+    document.getElementById('heroLastRun').textContent = value;
+    document.getElementById('sidebarLastRun').textContent = value;
+  }
+
+  function updateHeroSummary() {
+    const geo = (document.getElementById('geoInput').value || DEFAULT_SETTINGS.geo).trim().toUpperCase();
+    document.getElementById('heroGeo').textContent = geo;
+  }
+
+  function renderTrendBars(items) {
+    const wrapper = document.getElementById('trendsBars');
+    if (!items.length) {
+      wrapper.innerHTML = '<div class="text-muted small">No hay datos todavía. Ejecuta el pipeline.</div>';
+      return;
+    }
+    const top = items.slice(0, 5);
+    const max = Math.max(...top.map(item => Number(item.relevance_score || 1)), 1);
+    wrapper.innerHTML = top.map(item => {
+      const meta = priorityMeta(item);
+      const width = Math.max(12, Math.round((Number(item.relevance_score || 0) / max) * 100));
+      return `
+        <div>
+          <div class="d-flex justify-content-between align-items-center gap-3 mb-2">
+            <div class="fw-semibold text-truncate">${item.topic || 'Tema sin título'}</div>
+            <span class="tm-chip ${meta.chip}">${meta.label}</span>
+          </div>
+          <div class="tm-bar-track"><div class="tm-bar-fill" style="width:${width}%"></div></div>
+        </div>`;
+    }).join('');
+  }
+
+  function renderDashboardTable(items) {
+    const empty = document.getElementById('dashboardTableEmpty');
+    const wrap = document.getElementById('dashboardTableWrap');
+    const body = document.getElementById('dashboardTableBody');
+    if (!items.length) {
+      empty.classList.remove('d-none');
+      wrap.classList.add('d-none');
+      body.innerHTML = '';
+      return;
+    }
+    empty.classList.add('d-none');
+    wrap.classList.remove('d-none');
+    body.innerHTML = items.slice(0, 8).map(item => {
+      const meta = priorityMeta(item);
+      return `
+        <tr>
+          <td class="px-4 py-3"><span class="tm-chip ${meta.chip}">${meta.label}</span></td>
+          <td class="px-4 py-3 text-primary fw-bold">${item.relevance_score || 0}</td>
+          <td class="px-4 py-3 fw-semibold">${item.topic || 'Tema sin título'}</td>
+          <td class="px-4 py-3 text-muted">${item.fit_label || meta.fit}</td>
+          <td class="px-4 py-3 text-muted">${item.traffic || 'N/A'}</td>
+        </tr>`;
+    }).join('');
+  }
+
+  function renderBrief(items) {
+    const loading = document.getElementById('briefLoading');
+    const empty = document.getElementById('briefEmpty');
+    const content = document.getElementById('briefContentWrap');
+    const list = document.getElementById('briefList');
+    const discard = document.getElementById('discardList');
+    const prioritized = items.filter(item => ['P1','P2'].includes(priorityMeta(item).label));
+    const discarded = items.filter(item => !['P1','P2'].includes(priorityMeta(item).label));
+    loading.classList.add('d-none');
+
+    if (!items.length) {
+      empty.classList.remove('d-none');
+      content.classList.add('d-none');
+      list.innerHTML = '';
+      discard.textContent = 'Todavía no hay items descartados.';
+      document.getElementById('briefTotal').textContent = '0';
+      document.getElementById('briefPriority').textContent = '0';
+      document.getElementById('briefMetaText').textContent = '0 clusters';
+      return;
+    }
+
+    empty.classList.add('d-none');
+    content.classList.remove('d-none');
+    document.getElementById('briefTotal').textContent = String(items.length);
+    document.getElementById('briefPriority').textContent = String(prioritized.length);
+    document.getElementById('briefMetaText').textContent = `${items.length} clusters • ${prioritized.length} prioritarios • ${new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
+
+    list.innerHTML = prioritized.length ? prioritized.map((item, idx) => {
+      const meta = priorityMeta(item);
+      const terms = Array.isArray(item.matched_terms) && item.matched_terms.length ? item.matched_terms.join(', ') : 'Sin match directo';
+      return `
+        <article class="tm-card tm-brief-card">
+          <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+            <div class="d-flex gap-2 flex-wrap">
+              <span class="tm-chip ${meta.chip}">${meta.label}</span>
+              <span class="tm-chip tm-chip-neutral">${item.fit_label || meta.fit}</span>
+            </div>
+            <span class="small text-muted">Tema #${idx + 1}</span>
+          </div>
+          <h3 class="h4 fw-bold mb-2">${item.topic || 'Tema sin título'}</h3>
+          <p class="text-muted mb-3">${item.context || 'Sin contexto adicional disponible.'}</p>
+          <div class="p-3 rounded-4 bg-light border mb-3">
+            <div class="small fw-semibold text-uppercase text-muted mb-1">Interés editorial</div>
+            <div class="small text-dark">${item.opportunity_note || 'Útil para vigilar cambios generales del mercado.'}</div>
+          </div>
+          <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 small text-muted">
+            <div class="d-flex gap-3 flex-wrap">
+              <span><strong>Match:</strong> ${terms}</span>
+              <span><strong>Score:</strong> ${item.relevance_score || 0}</span>
+            </div>
+            <a href="${item.google_link || '#'}" target="_blank" rel="noreferrer" class="text-decoration-none fw-semibold">Leer original <i class="fas fa-arrow-up-right-from-square ms-1"></i></a>
+          </div>
+        </article>`;
+    }).join('') : `<div class="tm-card tm-empty"><div class="tm-empty-icon"><i class="fas fa-filter-circle-xmark"></i></div><p class="mb-0">No se encontraron temas de alta prioridad.</p></div>`;
+
+    discard.innerHTML = discarded.length ? discarded.map(item => {
+      const meta = priorityMeta(item);
+      return `<div class="tm-discard-item"><div class="d-flex justify-content-between gap-2 mb-1"><div class="fw-semibold text-dark">${item.topic || 'Tema sin título'}</div><span class="tm-chip ${meta.chip}">${meta.label}</span></div><div class="text-muted">${item.context || 'Sin contexto adicional disponible.'}</div></div>`;
+    }).join('') : 'No hay elementos descartados.';
+  }
+
+  function renderLogs(logs) {
+    document.getElementById('logContent').innerHTML = (logs || []).map(line => `<div class="tm-log-entry">> ${line}</div>`).join('');
+  }
+
+  function updateStats(items) {
+    const p1 = items.filter(item => priorityMeta(item).label === 'P1').length;
+    const low = items.filter(item => ['P3', 'DISCARD'].includes(priorityMeta(item).label)).length;
+    document.getElementById('sourcesScanned').textContent = String(items.length);
+    document.getElementById('itemsFound').textContent = String(items.length);
+    document.getElementById('highPriority').textContent = String(p1);
+    document.getElementById('duplicatesRemoved').textContent = String(low);
+    document.getElementById('heroCount').textContent = String(items.length);
+    document.getElementById('resultsCountText').textContent = `${items.length} clusters`;
+  }
+
+  async function startPipeline() {
+    const geo = (document.getElementById('geoInput').value || '').trim().toUpperCase();
+    if (geo.length !== 2) {
+      alert('El código de país debe tener 2 letras.');
+      return;
+    }
+    const settings = getStoredSettings();
+    saveStoredSettings({
+      ...settings,
+      geo,
+      category: document.getElementById('catInput').value,
+      ranking_mode: document.getElementById('rankingModeInput').value,
+      focus_terms: document.getElementById('focusTermsInput').value.trim()
+    });
+
+    document.getElementById('pipelineProgressWrap').classList.remove('d-none');
+    document.getElementById('dashboardLogWrap').classList.remove('d-none');
+    document.getElementById('dashboardEmpty').classList.add('d-none');
+    document.getElementById('briefLoading').classList.remove('d-none');
+    document.getElementById('briefEmpty').classList.add('d-none');
+    document.getElementById('briefContentWrap').classList.add('d-none');
+    document.getElementById('briefLoadingText').textContent = 'Escaneando tendencias...';
+    setPipelineState('fetching', 'Escaneando Google Trends...');
+    switchView('briefView');
+    updateHeroSummary();
+
+    const formData = new FormData();
+    formData.append('geo', geo);
+    formData.append('category', document.getElementById('catInput').value);
+    formData.append('ranking_mode', document.getElementById('rankingModeInput').value);
+    formData.append('focus_terms', document.getElementById('focusTermsInput').value.trim());
+    formData.append('dataforseo_login', settings.dataforseo_login || '');
+    formData.append('dataforseo_password', settings.dataforseo_password || '');
+
+    try {
+      const res = await fetch('/api/v1/trends/start', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (data.status !== 'started') throw new Error(data.message || 'No se pudo iniciar el análisis.');
+      currentJobId = data.job_id;
+      if (intervalId) clearInterval(intervalId);
+      intervalId = setInterval(checkStatus, 1000);
+    } catch (error) {
+      setPipelineState('error');
+      document.getElementById('briefLoading').classList.add('d-none');
+      alert('Error iniciando el pipeline: ' + error);
+    }
+  }
+
+  async function checkStatus() {
+    if (!currentJobId) return;
+    try {
+      const res = await fetch(`/trends/status?job_id=${currentJobId}`);
+      const data = await res.json();
+      if (data.error && !data.log) throw new Error(data.error);
+      document.getElementById('progressBar').style.width = `${data.progress || 0}%`;
+      renderLogs(data.log || []);
+      document.getElementById('statusText').textContent = (data.log || []).slice(-1)[0] || 'Procesando...';
+      if ((data.progress || 0) >= 50) {
+        setPipelineState('analyzing', document.getElementById('statusText').textContent);
+        document.getElementById('briefLoadingText').textContent = document.getElementById('statusText').textContent;
+      }
+      if (!data.active) {
+        clearInterval(intervalId);
+        latestResults = data.data || [];
+        if (data.error) throw new Error(data.error);
+        updateStats(latestResults);
+        renderTrendBars(latestResults);
+        renderDashboardTable(latestResults);
+        renderBrief(latestResults);
+        setLastRun();
+        setPipelineState('done');
+        switchView('dashboardView');
+      }
+    } catch (error) {
+      clearInterval(intervalId);
+      setPipelineState('error');
+      document.getElementById('briefLoading').classList.add('d-none');
+      renderBrief(latestResults);
+      alert('Error consultando el pipeline: ' + error);
+    }
+  }
+
+  function sendToEditorial() {
+    const settings = getStoredSettings();
+    const count = latestResults.filter(item => ['P1', 'P2'].includes(priorityMeta(item).label)).length;
+    alert(`Brief enviado a redacción. ${count} temas prioritarios. Fuentes objetivo: ${(settings.target_sources || []).join(', ') || 'Sin fuentes objetivo'}.`);
+  }
+
+  document.querySelectorAll('.tm-nav-btn').forEach(btn => btn.addEventListener('click', () => switchView(btn.dataset.view)));
+  document.getElementById('geoInput').addEventListener('input', updateHeroSummary);
+
+  saveStoredSettings(getStoredSettings());
+  applySettingsToForm();
+  renderTrendBars([]);
+  renderBrief([]);
+  updateStats([]);
+  setPipelineState('idle');
+</script>
+{% endblock %}

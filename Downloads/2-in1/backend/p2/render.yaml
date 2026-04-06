@@ -1,0 +1,8 @@
+services:
+  - type: web
+    name: panel-david-backend
+    env: python
+    rootDir: backend/p2
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn run:app --bind 0.0.0.0:$PORT
+    autoDeploy: true

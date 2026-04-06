@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Decay{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>📉 Content Decay</h2>
+    <textarea id="u" class="form-control mb-3" rows="10"></textarea>
+    <button onclick="run()" class="btn btn-primary">Analizar</button>
+    <div id="res" class="mt-3"></div>
+</div>
+<script>
+function run(){
+    const u = document.getElementById('u').value.split('\n');
+    fetch('/api/v1/decay/analyze', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({urls:u})})
+    .then(r=>r.json()).then(d=>{
+        let h = '<ul class="list-group">';
+        d.data.forEach(i=>{
+            let c = i.days>365?'text-danger':'text-success';
+            h += `<li class="list-group-item">${i.url} <b class="${c}">${i.days} días</b></li>`;
+        });
+        document.getElementById('res').innerHTML=h+'</ul>';
+    });
+}
+</script>
+{% endblock %}

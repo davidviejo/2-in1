@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Graph{% endblock %}
+{% block content %}
+<script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<div class="container-fluid">
+    <h2>🕸️ Link Graph</h2>
+    <div class="row">
+        <div class="col-3">
+            <textarea id="u" class="form-control mb-2" rows="10" placeholder="URLs..."></textarea>
+            <button onclick="run()" class="btn btn-dark w-100">Generar</button>
+            <div class="mt-2 small">🔴 Huérfana 🟢 Hub</div>
+        </div>
+        <div class="col-9"><div id="net" style="height:600px; border:1px solid #ddd; background:#fff;"></div></div>
+    </div>
+</div>
+<script>
+function run(){
+    const u = document.getElementById('u').value.split('\n').filter(x=>x.trim());
+    fetch('/api/v1/graph/build', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({urls:u})})
+    .then(r=>r.json()).then(d=>{
+        new vis.Network(document.getElementById('net'), {nodes:d.nodes, edges:d.edges}, {physics:{stabilization:false}});
+    });
+}
+</script>
+{% endblock %}

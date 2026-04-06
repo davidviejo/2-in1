@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Schema{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>🏗️ FAQ Schema Gen</h2>
+
+    <!-- 🔹 NUEVO: textarea para pegar FAQs en bruto -->
+    <textarea id="raw_faqs" class="form-control mb-2" rows="8"
+              placeholder="Pega aquí tus FAQs. Ejemplo:
+
+Pregunta 1: ¿Qué es X?
+Respuesta: X es...
+
+Pregunta 2: ¿Cómo hago Y?
+Respuesta: Para hacer Y..."></textarea>
+    <button onclick="parseRawFaqs()" class="btn btn-sm btn-outline-secondary mb-3">
+        Parsear FAQs en campos Q/A
+    </button>
+
+    <!-- 🔹 Lo que ya tenías -->
+    <div id="qs">
+        <div class="mb-2">
+            <input class="q form-control" placeholder="Q">
+            <input class="a form-control" placeholder="A">
+        </div>
+    </div>
+    <button onclick="add()" class="btn btn-secondary btn-sm">+ Q</button>
+    <button onclick="gen()" class="btn btn-primary">Generate JSON</button>
+    <textarea id="out" class="form-control mt-3 bg-dark text-white" rows="10"></textarea>
+<button onclick="copyFaqs()" class="btn btn-sm btn-light mt-2">
+    Copiar FAQs
+</button>
+
+</div>
+
+<script>
+function add(){
+    document.getElementById('qs').insertAdjacentHTML(
+        'beforeend',
+        '<div class="mb-2 border-top pt-2"><input class="q form-control" placeholder="Q"><input class="a form-control" placeholder="A"></div>'
+    );
+}
+
+function gen(){
+    const items = Array.from(document.querySelectorAll('#qs > div')).map(d=>({
+        q: d.querySelector('.q').value,
+        a: d.querySelector('.a').value
+    }));
+    fetch('/api/v1/extra/generate_faq_schema', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({questions:items})
+    })
+    .then(r=>r.json())
+    .then(d=>{
+        document.getElementById('out').value =
+            `<script type="application/ld+json">\n${d.json_ld}\n<\/script>`;
+    });
+}
+
+function parseRawFaqs() {
+    const rawEl = document.getElementById('raw_faqs');
+    if (!rawEl) return;
+
+    const raw = rawEl.value.trim();
+    if (!raw) return;
+
+    document.getElementById('qs').innerHTML = '';
+    const blocks = raw.split(/\n\s*\n+/);
+
+    blocks.forEach(block => {
+        const lines = block
+            .split('\n')
+            .map(l => l.trim())
+            .filter(Boolean);
+
+        if (!lines.length) return;
+
+        let q = lines[0]
+            .replace(/^pregunta\s*\d*[:\-]?\s*/i, '')
+            .replace(/^q[:\-]?\s*/i, '');
+
+        let a = lines.slice(1).join(' ')
+            .replace(/^respuesta[:\-]?\s*/i, '')
+            .replace(/^a[:\-]?\s*/i, '');
+
+        add();
+        const last = document.querySelector('#qs > div:last-child');
+        last.querySelector('.q').value = q;
+        last.querySelector('.a').value = a;
+    });
+}
+
+/* 🔹 NUEVO: copiar todo el contenido del textarea #out */
+function copyFaqs() {
+    const out = document.getElementById('out');
+    if (!out) return;
+
+    const text = out.value;
+    if (!text) return;
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text)
+            .then(() => {
+                alert('FAQs copiadas al portapapeles ✅');
+            })
+            .catch(() => {
+                fallbackCopy(out);
+            });
+    } else {
+        fallbackCopy(out);
+    }
+}
+
+function fallbackCopy(el) {
+    el.select();
+    el.setSelectionRange(0, 99999); // móvil
+    document.execCommand('copy');
+    alert('FAQs copiadas al portapapeles ✅');
+}
+</script>
+
+
+{% endblock %}

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Dorks{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>🕵️ Google Dorks</h2>
+    <input id="dom" class="form-control mb-2" placeholder="Dominio">
+    <button onclick="run()" class="btn btn-dark">Generar</button>
+    <div id="res" class="mt-3 list-group"></div>
+</div>
+<script>
+function run(){
+    fetch('/api/v1/dorks/generate', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({domain:document.getElementById('dom').value})})
+    .then(r=>r.json()).then(d=>{
+        let h='';
+        d.dorks.forEach(i=>{ h+=`<a href="${i.link}" target="_blank" class="list-group-item">${i.label} ↗</a>`; });
+        document.getElementById('res').innerHTML=h;
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="space-y-6 animate-fade-in">
+
+    <!-- Welcome / Project Status Card -->
+    <div class="bg-slate-900 rounded-2xl p-6 md:p-8 text-white relative overflow-hidden shadow-xl shadow-slate-200">
+        <!-- Background Decoration -->
+        <div class="absolute top-0 right-0 w-64 h-64 bg-blue-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 -mr-10 -mt-10 animate-blob"></div>
+        <div class="absolute bottom-0 left-0 w-64 h-64 bg-indigo-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 -ml-10 -mb-10 animate-blob animation-delay-2000"></div>
+
+        <div class="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+            <div>
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="text-xs font-bold tracking-wider uppercase text-blue-300 bg-blue-900/50 px-2 py-1 rounded">Entorno Activo</span>
+                    {% if current_project.id != 0 %}
+                         <span class="text-xs font-bold tracking-wider uppercase text-emerald-300 bg-emerald-900/50 px-2 py-1 rounded">{{ current_project.geo }}</span>
+                    {% endif %}
+                </div>
+
+                {% if current_project.id != 0 %}
+                    <h1 class="text-3xl md:text-4xl font-bold mb-2">{{ current_project.name }}</h1>
+                    <div class="flex items-center gap-3 text-slate-300 text-sm">
+                        <span class="flex items-center gap-1"><i class="fas fa-globe text-slate-500"></i> {{ current_project.domain }}</span>
+                        <span class="w-1 h-1 bg-slate-600 rounded-full"></span>
+                        <span class="flex items-center gap-1"><i class="fas fa-chart-network text-slate-500"></i> {{ current_project.clusters|length }} Clústeres</span>
+                    </div>
+                {% else %}
+                    <h1 class="text-3xl md:text-4xl font-bold mb-2 text-amber-400">Sin Proyecto Asignado</h1>
+                    <p class="text-slate-300 max-w-xl">Selecciona o crea un cliente en el gestor de proyectos para desbloquear todas las herramientas de la suite.</p>
+                {% endif %}
+            </div>
+
+            <div class="flex flex-col sm:flex-row gap-3">
+                {% if current_project.id != 0 %}
+                    <a href="/autopilot/dashboard" class="flex items-center justify-center gap-2 px-6 py-3 bg-white text-slate-900 rounded-xl font-bold hover:bg-slate-100 transition-colors shadow-lg">
+                        <i class="fas fa-rocket text-blue-600"></i> Ir al Autopilot
+                    </a>
+                    <a href="/projects/manager" class="flex items-center justify-center gap-2 px-6 py-3 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-700 transition-colors border border-slate-700">
+                        <i class="fas fa-cog"></i> Configurar
+                    </a>
+                {% else %}
+                    <a href="/projects/manager" class="flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/30">
+                        <i class="fas fa-plus"></i> Crear Cliente
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        <!-- Main Column: Monitor Daemon -->
+        <div class="lg:col-span-2 space-y-6">
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="font-bold text-slate-800 flex items-center gap-2">
+                        <div class="p-2 bg-rose-50 text-rose-600 rounded-lg"><i class="fas fa-heartbeat"></i></div>
+                        Monitor de Estado 24/7
+                    </h3>
+                    <span class="text-xs font-medium text-slate-400">Tiempo Real</span>
+                </div>
+
+                <div id="alertFeed" class="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+                    <div class="flex flex-col items-center justify-center py-12 text-slate-400">
+                        <i class="fas fa-circle-notch fa-spin text-3xl mb-3 text-blue-500"></i>
+                        <p class="text-sm">Conectando con el Daemon...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Tools & Stats -->
+        <div class="space-y-6">
+
+            <!-- Quick Actions -->
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+                <h3 class="font-bold text-slate-800 mb-4 text-sm uppercase tracking-wider text-slate-400">Recomendado</h3>
+                <div class="space-y-3">
+                    <a href="/workflow/master" class="flex items-center justify-between p-3 rounded-xl bg-slate-50 hover:bg-blue-50 hover:text-blue-700 transition-colors group">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                <i class="fas fa-project-diagram"></i>
+                            </div>
+                            <span class="font-medium text-sm text-slate-700 group-hover:text-blue-700">Workflow Maestro</span>
+                        </div>
+                        <i class="fas fa-chevron-right text-slate-300 text-xs"></i>
+                    </a>
+
+                    <a href="/gsc/dashboard" class="flex items-center justify-between p-3 rounded-xl bg-slate-50 hover:bg-blue-50 hover:text-blue-700 transition-colors group">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                <i class="fab fa-google"></i>
+                            </div>
+                            <span class="font-medium text-sm text-slate-700 group-hover:text-blue-700">GSC Tracker</span>
+                        </div>
+                        <i class="fas fa-chevron-right text-slate-300 text-xs"></i>
+                    </a>
+
+                    <a href="/trends/media" class="flex items-center justify-between p-3 rounded-xl bg-slate-50 hover:bg-blue-50 hover:text-blue-700 transition-colors group">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-lg bg-cyan-100 text-cyan-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                <i class="fas fa-chart-line"></i>
+                            </div>
+                            <span class="font-medium text-sm text-slate-700 group-hover:text-blue-700">EcoTrends Realtime</span>
+                        </div>
+                        <i class="fas fa-chevron-right text-slate-300 text-xs"></i>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Project Summary -->
+            {% if current_project.id != 0 %}
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+                <h3 class="font-bold text-slate-800 mb-4 text-sm uppercase tracking-wider text-slate-400">Datos del Proyecto</h3>
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between border-b border-slate-50 pb-3">
+                        <span class="text-sm text-slate-500">Clústeres</span>
+                        <span class="font-bold text-slate-800">{{ current_project.clusters|length }}</span>
+                    </div>
+                    <div class="flex items-center justify-between border-b border-slate-50 pb-3">
+                        <span class="text-sm text-slate-500">Competencia</span>
+                        <span class="font-bold text-slate-800 truncate max-w-[150px] text-right" title="{{ current_project.competitors }}">{{ current_project.competitors or 'No definida' }}</span>
+                    </div>
+                    <div class="flex items-center justify-between pt-1">
+                        <span class="text-sm text-slate-500">Autopilot</span>
+                        <span class="text-xs font-bold px-2 py-1 rounded bg-slate-100 text-slate-500" id="lastScanStatus">Pendiente</span>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+        </div>
+    </div>
+</div>
+
+<script>
+    // Monitor Daemon Logic
+    document.addEventListener("DOMContentLoaded", function() {
+        fetch('/monitor/alerts')
+            .then(r => r.json())
+            .then(data => {
+                const feed = document.getElementById('alertFeed');
+                if(data.length === 0) {
+                    feed.innerHTML = `
+                        <div class="flex flex-col items-center justify-center py-8 text-emerald-500 bg-emerald-50 rounded-xl border border-emerald-100">
+                            <i class="fas fa-check-circle text-3xl mb-2"></i>
+                            <span class="font-bold text-sm">Sistemas Operativos</span>
+                            <span class="text-xs opacity-75">No hay alertas activas</span>
+                        </div>
+                    `;
+                } else {
+                    feed.innerHTML = data.map(a => `
+                        <div class="flex gap-4 p-4 rounded-xl bg-slate-50 border-l-4 border-rose-500 hover:bg-white hover:shadow-md transition-all">
+                            <div class="flex-shrink-0 pt-1">
+                                <i class="fas fa-exclamation-triangle text-rose-500"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex justify-between items-start mb-1">
+                                    <h6 class="font-bold text-slate-800 text-sm truncate">${a.project}</h6>
+                                    <small class="text-xs text-slate-400 whitespace-nowrap ml-2">${a.time}</small>
+                                </div>
+                                <p class="text-xs text-slate-600 leading-relaxed">${a.msg}</p>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            })
+            .catch(e => {
+                console.error("Error monitor:", e);
+                const feed = document.getElementById('alertFeed');
+                if(feed) feed.innerHTML = '<div class="text-center text-rose-500 text-sm p-4">Error conectando con el monitor.</div>';
+            });
+    });
+</script>
+{% endblock %}

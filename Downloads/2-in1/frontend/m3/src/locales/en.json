@@ -1,0 +1,92 @@
+{
+  "app": {
+    "title": "MediaFlow",
+    "subtitle": "SEO Maturity"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "dashboard_sub": "Summary",
+    "module_prefix": "M",
+    "client_roadmap": "Client Roadmap",
+    "client_roadmap_sub": "Customized",
+    "kanban_board": "Kanban Board",
+    "kanban_board_sub": "Workflow",
+    "ai_roadmap": "AI Roadmap",
+    "ai_roadmap_sub": "Generative Strategy",
+    "settings": "Settings",
+    "settings_sub": "Configuration",
+    "breaking_sim": "Breaking Sim",
+    "breaking_sim_sub": "Training",
+    "completed_tasks": "Completed Tasks",
+    "completed_tasks_sub": "History",
+    "seo_checklist": "SEO Checklist",
+    "seo_checklist_sub": "URLs",
+    "notes": "Notes",
+    "shortcuts": "Shortcuts",
+    "emergency_index": "EMERGENCY INDEX",
+    "indexing": "INDEXING...",
+    "ia_visibility": "AI Visibility",
+    "ia_visibility_sub": "SERP & Evolution"
+  },
+  "global_score": "Global Score",
+  "feedback": {
+    "toast": {
+      "success_action": "{{action}} completed successfully.",
+      "error_action": "Could not complete: {{action}}.",
+      "warning_action": "Please review this action: {{action}}."
+    },
+    "actions": {
+      "delete_history_entry": "Delete history record",
+      "delete_task_card": "Delete card",
+      "delete_column": "Delete column",
+      "delete_completed_task": "Delete completed task",
+      "restore_data": "Restore data",
+      "import_backup": "Import backup",
+      "read_json_file": "Read JSON file",
+      "update_batch_job": "Update batch job",
+      "apply_batch_result": "Apply batch result",
+      "send_emergency_index_request": "Send emergency indexing request"
+    },
+    "confirm": {
+      "confirm_button": "Confirm",
+      "cancel_button": "Cancel",
+      "delete_history_title": "Delete record",
+      "delete_history_message": "Are you sure you want to delete this history record? This action cannot be undone.",
+      "delete_task_title": "Delete card",
+      "delete_task_message": "Are you sure you want to delete this card? This action cannot be undone.",
+      "delete_column_title": "Delete column",
+      "delete_column_message": "Delete this column? Tasks will return to Pending.",
+      "delete_completed_task_title": "Delete completed task",
+      "delete_completed_task_message": "Are you sure you want to delete this completed task from the board?",
+      "restore_backup_title": "Restore backup",
+      "restore_backup_message": "Projects, SEO checklists, URLs, kanban, tasks, notes and settings will be restored. Current local data will be replaced.",
+      "emergency_index_title": "Confirm emergency indexing",
+      "emergency_index_message": "This will send a ping to the Indexing API for recent critical URLs."
+    }
+  },
+  "ia_visibility": {
+    "title": "AI Visibility",
+    "subtitle": "Track keywords, ranking changes, and historical evolution by client.",
+    "client_selector": "Current client",
+    "current_client": "Client under analysis",
+    "results_title": "Visibility results",
+    "history_title": "Analysis history",
+    "no_results": "No results match the current filters.",
+    "filters": {
+      "keyword": "Keyword or URL filter",
+      "keyword_placeholder": "Search keyword or URL...",
+      "status": "Status",
+      "all": "All",
+      "up": "Up",
+      "stable": "Stable",
+      "down": "Down"
+    },
+    "table": {
+      "keyword": "Keyword",
+      "url": "URL",
+      "position": "Position",
+      "change": "Change",
+      "status": "Status"
+    }
+  }
+}

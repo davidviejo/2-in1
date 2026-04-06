@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Link Opps{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>🔗 Link Opportunities</h2>
+    <div class="row">
+        <div class="col-4">
+            <input id="kw" class="form-control mb-2" placeholder="Keyword">
+            <input id="tgt" class="form-control mb-2" placeholder="Target URL">
+            <textarea id="u" class="form-control mb-2" rows="10" placeholder="Source URLs..."></textarea>
+            <button onclick="run()" class="btn btn-dark w-100">Buscar</button>
+        </div>
+        <div class="col-8" id="res"></div>
+    </div>
+</div>
+<script>
+function run(){
+    fetch('/api/v1/opps/scan', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({
+        keyword:document.getElementById('kw').value, 
+        target_url:document.getElementById('tgt').value,
+        urls:document.getElementById('u').value.split('\n')
+    })}).then(r=>r.json()).then(d=>{
+        let h = '';
+        d.data.forEach(i=>{ h+=`<div class="alert alert-info">En <b>${i.url}</b> puedes enlazar "${document.getElementById('kw').value}"</div>`; });
+        document.getElementById('res').innerHTML = h || '<div class="alert alert-warning">Nada encontrado</div>';
+    });
+}
+</script>
+{% endblock %}

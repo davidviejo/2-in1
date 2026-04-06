@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Headers{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>📡 Headers & SSL</h2>
+    <input type="text" id="u" class="form-control mb-3" placeholder="https://site.com">
+    <button onclick="run()" class="btn btn-primary">Analizar</button>
+    <div id="res" class="mt-4"></div>
+</div>
+<script>
+function run(){
+    fetch('/api/v1/headers/analyze', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url:document.getElementById('u').value})})
+    .then(r=>r.json()).then(d=>{
+        const da = d.data;
+        let sslInfo = da.ssl.days ? `<div class="alert alert-success">SSL Válido: ${da.ssl.days} días restantes (${da.ssl.expiry})</div>` : '<div class="alert alert-warning">Sin SSL</div>';
+        let hTable = '<table class="table table-sm">';
+        for(const [k,v] of Object.entries(da.headers)) hTable += `<tr><th>${k}</th><td>${v}</td></tr>`;
+        document.getElementById('res').innerHTML = sslInfo + hTable + '</table>';
+    });
+}
+</script>
+{% endblock %}

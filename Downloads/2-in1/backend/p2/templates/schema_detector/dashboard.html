@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% block title %}Schema Inventory{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h2 class="mb-4">🧬 Schema Inventory <span class="badge bg-info text-dark fs-6">Detector & Viewer</span></h2>
+    
+    <div class="row">
+        <!-- INPUT -->
+        <div class="col-md-4">
+            <div class="card shadow-sm p-4 border-0 h-100">
+                <h5 class="text-primary mb-3">Inventario de Datos</h5>
+                <p class="small text-muted">Escanea URLs, detecta tipos y permite inspeccionar el código JSON-LD real.</p>
+                
+                <label class="fw-bold mb-2">URLs a auditar:</label>
+                <textarea id="urlsInput" class="form-control mb-3" rows="12" placeholder="https://miweb.com/producto..."></textarea>
+                
+                <button class="btn btn-info text-white w-100 fw-bold" onclick="runDetector()">🧬 Detectar Schemas</button>
+            </div>
+        </div>
+        
+        <!-- OUTPUT -->
+        <div class="col-md-8">
+            <div id="loading" class="text-center py-5" style="display:none;">
+                <div class="spinner-border text-info" role="status"></div>
+                <p class="mt-2 text-muted">Buscando estructuras de datos...</p>
+            </div>
+            
+            <div id="resultsArea" style="display:none;">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h5 class="m-0">Resultados</h5>
+                    <button class="btn btn-success btn-sm fw-bold" onclick="downloadExcel()">💾 Excel</button>
+                </div>
+                
+                <div class="table-responsive border rounded bg-white shadow-sm" style="max-height: 600px; overflow-y: auto;">
+                    <table class="table table-hover align-middle mb-0 small">
+                        <thead class="table-dark sticky-top">
+                            <tr>
+                                <th>URL</th>
+                                <th>JSON-LD Encontrados</th>
+                                <th>Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL PARA VER EL JSON DETALLADO -->
+<div class="modal fade" id="jsonModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title">🔍 Detalle de Datos Estructurados</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body bg-light">
+                <p class="fw-bold" id="modalUrl"></p>
+                <hr>
+                <pre id="modalContent" class="p-3 bg-white border rounded" style="font-size: 0.85rem; color: #d63384; white-space: pre-wrap;"></pre>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                <button type="button" class="btn btn-primary" onclick="copyModalContent()">Copiar JSON</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentData = [];
+// Referencia al modal de Bootstrap 5
+let jsonModal; 
+
+document.addEventListener("DOMContentLoaded", function() {
+    jsonModal = new bootstrap.Modal(document.getElementById('jsonModal'));
+});
+
+function runDetector(){
+    const urls = document.getElementById('urlsInput').value.split('\n').filter(u=>u.trim()!=='');
+    if(urls.length === 0) return alert("Pon URLs");
+    
+    document.getElementById('loading').style.display='block';
+    document.getElementById('resultsArea').style.display='none';
+    
+    fetch('/api/v1/schema_detector/run', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({urls: urls})
+    })
+    .then(r=>r.json())
+    .then(d=>{
+        document.getElementById('loading').style.display='none';
+        if(d.error) return alert(d.error);
+        currentData = d.data;
+        renderTable(d.data);
+        document.getElementById('resultsArea').style.display='block';
+    });
+}
+
+function renderTable(data){
+    const tbody = document.getElementById('tableBody');
+    let html = '';
+    
+    data.forEach((r, index) => {
+        // Badges
+        let jsonBadges = r.json_ld_types.length > 0 
+            ? r.json_ld_types.map(t => `<span class="badge bg-primary bg-opacity-75 border border-light me-1 mb-1">${t}</span>`).join('')
+            : '<span class="text-muted">Sin JSON-LD</span>';
+            
+        // Botón de ver detalle (Solo si hay payload)
+        let btnAction = '-';
+        if (r.raw_payloads && r.raw_payloads.length > 0) {
+            btnAction = `<button class="btn btn-sm btn-outline-dark" onclick="showDetails(${index})">👁️ Ver Código</button>`;
+        }
+
+        html += `
+        <tr>
+            <td class="text-truncate" style="max-width: 250px;">
+                <a href="${r.url}" target="_blank" class="text-dark text-decoration-none fw-bold">${r.url}</a>
+            </td>
+            <td>${jsonBadges}</td>
+            <td class="text-center">${btnAction}</td>
+        </tr>`;
+    });
+    tbody.innerHTML = html;
+}
+
+function showDetails(index) {
+    const item = currentData[index];
+    document.getElementById('modalUrl').innerText = item.url;
+    
+    // Formatear JSON bonito
+    const jsonString = JSON.stringify(item.raw_payloads, null, 4);
+    document.getElementById('modalContent').innerText = jsonString;
+    
+    jsonModal.show();
+}
+
+function copyModalContent() {
+    const content = document.getElementById('modalContent').innerText;
+    navigator.clipboard.writeText(content).then(() => {
+        alert("¡Código copiado al portapapeles!");
+    });
+}
+
+function downloadExcel(){
+    fetch('/api/v1/schema_detector/download', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({data: currentData})
+    })
+    .then(r => r.blob())
+    .then(blob => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = "schema_inventory.xlsx";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+    });
+}
+</script>
+{% endblock %}

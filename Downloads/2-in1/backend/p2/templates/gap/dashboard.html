@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+
+{% block title %}Content Gap{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h2 class="mb-4">⚖️ Content Gap <span class="badge bg-warning text-dark">Detallado</span></h2>
+    
+    <div class="row">
+        <!-- IZQUIERDA -->
+        <div class="col-md-3">
+            <div class="card shadow-sm p-3 mb-3 border-0">
+                <label class="fw-bold small">Tu URL:</label>
+                <input type="text" id="myUrl" class="form-control form-control-sm mb-2" placeholder="https://...">
+                
+                <label class="fw-bold small">Competidores (Máx 5):</label>
+                <textarea id="compUrls" class="form-control form-control-sm mb-3" rows="8" placeholder="https://..."></textarea>
+                
+                <button class="btn btn-primary w-100 fw-bold btn-sm" onclick="analyzeGap()">🔍 Comparar</button>
+            </div>
+            
+            <div id="metricsPanel" class="card shadow-sm p-3 border-0 bg-white" style="display:none;">
+                <h6 class="small fw-bold border-bottom pb-2">Métricas Globales</h6>
+                <div class="d-flex justify-content-between small mb-1">
+                    <span>Tus Palabras:</span><strong id="myWordCount">-</strong>
+                </div>
+                <div class="d-flex justify-content-between small">
+                    <span>Media Rival:</span><strong id="compWordCount">-</strong>
+                </div>
+            </div>
+        </div>
+
+        <!-- DERECHA -->
+        <div class="col-md-9">
+            <div id="loading" class="text-center py-5" style="display:none;">
+                <div class="spinner-border text-primary" role="status"></div>
+                <p class="small text-muted mt-2">Analizando palabras clave...</p>
+            </div>
+
+            <div id="resultsArea" style="display:none;">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h5 class="m-0">Tabla de Densidad</h5>
+                    <button class="btn btn-success btn-sm" onclick="downloadExcel()">💾 Excel Detallado</button>
+                </div>
+                
+                <div class="card shadow-sm border-0">
+                    <div class="table-responsive" style="max-height: 70vh; overflow-y: auto;">
+                        <table class="table table-hover table-sm align-middle mb-0 table-bordered" style="font-size: 0.85rem;">
+                            <thead class="table-dark small sticky-top" id="tableHead">
+                                <!-- Se llena con JS -->
+                            </thead>
+                            <tbody id="tableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentData = [];
+let currentHeaders = [];
+
+function analyzeGap(){
+    const myUrl = document.getElementById('myUrl').value;
+    const compUrls = document.getElementById('compUrls').value.split('\n').filter(u => u.trim() !== '');
+    
+    if(!myUrl || compUrls.length === 0) return alert("Faltan URLs");
+    
+    document.getElementById('loading').style.display='block';
+    document.getElementById('resultsArea').style.display='none';
+    document.getElementById('metricsPanel').style.display='none';
+    
+    fetch('/api/v1/gap/analyze', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({my_url: myUrl, comp_urls: compUrls})
+    })
+    .then(r => r.json())
+    .then(d => {
+        document.getElementById('loading').style.display='none';
+        if(d.error) return alert(d.error);
+        
+        currentData = d.data;
+        currentHeaders = d.comp_headers;
+        
+        renderTable(d.data, d.comp_headers);
+        
+        document.getElementById('myWordCount').innerText = d.metrics.my_words;
+        document.getElementById('compWordCount').innerText = d.metrics.comp_words_avg;
+        document.getElementById('metricsPanel').style.display='block';
+        document.getElementById('resultsArea').style.display='block';
+    })
+    .catch(e => {
+        document.getElementById('loading').style.display='none';
+        alert("Error: " + e);
+    });
+}
+
+function renderTable(rows, compUrls){
+    const thead = document.getElementById('tableHead');
+    const tbody = document.getElementById('tableBody');
+    
+    // 1. Construir Cabecera Dinámica
+    let headHtml = `<tr>
+        <th style="width: 200px;">Palabra</th>
+        <th class="text-center bg-secondary text-white" style="width: 80px;">TÚ</th>`;
+    
+    compUrls.forEach((url, idx) => {
+        // Cortar URL para que quepa
+        let shortUrl = url.replace('https://','').replace('www.','').substring(0, 15) + '...';
+        headHtml += `<th class="text-center" title="${url}">Comp ${idx+1}<br><small class="fw-normal text-muted" style="font-size:0.6em">${shortUrl}</small></th>`;
+    });
+    
+    headHtml += `<th class="text-center bg-light text-dark">Media</th><th>Estado</th></tr>`;
+    thead.innerHTML = headHtml;
+
+    // 2. Construir Cuerpo
+    let bodyHtml = '';
+    rows.forEach(r => {
+        let statusBadge = r.status.includes('Faltante') ? '<span class="badge bg-danger">FALTA</span>' : 
+                          (r.status.includes('Bajo') ? '<span class="badge bg-warning text-dark">BAJO</span>' : 
+                          '<span class="badge bg-success">OK</span>');
+        
+        let rowHtml = `<tr>
+            <td class="fw-bold">${r.word}</td>
+            <td class="text-center fw-bold bg-light ${r.my_count===0?'text-danger':''}">${r.my_count}</td>`;
+            
+        // Celdas dinámicas de competidores
+        r.comp_breakdown.forEach(val => {
+            let style = val > 0 ? 'text-dark' : 'text-muted opacity-25';
+            let weight = val > r.comp_avg ? 'fw-bold' : '';
+            rowHtml += `<td class="text-center ${style} ${weight}">${val}</td>`;
+        });
+        
+        rowHtml += `<td class="text-center fw-bold">${r.comp_avg}</td>
+                    <td>${statusBadge}</td>
+                </tr>`;
+        bodyHtml += rowHtml;
+    });
+    tbody.innerHTML = bodyHtml;
+}
+
+function downloadExcel(){
+    if(currentData.length === 0) return;
+    fetch('/api/v1/gap/download', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({data: currentData, headers: currentHeaders})
+    })
+    .then(r => r.blob())
+    .then(blob => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = "content_gap_detallado.xlsx";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,16 @@
+server.log
+__pycache__/
+verification/
+
+# Python
+*.pyc
+*.pyo
+*.pyd
+venv/
+.env
+.DS_Store
+
+# Database
+*.db
+!projects_db.json
+instance/

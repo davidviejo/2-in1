@@ -1,0 +1,253 @@
+{
+    "id": "100_1765990471",
+    "project": "DIEGOCASAS",
+    "date": "17/12/2025 17:54",
+    "data": [
+        {
+            "url": "https://www.diegocasas.es/rinoplastia-en-zaragoza/mejor-cirujano/",
+            "metrics": {
+                "status": 200,
+                "ttfb": 473,
+                "internal_links": 21,
+                "words": 956,
+                "kw_density": 0.0
+            },
+            "issues": [
+                "KW no en Title",
+                "KW no en H1"
+            ],
+            "score_tech": 100,
+            "score_content": 75,
+            "score_perf": 85,
+            "score_global": 86,
+            "title": "\u25b7 Mejor cirujano de rinoplastia en Zaragoza | Diego Casas",
+            "meta_desc": "Descubre a Diego Casas, el mejor cirujano de rinoplastia en Zaragoza. Confianza, experiencia y resultados \u00fanicos \u27a1\ufe0f \u00a1Contacta hoy mismo!",
+            "canonical": "https://www.diegocasas.es/rinoplastia-en-zaragoza/mejor-cirujano/",
+            "robots": "follow, index, max-snippet:-1, max-video-preview:-1, max-image-preview:large",
+            "headers_tree": [
+                {
+                    "type": "H1",
+                    "text": "Mejor cirujano de rinoplastia en Zaragoza"
+                },
+                {
+                    "type": "H2",
+                    "text": "Rinoplastia en Zaragoza: Profesionalidad y confianza con el Dr. Diego Casas"
+                },
+                {
+                    "type": "H2",
+                    "text": "Transforma tu nariz con el mejor cirujano de rinoplastia en Zaragoza"
+                },
+                {
+                    "type": "H2",
+                    "text": "\u00bfPor qu\u00e9 elegir al Dr. Diego Casas para tu rinoplastia en Zaragoza?"
+                },
+                {
+                    "type": "H2",
+                    "text": "Preguntas frecuentes"
+                },
+                {
+                    "type": "H3",
+                    "text": "\u00bfC\u00f3mo identificar al mejor cirujano en Zaragoza?"
+                },
+                {
+                    "type": "H3",
+                    "text": "\u00bfPor qu\u00e9 optar por el Dr. Diego Casas para tu cirug\u00eda en Zaragoza?"
+                },
+                {
+                    "type": "H2",
+                    "text": "Reserva tu cita con un especialista"
+                },
+                {
+                    "type": "H2",
+                    "text": "UBICACI\u00d3N ZARAGOZA"
+                }
+            ],
+            "name": "Zaragoza",
+            "target_kw": "mejor cirujano rinoplastia zaragoza",
+            "comparison": {}
+        },
+        {
+            "url": "https://www.diegocasas.es/rinoplastia-en-zaragoza/antes-despues/",
+            "metrics": {
+                "status": 200,
+                "ttfb": 288,
+                "internal_links": 25,
+                "words": 1677,
+                "kw_density": 0.0
+            },
+            "issues": [
+                "KW no en Title",
+                "KW no en H1"
+            ],
+            "score_tech": 100,
+            "score_content": 75,
+            "score_perf": 90,
+            "score_global": 88,
+            "title": "Rinoplastia en Zaragoza \u2013 Antes y Despu\u00e9s con Fotos Reales",
+            "meta_desc": "Descubre el cambio con im\u00e1genes reales del antes y despu\u00e9s de una rinoplastia en Zaragoza. Primera consulta gratuita. \ud83d\udcde +34 640 33 56 82",
+            "canonical": "https://www.diegocasas.es/rinoplastia-en-zaragoza/antes-despues/",
+            "robots": "follow, index, max-snippet:-1, max-video-preview:-1, max-image-preview:large",
+            "headers_tree": [
+                {
+                    "type": "H1",
+                    "text": "Antes y Despu\u00e9sRinoplastia en Zaragozacon el Dr. Diego Casas"
+                },
+                {
+                    "type": "H2",
+                    "text": "El Antes y despu\u00e9s es sin duda uno de los aspectos m\u00e1s importantes antes de hacerte una rinoplastia:"
+                },
+                {
+                    "type": "H3",
+                    "text": "En Zaragoza, la rinoplastia o operaci\u00f3n de la nariz es una de las intervenciones est\u00e9ticas m\u00e1s popul"
+                },
+                {
+                    "type": "H3",
+                    "text": "Resultados de una rinoplastia"
+                },
+                {
+                    "type": "H3",
+                    "text": "Los resultados de la rinoplastia pueden variar ampliamente de una persona a otra, ya que cada pacien"
+                },
+                {
+                    "type": "H2",
+                    "text": "DR DIEGO CASAS"
+                },
+                {
+                    "type": "H2",
+                    "text": "Piensa en el momento despu\u00e9s de tu rinoplastia..."
+                },
+                {
+                    "type": "H2",
+                    "text": "Consultas frecuentes"
+                },
+                {
+                    "type": "H2",
+                    "text": ""
+                },
+                {
+                    "type": "H2",
+                    "text": ""
+                },
+                {
+                    "type": "H2",
+                    "text": "Muchos pacientes han compartido sus experiencias positivas con el Dr. Diego Casas. La mayor\u00eda valora"
+                },
+                {
+                    "type": "H2",
+                    "text": "TE HACEMOS UNA SIMULACI\u00d3N DE TU NARIZ ANTES DE DECIDIRTE POR LA RINOPLASTIA"
+                },
+                {
+                    "type": "H2",
+                    "text": "UBICACI\u00d3N ZARAGOZA"
+                }
+            ],
+            "name": "Antes y despues",
+            "target_kw": "antes y despues",
+            "comparison": {}
+        },
+        {
+            "url": "https://www.diegocasas.es/rinoplastia-en-zaragoza/precio/",
+            "metrics": {
+                "status": 200,
+                "ttfb": 233,
+                "internal_links": 22,
+                "words": 1511,
+                "kw_density": 0
+            },
+            "issues": [],
+            "score_tech": 100,
+            "score_content": 100,
+            "score_perf": 90,
+            "score_global": 96,
+            "title": "Precio Rinoplastia en Zaragoza \u2013 Consulta Gratuita",
+            "meta_desc": "\u00bfBuscas rinoplastia en Zaragoza? Precio cerrado, sin sorpresas. Primera consulta gratuita. Cirug\u00eda con resultados naturales. \ud83d\udcde 640 33 56 82",
+            "canonical": "https://www.diegocasas.es/rinoplastia-en-zaragoza/precio/",
+            "robots": "follow, index, max-snippet:-1, max-video-preview:-1, max-image-preview:large",
+            "headers_tree": [
+                {
+                    "type": "H1",
+                    "text": "Precio Rinoplastia en Zaragoza"
+                },
+                {
+                    "type": "H2",
+                    "text": "\u00bfCu\u00e1l es el costo de una Rinoplastia en Zaragoza?"
+                },
+                {
+                    "type": "H3",
+                    "text": "Factores que influyen en el precio de la rinoplastia en Zaragoza"
+                },
+                {
+                    "type": "H2",
+                    "text": "DR DIEGO CASAS"
+                },
+                {
+                    "type": "H2",
+                    "text": "Imagina el instante despu\u00e9s de tu rinoplastia..."
+                },
+                {
+                    "type": "H2",
+                    "text": "Consultas frecuentes"
+                },
+                {
+                    "type": "H3",
+                    "text": "Precio promedio de rinoplastia en Zaragoza"
+                },
+                {
+                    "type": "H3",
+                    "text": "\u00bfQu\u00e9 incluye el precio de la rinoplastia?"
+                },
+                {
+                    "type": "H3",
+                    "text": "\u00bfPuedo financiar mi rinoplastia?"
+                },
+                {
+                    "type": "H3",
+                    "text": "\u00bfQu\u00e9 debes saber antes de una rinoplastia?"
+                },
+                {
+                    "type": "H3",
+                    "text": ""
+                },
+                {
+                    "type": "H3",
+                    "text": "\u00bfC\u00f3mo prepararte para la cirug\u00eda?"
+                },
+                {
+                    "type": "H3",
+                    "text": "\u00bfC\u00f3mo es la recuperaci\u00f3n despu\u00e9s de la rinoplastia?"
+                },
+                {
+                    "type": "H3",
+                    "text": "\u00bfCu\u00e1les el Tiempo de Recuperaci\u00f3n de una Rinoplastia?"
+                },
+                {
+                    "type": "H3",
+                    "text": "\u00bfQu\u00e9 distingue al Dr. Diego Casas?"
+                },
+                {
+                    "type": "H3",
+                    "text": "Simulaci\u00f3n Previa a la Rinoplastia:"
+                },
+                {
+                    "type": "H3",
+                    "text": "Precauciones pre y postquir\u00fargicas"
+                },
+                {
+                    "type": "H2",
+                    "text": "Numerosos pacientes han expresado sus experiencias positivas con el Dr. Diego Casas. La mayor\u00eda dest"
+                },
+                {
+                    "type": "H2",
+                    "text": "TE HACEMOS UNA SIMULACI\u00d3N DE TU NARIZ ANTES DE DECIDIRTE POR LA RINOPLASTIA"
+                },
+                {
+                    "type": "H2",
+                    "text": "UBICACI\u00d3N ZARAGOZA"
+                }
+            ],
+            "name": "Zaragoza",
+            "target_kw": "",
+            "comparison": {}
+        }
+    ]
+}

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Meta Gen{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>📝 Bulk Meta Gen</h2>
+    <div class="row">
+        <div class="col-4">
+            <textarea id="u" class="form-control mb-2" rows="8" placeholder="URLs..."></textarea>
+            <input id="tt" class="form-control mb-2" value="{h1} | {domain}">
+            <input id="dt" class="form-control mb-2" value="{h1}. {intro}...">
+            <button onclick="run()" class="btn btn-primary w-100">Generar</button>
+        </div>
+        <div class="col-8">
+            <button onclick="dl()" class="btn btn-success mb-2">Excel</button>
+            <div id="res" style="max-height:500px;overflow:auto"></div>
+        </div>
+    </div>
+</div>
+<script>
+let cd=[];
+function run(){
+    fetch('/api/v1/meta_gen/run', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({
+        urls:document.getElementById('u').value.split('\n').filter(x=>x.trim()),
+        title_tpl:document.getElementById('tt').value, desc_tpl:document.getElementById('dt').value
+    })}).then(r=>r.json()).then(d=>{
+        cd=d.data;
+        let h='<table class="table table-sm"><tr><th>Title</th><th>Desc</th></tr>';
+        d.data.forEach(r=>{h+=`<tr><td>${r.gen_title}</td><td>${r.gen_desc}</td></tr>`});
+        document.getElementById('res').innerHTML=h+'</table>';
+    });
+}
+function dl(){
+    fetch('/api/v1/meta_gen/download', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({data:cd})})
+    .then(r=>r.blob()).then(b=>{const u=window.URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download="meta.xlsx";a.click();});
+}
+</script>
+{% endblock %}

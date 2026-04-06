@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}SERP Analyzer{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>📊 SERP Analyzer <span class="badge bg-primary">Multi-Motor</span></h2>
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card p-4 border-0 shadow-sm">
+                <label class="fw-bold">Keyword:</label>
+                <input id="keyword" class="form-control mb-2">
+                <label class="fw-bold">Tu URL (Opcional):</label>
+                <input id="myUrl" class="form-control mb-3">
+                
+                <hr>
+                <label class="fw-bold small">Motor:</label>
+                <select id="mode" class="form-select mb-2">
+                    <option value="ddg">DuckDuckGo</option>
+                    <option value="google_official">Google API Oficial</option>
+                    <option value="google_scraping">Google Scraping</option>
+                    <option value="google_nuclear">Google Nuclear (Cookie)</option>
+                </select>
+                
+                <!-- Opciones Dinámicas -->
+                <div id="optsCSE" style="display:none;" class="mb-2">
+                    <input id="cse_key" class="form-control form-control-sm mb-1" placeholder="API Key">
+                    <input id="cse_cx" class="form-control form-control-sm" placeholder="CX ID">
+                </div>
+                <div id="optsCookie" style="display:none;" class="mb-2">
+                    <input id="cookie" class="form-control form-control-sm" placeholder="Cookie Google">
+                </div>
+                <div id="optsDelay" class="mb-3">
+                    <label class="small">Delay (s):</label>
+                    <input id="delay" type="number" class="form-control form-control-sm" value="3">
+                </div>
+                
+                <button onclick="run()" class="btn btn-primary w-100 fw-bold">Analizar</button>
+            </div>
+        </div>
+        <div class="col-md-8">
+            <div id="loading" style="display:none;" class="text-center py-5"><div class="spinner-border"></div></div>
+            <div id="res" style="display:none;">
+                <div class="row text-center mb-3">
+                    <div class="col"><div class="card bg-light p-2"><h6>Words (Top 3)</h6><h3 id="aw" class="text-primary">0</h3></div></div>
+                    <div class="col"><div class="card bg-light p-2"><h6>Images</h6><h3 id="ai" class="text-info">0</h3></div></div>
+                    <div class="col"><div class="card bg-light p-2"><h6>Headers</h6><h3 id="ah" class="text-warning">0</h3></div></div>
+                </div>
+                <table class="table table-sm small"><tbody id="tb"></tbody></table>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+const modeSel = document.getElementById('mode');
+modeSel.addEventListener('change', () => {
+    document.getElementById('optsCSE').style.display = modeSel.value === 'google_official' ? 'block' : 'none';
+    document.getElementById('optsCookie').style.display = modeSel.value === 'google_nuclear' ? 'block' : 'none';
+});
+
+function run(){
+    document.getElementById('loading').style.display='block';
+    document.getElementById('res').style.display='none';
+    fetch('/api/v1/benchmark/run', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({
+        keyword:document.getElementById('keyword').value,
+        my_url:document.getElementById('myUrl').value,
+        mode:modeSel.value,
+        cse_key:document.getElementById('cse_key').value,
+        cse_cx:document.getElementById('cse_cx').value,
+        cookie:document.getElementById('cookie').value,
+        delay:document.getElementById('delay').value
+    })})
+    .then(r=>r.json()).then(d=>{
+        document.getElementById('loading').style.display='none';
+        if(d.error) return alert(d.error);
+        
+        document.getElementById('aw').innerText = d.averages.words;
+        document.getElementById('ai').innerText = d.averages.imgs;
+        document.getElementById('ah').innerText = d.averages.headers;
+        
+        let h = '<thead class="table-dark"><tr><th>#</th><th>URL</th><th>W</th><th>I</th><th>H</th></tr></thead>';
+        d.competitors.forEach((c,i)=> h+=`<tr><td>${i+1}</td><td class="text-truncate" style="max-width:200px">${c.url}</td><td>${c.words}</td><td>${c.imgs}</td><td>${c.headers}</td></tr>`);
+        if(d.my_data) h+=`<tr class="table-primary fw-bold"><td>TU</td><td>${d.my_data.url}</td><td>${d.my_data.words}</td><td>${d.my_data.imgs}</td><td>${d.my_data.headers}</td></tr>`;
+        
+        document.getElementById('tb').innerHTML = h;
+        document.getElementById('res').style.display='block';
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Local{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>📍 Local Permutator</h2>
+    <div class="row">
+        <div class="col-4"><textarea id="a" class="form-control mb-2" rows="5" placeholder="Servicio"></textarea></div>
+        <div class="col-4"><textarea id="b" class="form-control mb-2" rows="5" placeholder="Ciudad"></textarea></div>
+        <div class="col-4"><textarea id="c" class="form-control mb-2" rows="5" placeholder="Extra"></textarea></div>
+    </div>
+    <button onclick="run()" class="btn btn-success w-100 mb-3">Generar</button>
+    <textarea id="res" class="form-control" rows="10"></textarea>
+</div>
+<script>
+function run(){
+    fetch('/api/v1/local/generate', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({
+        col_a:document.getElementById('a').value, col_b:document.getElementById('b').value, col_c:document.getElementById('c').value
+    })}).then(r=>r.json()).then(d=>{ document.getElementById('res').value = d.keywords.join('\n'); });
+}
+</script>
+{% endblock %}

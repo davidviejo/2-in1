@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}WPO{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>⚡ WPO Lab</h2>
+    <div class="row">
+        <div class="col-md-4">
+            <textarea id="u" class="form-control mb-2" rows="10" placeholder="URLs a medir..."></textarea>
+            <button onclick="run()" class="btn btn-warning w-100">Test Speed</button>
+        </div>
+        <div class="col-md-8">
+            <div id="res" class="table-responsive"><table class="table"><tbody id="tb"></tbody></table></div>
+        </div>
+    </div>
+</div>
+<script>
+function run(){
+    const u = document.getElementById('u').value.split('\n');
+    fetch('/api/v1/wpo/analyze', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({urls:u})})
+    .then(r=>r.json()).then(d=>{
+        let h = '<thead class="table-dark"><tr><th>URL</th><th>TTFB</th><th>Size</th></tr></thead>';
+        d.data.forEach(i=>{
+            let c = i.ttfb > 0.5 ? 'text-danger' : 'text-success';
+            h += `<tr><td>${i.url}</td><td class="${c} fw-bold">${i.ttfb}s</td><td>${i.size} KB</td></tr>`;
+        });
+        document.getElementById('tb').innerHTML = h;
+    });
+}
+</script>
+{% endblock %}

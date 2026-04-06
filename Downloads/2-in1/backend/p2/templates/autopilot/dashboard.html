@@ -1,0 +1,417 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    /* Estilos PDF-Like para el reporte */
+    .report-card { border: 1px solid #e3e6f0; border-radius: 8px; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 20px; }
+    .report-header { background: #f8f9fc; padding: 15px; border-bottom: 1px solid #e3e6f0; font-weight: bold; color: #4e73df; }
+    .score-circle { width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; font-weight: bold; margin: 0 auto; color: white; }
+
+    /* Snippet Preview de Google */
+    .snippet-preview { font-family: arial,sans-serif; background: #fff; padding: 15px; border: 1px solid #dfe1e5; border-radius: 8px; max-width: 600px; }
+    .snippet-title { color: #1a0dab; font-size: 20px; cursor: pointer; text-decoration: none; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .snippet-url { color: #202124; font-size: 14px; line-height: 1.3; }
+    .snippet-desc { color: #4d5156; font-size: 14px; line-height: 1.58; }
+
+    /* Árbol de Encabezados */
+    .tree-node { padding: 5px 10px; border-left: 2px solid #ddd; margin-bottom: 2px; background: #fafafa; font-family: monospace; font-size: 0.9rem; }
+    .tree-h1 { border-left-color: #4e73df; font-weight: bold; background: #f0f4ff; }
+    .tree-h2 { border-left-color: #1cc88a; margin-left: 20px; }
+    .tree-h3 { border-left-color: #f6c23e; margin-left: 40px; }
+    .tree-h4 { border-left-color: #e74a3b; margin-left: 60px; }
+</style>
+
+<div class="container-fluid p-4">
+    <!-- Controles Superiores -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold text-dark"><i class="fas fa-file-contract text-primary"></i> Informe Elite v10</h2>
+            <p class="text-muted mb-0">Auditoría Técnica + Intención + Competencia Masiva</p>
+        </div>
+        <div>
+            <button class="btn btn-outline-secondary me-2 shadow-sm" onclick="loadHistory()">
+                <i class="fas fa-history"></i> Historial
+            </button>
+            <button class="btn btn-primary btn-lg shadow" onclick="startAudit()">
+                <i class="fas fa-play"></i> EJECUTAR TODO
+            </button>
+        </div>
+    </div>
+
+    <!-- Configuración -->
+    <div class="card shadow-sm mb-4 border-start border-5 border-info">
+        <div class="card-body">
+            <h5 class="fw-bold text-dark mb-3"><i class="fas fa-cog"></i> Configuración del Motor</h5>
+            <div class="row g-3 align-items-center">
+                <div class="col-md-3">
+                    <label class="small fw-bold text-muted">Fuente de Datos:</label>
+                    <select id="modeSelect" class="form-select">
+                        <option value="dataforseo" selected>DataForSEO API (Predeterminada)</option>
+                        <option value="ddg">DuckDuckGo (Gratis)</option>
+                        <option value="google_official">Google API Oficial</option>
+                        <option value="google_scraping">Google Scraping (Sin Cookie)</option>
+                        <option value="google_nuclear">Google Nuclear (Con Cookie)</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <!-- API Inputs -->
+                    <div id="optsCSE" style="display:none;" class="row g-2">
+                        <div class="col-6"><input type="text" id="google_cse_key" class="form-control" placeholder="API Key"></div>
+                        <div class="col-6"><input type="text" id="google_cse_cx" class="form-control" placeholder="CX ID"></div>
+                    </div>
+                    <!-- DataForSEO Inputs (override avanzado explícito) -->
+                    <details id="optsDataForSEO" class="mt-2">
+                        <summary class="small fw-semibold text-warning">Override avanzado DataForSEO (opcional)</summary>
+                        <div class="row g-2 mt-1">
+                            <div class="col-6"><input type="text" id="dataforseo_login" class="form-control" placeholder="DataForSEO Login"></div>
+                            <div class="col-6"><input type="password" id="dataforseo_password" class="form-control" placeholder="DataForSEO Password"></div>
+                        </div>
+                    </details>
+                    <!-- Cookie Input -->
+                    <div id="optsCookie" style="display:none;">
+                        <input type="text" id="cookie" class="form-control" placeholder="Pegar Cookie de Google (SOCS=...; CONSENT=...)">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Barra de Progreso -->
+    <div id="progressUI" class="d-none mb-4">
+        <div class="card bg-light border-0 shadow-sm p-4 text-center">
+            <h4 id="actionText" class="text-primary mb-2">Iniciando motores...</h4>
+            <div class="progress" style="height: 25px;">
+                <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" style="width: 0%"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Panel de Historial (Oculto por defecto) -->
+    <div id="historyUI" class="mb-4 d-none">
+        <div class="card card-body bg-light border-0 shadow-sm">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="fw-bold m-0"><i class="fas fa-clock"></i> Reportes Anteriores:</h6>
+                <button class="btn btn-sm btn-link text-muted" onclick="document.getElementById('historyUI').classList.add('d-none')">Cerrar</button>
+            </div>
+            <div id="historyList" class="d-flex gap-2 flex-wrap"></div>
+        </div>
+    </div>
+
+    <!-- ÁREA DE RESULTADOS -->
+    <div id="resultsArea" class="d-none">
+
+        <!-- Toolbar del Reporte Actual -->
+        <div class="d-flex justify-content-between align-items-center bg-white p-3 rounded shadow-sm mb-4 border-start border-5 border-primary">
+            <div>
+                <span class="badge bg-dark fs-6 me-2" id="reportDate">-</span>
+                <span class="text-muted" id="reportCount">-</span>
+            </div>
+            <div class="d-flex gap-2">
+                <a id="btnExport" href="#" class="btn btn-success btn-sm fw-bold shadow-sm">
+                    <i class="fas fa-file-excel"></i> Descargar Excel Completo
+                </a>
+                <button onclick="deleteCurrentReport()" class="btn btn-outline-danger btn-sm shadow-sm">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Acordeón de URLs (Aquí se renderiza todo) -->
+        <div class="accordion shadow-sm" id="reportAccordion">
+            <!-- Se llena con JS -->
+        </div>
+    </div>
+
+    <!-- Estado Vacío Inicial -->
+    <div id="emptyState" class="text-center py-5 text-muted opacity-50">
+        <i class="fas fa-search fa-4x mb-3"></i>
+        <h3>Selecciona un reporte del historial o inicia uno nuevo.</h3>
+    </div>
+</div>
+
+<script>
+    let currentReportId = null;
+
+    document.addEventListener("DOMContentLoaded", () => {
+        loadHistory();
+
+        // Handle mode change
+        const modeSel = document.getElementById('modeSelect');
+        if(modeSel) {
+            modeSel.addEventListener('change', () => {
+                const isApi = modeSel.value === 'google_official';
+                const isNuc = modeSel.value === 'google_nuclear';
+                document.getElementById('optsCSE').style.display = isApi ? 'flex' : 'none';
+                document.getElementById('optsCookie').style.display = isNuc ? 'block' : 'none';
+            });
+            // Init state
+            modeSel.dispatchEvent(new Event('change'));
+        }
+    });
+
+    async function startAudit() {
+        document.getElementById('progressUI').classList.remove('d-none');
+        document.getElementById('resultsArea').classList.add('d-none');
+        document.getElementById('emptyState').classList.add('d-none');
+
+        // Gather config
+        const payload = {
+            mode: document.getElementById('modeSelect').value,
+            google_cse_key: document.getElementById('google_cse_key').value,
+            google_cse_cx: document.getElementById('google_cse_cx').value,
+            cookie: document.getElementById('cookie').value,
+            dataforseo_login: document.getElementById('dataforseo_login').value,
+            dataforseo_password: document.getElementById('dataforseo_password').value
+        };
+
+        const res = await fetch('/api/v1/autopilot/start', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (data.status === 'started') {
+            const intv = setInterval(async () => {
+                const s = await fetch('/api/v1/autopilot/status');
+                const d = await s.json();
+                document.getElementById('progressBar').style.width = d.progress + '%';
+                document.getElementById('actionText').innerText = d.current_action;
+
+                if (!d.active) {
+                    clearInterval(intv);
+                    document.getElementById('progressUI').classList.add('d-none');
+                    loadHistory();
+                    // Auto-abrir el último reporte generado
+                    setTimeout(() => {
+                        const firstBtn = document.querySelector('#historyList button');
+                        if(firstBtn) firstBtn.click();
+                    }, 1000);
+                }
+            }, 1000);
+        } else {
+            alert(data.message || 'No se pudo iniciar la auditoría.');
+            document.getElementById('progressUI').classList.add('d-none');
+        }
+    }
+
+    async function loadHistory() {
+        const res = await fetch('/api/v1/autopilot/history');
+        const data = await res.json();
+        const div = document.getElementById('historyList');
+
+        if(data.length > 0) {
+            div.innerHTML = data.map(d => `
+                <button class="btn btn-white border shadow-sm px-3" onclick="loadReport('${d.id}')">
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="fas fa-file-alt text-primary"></i>
+                        <div class="text-start">
+                            <div class="fw-bold small">${d.date}</div>
+                            <div class="text-muted" style="font-size:0.7rem">${d.count} URLs</div>
+                        </div>
+                    </div>
+                </button>
+            `).join('');
+        } else {
+            div.innerHTML = '<span class="text-muted small">No hay reportes guardados.</span>';
+        }
+    }
+
+    async function loadReport(id) {
+        currentReportId = id;
+        document.getElementById('historyUI').classList.add('d-none'); // Ocultar historial al cargar
+
+        const res = await fetch(`/autopilot/load/${id}`);
+        const data = await res.json();
+
+        document.getElementById('emptyState').classList.add('d-none');
+        document.getElementById('resultsArea').classList.remove('d-none');
+
+        document.getElementById('reportDate').innerText = "📅 " + data.date;
+        document.getElementById('reportCount').innerText = data.data.length + " URLs Analizadas";
+        document.getElementById('btnExport').href = `/autopilot/export/${id}`;
+
+        renderReport(data.data);
+    }
+
+    function renderReport(items) {
+        const container = document.getElementById('reportAccordion');
+        container.innerHTML = '';
+
+        items.forEach((item, index) => {
+            // Colores según puntuación global
+            let sColor = item.score_global >= 80 ? '#1cc88a' : (item.score_global >= 50 ? '#f6c23e' : '#e74a3b');
+
+            // Construir árbol de encabezados visual
+            let treeHtml = item.headers_tree && item.headers_tree.length > 0
+                ? item.headers_tree.map(h => `<div class="tree-node tree-${h.type.toLowerCase()}">${h.type}: ${h.text}</div>`).join('')
+                : '<div class="p-3 text-muted small">No se detectaron encabezados (H1-H4).</div>';
+
+            // HTML de Comparativa Competencia
+            let compHtml = '<div class="alert alert-secondary text-center small m-0">Sin datos de competencia. Añade una KW al clúster para activar.</div>';
+
+            if (item.comparison && item.comparison.rivals) {
+                let diff = item.comparison.diff_words;
+                let diffColor = diff >= 0 ? 'text-success' : 'text-danger';
+                let icon = diff >= 0 ? 'fa-arrow-up' : 'fa-arrow-down';
+                let avg = item.comparison.avg_words;
+
+                let rows = item.comparison.rivals.map(r => `
+                    <tr>
+                        <td class="small text-truncate" style="max-width:130px">
+                            <a href="${r.url}" target="_blank" class="text-decoration-none">${r.domain}</a>
+                        </td>
+                        <td class="text-center">${r.words}</td>
+                        <td class="text-center">${r.density}%</td>
+                    </tr>
+                `).join('');
+
+                compHtml = `
+                    <div class="row g-2 mb-3">
+                        <div class="col-4">
+                            <div class="card bg-white border text-center py-2 h-100">
+                                <small class="text-muted d-block" style="font-size:0.7rem">TÚ</small>
+                                <strong class="text-dark">${item.metrics.words}</strong>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="card bg-white border text-center py-2 h-100">
+                                <small class="text-muted d-block" style="font-size:0.7rem">MEDIA TOP 3</small>
+                                <strong class="text-primary">${avg}</strong>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="card bg-white border-${diff >=0?'success':'danger'} text-center py-2 h-100">
+                                <small class="text-muted d-block" style="font-size:0.7rem">DIF</small>
+                                <strong class="${diffColor}"><i class="fas ${icon}"></i> ${Math.abs(diff)}</strong>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered bg-white mb-0" style="font-size:0.8rem">
+                            <thead class="table-light"><tr><th>Rival</th><th class="text-center">Pal.</th><th class="text-center">KW%</th></tr></thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>
+                `;
+            }
+
+            // --- AQUÍ ESTÁ LA ESTRUCTURA PRINCIPAL DE LA TARJETA ---
+            let html = `
+            <div class="accordion-item mb-3 border shadow-sm" style="overflow:hidden;">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed bg-white" type="button" data-bs-toggle="collapse" data-bs-target="#c${index}">
+
+                        <!-- Puntuación Círculo -->
+                        <div class="score-circle me-3 shadow-sm flex-shrink-0" style="background:${sColor}; width:45px; height:45px; font-size:1rem;">
+                            ${item.score_global}
+                        </div>
+
+                        <!-- Datos Principales -->
+                        <div class="d-flex flex-column w-100 overflow-hidden">
+                            <div class="d-flex align-items-center">
+                                <span class="fw-bold text-dark me-2 text-truncate">${item.name}</span>
+                                ${item.target_kw ? `<span class="badge bg-light text-dark border small">KW: ${item.target_kw}</span>` : ''}
+                            </div>
+
+                            <!-- URL -->
+                            <div class="small text-muted text-truncate">${item.url}</div>
+
+                            <!-- AQUÍ ESTÁ LA NUEVA ETIQUETA DE INTENCIÓN -->
+                            <span class="badge bg-info text-dark mt-1 align-self-start" style="font-size:0.7rem;">
+                                ${item.intent_detected || 'N/A'}
+                            </span>
+                        </div>
+
+                    </button>
+                </h2>
+
+                <div id="c${index}" class="accordion-collapse collapse" data-bs-parent="#reportAccordion">
+                    <div class="accordion-body bg-light p-4">
+
+                        <!-- 1. SNIPPET GOOGLE PREVIEW -->
+                        <div class="report-card">
+                            <div class="report-header"><i class="fab fa-google me-2"></i> Vista Previa (Snippet)</div>
+                            <div class="p-3">
+                                <div class="row">
+                                    <div class="col-lg-7 mb-3 mb-lg-0">
+                                        <div class="snippet-preview shadow-sm">
+                                            <div class="d-flex align-items-center mb-1">
+                                                <div class="rounded-circle bg-light border me-2" style="width:20px;height:20px;"></div>
+                                                <div class="snippet-url text-truncate">${new URL(item.url).hostname} › ...</div>
+                                            </div>
+                                            <div class="snippet-title">${item.title || 'Falta Title'}</div>
+                                            <div class="snippet-desc">${item.meta_desc || 'Falta Meta Description...'}</div>
+                                        </div>
+                                        <div class="mt-3 d-flex gap-2 flex-wrap">
+                                            <span class="badge bg-white text-dark border"><i class="fas fa-robot text-muted"></i> ${item.robots}</span>
+                                            <span class="badge bg-white text-dark border"><i class="fas fa-link text-muted"></i> Canonical: ${item.canonical == item.url ? 'OK' : 'Diferente'}</span>
+                                            <span class="badge bg-white text-dark border"><i class="fas fa-tachometer-alt text-muted"></i> TTFB: ${item.metrics.ttfb}ms</span>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-5 border-start">
+                                        <h6 class="small fw-bold text-muted mb-3">MÉTRICAS TÉCNICAS</h6>
+                                        <ul class="list-group list-group-flush small">
+                                            <li class="list-group-item d-flex justify-content-between px-0 bg-transparent"><span>Status HTTP</span> <b>${item.metrics.status}</b></li>
+                                            <li class="list-group-item d-flex justify-content-between px-0 bg-transparent"><span>Enlaces Internos</span> <b>${item.metrics.internal_links}</b></li>
+                                            <li class="list-group-item d-flex justify-content-between px-0 bg-transparent"><span>Densidad KW</span> <b>${item.metrics.kw_density}%</b></li>
+                                            <li class="list-group-item d-flex justify-content-between px-0 bg-transparent"><span>Score Perf.</span> <b>${item.score_perf}/100</b></li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <!-- 2. ESTRUCTURA VISUAL -->
+                            <div class="col-lg-6">
+                                <div class="report-card h-100">
+                                    <div class="report-header"><i class="fas fa-stream me-2"></i> Jerarquía Visual (H1-H4)</div>
+                                    <div class="p-3 bg-white" style="max-height:300px; overflow-y:auto;">
+                                        ${treeHtml}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 3. COMPETENCIA -->
+                            <div class="col-lg-6">
+                                <div class="report-card h-100">
+                                    <div class="report-header bg-warning text-dark"><i class="fas fa-trophy me-2"></i> Vs. Competencia (Top 3)</div>
+                                    <div class="p-3">
+                                        ${compHtml}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 4. RECOMENDACIONES -->
+                        <div class="report-card border-danger mb-0">
+                            <div class="report-header bg-danger text-white"><i class="fas fa-clipboard-check me-2"></i> Acciones Requeridas</div>
+                            <div class="p-3">
+                                ${item.issues.length > 0 ?
+                                    `<ul class="mb-0 text-danger fw-bold list-unstyled">
+                                        ${item.issues.map(i=>`<li class="mb-1"><i class="fas fa-times-circle me-2"></i>${i}</li>`).join('')}
+                                    </ul>`
+                                    : '<p class="text-success m-0 fw-bold"><i class="fas fa-check-circle fa-lg me-2"></i> URL Optimizada. Sin errores graves.</p>'}
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+            `;
+            container.innerHTML += html;
+        });
+    }
+
+    async function deleteCurrentReport() {
+        if(!confirm("¿Seguro que quieres borrar este reporte del historial?")) return;
+        if(currentReportId) {
+            await fetch(`/autopilot/delete/${currentReportId}`);
+            document.getElementById('resultsArea').classList.add('d-none');
+            document.getElementById('emptyState').classList.remove('d-none');
+            loadHistory();
+        }
+    }
+</script>
+{% endblock %}

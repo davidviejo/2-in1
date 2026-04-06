@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Bot{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>🕷️ Bot Simulator</h2>
+    <p class="text-muted">
+        Escribe una URL por línea. Se comparará la respuesta para un usuario normal vs. Googlebot.
+    </p>
+    <textarea id="u" class="form-control mb-2" rows="10"
+              placeholder="https://ejemplo.com&#10;midominio.com/pagina"></textarea>
+    <button onclick="run()" class="btn btn-dark mb-3">Simular</button>
+    <div id="res"></div>
+</div>
+
+<script>
+function statusBadgeClass(status) {
+    switch (status) {
+        case 'OK':
+            return 'bg-success';
+        case 'BLOQUEADO':
+            return 'bg-danger';
+        case 'DIFERENTE':
+            return 'bg-warning text-dark';
+        case 'ERROR_USER':
+        case 'ERROR_BOT':
+        case 'ERROR_AMBOS':
+        case 'URL_VACIA':
+        case 'Error':
+            return 'bg-danger';
+        default:
+            return 'bg-secondary';
+    }
+}
+
+function formatSideInfo(info) {
+    if (!info) return '-';
+
+    // Backend nuevo: siempre manda ok, status, len, error
+    if (info.ok) {
+        const status = info.status ?? '-';
+        const len = info.len ?? 0;
+        return `${status} (${len} bytes)`;
+    }
+
+    // Si no ok, mostramos el error
+    return `Error: ${info.error || 'desconocido'}`;
+}
+
+function run() {
+    const urls = document.getElementById('u').value
+        .split('\n')
+        .map(u => u.trim());
+
+    if (!urls.some(u => u)) {
+        document.getElementById('res').innerHTML =
+            '<div class="alert alert-warning">Introduce al menos una URL.</div>';
+        return;
+    }
+
+    document.getElementById('res').innerHTML =
+        '<div class="alert alert-info">Analizando URLs...</div>';
+
+    fetch('/api/v1/bot_sim/analyze', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ urls })
+    })
+    .then(r => r.json())
+    .then(d => {
+        console.log('Respuesta del backend:', d); // para comprobar que todo cuadra
+
+        if (!d || !Array.isArray(d.data)) {
+            document.getElementById('res').innerHTML =
+                '<div class="alert alert-danger">Respuesta inesperada del servidor.</div>';
+            return;
+        }
+
+        let h = `
+        <div class="table-responsive">
+        <table class="table table-sm table-striped align-middle">
+            <thead>
+                <tr>
+                    <th>URL original</th>
+                    <th>URL normalizada</th>
+                    <th>Estado</th>
+                    <th>Usuario (HTTP / tamaño)</th>
+                    <th>Bot (HTTP / tamaño)</th>
+                </tr>
+            </thead>
+            <tbody>
+        `;
+
+        d.data.forEach(i => {
+            const badgeClass = statusBadgeClass(i.status);
+            const normalized = i.normalized_url || '';
+            const linkTarget = normalized || i.url || '#';
+
+            h += `
+            <tr>
+                <td>${i.url || '-'}</td>
+                <td>
+                    ${linkTarget && linkTarget !== '#'
+                        ? `<a href="${linkTarget}" target="_blank" rel="noopener noreferrer">${normalized}</a>`
+                        : '-'}
+                </td>
+                <td><span class="badge ${badgeClass}">${i.status}</span></td>
+                <td>${formatSideInfo(i.user)}</td>
+                <td>${formatSideInfo(i.bot)}</td>
+            </tr>
+            `;
+        });
+
+        h += `
+            </tbody>
+        </table>
+        </div>
+        `;
+
+        document.getElementById('res').innerHTML = h;
+    })
+    .catch(err => {
+        console.error(err);
+        document.getElementById('res').innerHTML =
+            '<div class="alert alert-danger">Error al contactar con el servidor.</div>';
+    });
+}
+</script>
+{% endblock %}

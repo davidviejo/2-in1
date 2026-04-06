@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Pixel{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>📏 Pixel Counter</h2>
+    <textarea id="u" class="form-control mb-2" rows="10"></textarea>
+    <button onclick="run()" class="btn btn-info">Medir</button>
+    <div id="res" class="mt-3 table-responsive"><table class="table table-sm"><tbody id="tb"></tbody></table></div>
+</div>
+<script>
+let cd=[];
+function run(){
+    const u = document.getElementById('u').value.split('\n');
+    fetch('/api/v1/pixel/analyze', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({urls:u})})
+    .then(r=>r.json()).then(d=>{
+        cd=d.data;
+        let h='<tr><th>URL</th><th>Title (Max 580)</th><th>Desc (Max 920)</th></tr>';
+        d.data.forEach(r=>{
+            h+=`<tr><td>${r.url}</td><td class="${r.t_px>580?'text-danger':''}">${r.t_px}px</td><td class="${r.d_px>920?'text-danger':''}">${r.d_px}px</td></tr>`;
+        });
+        document.getElementById('tb').innerHTML=h;
+    });
+}
+</script>
+{% endblock %}

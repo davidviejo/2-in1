@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}ROI{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>💰 ROI Projector</h2>
+    <div class="row">
+        <div class="col-3">
+            <label>Tráfico Actual:</label><input id="t" type="number" class="form-control mb-2" value="5000">
+            <label>Conversión (%):</label><input id="c" type="number" class="form-control mb-2" value="1">
+            <label>Ticket Medio (€):</label><input id="v" type="number" class="form-control mb-2" value="50">
+            <label>Crecimiento Mes (%):</label><input id="g" type="number" class="form-control mb-3" value="10">
+            <button onclick="run()" class="btn btn-success w-100">Calcular</button>
+        </div>
+        <div class="col-9">
+            <div class="row text-center mb-3">
+                <div class="col card bg-dark text-white mx-1"><h5>Total 1 Año</h5><h3 id="tot">0€</h3></div>
+                <div class="col card bg-success text-white mx-1"><h5>Extra SEO</h5><h3 id="seo">0€</h3></div>
+            </div>
+            <div id="res"></div>
+        </div>
+    </div>
+</div>
+<script>
+function run(){
+    fetch('/api/v1/roi/calculate', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({traffic:document.getElementById('t').value, conv:document.getElementById('c').value, aov:document.getElementById('v').value, growth:document.getElementById('g').value})})
+    .then(r=>r.json()).then(d=>{
+        document.getElementById('tot').innerText = d.totals.annual_revenue + '€';
+        document.getElementById('seo').innerText = d.totals.seo_value + '€';
+        let h = '<table class="table table-sm"><tr><th>Mes</th><th>Tráfico</th><th>Ventas</th><th>Extra</th></tr>';
+        d.projection.forEach(r=>{ h+=`<tr><td>${r.month}</td><td>${r.traffic}</td><td>${r.revenue}€</td><td class="text-success fw-bold">+${r.extra}€</td></tr>` });
+        document.getElementById('res').innerHTML = h+'</table>';
+    });
+}
+</script>
+{% endblock %}

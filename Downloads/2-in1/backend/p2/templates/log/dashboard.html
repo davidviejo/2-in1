@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Log{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>🗂️ Log Analyzer</h2>
+    <textarea id="l" class="form-control mb-2" rows="10" placeholder="Pegar logs..."></textarea>
+    <button onclick="run()" class="btn btn-dark">Analizar</button>
+    <div id="res" class="mt-3"></div>
+</div>
+<script>
+let cd=[];
+function run(){
+    fetch('/api/v1/log/analyze', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({logs:document.getElementById('l').value})})
+    .then(r=>r.json()).then(d=>{
+        if(d.status=='empty') return alert('No bots found');
+        cd=d.data;
+        let h = `<h5>Total Hits: ${d.stats.total_hits}</h5><table class="table"><tr><th>URL</th><th>Hits</th></tr>`;
+        d.stats.top_urls.forEach(u=>{ h+=`<tr><td>${u.url}</td><td>${u.hits}</td></tr>`; });
+        document.getElementById('res').innerHTML = h + '</table><button onclick="dl()" class="btn btn-success">Excel</button>';
+    });
+}
+function dl(){
+    fetch('/api/v1/log/download', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({data:cd})})
+    .then(r=>r.blob()).then(b=>{const u=window.URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download="logs.xlsx";a.click();});
+}
+</script>
+{% endblock %}

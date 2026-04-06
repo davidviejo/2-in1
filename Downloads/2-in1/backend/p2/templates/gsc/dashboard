@@ -1,0 +1,424 @@
+{% extends "base.html" %}
+
+{% block title %}GSC Tracker | MediaFlow SEO Suite{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-4 p-lg-5">
+    <section class="rounded-4 overflow-hidden shadow-sm border border-slate-200 bg-white mb-4">
+        <div class="row g-0">
+            <div class="col-xl-8">
+                <div class="p-4 p-lg-5 bg-gradient" style="background: linear-gradient(135deg, #eff6ff 0%, #ffffff 55%, #f8fafc 100%);">
+                    <div class="d-flex flex-column flex-lg-row align-items-start justify-content-between gap-3 mb-4">
+                        <div>
+                            <div class="d-inline-flex align-items-center gap-2 px-3 py-2 rounded-pill bg-white border border-primary-subtle text-primary small fw-semibold shadow-sm mb-3">
+                                <i class="fab fa-google"></i>
+                                Search Console Tracker
+                            </div>
+                            <h1 class="h2 fw-bold text-slate-900 mb-2">Rendimiento orgánico accionable</h1>
+                            <p class="text-muted mb-0">
+                                Diagnóstico rápido de visibilidad, clics y eficiencia SEO para
+                                <strong id="projectDomain">{{ current_project.domain if current_project and current_project.domain else 'tu proyecto activo' }}</strong>.
+                            </p>
+                        </div>
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                            <span id="modeBadge" class="badge rounded-pill bg-secondary-subtle text-secondary-emphasis px-3 py-2">Cargando...</span>
+                            <button class="btn btn-primary btn-sm rounded-pill px-3" onclick="loadGSC()">
+                                <i class="fas fa-sync-alt me-1"></i>Actualizar
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-md-6 col-xl-3">
+                            <div class="rounded-4 border border-primary-subtle bg-white p-3 h-100 shadow-sm">
+                                <div class="text-uppercase text-muted small fw-semibold mb-2">Clics</div>
+                                <div class="d-flex align-items-end justify-content-between gap-3">
+                                    <div>
+                                        <div class="display-6 fw-bold text-primary mb-0" id="totalClicks">-</div>
+                                        <div class="small text-muted">Últimos 28 días</div>
+                                    </div>
+                                    <i class="fas fa-mouse-pointer text-primary fs-3 opacity-75"></i>
+                                </div>
+                                <div class="small mt-3" id="clicksTrend">Comparando periodos...</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 col-xl-3">
+                            <div class="rounded-4 border border-info-subtle bg-white p-3 h-100 shadow-sm">
+                                <div class="text-uppercase text-muted small fw-semibold mb-2">Impresiones</div>
+                                <div class="d-flex align-items-end justify-content-between gap-3">
+                                    <div>
+                                        <div class="display-6 fw-bold text-info mb-0" id="totalImps">-</div>
+                                        <div class="small text-muted">Cobertura en SERP</div>
+                                    </div>
+                                    <i class="fas fa-eye text-info fs-3 opacity-75"></i>
+                                </div>
+                                <div class="small mt-3" id="impsTrend">Comparando periodos...</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 col-xl-3">
+                            <div class="rounded-4 border border-success-subtle bg-white p-3 h-100 shadow-sm">
+                                <div class="text-uppercase text-muted small fw-semibold mb-2">CTR medio</div>
+                                <div class="d-flex align-items-end justify-content-between gap-3">
+                                    <div>
+                                        <div class="display-6 fw-bold text-success mb-0" id="avgCtr">-</div>
+                                        <div class="small text-muted">Eficiencia del snippet</div>
+                                    </div>
+                                    <i class="fas fa-bullseye text-success fs-3 opacity-75"></i>
+                                </div>
+                                <div class="small mt-3" id="ctrTrend">Comparando periodos...</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 col-xl-3">
+                            <div class="rounded-4 border border-warning-subtle bg-white p-3 h-100 shadow-sm">
+                                <div class="text-uppercase text-muted small fw-semibold mb-2">Posición media</div>
+                                <div class="d-flex align-items-end justify-content-between gap-3">
+                                    <div>
+                                        <div class="display-6 fw-bold text-warning mb-0" id="avgPosition">-</div>
+                                        <div class="small text-muted">Más bajo es mejor</div>
+                                    </div>
+                                    <i class="fas fa-ranking-star text-warning fs-3 opacity-75"></i>
+                                </div>
+                                <div class="small mt-3" id="positionTrend">Comparando periodos...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-4 border-start border-slate-200 bg-slate-50">
+                <div class="p-4 p-lg-5 h-100 d-flex flex-column">
+                    <h2 class="h5 fw-bold mb-3">Lectura rápida</h2>
+                    <div class="vstack gap-3 small">
+                        <div class="rounded-4 border border-slate-200 bg-white p-3">
+                            <div class="text-muted text-uppercase fw-semibold small mb-1">Propiedad conectada</div>
+                            <div class="fw-semibold text-break" id="siteUrl">Pendiente...</div>
+                        </div>
+                        <div class="rounded-4 border border-slate-200 bg-white p-3">
+                            <div class="text-muted text-uppercase fw-semibold small mb-1">Ventana analizada</div>
+                            <div class="fw-semibold" id="dateRangeLabel">Pendiente...</div>
+                        </div>
+                        <div class="rounded-4 border border-slate-200 bg-white p-3">
+                            <div class="text-muted text-uppercase fw-semibold small mb-1">Insight principal</div>
+                            <div class="fw-semibold" id="topInsight">Esperando datos para generar el diagnóstico.</div>
+                        </div>
+                    </div>
+
+                    <div id="demoAlert" class="alert alert-warning mt-4 mb-0 d-none rounded-4 border-0 shadow-sm">
+                        <strong>⚠️ Modo demostración:</strong>
+                        No se encontró <code>gsc_credentials.json</code>. Los datos son simulados para validar la interfaz.
+                    </div>
+                    <div id="errorAlert" class="alert alert-danger mt-4 mb-0 d-none rounded-4 border-0 shadow-sm"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div class="row g-4">
+        <div class="col-12 col-xl-8">
+            <div class="card border-0 shadow-sm rounded-4 h-100">
+                <div class="card-header bg-white border-0 px-4 pt-4 pb-0">
+                    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+                        <div>
+                            <h3 class="h5 fw-bold mb-1">Tendencia de tráfico</h3>
+                            <p class="text-muted small mb-0">Cruza clics, impresiones y posición para detectar cambios de visibilidad.</p>
+                        </div>
+                        <span class="badge text-bg-light border rounded-pill px-3 py-2">Actualización diaria</span>
+                    </div>
+                </div>
+                <div class="card-body p-4">
+                    <div style="height: 420px;">
+                        <canvas id="gscChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-xl-4">
+            <div class="card border-0 shadow-sm rounded-4 h-100">
+                <div class="card-header bg-white border-0 px-4 pt-4 pb-0">
+                    <h3 class="h5 fw-bold mb-1">Prioridades sugeridas</h3>
+                    <p class="text-muted small mb-0">Acciones basadas en la señal más débil del periodo.</p>
+                </div>
+                <div class="card-body p-4">
+                    <div class="list-group list-group-flush" id="priorityList">
+                        <div class="list-group-item px-0 py-3 border-0 text-muted">Cargando recomendaciones...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm rounded-4 mt-4">
+        <div class="card-header bg-white border-0 px-4 pt-4 pb-0 d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+            <div>
+                <h3 class="h5 fw-bold mb-1">Desglose diario</h3>
+                <p class="text-muted small mb-0">Últimos 7 registros para revisar anomalías con contexto.</p>
+            </div>
+            <span class="badge text-bg-light border rounded-pill px-3 py-2" id="tableHint">Esperando datos</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="px-4 py-3">Fecha</th>
+                            <th class="py-3">Clics</th>
+                            <th class="py-3">Impresiones</th>
+                            <th class="py-3">CTR</th>
+                            <th class="py-3 pe-4">Posición</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dailyTableBody">
+                        <tr>
+                            <td colspan="5" class="text-center text-muted py-4">Cargando datos...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        loadGSC();
+    });
+
+    function formatNumber(value, digits = 0) {
+        return new Intl.NumberFormat('es-ES', {
+            minimumFractionDigits: digits,
+            maximumFractionDigits: digits,
+        }).format(value ?? 0);
+    }
+
+    function formatPercent(value) {
+        return `${formatNumber(value, 2)}%`;
+    }
+
+    function formatDelta(current, previous, inverse = false) {
+        if (!previous) {
+            return { text: 'Sin periodo previo comparable', className: 'text-muted' };
+        }
+
+        const rawChange = ((current - previous) / previous) * 100;
+        const normalized = inverse ? rawChange * -1 : rawChange;
+        const isPositive = normalized >= 0;
+        const icon = isPositive ? '▲' : '▼';
+        const className = isPositive ? 'text-success' : 'text-danger';
+
+        return {
+            text: `${icon} ${formatNumber(Math.abs(rawChange), 1)}% vs. periodo anterior`,
+            className,
+        };
+    }
+
+    function setTrend(elementId, current, previous, inverse = false) {
+        const el = document.getElementById(elementId);
+        const delta = formatDelta(current, previous, inverse);
+        el.className = `small mt-3 ${delta.className}`;
+        el.textContent = delta.text;
+    }
+
+    function buildInsight(data) {
+        const ctr = data.totals.ctr;
+        const pos = data.totals.avg_position;
+        const clickTrend = formatDelta(data.periods.current.clicks, data.periods.previous.clicks);
+
+        if (ctr < 2) {
+            return 'CTR bajo: revisa titles y meta descriptions de las URLs con mayor impresión.';
+        }
+        if (pos > 10) {
+            return 'La visibilidad media aún está fuera del top 10: prioriza páginas con impresiones altas.';
+        }
+        if (clickTrend.className === 'text-danger') {
+            return 'Los clics caen frente al periodo anterior: revisa cambios de SERP y canibalización.';
+        }
+        return 'Buen comportamiento general: conviene escalar las URLs que ya combinan posición y CTR competitivos.';
+    }
+
+    function buildPriorities(data) {
+        const items = [];
+        if (data.totals.ctr < 2.5) {
+            items.push({
+                title: 'Optimizar snippets',
+                desc: 'El CTR está por debajo de lo esperado. Testea titles con intención más clara y propuestas de valor.'
+            });
+        }
+        if (data.totals.avg_position > 10) {
+            items.push({
+                title: 'Empujar URLs con impresiones',
+                desc: 'La posición media está fuera del top 10. Refuerza enlazado interno y contenido en páginas con demanda.'
+            });
+        }
+        if (data.periods.current.clicks < data.periods.previous.clicks) {
+            items.push({
+                title: 'Investigar caída reciente',
+                desc: 'Hay menos clics que en el periodo anterior. Revisa cambios técnicos, estacionalidad y volatilidad SERP.'
+            });
+        }
+        if (!items.length) {
+            items.push({
+                title: 'Mantener tendencia',
+                desc: 'La señal global es sana. Conviene replicar patrones de las URLs con mejor CTR y posición.'
+            });
+        }
+
+        const list = document.getElementById('priorityList');
+        list.innerHTML = items.map((item, index) => `
+            <div class="list-group-item px-0 py-3 border-0 ${index < items.length - 1 ? 'border-bottom' : ''}">
+                <div class="fw-semibold mb-1">${item.title}</div>
+                <div class="text-muted small">${item.desc}</div>
+            </div>
+        `).join('');
+    }
+
+    function renderTable(rows) {
+        const body = document.getElementById('dailyTableBody');
+        const recentRows = rows.slice(-7).reverse();
+        document.getElementById('tableHint').textContent = `${recentRows.length} últimos días`;
+
+        body.innerHTML = recentRows.map((row) => `
+            <tr>
+                <td class="px-4 py-3 fw-semibold">${row.date}</td>
+                <td class="py-3">${formatNumber(row.clicks)}</td>
+                <td class="py-3">${formatNumber(row.impressions)}</td>
+                <td class="py-3">${formatPercent(row.ctr)}</td>
+                <td class="py-3 pe-4">${formatNumber(row.position, 1)}</td>
+            </tr>
+        `).join('');
+    }
+
+    async function loadGSC() {
+        const errorAlert = document.getElementById('errorAlert');
+        errorAlert.classList.add('d-none');
+        errorAlert.textContent = '';
+
+        try {
+            const res = await fetch('/gsc/data', { method: 'POST' });
+            const data = await res.json();
+
+            if (!res.ok || data.error) {
+                throw new Error(data.error || 'No fue posible cargar los datos de Search Console.');
+            }
+
+            document.getElementById('totalClicks').textContent = formatNumber(data.totals.clicks);
+            document.getElementById('totalImps').textContent = formatNumber(data.totals.impressions);
+            document.getElementById('avgCtr').textContent = formatPercent(data.totals.ctr);
+            document.getElementById('avgPosition').textContent = formatNumber(data.totals.avg_position, 1);
+            document.getElementById('siteUrl').textContent = data.site;
+            document.getElementById('dateRangeLabel').textContent = `${data.range.start} → ${data.range.end} (${data.range.days} días)`;
+            document.getElementById('topInsight').textContent = buildInsight(data);
+
+            setTrend('clicksTrend', data.periods.current.clicks, data.periods.previous.clicks);
+            setTrend('impsTrend', data.periods.current.impressions, data.periods.previous.impressions);
+            setTrend('ctrTrend', data.periods.current.ctr, data.periods.previous.ctr);
+            setTrend('positionTrend', data.periods.current.position, data.periods.previous.position, true);
+
+            const badge = document.getElementById('modeBadge');
+            const demoAlert = document.getElementById('demoAlert');
+            if (data.mode === 'REAL') {
+                badge.className = 'badge rounded-pill bg-success-subtle text-success-emphasis px-3 py-2';
+                badge.textContent = 'API conectada';
+                demoAlert.classList.add('d-none');
+            } else {
+                badge.className = 'badge rounded-pill bg-warning-subtle text-warning-emphasis px-3 py-2';
+                badge.textContent = 'Simulación';
+                demoAlert.classList.remove('d-none');
+            }
+
+            renderChart(data.chart);
+            renderTable(data.rows || []);
+            buildPriorities(data);
+        } catch (error) {
+            console.error(error);
+            errorAlert.textContent = error.message;
+            errorAlert.classList.remove('d-none');
+            document.getElementById('priorityList').innerHTML = '<div class="list-group-item px-0 py-3 border-0 text-muted">No se pudieron generar recomendaciones.</div>';
+            document.getElementById('dailyTableBody').innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">Sin datos disponibles.</td></tr>';
+        }
+    }
+
+    function renderChart(chartData) {
+        const ctx = document.getElementById('gscChart').getContext('2d');
+        if (window.myChart) {
+            window.myChart.destroy();
+        }
+
+        window.myChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: chartData.labels,
+                datasets: [
+                    {
+                        label: 'Clics',
+                        data: chartData.clicks,
+                        borderColor: '#2563eb',
+                        backgroundColor: 'rgba(37, 99, 235, 0.12)',
+                        tension: 0.35,
+                        yAxisID: 'y',
+                        fill: true,
+                        pointRadius: 0,
+                    },
+                    {
+                        label: 'Impresiones',
+                        data: chartData.impressions,
+                        borderColor: '#06b6d4',
+                        backgroundColor: 'transparent',
+                        borderDash: [6, 6],
+                        tension: 0.35,
+                        yAxisID: 'y1',
+                        pointRadius: 0,
+                    },
+                    {
+                        label: 'Posición media',
+                        data: chartData.position,
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'transparent',
+                        tension: 0.35,
+                        yAxisID: 'y2',
+                        pointRadius: 0,
+                    }
+                ]
+            },
+            options: {
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            usePointStyle: true,
+                            boxWidth: 8,
+                            padding: 18,
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false }
+                    },
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        title: { display: true, text: 'Clics' }
+                    },
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        grid: { drawOnChartArea: false },
+                        title: { display: true, text: 'Impresiones' }
+                    },
+                    y2: {
+                        type: 'linear',
+                        display: false,
+                        reverse: true,
+                        suggestedMin: 1,
+                        suggestedMax: 20
+                    }
+                }
+            }
+        });
+    }
+</script>
+{% endblock %}

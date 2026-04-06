@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Simulador SERP{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>🎨 SERP Simulator</h2>
+    <div class="row">
+        <div class="col-md-5">
+            <div class="mb-3">
+                <label>Meta Title:</label>
+                <input id="ti" class="form-control" oninput="upd()" placeholder="Título...">
+                <small id="countTi" class="text-muted">0px / 580px</small>
+            </div>
+            <div class="mb-3">
+                <label>Meta Description:</label>
+                <textarea id="de" class="form-control" oninput="upd()" placeholder="Descripción..."></textarea>
+                <small id="countDe" class="text-muted">0px / 920px</small>
+            </div>
+        </div>
+        <div class="col-md-7">
+            <div class="card p-4 border-0 shadow-sm">
+                <small class="text-muted">miweb.com › categoria</small>
+                <h3 style="color:#1a0dab;font-size:20px;cursor:pointer;margin-bottom:0" id="pt">Tu Título Aquí</h3>
+                <div style="color:#4d5156;font-size:14px" id="pd">Tu descripción aparecerá aquí...</div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+function upd(){
+    const t = document.getElementById('ti').value;
+    const d = document.getElementById('de').value;
+    document.getElementById('pt').innerText = t || 'Título de ejemplo';
+    document.getElementById('pd').innerText = d || 'Descripción de ejemplo...';
+    // Cálculo simple de pixeles (aprox)
+    document.getElementById('countTi').innerText = Math.round(t.length * 9) + 'px (aprox)';
+    document.getElementById('countDe').innerText = Math.round(d.length * 7) + 'px (aprox)';
+}
+</script>
+{% endblock %}

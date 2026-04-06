@@ -1,0 +1,10 @@
+--- frontend/m3/src/config/kanban.ts
++++ frontend/m3/src/config/kanban.ts
+@@ -2,7 +2,7 @@
+
+ export const DEFAULT_KANBAN_COLUMNS: KanbanColumn[] = [
+-  { id: 'pending', title: 'Back del cliente (next step)' },
++  { id: 'pending', title: 'Back del cliente' },
+   { id: 'commitment', title: 'Compromiso (next step)' },
+   { id: 'working-now', title: 'Working now (equipo)' },
+   { id: 'in-progress', title: 'In progress (equipo)' },

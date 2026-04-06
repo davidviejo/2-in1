@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Tech Spy{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>🕵️ Tech Spy</h2>
+    <textarea id="u" class="form-control mb-3" rows="5" placeholder="https://competencia.com"></textarea>
+    <button onclick="run()" class="btn btn-dark">Espiar</button>
+    <div id="res" class="mt-3 table-responsive"><table class="table table-sm"><tbody id="tb"></tbody></table></div>
+</div>
+<script>
+function run(){
+    const u = document.getElementById('u').value.split('\n');
+    fetch('/api/v1/tech/analyze', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({urls:u})})
+    .then(r=>r.json()).then(d=>{
+        let h = '<thead><tr><th>URL</th><th>CMS</th><th>SEO</th><th>Analytics</th></tr></thead>';
+        d.data.forEach(i=>{
+            h += `<tr><td>${i.url}</td><td>${i.cms}</td><td>${i.seo}</td><td>${i.analytics.join(', ')}</td></tr>`;
+        });
+        document.getElementById('tb').innerHTML=h;
+    });
+}
+</script>
+{% endblock %}

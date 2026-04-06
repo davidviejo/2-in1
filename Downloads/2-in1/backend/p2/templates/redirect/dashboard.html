@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Redirect{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>🔀 Redirect Tracer</h2>
+    <textarea id="u" class="form-control mb-2" rows="5"></textarea>
+    <button onclick="run()" class="btn btn-warning">Trace</button>
+    <div id="res" class="mt-3"></div>
+</div>
+<script>
+function run(){
+    const u = document.getElementById('u').value.split('\n');
+    fetch('/api/v1/redirect/analyze', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({urls:u})})
+    .then(r=>r.json()).then(d=>{
+        let h = '';
+        d.data.forEach(i=>{
+            if(i.error) h += `<div class="alert alert-danger">${i.original} Error</div>`;
+            else {
+                let steps = i.chain.map(s=>`<span class="badge bg-light text-dark border">${s.code}</span> ${s.url}`).join(' ➡ ');
+                h += `<div class="card mb-2 p-2 small">${steps}</div>`;
+            }
+        });
+        document.getElementById('res').innerHTML = h;
+    });
+}
+</script>
+{% endblock %}

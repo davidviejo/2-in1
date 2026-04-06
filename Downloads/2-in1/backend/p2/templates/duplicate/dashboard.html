@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Duplicity{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>👯 Duplicity Check</h2>
+    <input id="u1" class="form-control mb-2"><input id="u2" class="form-control mb-2">
+    <button onclick="run()" class="btn btn-danger">Comparar</button>
+    <h3 id="res" class="mt-3"></h3>
+</div>
+<script>
+function run(){
+    fetch('/api/v1/duplicate/compare', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url1:document.getElementById('u1').value, url2:document.getElementById('u2').value})})
+    .then(r=>r.json()).then(d=>{ document.getElementById('res').innerText = d.ratio + "% Idéntico"; });
+}
+</script>
+{% endblock %}

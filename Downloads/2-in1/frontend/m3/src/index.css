@@ -1,0 +1,115 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: 'Inter';
+
+  --color-primary: 37 99 235;
+  --color-primary-hover: 29 78 216;
+  --color-success: 5 150 105;
+  --color-warning: 217 119 6;
+  --color-danger: 220 38 38;
+  --color-danger-hover: 185 28 28;
+  --color-surface: 255 255 255;
+  --color-surface-alt: 248 250 252;
+  --color-border: 226 232 240;
+  --color-foreground: 15 23 42;
+  --color-muted: 100 116 139;
+  --color-on-primary: 255 255 255;
+
+  --color-primary-soft: 219 234 254;
+  --color-success-soft: 209 250 229;
+  --color-warning-soft: 254 243 199;
+  --color-danger-soft: 254 226 226;
+  --color-info: 14 116 144;
+  --color-info-soft: 224 242 254;
+
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+
+  --space-18: 4.5rem;
+
+  --shadow-card: 0 10px 24px -20px rgb(15 23 42 / 0.35);
+  --shadow-brand: 0 12px 20px -16px rgb(37 99 235 / 0.45);
+}
+
+.dark {
+  --color-surface: 30 41 59;
+  --color-surface-alt: 15 23 42;
+  --color-border: 71 85 105;
+  --color-foreground: 241 245 249;
+  --color-muted: 148 163 184;
+  --color-primary-soft: 30 58 138;
+  --color-success-soft: 6 78 59;
+  --color-warning-soft: 120 53 15;
+  --color-danger-soft: 127 29 29;
+  --color-info-soft: 12 74 110;
+}
+
+@layer utilities {
+  .page-shell {
+    @apply space-y-6 text-foreground;
+  }
+
+  .section-title {
+    @apply text-2xl font-bold text-foreground;
+  }
+
+  .section-subtitle {
+    @apply mt-1 text-sm text-muted;
+  }
+
+  .surface-panel {
+    @apply rounded-brand-lg border border-border bg-surface shadow-card;
+  }
+
+  .surface-subtle {
+    @apply rounded-brand-md border border-border bg-surface-alt;
+  }
+
+  .metric-chip {
+    @apply rounded-brand-md bg-surface-alt p-3;
+  }
+
+  .metric-label {
+    @apply text-[11px] uppercase tracking-wide text-muted;
+  }
+
+  .form-control {
+    @apply w-full rounded-brand-md border border-border bg-surface-alt px-4 py-2 text-sm text-foreground outline-none transition-all focus:ring-4 focus:ring-primary/20;
+  }
+
+  .form-textarea {
+    @apply form-control min-h-[140px] py-3;
+  }
+
+  .icon-tone-muted {
+    @apply text-muted;
+  }
+
+  .icon-tone-primary {
+    @apply text-primary;
+  }
+
+  .icon-tone-success {
+    @apply text-success;
+  }
+
+  .icon-tone-warning {
+    @apply text-warning;
+  }
+
+  .icon-tone-info {
+    @apply text-info;
+  }
+
+  .icon-tone-danger {
+    @apply text-danger;
+  }
+
+  .overlay-backdrop {
+    @apply fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm;
+  }
+}

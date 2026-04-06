@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Social{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2>📢 Social Preview</h2>
+    <textarea id="u" class="form-control mb-2" rows="5"></textarea>
+    <button onclick="run()" class="btn btn-primary">Preview</button>
+    <div id="res" class="mt-3 row"></div>
+</div>
+<script>
+function run(){
+    fetch('/api/v1/social/analyze', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({urls:document.getElementById('u').value.split('\n')})})
+    .then(r=>r.json()).then(d=>{
+        let h='';
+        d.data.forEach(i=>{
+            let img = i.og.image || 'https://via.placeholder.com/300';
+            h += `<div class="col-md-4"><div class="card mb-2"><img src="${img}" class="card-img-top" style="height:150px;object-fit:cover"><div class="card-body"><h6 class="card-title">${i.og.title||'Sin título'}</h6><p class="card-text small text-muted">${i.url}</p></div></div></div>`;
+        });
+        document.getElementById('res').innerHTML=h;
+    });
+}
+</script>
+{% endblock %}
