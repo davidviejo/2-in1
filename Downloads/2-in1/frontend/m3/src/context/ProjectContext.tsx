@@ -202,12 +202,14 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
   const addClient = useCallback((name: string, vertical: ClientVertical) => {
     const strategy = StrategyFactory.getStrategy(vertical);
     const initialModules = strategy.getModules();
+    const templateVersion = strategy.getTemplateVersion();
 
     const newClient: Client = {
       id: crypto.randomUUID(),
       name,
       vertical,
       modules: initialModules, // Deep copy handled in Strategy
+      templateVersion,
       createdAt: Date.now(),
       notes: [],
       completedTasksLog: [],
@@ -851,6 +853,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
     if (window.confirm('¿Seguro que quieres reiniciar el progreso de ESTE proyecto?')) {
       const strategy = StrategyFactory.getStrategy(currentClient.vertical);
       updateCurrentClientModules(strategy.getModules());
+      setClients((prev) => prev.map((c) => (c.id === currentClient.id ? { ...c, templateVersion: strategy.getTemplateVersion() } : c)));
     }
   }, [currentClient, updateCurrentClientModules]);
 

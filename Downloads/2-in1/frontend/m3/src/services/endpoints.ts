@@ -11,6 +11,9 @@ export const endpoints = {
     listPublic: () => 'api/public/clients',
     projectOverview: (slug: string) => `api/${encodePathParam(slug)}/overview`,
   },
+  templates: {
+    catalog: () => 'api/templates',
+  },
   tools: {
     run: (tool: string) => `api/tools/run/${encodePathParam(tool)}`,
     executions: () => 'api/tools/executions',

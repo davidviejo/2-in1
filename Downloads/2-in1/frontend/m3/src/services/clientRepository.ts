@@ -8,7 +8,6 @@ import {
   createDefaultIAVisibilityState,
 } from '../types';
 import { StrategyFactory } from '../strategies/StrategyFactory';
-import { INITIAL_MODULES } from '../constants';
 
 const CLIENTS_KEY = 'mediaflow_clients_cache_v2';
 const LEGACY_CLIENTS_KEY = 'mediaflow_clients';
@@ -35,17 +34,13 @@ const normalizeClientVertical = (vertical: unknown): ClientVertical => {
   return CLIENT_VERTICAL_ALIASES[normalized] || 'media';
 };
 
-
-
 const normalizeIAVisibilityHistoryItem = (item: unknown): IAVisibilityRunResult | null => {
   if (!item || typeof item !== 'object') {
     return null;
   }
 
   const raw = item as Partial<IAVisibilityRunResult> & Record<string, unknown>;
-  const sentimentSummary = raw.sentimentSummary && typeof raw.sentimentSummary === 'object'
-    ? raw.sentimentSummary
-    : {};
+  const sentimentSummary = raw.sentimentSummary && typeof raw.sentimentSummary === 'object' ? raw.sentimentSummary : {};
 
   return {
     id: typeof raw.id === 'string' && raw.id.length > 0 ? raw.id : crypto.randomUUID(),
@@ -62,9 +57,7 @@ const normalizeIAVisibilityHistoryItem = (item: unknown): IAVisibilityRunResult 
             competitor: mention.competitor,
             mentions: typeof mention.mentions === 'number' ? mention.mentions : 0,
             sentiment:
-              mention.sentiment === 'positive' ||
-              mention.sentiment === 'neutral' ||
-              mention.sentiment === 'negative'
+              mention.sentiment === 'positive' || mention.sentiment === 'neutral' || mention.sentiment === 'negative'
                 ? mention.sentiment
                 : 'neutral',
           }))
@@ -99,12 +92,9 @@ const normalizeIAVisibilityState = (iaVisibility: unknown): IAVisibilityState =>
   return {
     config: {
       tone: typeof rawConfig.tone === 'string' ? rawConfig.tone : defaults.config.tone,
-      objective:
-        typeof rawConfig.objective === 'string' ? rawConfig.objective : defaults.config.objective,
-      language:
-        typeof rawConfig.language === 'string' ? rawConfig.language : defaults.config.language,
-      location:
-        typeof rawConfig.location === 'string' ? rawConfig.location : defaults.config.location,
+      objective: typeof rawConfig.objective === 'string' ? rawConfig.objective : defaults.config.objective,
+      language: typeof rawConfig.language === 'string' ? rawConfig.language : defaults.config.language,
+      location: typeof rawConfig.location === 'string' ? rawConfig.location : defaults.config.location,
       devices: Array.isArray(rawConfig.devices)
         ? rawConfig.devices.filter((device): device is string => typeof device === 'string')
         : defaults.config.devices,
@@ -131,6 +121,41 @@ const normalizeClient = (client: Client): Client => ({
   customRoadmapOrder: client.customRoadmapOrder || [],
   iaVisibility: normalizeIAVisibilityState(client.iaVisibility),
 });
+
+const deepCopy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+
+const mergeWithTemplateModules = (currentModules: ModuleData[], templateModules: ModuleData[]): ModuleData[] => {
+  const moduleById = new Map(currentModules.map((module) => [module.id, module]));
+  const merged = templateModules.map((templateModule) => {
+    const existingModule = moduleById.get(templateModule.id);
+    if (!existingModule) {
+      return deepCopy(templateModule);
+    }
+
+    const tasksById = new Map(existingModule.tasks.map((task) => [task.id, task]));
+    const mergedTasks = templateModule.tasks.map((templateTask) => {
+      const existingTask = tasksById.get(templateTask.id);
+      return existingTask ? { ...templateTask, ...existingTask } : deepCopy(templateTask);
+    });
+
+    const customTasks = existingModule.tasks.filter(
+      (task) => task.isCustom || !templateModule.tasks.some((templateTask) => templateTask.id === task.id),
+    );
+
+    return {
+      ...templateModule,
+      ...existingModule,
+      tasks: [...mergedTasks, ...deepCopy(customTasks)],
+      isCustom: existingModule.isCustom,
+    };
+  });
+
+  const customModules = currentModules.filter(
+    (module) => module.isCustom || !templateModules.some((templateModule) => templateModule.id === module.id),
+  );
+
+  return [...merged, ...deepCopy(customModules)];
+};
 
 export class ClientRepository {
   static getClients(): Client[] {
@@ -164,11 +189,13 @@ export class ClientRepository {
     if (savedLegacyModules) {
       try {
         const legacyModules = JSON.parse(savedLegacyModules);
+        const strategy = StrategyFactory.getStrategy('media');
         const legacyClient: Client = {
           id: 'legacy-project',
           name: 'Mi Primer Proyecto',
           vertical: 'media',
-          modules: legacyModules,
+          modules: mergeWithTemplateModules(legacyModules, strategy.getModules()),
+          templateVersion: strategy.getTemplateVersion(),
           createdAt: Date.now(),
           notes: [],
           completedTasksLog: [],
@@ -181,12 +208,14 @@ export class ClientRepository {
       }
     }
 
+    const mediaStrategy = StrategyFactory.getStrategy('media');
     return [
       {
         id: crypto.randomUUID(),
         name: 'Proyecto Demo',
         vertical: 'media',
-        modules: JSON.parse(JSON.stringify(INITIAL_MODULES)),
+        modules: mediaStrategy.getModules(),
+        templateVersion: mediaStrategy.getTemplateVersion(),
         createdAt: Date.now(),
         notes: [],
         completedTasksLog: [],
@@ -225,59 +254,20 @@ export class ClientRepository {
   }
 
   private static migrateModules(clients: Client[]): Client[] {
-    let changed = false;
-    const verticalModulesCache = new Map<ClientVertical, ModuleData[]>();
+    return clients.map((client) => {
+      const strategy = StrategyFactory.getStrategy(client.vertical);
+      const nextTemplateVersion = strategy.getTemplateVersion();
 
-    const updatedClients = clients.map((client) => {
-      let currentModules = client.modules;
-      let clientChanged = false;
-
-      const needsExtras = !currentModules.some((m) => m.id === 8);
-      const needsMia = !currentModules.some((m) => m.id === 9);
-
-      if (needsExtras || needsMia) {
-        if (!verticalModulesCache.has(client.vertical)) {
-          const strategy = StrategyFactory.getStrategy(client.vertical);
-          verticalModulesCache.set(client.vertical, strategy.getModules());
-        }
-        const fullModules = verticalModulesCache.get(client.vertical)!;
-
-        if (needsExtras) {
-          const extrasModule = fullModules.find((m) => m.id === 8);
-          if (extrasModule) {
-            if (!clientChanged) {
-              currentModules = [...currentModules];
-              clientChanged = true;
-            }
-            currentModules.push(JSON.parse(JSON.stringify(extrasModule)));
-          }
-        }
-
-        if (needsMia) {
-          const miaModule = fullModules.find((m) => m.id === 9);
-          if (miaModule) {
-            if (!clientChanged) {
-              currentModules = [...currentModules];
-              clientChanged = true;
-            }
-            currentModules.push(JSON.parse(JSON.stringify(miaModule)));
-          }
-        }
+      if (client.templateVersion === nextTemplateVersion) {
+        return client;
       }
 
-      if (clientChanged) {
-        changed = true;
-        return { ...client, modules: currentModules };
-      }
-
-      return client;
+      return {
+        ...client,
+        modules: mergeWithTemplateModules(client.modules, strategy.getModules()),
+        templateVersion: nextTemplateVersion,
+      };
     });
-
-    if (changed) {
-      // no-op: state persistence happens in the consuming context
-    }
-
-    return updatedClients;
   }
 }
 
