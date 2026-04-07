@@ -13,6 +13,7 @@ export const endpoints = {
   },
   tools: {
     run: (tool: string) => `api/tools/run/${encodePathParam(tool)}`,
+    catalog: () => 'api/tools/catalog',
   },
   ai: {
     seoAnalysis: () => 'api/ai/seo-analysis',

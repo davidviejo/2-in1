@@ -19,6 +19,7 @@ const IAVisibility = lazy(() => import('./pages/IAVisibility'));
 const Settings = lazy(() => import('./pages/Settings'));
 const AdminIdeasPage = lazy(() => import('./pages/admin/AdminIdeasPage'));
 const TrendsMediaPage = lazy(() => import('./pages/TrendsMediaPage'));
+const ToolsHub = lazy(() => import('./pages/ToolsHub'));
 
 const LandingPage = lazy(() => import('./pages/portal/LandingPage'));
 const ClientsLogin = lazy(() => import('./pages/portal/ClientsLogin'));
@@ -156,6 +157,7 @@ export const AppRoutes: React.FC = () => {
                 <Route path="settings" element={<Settings />} />
                 <Route path="challenge" element={<SpeedChallenge />} />
                 <Route path="trends-media" element={<TrendsMediaPage />} />
+                <Route path="tools-hub" element={<ToolsHub />} />
                 <Route path="admin/ideas" element={<AdminIdeasPage />} />
                 <Route
                   path="completed-tasks"

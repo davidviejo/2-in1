@@ -1,6 +1,7 @@
-from flask import Blueprint, request, jsonify, make_response, session, redirect, url_for
+from flask import Blueprint, request, jsonify, make_response, session, redirect, url_for, render_template
 from apps.auth_utils import verify_token
 from apps.web.clients_store import get_safe_clients
+from apps.web.api_routes_map import TOOLS_CATALOG
 from functools import wraps
 
 portal_bp = Blueprint('portal_bp', __name__)
@@ -130,3 +131,15 @@ def run_tool(tool):
         "message": f"Tool {tool} execution queued (dummy)",
         "tool": tool
     })
+
+
+@portal_bp.route('/api/tools/catalog', methods=['GET'])
+def tools_catalog():
+    response = make_response(jsonify({'tools': TOOLS_CATALOG}))
+    response.headers['Cache-Control'] = 'public, max-age=60, stale-while-revalidate=300'
+    return response
+
+
+@portal_bp.route('/tools/hub', methods=['GET'])
+def tools_hub():
+    return render_template('tools_hub.html', tools=TOOLS_CATALOG)
