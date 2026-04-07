@@ -108,7 +108,7 @@ export const BatchJobMonitor: React.FC<Props> = ({
         const statusMap = {
           done: 'done',
           errors: 'error',
-          queued: 'queued,running,paused',
+          queued: 'pending,processing,paused',
         };
 
         const status = statusMap[activeTab];

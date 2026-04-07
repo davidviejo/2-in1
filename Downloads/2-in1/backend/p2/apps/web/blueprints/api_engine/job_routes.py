@@ -12,6 +12,51 @@ from . import api_engine_bp
 # Hard limits
 MAX_URLS_PER_BATCH = int(os.environ.get('ENGINE_MAX_URLS_PER_BATCH', 5000))
 
+JOB_STATUS_ENUM = ('pending', 'processing', 'paused', 'done', 'error', 'cancelled')
+
+_INTERNAL_TO_API_JOB_STATUS = {
+    'queued': 'pending',
+    'pending': 'pending',
+    'running': 'processing',
+    'processing': 'processing',
+    'paused': 'paused',
+    'completed': 'done',
+    'done': 'done',
+    'failed': 'error',
+    'error': 'error',
+    'cancelled': 'cancelled',
+}
+
+_API_TO_INTERNAL_JOB_STATUSES = {
+    'pending': ('queued', 'pending'),
+    'processing': ('running', 'processing'),
+    'paused': ('paused',),
+    'done': ('completed', 'done'),
+    'error': ('failed', 'error'),
+    'cancelled': ('cancelled',),
+}
+
+def map_job_status_to_api(status: str) -> str:
+    return _INTERNAL_TO_API_JOB_STATUS.get((status or '').strip().lower(), 'pending')
+
+def map_status_filters_to_internal(status_filters):
+    if not status_filters:
+        return None
+
+    mapped = []
+    for status in status_filters:
+        normalized = (status or '').strip().lower()
+        if normalized not in JOB_STATUS_ENUM and normalized not in _INTERNAL_TO_API_JOB_STATUS:
+            continue
+        mapped.extend(_API_TO_INTERNAL_JOB_STATUSES.get(normalized, (normalized,)))
+
+    # Deduplicate preserving order
+    deduped = []
+    for status in mapped:
+        if status not in deduped:
+            deduped.append(status)
+    return deduped
+
 @api_engine_bp.route('/api/jobs', methods=['POST'])
 def create_analysis_job():
     data = safe_get_json()
@@ -108,9 +153,16 @@ def create_analysis_job():
         JobRunner.start_worker()
 
         return jsonify({
-            "jobId": job_id,
-            "status": "queued",
-            "total": len(items),
+            "id": job_id,
+            "status": "pending",
+            "progress": {
+                "total": len(items),
+                "processed": 0,
+                "succeeded": 0,
+                "failed": 0
+            },
+            "created_at": None,
+            "completed_at": None,
             "advancedAllowed": advanced_allowed,
             "advancedBlockedReason": advanced_blocked_reason
         }), 201
@@ -127,18 +179,23 @@ def get_job_status(job_id):
     if not job:
         return jsonify({'error': 'Job not found'}), 404
 
+    status = map_job_status_to_api(job['status'])
+    completed_at = job['updated_at'] if status in ('done', 'error', 'cancelled') else None
+
     return jsonify({
-        "jobId": job['job_id'],
-        "status": job['status'],
-        "total": job['total_urls'],
-        "processed": job['processed_urls'],
-        "success": job['success_count'],
-        "errors": job['error_count'],
+        "id": job['job_id'],
+        "status": status,
+        "progress": {
+            "total": job['total_urls'],
+            "processed": job['processed_urls'],
+            "succeeded": job['success_count'],
+            "failed": job['error_count']
+        },
         "advancedAllowed": bool(job['advanced_allowed']),
         "advancedBlockedReason": job['advanced_blocked_reason'],
-        "createdAt": job['created_at'],
-        "updatedAt": job['updated_at'],
-        "lastError": job['last_error']
+        "created_at": job['created_at'],
+        "completed_at": completed_at,
+        "error": job['last_error']
     })
 
 @api_engine_bp.route('/api/jobs/<job_id>/items', methods=['GET'])
@@ -147,12 +204,23 @@ def get_job_items_route(job_id):
     status_filters = None
 
     if status:
-        status_filters = [entry.strip() for entry in status.split(',') if entry.strip()]
+        api_status_filters = [entry.strip() for entry in status.split(',') if entry.strip()]
+        status_filters = map_status_filters_to_internal(api_status_filters)
 
     page = int(request.args.get('page', 1))
     page_size = int(request.args.get('pageSize', 50))
 
     result = get_job_items(job_id, status_filters, page, page_size)
+    result['items'] = [
+        {
+            "itemId": item.get('item_id'),
+            "url": item.get('url'),
+            "status": map_job_status_to_api(item.get('status')),
+            "completed_at": item.get('finished_at'),
+            "error": item.get('error_message')
+        }
+        for item in result.get('items', [])
+    ]
     return jsonify(result)
 
 @api_engine_bp.route('/api/jobs/<job_id>/items/<item_id>/result', methods=['GET'])
@@ -186,7 +254,7 @@ def pause_job(job_id):
     job = get_job(job_id)
     if not job: return jsonify({'error': 'Job not found'}), 404
 
-    if job['status'] in ['running', 'queued']:
+    if map_job_status_to_api(job['status']) in ['processing', 'pending']:
         update_job_status(job_id, 'paused')
         return jsonify({'status': 'paused'})
 
@@ -197,10 +265,10 @@ def resume_job(job_id):
     job = get_job(job_id)
     if not job: return jsonify({'error': 'Job not found'}), 404
 
-    if job['status'] == 'paused':
+    if map_job_status_to_api(job['status']) == 'paused':
         update_job_status(job_id, 'queued')
         JobRunner.start_worker()
-        return jsonify({'status': 'queued'})
+        return jsonify({'status': 'pending'})
 
     return jsonify({'error': f"Cannot resume job in '{job['status']}' state"}), 400
 
@@ -209,7 +277,7 @@ def cancel_job(job_id):
     job = get_job(job_id)
     if not job: return jsonify({'error': 'Job not found'}), 404
 
-    if job['status'] not in ['completed', 'failed', 'cancelled']:
+    if map_job_status_to_api(job['status']) not in ['done', 'error', 'cancelled']:
         update_job_status(job_id, 'cancelled')
         return jsonify({'status': 'cancelled'})
 

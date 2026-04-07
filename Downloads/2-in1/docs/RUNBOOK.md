@@ -140,3 +140,6 @@ Para evitar duplicación funcional, el backend debe concentrarse en:
 - `POST /api/jobs/<job_id>/cancel`
 
 No se deben reintroducir endpoints legacy de ejecución/descarga paralelos para checklist.
+
+Contrato técnico batch jobs (estado/campos canónicos):
+- `docs/ENGINE_BATCH_API_CONTRACT.md`
