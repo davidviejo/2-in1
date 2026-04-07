@@ -26,7 +26,6 @@ import {
   Server,
   Database,
   Code2,
-  Settings as SettingsIcon,
   KanbanSquare,
   ListChecks,
   Wrench as Tool,
@@ -162,6 +161,9 @@ const Layout: React.FC<LayoutProps> = ({
     if (path.startsWith('/app/admin')) {
       return 'admin';
     }
+    if (path.startsWith('/app/tools-hub')) {
+      return 'backend';
+    }
     return 'analitica';
   }, [location.pathname]);
 
@@ -178,7 +180,7 @@ const Layout: React.FC<LayoutProps> = ({
 
   const handleTabChange = (tab: TabType) => {
     if (tab === 'backend') {
-      navigate('/operator');
+      navigate('/app/tools-hub');
       return;
     }
     switch (tab) {
@@ -331,10 +333,10 @@ const Layout: React.FC<LayoutProps> = ({
               onClick={() => setIsMobileMenuOpen(false)}
             />
             <NavItem
-              to="/app/settings"
-              icon={<SettingsIcon size={20} />}
-              label={t('nav.settings')}
-              subLabel={t('nav.settings_sub')}
+              to="/app/tools-hub"
+              icon={<Tool size={20} />}
+              label="Tools Hub"
+              subLabel="Legacy / Migrada / Beta"
               onClick={() => setIsMobileMenuOpen(false)}
             />
           </>
@@ -375,14 +377,13 @@ const Layout: React.FC<LayoutProps> = ({
                 if (tab === 'estrategia') toPath = '/app/client-roadmap';
                 if (tab === 'acciones') toPath = '/app/kanban';
                 if (tab === 'admin') toPath = '/app/admin/ideas';
-                if (tab === 'backend') toPath = '/operator';
+                if (tab === 'backend') toPath = '/app/tools-hub';
 
                 return (
                   <NavLink
                     key={tab}
                     to={toPath}
                     onClick={(e) => {
-                      if (tab === 'backend') return; // Default NavLink action is fine for /operator
                       e.preventDefault();
                       handleTabChange(tab);
                     }}
@@ -392,7 +393,7 @@ const Layout: React.FC<LayoutProps> = ({
                         : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'
                     }`}
                   >
-                    {tab === 'backend' ? 'Python Backend' : tab === 'analitica' ? 'Analítica' : tab}
+                    {tab === 'backend' ? 'Tools Hub' : tab === 'analitica' ? 'Analítica' : tab}
                   </NavLink>
                 );
               },
@@ -462,14 +463,13 @@ const Layout: React.FC<LayoutProps> = ({
                   if (tab === 'estrategia') toPath = '/app/client-roadmap';
                   if (tab === 'acciones') toPath = '/app/kanban';
                   if (tab === 'admin') toPath = '/app/admin/ideas';
-                  if (tab === 'backend') toPath = '/operator';
+                  if (tab === 'backend') toPath = '/app/tools-hub';
 
                   return (
                     <NavLink
                       key={tab}
                       to={toPath}
                       onClick={(e) => {
-                        if (tab === 'backend') return;
                         e.preventDefault();
                         handleTabChange(tab);
                         setIsMobileMenuOpen(false);
@@ -480,7 +480,7 @@ const Layout: React.FC<LayoutProps> = ({
                           : 'text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50'
                       }`}
                     >
-                      {tab === 'backend' ? 'Python' : tab === 'analitica' ? 'Analítica' : tab}
+                      {tab === 'backend' ? 'Tools' : tab === 'analitica' ? 'Analítica' : tab}
                     </NavLink>
                   );
                 },

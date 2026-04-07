@@ -8,6 +8,18 @@ interface AuthResponse {
   error?: string;
 }
 
+export interface ToolCatalogItem {
+  id: string;
+  name: string;
+  path: string;
+  status: 'legacy' | 'migrada' | 'beta';
+  description: string;
+}
+
+interface ToolsCatalogResponse {
+  tools: ToolCatalogItem[];
+}
+
 const httpClient = createHttpClient({ service: 'api' });
 
 export const api = {
@@ -54,4 +66,7 @@ export const api = {
 
   runOperatorTool: async (tool: string) =>
     httpClient.post(endpoints.tools.run(tool), undefined),
+
+  getToolsCatalog: async () =>
+    httpClient.get<ToolsCatalogResponse>(endpoints.tools.catalog(), { includeAuth: false }),
 };
