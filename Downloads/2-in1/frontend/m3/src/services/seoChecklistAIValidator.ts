@@ -2,7 +2,7 @@ import { ChecklistItem, ChecklistKey, ChecklistStatus, SeoPage } from '../types/
 import { SettingsRepository } from './settingsRepository';
 import { buildPendingChecks } from '../utils/seoChecklistAiValidation';
 import { runChecklistHeuristics } from '../utils/checklistAiHeuristics';
-import { analyzeChecklistWithAI, ChecklistAiDecision, ChecklistAiEvaluateResponse } from './checklistAiClient';
+import { analyzeChecklistWithAI, ChecklistAiDecision, ChecklistAiEvaluateResponse } from '@/features/seo-engine/checklist/api/checklistAiApi';
 
 export interface SeoChecklistAiSummary {
   updatedChecks: Array<{

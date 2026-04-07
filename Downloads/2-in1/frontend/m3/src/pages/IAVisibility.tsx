@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Eye, Filter, History, Search } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useProject } from '../context/ProjectContext';
-import { iaVisibilityService, IAVisibilityResponse, IAVisibilitySchedule } from '../services/iaVisibilityService';
+import { iaVisibilityService } from '@/features/seo-engine/visibility/api/visibilityApi';
+import { IAVisibilityResponse, IAVisibilitySchedule } from '@/features/seo-engine/visibility/types/visibilityTypes';
 
 type VisibilityStatus = 'up' | 'stable' | 'down';
 

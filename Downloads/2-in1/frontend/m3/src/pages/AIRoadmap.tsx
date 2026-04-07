@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { useProject } from '../context/ProjectContext';
 import { useSettings } from '../context/SettingsContext';
-import { generateAIRoadmap } from '../services/aiRoadmapService';
+import { generateAIRoadmap } from '@/features/client-management/roadmap/api/roadmapApi';
 import { useToast } from '../components/ui/ToastContext';
 import {
   Sparkles,
