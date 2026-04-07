@@ -3,6 +3,8 @@ import logging
 import concurrent.futures
 import re
 import json
+import base64
+from io import BytesIO
 import requests
 from flask import current_app
 from typing import Dict, Any, List, Optional
@@ -20,7 +22,7 @@ from apps.web.blueprints.schema_detector import detect_schemas
 from apps.web.blueprints.image_audit import scan_imgs
 from apps.web.blueprints.readability_tool import analyze_text_visual
 from apps.web.blueprints.kw_intent import classify_keyword
-from apps.web.blueprints.seo_tool import scrape_page, text_similarity, dispatcher, classify_intent, cluster_serp_results, get_domain
+from apps.web.blueprints.seo_tool import scrape_page, text_similarity, dispatcher, classify_intent, cluster_serp_results, get_domain, load_history
 from apps.core.database import get_user_settings
 from apps.web.blueprints.schema_tool import analyze_structured_data_detailed
 
@@ -54,6 +56,44 @@ def run_orchestrated_checklist(
     """
     Orchestrates the SEO checklist analysis by calling specialized tools.
     """
+    def extract_strategy_keywords(serp_section: Dict[str, Any]) -> Dict[str, Any]:
+        payload = (serp_section or {}).get('strategyWorkbookBase64')
+        if not payload:
+            return {"keywords": [], "summary": {}}
+
+        try:
+            raw = payload.split(',')[-1] if ',' in payload else payload
+            file_buffer = BytesIO(base64.b64decode(raw))
+            clusters, _ = load_history(file_buffer)
+            keywords = []
+            for cluster_item in clusters or []:
+                parent = str(cluster_item.get('parent', '')).strip()
+                if parent:
+                    keywords.append(parent)
+                for child in cluster_item.get('children', []) or []:
+                    child_kw = str(child or '').strip()
+                    if child_kw:
+                        keywords.append(child_kw)
+
+            deduped = list(dict.fromkeys(keywords))
+            return {
+                "keywords": deduped,
+                "summary": {
+                    "clustersImported": len(clusters or []),
+                    "keywordsImported": len(deduped),
+                    "fileName": serp_section.get('strategyWorkbookName', ''),
+                },
+            }
+        except Exception as exc:
+            logging.warning(f"Could not decode strategy workbook for checklist analysis: {exc}")
+            return {
+                "keywords": [],
+                "summary": {
+                    "error": str(exc),
+                    "fileName": serp_section.get('strategyWorkbookName', ''),
+                },
+            }
+
     # 1. Fetch content for logic-based checks (Readability, Geo in text, etc.)
     fetched = fetch_url_hybrid(url)
     content = fetched.get('content')
@@ -450,8 +490,11 @@ def run_orchestrated_checklist(
             is_clustering_requested = (
                 advanced_mode and
                 serp_cfg.get('enabled') is True and
-                serp_cfg.get('confirmed') is True
+                serp_cfg.get('confirmed') is True and
+                serp_cfg.get('useDataforseoForClusterization', True) is True
             )
+
+            strategy_keywords_ctx = extract_strategy_keywords(serp_cfg)
 
             if is_clustering_requested:
                 # 1. Check Provider
@@ -475,6 +518,18 @@ def run_orchestrated_checklist(
                             dfs_execution_mode = 'live'
 
                         target_kws = zero_click_kws[:limit_kw]
+                        imported_keywords = strategy_keywords_ctx.get('keywords', [])
+                        for imported_kw in imported_keywords:
+                            if len(target_kws) >= limit_kw:
+                                break
+                            if any((item.get('query') or '').lower() == imported_kw.lower() for item in target_kws):
+                                continue
+                            target_kws.append({
+                                "query": imported_kw,
+                                "impressions": 0,
+                                "position": None,
+                                "source": "strategy_file",
+                            })
 
                         cfg = {
                             'mode': 'dataforseo',
@@ -565,7 +620,8 @@ def run_orchestrated_checklist(
                                 "opportunityClusters": opp_count
                             },
                             "apiCallsEstimated": len(target_kws),
-                            "apiProviderCostHint": "approx $0.0006 per keyword"
+                            "apiProviderCostHint": "approx $0.0006 per keyword",
+                            "strategyWorkbook": strategy_keywords_ctx.get('summary', {}),
                         }
                     except Exception as e:
                         logging.error(f"Clustering error: {e}")

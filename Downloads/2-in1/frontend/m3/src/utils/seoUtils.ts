@@ -77,6 +77,10 @@ const buildDefaultAnalysisConfig = (
       dataforseoPassword: serp.dataforseoPassword || '',
       dataforseoDetail: serp.dataforseoDetail || 'advanced',
       dataforseoExecutionMode: serp.dataforseoExecutionMode || 'live',
+      useDataforseoForClusterization: serp.useDataforseoForClusterization !== false,
+      strategyWorkbookName: serp.strategyWorkbookName || '',
+      strategyWorkbookBase64: serp.strategyWorkbookBase64 || '',
+      strategyWorkbookUploadedAt: serp.strategyWorkbookUploadedAt || undefined,
       confirmed: Boolean(serp.enabled),
     },
     budgets: {
