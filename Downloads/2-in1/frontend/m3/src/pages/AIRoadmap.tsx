@@ -186,7 +186,7 @@ const AIRoadmap: React.FC = () => {
             </div>
           ) : (
             <Link
-              to="/settings"
+              to="/app/settings"
               className="flex items-center gap-1 text-xs text-amber-600 hover:underline"
             >
               <Settings size={12} /> Configurar API Keys

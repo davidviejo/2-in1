@@ -32,3 +32,14 @@ test('sidebar navigation works', async ({ page }) => {
   await expect(page).toHaveURL(/.*#\/app\//);
   await expect(page.getByText('Visión General de Madurez')).toBeVisible();
 });
+
+test('ai roadmap settings link routes to /app/settings when no API keys are configured', async ({ page }) => {
+  await page.goto('/#/app/ai-roadmap');
+
+  const settingsLink = page.getByRole('link', { name: 'Configurar API Keys' });
+  await expect(settingsLink).toBeVisible();
+
+  await settingsLink.click();
+  await expect(page).toHaveURL(/.*#\/app\/settings/);
+  await expect(page.getByRole('heading', { name: 'Ajustes del Sistema' })).toBeVisible();
+});
