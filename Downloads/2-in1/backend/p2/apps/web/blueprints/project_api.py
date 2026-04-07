@@ -59,6 +59,8 @@ def _normalize_note(raw: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _normalize_task(raw: Dict[str, Any]) -> Dict[str, Any]:
+    raw_flow = raw.get('flow')
+    normalized_flow = raw_flow if isinstance(raw_flow, dict) else None
     return {
         'id': str(raw.get('id', '')),
         'title': str(raw.get('title', '')),
@@ -73,6 +75,7 @@ def _normalize_task(raw: Dict[str, Any]) -> Dict[str, Any]:
         'externalLink': raw.get('externalLink'),
         'assignee': raw.get('assignee'),
         'dueDate': raw.get('dueDate'),
+        'flow': normalized_flow,
     }
 
 
