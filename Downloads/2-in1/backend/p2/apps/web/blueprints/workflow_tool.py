@@ -1,11 +1,20 @@
 # apps/workflow_tool.py
-from flask import Blueprint, render_template, jsonify
+from flask import Blueprint, render_template, jsonify, redirect
 
 workflow_bp = Blueprint('workflow_bp', __name__)
+CHECKLIST_BRIDGE_URL = '/workflow/checklist'
+CHECKLIST_SPA_URL = '/#/app/checklist'
 
 @workflow_bp.route('/workflow/master')
 def master_dashboard():
     return render_template('workflow/dashboard.html')
+
+
+@workflow_bp.route(CHECKLIST_BRIDGE_URL)
+def checklist_bridge():
+    """Endpoint puente claro para enviar checklist legacy al checklist canónico (SPA)."""
+    return redirect(CHECKLIST_SPA_URL, code=302)
+
 
 @workflow_bp.route('/workflow/data')
 def get_workflow_data():
@@ -40,7 +49,8 @@ def get_workflow_data():
                 {"name": "Header Map", "url": "/structure", "desc": "Estructura H2/H3.", "icon": "fa-list-ol"},
                 {"name": "Draft Editor", "url": "/draft", "desc": "Redacción optimizada.", "icon": "fa-pencil-alt"},
                 {"name": "NLP Analyzer", "url": "/nlp", "desc": "Entidades y sentimiento.", "icon": "fa-brain"},
-                {"name": "Link Opps", "url": "/opps", "desc": "Enlazado interno.", "icon": "fa-link"}
+                {"name": "Link Opps", "url": "/opps", "desc": "Enlazado interno.", "icon": "fa-link"},
+                {"name": "Checklist SPA", "url": CHECKLIST_BRIDGE_URL, "desc": "Checklist canónico en SPA.", "icon": "fa-check-square"}
             ]
         },
         {

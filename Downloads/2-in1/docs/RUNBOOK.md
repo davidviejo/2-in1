@@ -117,3 +117,26 @@ El proyecto incluye un `render.yaml` configurado en la raíz.
 - **Seguridad:** El backend convierte automáticamente las contraseñas en texto plano a hashes bcrypt al iniciar. Sin embargo, para producción se recomienda generar el hash localmente y poner ese hash en la variable de entorno.
 - **Base de Datos:** En local se usa SQLite (`backend/p2/projects.db`). En producción, si defines `DATABASE_URL`, el sistema usará PostgreSQL automáticamente.
 - **CORS:** El backend aceptará peticiones de `localhost:5173` siempre, y adicionalmente del origen definido en `FRONTEND_URL`.
+
+---
+
+## 5. Estado canónico del Checklist (SPA vs legacy)
+
+- **Checklist canónico (activo):** SPA en `/#/app/checklist`.
+- **Checklist legacy (Flask templates):** `backend/p2/apps/web/blueprints/checklist_tool.py` + `backend/p2/templates/checklist/dashboard.html`.
+- **Estado legacy:** congelado, sólo se mantiene endpoint puente para redirección.
+- **Retiro planificado de legacy:** **30 de junio de 2026**.
+
+### Endpoints backend permitidos para el motor de checklist
+
+Para evitar duplicación funcional, el backend debe concentrarse en:
+- `POST /api/analyze`
+- `POST /api/jobs`
+- `GET /api/jobs/<job_id>`
+- `GET /api/jobs/<job_id>/items`
+- `GET /api/jobs/<job_id>/items/<item_id>/result`
+- `POST /api/jobs/<job_id>/pause`
+- `POST /api/jobs/<job_id>/resume`
+- `POST /api/jobs/<job_id>/cancel`
+
+No se deben reintroducir endpoints legacy de ejecución/descarga paralelos para checklist.
