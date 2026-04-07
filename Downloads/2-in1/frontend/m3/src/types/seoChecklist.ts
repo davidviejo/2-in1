@@ -126,6 +126,10 @@ export interface SeoChecklistSettings {
     useGlobalDataforseo?: boolean;
     dataforseoDetail?: 'regular' | 'advanced';
     dataforseoExecutionMode?: 'live' | 'standard' | 'priority';
+    useDataforseoForClusterization?: boolean;
+    strategyWorkbookName?: string;
+    strategyWorkbookBase64?: string;
+    strategyWorkbookUploadedAt?: number;
   };
   budgets: {
     maxUrlsPerBatch: number;

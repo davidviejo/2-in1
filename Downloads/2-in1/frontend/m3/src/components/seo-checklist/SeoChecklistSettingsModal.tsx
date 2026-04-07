@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, Settings, Database, DollarSign, Target, Shield, AlertTriangle } from 'lucide-react';
+import { X, Settings, Database, DollarSign, Target, Shield, AlertTriangle, Upload } from 'lucide-react';
 import { SeoChecklistSettings, Capabilities } from '../../types/seoChecklist';
 import { parseBrandTerms } from '../../utils/brandTerms';
 
@@ -52,6 +52,36 @@ export const SeoChecklistSettingsModal: React.FC<Props> = ({
       brandTerms: parseBrandTerms(brandTermsText),
     });
     onClose();
+  };
+
+  const handleStrategyFileUpload = async (file?: File | null) => {
+    if (!file) return;
+
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const raw = String(reader.result || '');
+          const cleaned = raw.includes(',') ? raw.split(',').pop() || '' : raw;
+          resolve(cleaned);
+        };
+        reader.onerror = () => reject(new Error('No se pudo leer el archivo.'));
+        reader.readAsDataURL(file);
+      });
+
+      setFormData((prev) => ({
+        ...prev,
+        serp: {
+          ...prev.serp,
+          strategyWorkbookName: file.name,
+          strategyWorkbookBase64: base64,
+          strategyWorkbookUploadedAt: Date.now(),
+        },
+      }));
+    } catch (error) {
+      console.error(error);
+      alert('No se pudo cargar el archivo de estrategia. Inténtalo de nuevo.');
+    }
   };
 
   const isUsingGlobalDataforseo = formData.serp.useGlobalDataforseo !== false;
@@ -311,6 +341,67 @@ export const SeoChecklistSettingsModal: React.FC<Props> = ({
                           <option value="standard">Standard (asíncrono)</option>
                           <option value="priority">Priority (asíncrono rápido)</option>
                         </select>
+                      </div>
+                    </div>
+                    <div className="space-y-3 p-3 rounded-lg border border-blue-100 dark:border-blue-900/30 bg-white/70 dark:bg-slate-900/40">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                            Usar DataForSEO para analizar y clusterizar
+                          </p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            Activa el flujo avanzado para detectar clústeres de oportunidad.
+                          </p>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                          <input
+                            type="checkbox"
+                            checked={formData.serp.useDataforseoForClusterization !== false}
+                            onChange={(e) =>
+                              handleChange(
+                                'serp',
+                                'useDataforseoForClusterization',
+                                e.target.checked,
+                              )
+                            }
+                            className="sr-only peer"
+                          />
+                          <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                        </label>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                          <Upload size={14} />
+                          Archivo de estrategia (/seo/)
+                        </label>
+                        <input
+                          type="file"
+                          accept=".xlsx,.xls,.csv,.json"
+                          onChange={(e) => handleStrategyFileUpload(e.target.files?.[0])}
+                          className="w-full text-sm text-slate-600 dark:text-slate-300 file:mr-3 file:px-3 file:py-2 file:border-0 file:rounded-lg file:bg-blue-600 file:text-white hover:file:bg-blue-700"
+                        />
+                        {formData.serp.strategyWorkbookName ? (
+                          <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center justify-between gap-3">
+                            <span className="truncate">
+                              Cargado: {formData.serp.strategyWorkbookName}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleChange('serp', 'strategyWorkbookName', '');
+                                handleChange('serp', 'strategyWorkbookBase64', '');
+                                handleChange('serp', 'strategyWorkbookUploadedAt', undefined);
+                              }}
+                              className="text-red-600 dark:text-red-400 hover:underline"
+                            >
+                              Quitar
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            Sube el Excel/CSV usado en estrategia para reutilizar keywords y unificar el análisis.
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>

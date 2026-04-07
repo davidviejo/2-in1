@@ -25,6 +25,7 @@ const getDefaultSettings = (): SeoChecklistSettings => {
       useGlobalDataforseo: true,
       dataforseoDetail: 'advanced',
       dataforseoExecutionMode: 'live',
+      useDataforseoForClusterization: true,
       ...globalCredentials,
     },
     budgets: {
