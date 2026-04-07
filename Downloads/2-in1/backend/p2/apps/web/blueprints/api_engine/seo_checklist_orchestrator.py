@@ -467,6 +467,12 @@ def run_orchestrated_checklist(
                         strict = int(serp_cfg.get('strict', 3))
                         country = serp_cfg.get('country', 'ES')
                         lang = serp_cfg.get('language', 'es')
+                        dfs_detail = (serp_cfg.get('dataforseoDetail') or 'advanced').strip().lower()
+                        dfs_execution_mode = (serp_cfg.get('dataforseoExecutionMode') or 'live').strip().lower()
+                        if dfs_detail not in {'regular', 'advanced'}:
+                            dfs_detail = 'advanced'
+                        if dfs_execution_mode not in {'live', 'standard', 'priority'}:
+                            dfs_execution_mode = 'live'
 
                         target_kws = zero_click_kws[:limit_kw]
 
@@ -476,7 +482,9 @@ def run_orchestrated_checklist(
                             'dfs_pass': resolved_dfs_pass,
                             'top_n': top_n,
                             'gl': country,
-                            'hl': lang
+                            'hl': lang,
+                            'dataforseo_detail': dfs_detail,
+                            'dataforseo_execution_mode': dfs_execution_mode
                         }
 
                         serp_data_map = {}
@@ -545,7 +553,9 @@ def run_orchestrated_checklist(
                                 "country": country,
                                 "language": lang,
                                 "topN": top_n,
-                                "strict": strict
+                                "strict": strict,
+                                "dataforseoDetail": dfs_detail,
+                                "dataforseoExecutionMode": dfs_execution_mode
                             },
                             "clusters": formatted_clusters,
                             "summary": {
@@ -573,6 +583,8 @@ def run_orchestrated_checklist(
                     'serpapi_key': resolved_serpapi_key,
                     'dfs_login': resolved_dfs_login,
                     'dfs_pass': resolved_dfs_pass,
+                    'dataforseo_detail': (serp_cfg.get('dataforseoDetail') or 'advanced'),
+                    'dataforseo_execution_mode': (serp_cfg.get('dataforseoExecutionMode') or 'live'),
                     'top_n': 10
                 }
 

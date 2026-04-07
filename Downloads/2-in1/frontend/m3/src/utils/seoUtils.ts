@@ -75,6 +75,8 @@ const buildDefaultAnalysisConfig = (
       maxCompetitorsPerKeyword: serp.maxCompetitorsPerKeyword || 3,
       dataforseoLogin: serp.dataforseoLogin || '',
       dataforseoPassword: serp.dataforseoPassword || '',
+      dataforseoDetail: serp.dataforseoDetail || 'advanced',
+      dataforseoExecutionMode: serp.dataforseoExecutionMode || 'live',
       confirmed: Boolean(serp.enabled),
     },
     budgets: {

@@ -124,6 +124,8 @@ export interface SeoChecklistSettings {
     dataforseoLogin?: string;
     dataforseoPassword?: string;
     useGlobalDataforseo?: boolean;
+    dataforseoDetail?: 'regular' | 'advanced';
+    dataforseoExecutionMode?: 'live' | 'standard' | 'priority';
   };
   budgets: {
     maxUrlsPerBatch: number;
