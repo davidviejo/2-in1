@@ -20,43 +20,6 @@ import { AutoClusterizationPanel } from '../components/seo-checklist/AutoCluster
 import { AutoAssignKeywordsPanel } from '../components/seo-checklist/AutoAssignKeywordsPanel';
 
 const SeoChecklistPage: React.FC = () => {
-  const normalizeStoredJob = (raw: any): BatchJobStatus | null => {
-    const id = raw?.id || raw?.jobId;
-    if (!id) {
-      return null;
-    }
-
-    const rawStatus = raw?.status;
-    const status: BatchJobStatus['status'] =
-      rawStatus === 'queued' || rawStatus === 'pending'
-        ? 'pending'
-        : rawStatus === 'running' || rawStatus === 'processing'
-          ? 'processing'
-          : rawStatus === 'completed' || rawStatus === 'done'
-            ? 'done'
-            : rawStatus === 'failed' || rawStatus === 'error'
-              ? 'error'
-              : rawStatus === 'paused'
-                ? 'paused'
-                : rawStatus === 'cancelled'
-                  ? 'cancelled'
-                  : 'pending';
-
-    return {
-      id,
-      status,
-      progress: {
-        total: raw?.progress?.total ?? raw?.total ?? 0,
-        processed: raw?.progress?.processed ?? raw?.processed ?? 0,
-        succeeded: raw?.progress?.succeeded ?? raw?.success ?? raw?.succeeded ?? 0,
-        failed: raw?.progress?.failed ?? raw?.errors ?? raw?.failed ?? 0,
-      },
-      created_at: raw?.created_at || raw?.createdAt || new Date().toISOString(),
-      completed_at: raw?.completed_at || raw?.completedAt || undefined,
-      error: raw?.error || raw?.lastError || undefined,
-    };
-  };
-
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
 
   useEffect(() => {
@@ -115,9 +78,7 @@ const SeoChecklistPage: React.FC = () => {
         return [];
       }
 
-      return parsed
-        .map(normalizeStoredJob)
-        .filter((job): job is BatchJobStatus => Boolean(job));
+      return parsed.filter((job): job is BatchJobStatus => Boolean(job?.id));
     } catch (e) {
       console.error('Failed to parse saved jobs', e);
       return [];
@@ -154,7 +115,7 @@ const SeoChecklistPage: React.FC = () => {
     try {
       const response = await createBatchJob({ items, config });
       const newJob: BatchJobStatus = {
-        id: response.jobId,
+        id: response.id,
         status: 'pending',
         progress: { total: items.length, processed: 0, succeeded: 0, failed: 0 },
         created_at: new Date().toISOString(),

@@ -47,7 +47,7 @@ export interface BatchJobPayload {
 }
 
 export interface BatchJobResponse {
-  jobId: string;
+  id: string;
   message?: string;
 }
 
@@ -82,27 +82,16 @@ export interface BatchJobItem {
 }
 
 type RawBatchJobStatus = {
-  id?: string;
-  jobId?: string;
-  status?: string;
-  progress?: {
-    total?: number;
-    processed?: number;
-    succeeded?: number;
-    failed?: number;
+  id: string;
+  status: JobStatus;
+  progress: {
+    total: number;
+    processed: number;
+    succeeded: number;
+    failed: number;
   };
-  total?: number;
-  processed?: number;
-  success?: number;
-  succeeded?: number;
-  errors?: number;
-  failed?: number;
-  created_at?: string;
-  createdAt?: string;
+  created_at: string;
   completed_at?: string;
-  completedAt?: string;
-  updatedAt?: string;
-  lastError?: string;
   error?: string;
 };
 
@@ -113,18 +102,14 @@ type RawBatchJobItemsResponse = {
 
 const mapJobStatus = (status?: string): JobStatus => {
   switch (status) {
-    case 'queued':
     case 'pending':
       return 'pending';
     case 'paused':
       return 'paused';
-    case 'running':
     case 'processing':
       return 'processing';
-    case 'completed':
     case 'done':
       return 'done';
-    case 'failed':
     case 'error':
       return 'error';
     case 'cancelled':
@@ -143,25 +128,25 @@ const mapItemStatus = (status?: string): BatchJobItem['status'] => {
 };
 
 const normalizeBatchJob = (raw: RawBatchJobStatus): BatchJobStatus => ({
-  id: raw.id || raw.jobId || '',
+  id: raw.id,
   status: mapJobStatus(raw.status),
   progress: {
-    total: raw.progress?.total ?? raw.total ?? 0,
-    processed: raw.progress?.processed ?? raw.processed ?? 0,
-    succeeded: raw.progress?.succeeded ?? raw.success ?? raw.succeeded ?? 0,
-    failed: raw.progress?.failed ?? raw.errors ?? raw.failed ?? 0,
+    total: raw.progress?.total ?? 0,
+    processed: raw.progress?.processed ?? 0,
+    succeeded: raw.progress?.succeeded ?? 0,
+    failed: raw.progress?.failed ?? 0,
   },
-  created_at: raw.created_at || raw.createdAt || new Date().toISOString(),
-  completed_at: raw.completed_at || raw.completedAt || undefined,
-  error: raw.error || raw.lastError || undefined,
+  created_at: raw.created_at || new Date().toISOString(),
+  completed_at: raw.completed_at || undefined,
+  error: raw.error || undefined,
 });
 
 const normalizeBatchJobItem = (raw: any): BatchJobItem => ({
-  itemId: raw.itemId || raw.item_id || raw.pageId || raw.page_id || '',
+  itemId: raw.itemId || '',
   status: mapItemStatus(raw.status),
-  url: raw.url || raw.target_url || '',
-  error: raw.error || raw.last_error || undefined,
-  updated_at: raw.updated_at || raw.updatedAt || undefined,
+  url: raw.url || '',
+  error: raw.error || undefined,
+  updated_at: raw.completed_at || undefined,
 });
 
 const buildError = (error: unknown, fallback: string): Error => {
@@ -286,7 +271,7 @@ export const getBatchJobItems = async (
     }
   }
 
-  return responses.reduce(
+  return responses.reduce<{ items: BatchJobItem[]; total: number }>(
     (acc, data) => {
       acc.items.push(...(data.items || []).map(normalizeBatchJobItem));
       acc.total += data.total || 0;
