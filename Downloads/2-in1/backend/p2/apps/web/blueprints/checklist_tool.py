@@ -1,16 +1,22 @@
 """
-Módulo Checklist Tool.
+Módulo Checklist Tool (LEGACY).
 
-Realiza una auditoría básica de SEO On-Page para una lista de URLs.
+Legacy del checklist basado en plantillas Flask.
+La experiencia canónica de checklist ahora vive en la SPA.
+
+Este módulo mantiene únicamente:
+- La lógica de motor reutilizable `check_url_compliance`.
+- Un endpoint puente `/checklist` que redirige a la SPA.
+
+No expone endpoints legacy de ejecución/descarga para evitar duplicación funcional.
+
+Realiza una auditoría básica de SEO On-Page para una URL.
 Verifica imágenes, estructura de encabezados (H1-H3), enlaces internos, snippet y presencia de Schema.
 """
 
-from flask import Blueprint, render_template, request, jsonify, send_file
+from flask import Blueprint, redirect
 import requests
 from bs4 import BeautifulSoup
-import pandas as pd
-import io
-import concurrent.futures
 import re
 import json
 from urllib.parse import urljoin, urlparse
@@ -170,44 +176,5 @@ def check_url_compliance(url):
 
 @checklist_bp.route('/')
 def index():
-    """Renderiza el panel principal de la checklist."""
-    return render_template('checklist/dashboard.html')
-
-
-@checklist_bp.route('/run', methods=['POST'])
-def run():
-    """
-    Ejecuta el análisis para múltiples URLs de forma concurrente.
-    Usa ThreadPoolExecutor para mejorar el rendimiento con múltiples peticiones HTTP.
-    """
-    urls = (request.get_json(silent=True) or {}).get('urls', [])
-    res = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
-        ft = {ex.submit(check_url_compliance, u): u for u in urls}
-        for f in concurrent.futures.as_completed(ft):
-            res.append(f.result())
-    return jsonify({'status': 'ok', 'data': res})
-
-
-@checklist_bp.route('/download', methods=['POST'])
-def download():
-    """
-    Genera un Excel multipestaña (Checklist, Images, Structure) con los resultados.
-    """
-    data = (request.get_json(silent=True) or {}).get('data', [])
-    l_sum, l_img, l_head = [], [], []
-    for i in data:
-        if 'summary' in i:
-            l_sum.append(i['summary'])
-        l_img.extend(i.get('images', []))
-        l_head.extend(i.get('headers', []))
-
-    o = io.BytesIO()
-    with pd.ExcelWriter(o, engine='openpyxl') as w:
-        pd.DataFrame(l_sum).to_excel(w, index=False, sheet_name="Checklist")
-        if l_img:
-            pd.DataFrame(l_img).to_excel(w, index=False, sheet_name="Images")
-        if l_head:
-            pd.DataFrame(l_head).to_excel(w, index=False, sheet_name="Structure")
-    o.seek(0)
-    return send_file(o, download_name='checklist.xlsx', as_attachment=True)
+    """Endpoint puente legacy -> SPA canónica."""
+    return redirect('/#/app/checklist', code=302)

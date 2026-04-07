@@ -1,37 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Checklist{% endblock %}
+{% block title %}Checklist Legacy{% endblock %}
 {% block content %}
 <div class="container-fluid">
-    <h2 class="mb-4">✅ Checklist Automator</h2>
-    <div class="row">
-        <div class="col-md-3">
-            <textarea id="urls" class="form-control mb-3" rows="10" placeholder="URLs..."></textarea>
-            <button class="btn btn-primary w-100" onclick="run()">Analizar</button>
-        </div>
-        <div class="col-md-9">
-            <button class="btn btn-success mb-2" onclick="dl()">Descargar Excel Multicapa</button>
-            <div class="table-responsive border rounded"><table class="table table-sm small"><tbody id="tb"></tbody></table></div>
-        </div>
+    <h2 class="mb-4">⚠️ Checklist Legacy</h2>
+    <div class="alert alert-warning" role="alert">
+        Esta pantalla quedó en modo legado y sin soporte activo.
+        El checklist canónico vive en la SPA.
     </div>
+    <a class="btn btn-primary" href="/#/app/checklist">Ir al checklist canónico (SPA)</a>
 </div>
-<script>
-let cd = [];
-function run(){
-    const u = document.getElementById('urls').value.split('\n');
-    fetch('/api/v1/checklist/run', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({urls:u})})
-    .then(r=>r.json()).then(d=>{
-        cd = d.data;
-        let h = '';
-        d.data.forEach(i=>{
-            const s = i.summary;
-            if(s) h += `<tr><td>${s.URL}</td><td>${s.Estructura}</td><td>${s.Imagenes}</td></tr>`;
-        });
-        document.getElementById('tb').innerHTML = h;
-    });
-}
-function dl(){
-    fetch('/api/v1/checklist/download', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({data:cd})})
-    .then(r=>r.blob()).then(b=>{ const u=window.URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download="check.xlsx"; a.click(); });
-}
-</script>
 {% endblock %}
