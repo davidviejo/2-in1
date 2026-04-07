@@ -645,6 +645,28 @@ def _extract_dataforseo_actual_cost(data: Dict[str, Any]) -> Optional[float]:
     return total if found else None
 
 
+def _extract_dataforseo_ready_task_ids(data: Dict[str, Any]) -> List[str]:
+    """
+    Extrae IDs de tareas listas desde la respuesta de `tasks_ready`.
+    Tolera variantes de formato para evitar acoplarse a una sola estructura.
+    """
+    ready_ids: List[str] = []
+    for task in data.get('tasks', []) or []:
+        # Formato más habitual: task['result'] => [{id: ...}, ...]
+        for result_item in task.get('result', []) or []:
+            task_id = result_item.get('id') if isinstance(result_item, dict) else None
+            if task_id:
+                ready_ids.append(str(task_id))
+
+        # Fallback defensivo: algunos wrappers exponen id a nivel task
+        direct_id = task.get('id')
+        if direct_id:
+            ready_ids.append(str(direct_id))
+
+    # De-duplicar conservando orden
+    return list(dict.fromkeys(ready_ids))
+
+
 def estimate_dataforseo_cost(
     num_results: int = 10,
     detail: str = 'regular',
@@ -763,13 +785,30 @@ def search_dataforseo(
         metadata['task_id'] = task_id
 
         safe_poll_attempts = max(int(poll_attempts or 1), 1)
+        tasks_ready_url = "https://api.dataforseo.com/v3/serp/google/organic/tasks_ready"
         task_get_url = f"https://api.dataforseo.com/v3/serp/google/organic/task_get/{normalized_detail}/{task_id}"
         for attempt in range(safe_poll_attempts):
+            tasks_ready_response = requests.get(tasks_ready_url, headers=headers, timeout=60)
+            tasks_ready_data = tasks_ready_response.json()
+
+            if tasks_ready_data.get('status_code') != 20000:
+                logging.error(f"DataForSEO Standard Tasks Ready error: {tasks_ready_data.get('status_message')}")
+                metadata['error'] = tasks_ready_data.get('status_message')
+                metadata['elapsed_ms'] = int((time.time() - start_ts) * 1000)
+                if return_metadata:
+                    return [], metadata
+                return []
+
+            ready_task_ids = _extract_dataforseo_ready_task_ids(tasks_ready_data)
+            if str(task_id) not in ready_task_ids:
+                if attempt < safe_poll_attempts - 1:
+                    time.sleep(max(float(poll_delay or 0), 0))
+                continue
+
             task_get_response = requests.get(task_get_url, headers=headers, timeout=60)
             task_get_data = task_get_response.json()
-
             if task_get_data.get('status_code') != 20000:
-                logging.error(f"DataForSEO Standard GET response error: {task_get_data.get('status_message')}")
+                logging.error(f"DataForSEO Standard Task GET error: {task_get_data.get('status_message')}")
                 metadata['error'] = task_get_data.get('status_message')
                 metadata['elapsed_ms'] = int((time.time() - start_ts) * 1000)
                 if return_metadata:
@@ -777,18 +816,14 @@ def search_dataforseo(
                 return []
 
             extracted = _extract_dataforseo_organic_results(task_get_data, num_results)
-            if extracted:
-                metadata['actual_cost'] = _extract_dataforseo_actual_cost(task_get_data)
-                metadata['elapsed_ms'] = int((time.time() - start_ts) * 1000)
-                if return_metadata:
-                    return extracted[:num_results], metadata
-                return extracted[:num_results]
+            metadata['actual_cost'] = _extract_dataforseo_actual_cost(task_get_data)
+            metadata['elapsed_ms'] = int((time.time() - start_ts) * 1000)
+            if return_metadata:
+                return extracted[:num_results], metadata
+            return extracted[:num_results]
 
-            if attempt < safe_poll_attempts - 1:
-                time.sleep(max(float(poll_delay or 0), 0))
-
-        logging.error(f"DataForSEO Standard polling timeout for task_id={task_id}")
-        metadata['error'] = 'polling_timeout'
+        logging.error(f"DataForSEO Standard task not ready yet for task_id={task_id}")
+        metadata['error'] = 'task_not_ready'
     except Exception as e:
         logging.error(f"DataForSEO Exception: {sanitize_log_message(str(e))}")
         metadata['error'] = sanitize_log_message(str(e))
