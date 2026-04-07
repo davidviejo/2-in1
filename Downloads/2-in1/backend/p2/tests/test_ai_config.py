@@ -69,5 +69,30 @@ class TestAIConfig(unittest.TestCase):
                     return_metadata=True,
                 )
 
+
+    def test_settings_config_api_roundtrip(self):
+        payload = {
+            'openaiApiKey': 'sk-server-123',
+            'openaiModel': 'gpt-4o',
+            'dataforseoLogin': 'dfs-user',
+            'dataforseoPassword': 'dfs-pass',
+            'serpApiKey': 'serp-key',
+            'defaultSerpProvider': 'serpapi'
+        }
+
+        put_response = self.client.put('/api/settings/config', json=payload)
+        self.assertEqual(put_response.status_code, 200)
+
+        get_response = self.client.get('/api/settings/config')
+        self.assertEqual(get_response.status_code, 200)
+        body = get_response.get_json()
+        self.assertEqual(body['settings']['openaiApiKey'], 'sk-server-123')
+        self.assertEqual(body['settings']['defaultSerpProvider'], 'serpapi')
+
+    def test_settings_config_api_validation(self):
+        bad_payload = {'defaultSerpProvider': 'invalid-provider'}
+        response = self.client.put('/api/settings/config', json=bad_payload)
+        self.assertEqual(response.status_code, 400)
+
 if __name__ == '__main__':
     unittest.main()

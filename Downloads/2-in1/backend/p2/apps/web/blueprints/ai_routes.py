@@ -13,10 +13,77 @@ from apps.core.database import (
     get_ai_visibility_schedule,
 )
 import logging
+from typing import Literal, Optional
+from pydantic import BaseModel, Field, ValidationError
 
 logger = logging.getLogger(__name__)
 
 ai_bp = Blueprint('ai_tools', __name__)
+
+
+class ServerSettingsSchema(BaseModel):
+    openaiApiKey: Optional[str] = Field(default=None, max_length=512)
+    openaiModel: Optional[str] = Field(default=None, max_length=128)
+    dataforseoLogin: Optional[str] = Field(default=None, max_length=255)
+    dataforseoPassword: Optional[str] = Field(default=None, max_length=255)
+    serpApiKey: Optional[str] = Field(default=None, max_length=255)
+    defaultSerpProvider: Optional[Literal['dataforseo', 'serpapi']] = None
+
+
+def _map_user_settings_to_server_payload(user_settings):
+    return {
+        'openaiApiKey': user_settings.get('openai_key') or '',
+        'openaiModel': user_settings.get('default_model') or 'gpt-4o',
+        'dataforseoLogin': user_settings.get('dataforseo_login') or '',
+        'dataforseoPassword': user_settings.get('dataforseo_password') or '',
+        'serpApiKey': user_settings.get('serpapi_key') or '',
+        'defaultSerpProvider': user_settings.get('serp_provider') or 'dataforseo',
+    }
+
+
+def _map_server_payload_to_user_settings(payload: ServerSettingsSchema):
+    return {
+        'openai_key': payload.openaiApiKey,
+        'default_model': payload.openaiModel,
+        'dataforseo_login': payload.dataforseoLogin,
+        'dataforseo_password': payload.dataforseoPassword,
+        'serpapi_key': payload.serpApiKey,
+        'serp_provider': payload.defaultSerpProvider,
+    }
+
+
+@ai_bp.route('/api/settings/config', methods=['GET'])
+def get_settings_config_api():
+    """Read backend settings with validated response schema."""
+    user_id = 'default'
+    server_settings = _map_user_settings_to_server_payload(get_user_settings(user_id))
+    return jsonify({'status': 'ok', 'settings': ServerSettingsSchema.model_validate(server_settings).model_dump()})
+
+
+@ai_bp.route('/api/settings/config', methods=['PUT'])
+def upsert_settings_config_api():
+    """Upsert backend settings with request validation schema."""
+    data = request.get_json(silent=True) or {}
+    try:
+        payload = ServerSettingsSchema.model_validate(data)
+    except ValidationError as exc:
+        return jsonify({'status': 'error', 'message': 'Payload inválido', 'details': exc.errors()}), 400
+
+    user_id = 'default'
+    updates = {k: v for k, v in _map_server_payload_to_user_settings(payload).items() if v is not None}
+    if updates:
+        upsert_user_settings(user_id, updates)
+
+    current = get_user_settings(user_id)
+    session['openai_key'] = current.get('openai_key')
+    session['ai_model'] = current.get('default_model', 'gpt-4o')
+    session['dataforseo_login'] = current.get('dataforseo_login')
+    session['dataforseo_password'] = current.get('dataforseo_password')
+    session['dataforseo_pass'] = current.get('dataforseo_password')
+    session['serpapi_key'] = current.get('serpapi_key')
+    session['serp_provider'] = current.get('serp_provider', 'dataforseo')
+
+    return jsonify({'status': 'ok', 'settings': _map_user_settings_to_server_payload(current)})
 
 
 def _build_visibility_prompt(payload):
