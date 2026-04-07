@@ -10,7 +10,8 @@ import {
 import { StrategyFactory } from '../strategies/StrategyFactory';
 import { INITIAL_MODULES } from '../constants';
 
-const CLIENTS_KEY = 'mediaflow_clients';
+const CLIENTS_KEY = 'mediaflow_clients_cache_v2';
+const LEGACY_CLIENTS_KEY = 'mediaflow_clients';
 const CURRENT_CLIENT_ID_KEY = 'mediaflow_current_client_id';
 const GENERAL_NOTES_KEY = 'mediaflow_general_notes';
 const LEGACY_MODULES_KEY = 'mediaflow_modules';
@@ -143,6 +144,19 @@ export class ClientRepository {
         return this.migrateModules(migratedClients);
       } catch (e) {
         console.error('Failed to parse clients', e);
+      }
+    }
+
+    const legacyClients = localStorage.getItem(LEGACY_CLIENTS_KEY);
+    if (legacyClients) {
+      try {
+        const parsedClients = JSON.parse(legacyClients);
+        const migratedClients = parsedClients.map(normalizeClient);
+        const normalized = this.migrateModules(migratedClients);
+        localStorage.setItem(CLIENTS_KEY, JSON.stringify(normalized));
+        return normalized;
+      } catch (e) {
+        console.error('Failed to parse legacy clients', e);
       }
     }
 

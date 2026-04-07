@@ -20,6 +20,7 @@ import {
   createDefaultIAVisibilityState,
 } from '../types';
 import { ClientRepository } from '../services/clientRepository';
+import { ProjectRemoteRepository } from '../services/projectRemoteRepository';
 import { StrategyFactory } from '../strategies/StrategyFactory';
 import { DEFAULT_KANBAN_COLUMNS } from '../config/kanban';
 
@@ -115,6 +116,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
     return clients[0]?.id || '';
   });
+  const [isHydrated, setIsHydrated] = useState(false);
 
   // --- Derived State ---
 
@@ -142,18 +144,58 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   // --- Persistence Effects ---
   useEffect(() => {
-    ClientRepository.saveClients(clients);
-  }, [clients]);
+    let mounted = true;
+
+    const hydrate = async () => {
+      const snapshot = await ProjectRemoteRepository.bootstrap();
+      if (!mounted) {
+        return;
+      }
+
+      setClients(snapshot.clients);
+      setGeneralNotes(snapshot.generalNotes);
+      const nextClientId =
+        snapshot.currentClientId && snapshot.clients.some((client) => client.id === snapshot.currentClientId)
+          ? snapshot.currentClientId
+          : snapshot.clients[0]?.id || '';
+      setCurrentClientId(nextClientId);
+      setIsHydrated(true);
+    };
+
+    hydrate();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+
+    ClientRepository.saveClients(clients);
+    ClientRepository.saveGeneralNotes(generalNotes);
     if (currentClientId) {
       ClientRepository.saveCurrentClientId(currentClientId);
     }
-  }, [currentClientId]);
 
-  useEffect(() => {
-    ClientRepository.saveGeneralNotes(generalNotes);
-  }, [generalNotes]);
+    const syncSnapshot = async () => {
+      try {
+        await ProjectRemoteRepository.saveSnapshot({
+          clients,
+          generalNotes,
+          currentClientId,
+        });
+      } catch (error) {
+        if ((error as Error).message !== 'version_conflict') {
+          console.warn('Project sync failed; keeping local cache.', error);
+        }
+      }
+    };
+
+    syncSnapshot();
+  }, [clients, generalNotes, currentClientId, isHydrated]);
 
   // --- Actions ---
 

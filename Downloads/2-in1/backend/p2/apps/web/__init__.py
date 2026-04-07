@@ -74,6 +74,7 @@ from apps.web.blueprints.enhance_tool import enhance_bp
 from apps.web.blueprints.ai_routes import ai_bp as ai_tools_bp
 from apps.web.blueprints.api_engine import api_engine_bp
 from apps.web.blueprints.seo_tfidf import seo_tfidf_bp, seo_tfidf_v1_bp
+from apps.web.blueprints.project_api import project_api_bp
 from apps.web.api_routes_map import (
     API_V1_PREFIX,
     map_legacy_path_to_v1,
@@ -175,6 +176,7 @@ def create_app(config_class=Config):
     app.register_blueprint(api_engine_bp)
     app.register_blueprint(seo_tfidf_bp)
     app.register_blueprint(seo_tfidf_v1_bp)
+    app.register_blueprint(project_api_bp)
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(portal_bp)
