@@ -3,13 +3,9 @@ import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { useProject } from '../context/ProjectContext';
 import { useSettings } from '../context/SettingsContext';
 import { generateAIRoadmap } from '../services/aiRoadmapService';
-import { Task } from '../types';
 import { useToast } from '../components/ui/ToastContext';
 import {
   Sparkles,
-  Bot,
-  Zap,
-  Check,
   Trash2,
   GripVertical,
   ChevronDown,
@@ -20,6 +16,9 @@ import {
 } from 'lucide-react';
 import { Spinner } from '../components/ui/Spinner';
 import { Link } from 'react-router-dom';
+import { Button } from '../components/ui/Button';
+import { Card } from '../components/ui/Card';
+import { Badge } from '../components/ui/Badge';
 
 const AIRoadmap: React.FC = () => {
   const { currentClient, updateAIRoadmap, importMultipleAIRoadmapTasks, modules } = useProject();
@@ -136,46 +135,42 @@ const AIRoadmap: React.FC = () => {
   const getImpactColor = (impact: string) => {
     switch (impact) {
       case 'High':
-        return 'text-rose-600 bg-rose-50 dark:bg-rose-900/30 border-rose-100 dark:border-rose-900/50';
+        return 'text-danger bg-danger-soft border-danger/20';
       case 'Medium':
-        return 'text-amber-600 bg-amber-50 dark:bg-amber-900/30 border-amber-100 dark:border-amber-900/50';
+        return 'text-warning bg-warning-soft border-warning/20';
       case 'Low':
-        return 'text-slate-500 bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700';
+        return 'text-muted bg-surface-alt border-border';
       default:
-        return 'text-slate-500';
+        return 'text-muted';
     }
   };
 
   return (
-    <div className="max-w-4xl mx-auto animate-fade-in pb-20">
+    <div className="page-shell mx-auto max-w-4xl animate-fade-in pb-20">
       <div className="flex items-center gap-3 mb-8">
-        <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-500/20">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-on-primary shadow-brand">
           <BrainCircuit size={24} />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
-            Roadmap IA Personalizado
-          </h1>
-          <p className="text-slate-500 dark:text-slate-400">
-            Genera una estrategia paralela basada en auditoría.
-          </p>
+          <h1 className="section-title">Roadmap IA Personalizado</h1>
+          <p className="section-subtitle">Genera una estrategia paralela basada en auditoría.</p>
         </div>
       </div>
 
       {/* Input Section */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm mb-8">
+      <Card className="mb-8 rounded-2xl p-6">
         <div className="flex justify-between items-center mb-4">
-          <label className="block text-sm font-bold text-slate-700 dark:text-slate-300">
+          <label className="block text-sm font-bold text-foreground">
             Auditoría / Necesidades del Cliente
           </label>
 
           {availableProviders.length > 0 ? (
             <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500 font-medium">Generar con:</span>
+              <span className="text-xs text-muted font-medium">Generar con:</span>
               <select
                 value={selectedProvider}
                 onChange={(e) => setSelectedProvider(e.target.value as any)}
-                className="text-xs bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-indigo-500"
+                className="rounded-brand-md border border-border bg-surface-alt px-2 py-1 text-xs text-foreground outline-none focus:ring-2 focus:ring-primary/30"
               >
                 {availableProviders.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -187,7 +182,7 @@ const AIRoadmap: React.FC = () => {
           ) : (
             <Link
               to="/app/settings"
-              className="flex items-center gap-1 text-xs text-amber-600 hover:underline"
+              className="flex items-center gap-1 text-xs text-warning hover:underline"
             >
               <Settings size={12} /> Configurar API Keys
             </Link>
@@ -198,34 +193,31 @@ const AIRoadmap: React.FC = () => {
           value={auditText}
           onChange={(e) => setAuditText(e.target.value)}
           placeholder="Pega aquí los puntos clave de la auditoría, debilidades técnicas, necesidades de contenido, etc..."
-          className="w-full p-4 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 min-h-[120px] focus:ring-2 focus:ring-indigo-500 outline-none transition-all resize-y"
+          className="form-textarea min-h-[120px] resize-y"
         />
         <div className="flex justify-end mt-4">
-          <button
+          <Button
             onClick={handleGenerate}
             disabled={isGenerating || !selectedProvider}
-            className="flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/30"
+            className="rounded-xl px-6 py-3 font-bold"
           >
             {isGenerating ? <Spinner size={20} className="text-white" /> : <Sparkles size={20} />}
             {isGenerating ? 'Analizando y Generando...' : 'Generar Roadmap IA'}
-          </button>
+          </Button>
         </div>
-      </div>
+      </Card>
 
       {/* Results Section */}
       {tasks.length > 0 && (
         <>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-bold text-slate-700 dark:text-slate-300">
+            <h3 className="font-bold text-foreground">
               Estrategia Generada ({tasks.length} Tareas)
             </h3>
-            <button
-              onClick={handleImportAll}
-              className="flex items-center gap-2 px-4 py-2 bg-slate-900 dark:bg-slate-700 hover:bg-slate-800 text-white rounded-lg text-sm font-medium transition-colors"
-            >
+            <Button onClick={handleImportAll} variant="secondary" className="text-sm font-medium">
               <ArrowDownCircle size={16} />
               Volcar todo a MIA
-            </button>
+            </Button>
           </div>
 
           <DragDropContext onDragEnd={handleDragEnd}>
@@ -238,11 +230,11 @@ const AIRoadmap: React.FC = () => {
                         <div
                           ref={provided.innerRef}
                           {...provided.draggableProps}
-                          className={`group bg-white dark:bg-slate-800 border rounded-xl transition-all ${
+                          className={`group rounded-xl border border-border bg-surface transition-all ${
                             snapshot.isDragging
-                              ? 'shadow-xl ring-2 ring-indigo-500 rotate-1 z-50'
-                              : 'hover:border-indigo-300 dark:hover:border-indigo-600 shadow-sm'
-                          } border-slate-200 dark:border-slate-700`}
+                              ? 'z-50 rotate-1 shadow-xl ring-2 ring-primary'
+                              : 'shadow-sm hover:border-primary/40'
+                          }`}
                         >
                           <div
                             className="p-4 flex items-start gap-4 cursor-pointer"
@@ -252,7 +244,7 @@ const AIRoadmap: React.FC = () => {
                           >
                             <div
                               {...provided.dragHandleProps}
-                              className="mt-1 cursor-grab active:cursor-grabbing p-1 text-slate-300 hover:text-slate-500 dark:hover:text-slate-400"
+                              className="icon-tone-muted mt-1 cursor-grab p-1 active:cursor-grabbing"
                               onClick={(e) => e.stopPropagation()}
                             >
                               <GripVertical size={20} />
@@ -266,20 +258,20 @@ const AIRoadmap: React.FC = () => {
                                   {task.impact} Impacto
                                 </span>
                                 {task.category && (
-                                  <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-900 px-2 py-0.5 rounded-full border border-slate-100 dark:border-slate-800">
+                                  <span className="rounded-full border border-border bg-surface-alt px-2 py-0.5 text-[10px] font-medium text-muted">
                                     {task.category}
                                   </span>
                                 )}
                                 {task.isCustom && (
-                                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full border border-indigo-100 dark:border-indigo-800">
+                                  <Badge variant="primary" className="text-[10px] font-bold">
                                     AI Custom
-                                  </span>
+                                  </Badge>
                                 )}
                                 {modules.find((m) => m.title === 'MIA: Fichas de IA') && (
                                   <Link
                                     to={`/app/module/${modules.find((m) => m.title === 'MIA: Fichas de IA')?.id}`}
                                     onClick={(e) => e.stopPropagation()}
-                                    className="text-[10px] font-medium text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 uppercase tracking-wider bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 px-2 py-0.5 rounded-full flex items-center gap-1 transition-colors"
+                                    className="flex items-center gap-1 rounded-full bg-primary-soft px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-primary transition-colors hover:bg-primary-soft/80"
                                     title="Ir al Módulo MIA: Fichas de IA"
                                   >
                                     Módulo{' '}
@@ -288,17 +280,17 @@ const AIRoadmap: React.FC = () => {
                                   </Link>
                                 )}
                               </div>
-                              <h3 className="font-semibold text-lg leading-tight mb-1 text-slate-800 dark:text-slate-200">
+                              <h3 className="mb-1 text-lg font-semibold leading-tight text-foreground">
                                 {task.title}
                               </h3>
                               {expandedTask !== task.id && (
-                                <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed line-clamp-1">
+                                <p className="line-clamp-1 text-sm leading-relaxed text-muted">
                                   {task.description}
                                 </p>
                               )}
                             </div>
 
-                            <div className="mt-1 text-slate-400">
+                            <div className="icon-tone-muted mt-1">
                               <ChevronDown
                                 size={20}
                                 className={`transition-transform ${expandedTask === task.id ? 'rotate-180' : ''}`}
@@ -311,13 +303,13 @@ const AIRoadmap: React.FC = () => {
                               className="px-5 pb-5 pt-0 pl-[4.5rem] cursor-default"
                               onClick={(e) => e.stopPropagation()}
                             >
-                              <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed mb-4">
+                              <p className="mb-4 text-sm leading-relaxed text-muted">
                                 {task.description}
                               </p>
                               <div className="flex justify-end">
                                 <button
                                   onClick={() => handleDeleteTask(task.id)}
-                                  className="flex items-center gap-2 px-3 py-1.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg text-sm transition-colors"
+                                  className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-danger transition-colors hover:bg-danger-soft"
                                 >
                                   <Trash2 size={16} /> Eliminar
                                 </button>

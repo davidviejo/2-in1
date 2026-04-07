@@ -102,7 +102,7 @@ const ClientRoadmap: React.FC<ClientRoadmapProps> = ({
         } else {
           showSuccess(`Tarea vitaminizada con ${provider === 'mistral' ? 'Mistral' : 'ChatGPT'}.`);
         }
-      } catch (e) {
+      } catch {
         showError('Error desconocido al vitaminizar.');
       } finally {
         setIsVitaminLoading(false);
@@ -117,14 +117,12 @@ const ClientRoadmap: React.FC<ClientRoadmapProps> = ({
 
   if (tasks.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh] text-center p-8">
-        <div className="w-24 h-24 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-6">
-          <CheckCircle2 size={48} className="text-slate-300 dark:text-slate-600" />
+      <div className="page-shell flex min-h-[50vh] flex-col items-center justify-center p-8 text-center">
+        <div className="surface-subtle mb-6 flex h-24 w-24 items-center justify-center rounded-full">
+          <CheckCircle2 size={48} className="icon-tone-muted" />
         </div>
-        <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-2">
-          Tu Hoja de Ruta está vacía
-        </h2>
-        <p className="text-slate-500 dark:text-slate-400 max-w-md mb-6">
+        <h2 className="section-title mb-2">Tu Hoja de Ruta está vacía</h2>
+        <p className="section-subtitle mb-6 max-w-md">
           Ve a los módulos y selecciona las tareas clave para construir tu estrategia personalizada.
         </p>
       </div>
@@ -132,24 +130,22 @@ const ClientRoadmap: React.FC<ClientRoadmapProps> = ({
   }
 
   return (
-    <div className="max-w-4xl mx-auto animate-fade-in pb-20">
+    <div className="page-shell mx-auto max-w-4xl animate-fade-in pb-20">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">
-            Roadmap Cliente
-          </h1>
-          <p className="text-slate-500 dark:text-slate-400">
-            Organiza y prioriza las acciones estratégicas para este proyecto.
-          </p>
+          <h1 className="section-title mb-2">Roadmap Cliente</h1>
+          <p className="section-subtitle">Organiza y prioriza las acciones estratégicas para este proyecto.</p>
         </div>
         <div className="flex gap-4 items-center">
           <button
             onClick={() => setLearningMode(!learningMode)}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${learningMode ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}
+            className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
+              learningMode ? 'bg-primary-soft text-primary' : 'bg-surface-alt text-muted'
+            }`}
           >
             <HelpCircle size={14} /> Modo Aprendizaje: {learningMode ? 'ON' : 'OFF'}
           </button>
-          <div className="bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 px-4 py-2 rounded-lg text-sm font-bold">
+          <div className="rounded-brand-md bg-info-soft px-4 py-2 text-sm font-bold text-info">
             {tasks.filter((t) => t.task.status === 'completed').length} / {tasks.length} Completadas
           </div>
         </div>

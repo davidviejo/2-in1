@@ -495,9 +495,9 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
             </div>
           </div>
 
-          <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-200">
+          <div className="mt-5 rounded-xl border border-warning/30 bg-warning-soft p-4 text-sm text-warning">
             <div className="font-semibold">Formato recomendado del sheet</div>
-            <pre className="mt-2 overflow-x-auto rounded-lg bg-white/80 dark:bg-slate-900/50 p-3 text-xs">{`query,url
+            <pre className="mt-2 overflow-x-auto rounded-lg bg-surface p-3 text-xs">{`query,url
 mejores zapatillas running,https://dominio.com/running
 auditoria seo local,https://dominio.com/seo-local`}</pre>
             <p className="mt-2">
@@ -545,7 +545,7 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
             Visión General de Madurez
             <Badge variant={badge.variant}>{badge.title}</Badge>
           </h2>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">
+          <p className="text-muted mt-1">
             Sigue la evolución SEO de tu publicación desde la auditoría hasta la autoridad.
           </p>
         </div>
@@ -554,37 +554,37 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
             <>
               <button
                 onClick={() => setShowGscConfig(true)}
-                className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                className="p-2 text-muted hover:text-foreground"
               >
                 <Settings size={20} />
               </button>
               <Button onClick={() => login()} variant="secondary">
-                <LogIn size={16} className="text-blue-500" />
+                <LogIn size={16} className="icon-tone-primary" />
                 <span>Login con Google</span>
               </Button>
             </>
           ) : (
-            <div className="flex items-center gap-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-1.5 pr-4 shadow-sm">
+            <div className="flex items-center gap-3 bg-surface border border-border rounded-lg p-1.5 pr-4 shadow-sm">
               <div className="relative">
                 <img
                   src={googleUser.picture}
                   alt="Avatar"
-                  className="w-8 h-8 rounded-full border border-slate-200"
+                  className="w-8 h-8 rounded-full border border-border"
                 />
-                <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-green-500 border-2 border-white dark:border-slate-800 rounded-full"></div>
+                <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-success border-2 border-surface rounded-full"></div>
               </div>
               <div className="flex flex-col">
-                <span className="text-xs font-bold text-slate-700 dark:text-slate-200 leading-tight">
+                <span className="text-xs font-bold text-foreground leading-tight">
                   {googleUser.name}
                 </span>
-                <span className="text-[10px] text-slate-400 leading-tight">{googleUser.email}</span>
+                <span className="text-[10px] text-muted leading-tight">{googleUser.email}</span>
               </div>
-              <button onClick={handleLogoutGsc} className="ml-2 text-slate-400 hover:text-red-500">
+              <button onClick={handleLogoutGsc} className="ml-2 text-muted hover:text-danger">
                 <X size={14} />
               </button>
             </div>
           )}
-          <div className="w-px h-8 bg-slate-200 dark:bg-slate-700 mx-2 hidden md:block"></div>
+          <div className="mx-2 hidden h-8 w-px bg-border md:block"></div>
           <Button onClick={handleExport} variant="secondary">
             <Download size={16} /> Exportar
           </Button>
@@ -595,7 +595,7 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
         <Button
           onClick={simulateVoiceRecording}
           size="sm"
-          className={`p-3 rounded-lg transition-colors ${isRecording ? 'bg-red-100 text-red-600 animate-pulse' : 'bg-slate-100 dark:bg-slate-700 text-slate-500'}`}
+          className={`rounded-lg p-3 transition-colors ${isRecording ? 'bg-danger-soft text-danger animate-pulse' : 'bg-surface-alt text-muted'}`}
         >
           <Mic size={20} />
         </Button>
@@ -637,11 +637,11 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
         />
       </section>
 
-      <section className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6 shadow-sm space-y-5">
+      <section className="bg-surface rounded-2xl border border-border p-6 shadow-sm space-y-5">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div>
             <h3 className="font-bold text-lg">Motor de insights SEO</h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            <p className="text-sm text-muted mt-1">
               Del dato GSC al diagnóstico: origen, regla, prioridad y acción quedan trazados en una
               estructura homogénea.
             </p>
@@ -650,12 +650,12 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
             <button
               type="button"
               onClick={() => setShowInsightsHelp(true)}
-              className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-blue-200 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20 text-sm font-medium text-blue-700 dark:text-blue-300 hover:border-blue-300"
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-primary/30 bg-primary-soft px-3 py-2 text-sm font-medium text-primary hover:border-primary/50"
             >
               <HelpCircle size={16} /> Ayuda
             </button>
             <select
-              className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-sm"
+              className="px-3 py-2 rounded-lg border border-border bg-surface-alt text-sm"
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value as SeoInsightCategory | 'all')}
             >
@@ -666,7 +666,7 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
               ))}
             </select>
             <select
-              className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-sm"
+              className="px-3 py-2 rounded-lg border border-border bg-surface-alt text-sm"
               value={selectedPriority}
               onChange={(e) =>
                 setSelectedPriority(e.target.value as 'all' | 'high' | 'medium' | 'low')
@@ -684,7 +684,7 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
           {filteredInsights.length > 0 ? (
             filteredInsights.map((insight) => <InsightCard key={insight.id} insight={insight} />)
           ) : (
-            <div className="md:col-span-2 xl:col-span-3 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 p-10 text-center text-slate-400">
+            <div className="md:col-span-2 xl:col-span-3 rounded-2xl border border-dashed border-border p-10 text-center text-muted">
               No hay insights que coincidan con los filtros seleccionados.
             </div>
           )}
@@ -694,34 +694,34 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
           {actionableGroupedInsights.map((group) => (
             <div
               key={group.category}
-              className="rounded-2xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 p-5"
+              className="rounded-2xl bg-surface-alt/50 border border-border p-5"
             >
               <div className="flex items-center justify-between gap-3 mb-2">
-                <h4 className="font-bold text-slate-900 dark:text-white">{group.label}</h4>
+                <h4 className="font-bold text-foreground">{group.label}</h4>
                 <Badge variant={priorityVariant[group.topPriority]} className="text-xs font-bold">
                   Prioridad {priorityLabel[group.topPriority]}
                 </Badge>
               </div>
-              <p className="text-sm text-slate-500 dark:text-slate-400">{group.description}</p>
+              <p className="text-sm text-muted">{group.description}</p>
               <div className="mt-4 space-y-3">
                 {group.insights.slice(0, 3).map((insight) => (
                   <button
                     key={insight.id}
                     onClick={() => setSelectedInsight(insight)}
-                    className="w-full text-left rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 hover:border-blue-300 dark:hover:border-blue-500 transition-colors"
+                    className="w-full text-left rounded-xl bg-surface border border-border p-4 hover:border-primary/40 transition-colors"
                   >
                     <div className="flex justify-between gap-3">
                       <div>
-                        <div className="font-semibold text-sm text-slate-900 dark:text-white">
+                        <div className="font-semibold text-sm text-foreground">
                           {insight.title}
                         </div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">
+                        <div className="text-xs text-muted mt-1 line-clamp-2">
                           {insight.summary}
                         </div>
                       </div>
                       <div className="text-right">
                         <div className="text-lg font-bold">{insight.score}</div>
-                        <div className="text-[10px] uppercase tracking-wide text-slate-400">
+                        <div className="text-[10px] uppercase tracking-wide text-muted">
                           score
                         </div>
                       </div>
@@ -741,22 +741,22 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
             message="Falló la carga de datos de Search Console. Puedes reintentar sin perder el resto del Dashboard."
           >
             {gscAccessToken ? (
-              <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 relative overflow-hidden">
+              <div className="bg-surface p-6 rounded-2xl shadow-sm border border-border relative overflow-hidden">
               <div className="absolute -right-10 -bottom-10 opacity-5 pointer-events-none">
                 <Search size={200} />
               </div>
 
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 relative z-10">
                 <div className="flex items-center gap-3">
-                  <div className="bg-blue-50 dark:bg-blue-900/30 p-2.5 rounded-xl text-blue-600 dark:text-blue-400 shadow-sm border border-blue-100 dark:border-blue-900">
+                  <div className="rounded-xl border border-primary/30 bg-primary-soft p-2.5 text-primary shadow-sm">
                     <TrendingUp size={24} />
                   </div>
                   <div>
-                    <h3 className="font-bold text-lg text-slate-800 dark:text-white">
+                    <h3 className="text-lg font-bold text-foreground">
                       Rendimiento en Búsqueda
                     </h3>
-                    <div className="text-xs text-slate-500 font-medium flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                    <div className="flex items-center gap-1 text-xs font-medium text-muted">
+                      <span className="w-2 h-2 rounded-full bg-success"></span>
                       Datos reales de Search Console
                     </div>
                   </div>
@@ -771,9 +771,9 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                       setEndDate(end);
                     }}
                   />
-                  <div className="flex flex-col gap-2 bg-slate-50 dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-700 min-w-[240px]">
+                  <div className="flex flex-col gap-2 bg-surface-alt p-2 rounded-lg border border-border min-w-[240px]">
                     <select
-                      className="w-full bg-white dark:bg-slate-950 text-xs font-medium px-2 py-2 rounded-md border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300"
+                      className="w-full rounded-md border border-border bg-surface px-2 py-2 text-xs font-medium text-foreground"
                       value={comparisonMode}
                       onChange={(e) => setComparisonMode(e.target.value as GSCComparisonMode)}
                       aria-label="Tipo de comparativa GSC"
@@ -782,20 +782,20 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                       <option value="previous_year">Comparar con año pasado</option>
                     </select>
                     <div className="flex items-center gap-2">
-                      <Search size={14} className="ml-1 text-slate-400" />
+                      <Search size={14} className="ml-1 text-muted" />
                       <input
                         type="search"
                         value={gscSiteQuery}
                         onChange={(e) => setGscSiteQuery(e.target.value)}
                         placeholder="Buscar propiedad"
                         aria-label="Buscar propiedad de Search Console"
-                        className="w-full bg-transparent text-xs font-medium p-1 outline-none text-slate-700 placeholder:text-slate-400 dark:text-slate-300"
+                        className="w-full bg-transparent p-1 text-xs font-medium text-foreground outline-none placeholder:text-muted"
                       />
                     </div>
-                    <div className="flex items-center gap-2 border-t border-slate-200 dark:border-slate-700 pt-2">
-                      <Globe size={14} className="ml-1 text-slate-400" />
+                    <div className="flex items-center gap-2 border-t border-border pt-2">
+                      <Globe size={14} className="ml-1 text-muted" />
                       <select
-                        className="w-full bg-transparent text-xs font-medium p-1.5 outline-none text-slate-700 dark:text-slate-300"
+                        className="w-full bg-transparent text-xs font-medium p-1.5 outline-none text-foreground"
                         value={visibleSelectedGscSite}
                         onChange={(e) => setSelectedSite(e.target.value)}
                       >
@@ -823,7 +823,7 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                 </div>
               </div>
 
-              <div className="mb-4 text-xs text-slate-500 dark:text-slate-400 relative z-10">
+              <div className="mb-4 text-xs text-muted relative z-10">
                 Periodo actual: <strong>{startDate}</strong> a <strong>{endDate}</strong>
                 {comparisonPeriod && (
                   <>
@@ -837,7 +837,7 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
 
               <div className="h-72 w-full">
                 {isLoadingGsc ? (
-                  <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-4">
+                  <div className="h-full flex flex-col items-center justify-center text-muted gap-4">
                     <Spinner size={32} />
                     <Skeleton width="60%" height="20px" />
                     <span className="text-sm">Sincronizando datos de Google...</span>
@@ -912,7 +912,7 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                     </AreaChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="h-full flex flex-col items-center justify-center text-slate-400 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
+                  <div className="h-full flex flex-col items-center justify-center text-muted bg-surface-alt/50 rounded-xl border border-dashed border-border">
                     <Search size={32} className="mb-2 opacity-50" />
                     <p className="text-sm">Sin datos disponibles para este periodo.</p>
                     <p className="text-xs opacity-70">
@@ -924,14 +924,14 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 flex flex-col justify-between">
+                <div className="bg-surface p-6 rounded-2xl shadow-sm border border-border flex flex-col justify-between">
                   <div>
                     <div className="flex justify-between items-start mb-4">
-                      <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg text-blue-600 dark:text-blue-400">
+                      <div className="p-2 bg-primary-soft rounded-lg text-primary">
                         <CheckCircle2 size={24} />
                       </div>
                     </div>
-                    <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">
+                    <p className="text-muted text-sm font-medium">
                       Tareas Completadas
                     </p>
                     <h3 className="text-3xl font-bold mt-1">
@@ -939,30 +939,30 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                         (acc, m) => acc + m.tasks.filter((t) => t.status === 'completed').length,
                         0,
                       )}
-                      <span className="text-slate-300 dark:text-slate-600 text-lg ml-2 font-normal">
+                      <span className="text-muted/70 text-lg ml-2 font-normal">
                         / {modules.reduce((acc, m) => acc + m.tasks.length, 0)}
                       </span>
                     </h3>
                   </div>
-                  <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full mt-4">
+                  <div className="w-full bg-surface-alt h-1.5 rounded-full mt-4">
                     <div
-                      className="bg-blue-500 h-full rounded-full"
+                      className="bg-primary h-full rounded-full"
                       style={{ width: `${globalScore}%` }}
                     ></div>
                   </div>
                 </div>
 
-                <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 flex flex-col justify-between">
+                <div className="bg-surface p-6 rounded-2xl shadow-sm border border-border flex flex-col justify-between">
                   <div>
                     <div className="flex justify-between items-start mb-4">
-                      <div className="p-2 bg-amber-50 dark:bg-amber-900/30 rounded-lg text-amber-600 dark:text-amber-400">
+                      <div className="p-2 bg-warning-soft rounded-lg text-warning">
                         <AlertTriangle size={24} />
                       </div>
-                      <span className="bg-rose-100 dark:bg-rose-900/50 text-rose-700 dark:text-rose-400 text-xs font-bold px-2 py-1 rounded-full">
+                      <span className="bg-danger-soft text-danger text-xs font-bold px-2 py-1 rounded-full">
                         Acción Requerida
                       </span>
                     </div>
-                    <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">
+                    <p className="text-muted text-sm font-medium">
                       Próxima Prioridad
                     </p>
                     <h3 className="text-xl font-bold mt-1 line-clamp-2">
@@ -972,7 +972,7 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                   {nextModule && (
                     <button
                       onClick={() => navigate(`/app/module/${nextModule.id}`)}
-                      className="mt-4 text-sm font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 flex items-center gap-1"
+                      className="mt-4 text-sm font-semibold text-primary hover:text-primary flex items-center gap-1"
                     >
                       Ir al Módulo <ArrowRight size={16} />
                     </button>
@@ -982,7 +982,7 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
             )}
           </ErrorBoundary>
 
-          <div className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+          <div className="bg-surface p-6 md:p-8 rounded-2xl shadow-sm border border-border">
             <div className="flex justify-between items-center mb-6">
               <h3 className="font-bold">Madurez por Módulo</h3>
             </div>
@@ -1028,10 +1028,10 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
 
         <div className="space-y-6">
           {topQueriesNormalized.length > 0 ? (
-            <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+            <div className="bg-surface p-5 rounded-2xl shadow-sm border border-border">
               <h3 className="font-bold mb-4 flex items-center gap-2">
-                <Flame className="text-orange-500" size={20} /> Top Consultas
-                <span className="text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-bold uppercase">
+                <Flame className="text-warning" size={20} /> Top Consultas
+                <span className="text-[10px] bg-primary-soft text-primary px-1.5 py-0.5 rounded font-bold uppercase">
                   GSC Data
                 </span>
               </h3>
@@ -1045,17 +1045,17 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                   return (
                     <div
                       key={i}
-                      className="flex items-center justify-between p-2 rounded hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors cursor-pointer group"
+                      className="flex items-center justify-between p-2 rounded hover:bg-surface-alt transition-colors cursor-pointer group"
                     >
                       <div>
-                        <div className="text-sm font-semibold group-hover:text-blue-500 line-clamp-1">
+                        <div className="text-sm font-semibold group-hover:text-primary line-clamp-1">
                           {queryLabel}
                         </div>
-                        <div className="text-xs text-slate-400">
+                        <div className="text-xs text-muted">
                           Posición: {formatPositionSafe(t.position)}
                         </div>
                       </div>
-                      <div className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      <div className="text-xs font-bold text-foreground">
                         {formatNumberSafe(t.clicks, '0')} clics
                       </div>
                     </div>
@@ -1064,17 +1064,17 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
               </div>
             </div>
           ) : (
-            <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 opacity-60">
+            <div className="bg-surface p-5 rounded-2xl shadow-sm border border-border opacity-60">
               <h3 className="font-bold mb-4 flex items-center gap-2">
-                <Flame className="text-slate-400" size={20} /> Top Consultas
+                <Flame className="text-muted" size={20} /> Top Consultas
               </h3>
-              <div className="text-sm text-slate-400 text-center py-4">
+              <div className="text-sm text-muted text-center py-4">
                 Sin datos de consultas recientes.
               </div>
             </div>
           )}
 
-          <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+          <div className="bg-surface p-6 rounded-2xl shadow-sm border border-border">
             <div className="h-48 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
@@ -1113,35 +1113,35 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
             <div
               key={m.id}
               onClick={() => navigate(`/app/module/${m.id}`)}
-              className="group bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-100 dark:border-slate-700 hover:border-blue-200 dark:hover:border-blue-500 hover:shadow-lg hover:shadow-blue-500/5 transition-all cursor-pointer"
+              className="group cursor-pointer rounded-2xl border border-border bg-surface p-6 transition-all hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10"
             >
               <div className="flex justify-between items-start mb-4">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                <span className="text-xs font-bold text-muted uppercase tracking-wider">
                   Nivel {m.levelRange}
                 </span>
                 <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${progress === 100 ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900 dark:text-emerald-400' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 group-hover:bg-blue-50 dark:group-hover:bg-blue-900 group-hover:text-blue-600 dark:group-hover:text-blue-400'}`}
+                  className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${progress === 100 ? 'bg-success-soft text-success' : 'bg-surface-alt text-muted group-hover:bg-primary-soft group-hover:text-primary'}`}
                 >
                   M{m.id}
                 </div>
               </div>
-              <h3 className="font-bold text-slate-800 dark:text-white text-lg group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+              <h3 className="text-lg font-bold text-foreground transition-colors group-hover:text-primary">
                 {m.title}
               </h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 line-clamp-2 h-10">
+              <p className="text-sm text-muted mt-2 line-clamp-2 h-10">
                 {m.description}
               </p>
 
               <div className="mt-6">
-                <div className="flex justify-between text-xs font-medium text-slate-400 mb-1">
+                <div className="flex justify-between text-xs font-medium text-muted mb-1">
                   <span>Progreso</span>
                   <span>
                     {completedCount}/{totalCount}
                   </span>
                 </div>
-                <div className="w-full bg-slate-100 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
+                <div className="w-full bg-surface-alt h-2 rounded-full overflow-hidden">
                   <div
-                    className="bg-blue-500 h-full rounded-full"
+                    className="bg-primary h-full rounded-full"
                     style={{ width: `${progress}%` }}
                   ></div>
                 </div>
