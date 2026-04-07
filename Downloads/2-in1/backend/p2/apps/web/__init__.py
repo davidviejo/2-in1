@@ -75,6 +75,7 @@ from apps.web.blueprints.ai_routes import ai_bp as ai_tools_bp
 from apps.web.blueprints.api_engine import api_engine_bp
 from apps.web.blueprints.seo_tfidf import seo_tfidf_bp, seo_tfidf_v1_bp
 from apps.web.blueprints.project_api import project_api_bp
+from apps.web.domains.registry import register_domain_blueprints
 from apps.web.api_routes_map import (
     API_V1_PREFIX,
     map_legacy_path_to_v1,
@@ -180,6 +181,9 @@ def create_app(config_class=Config):
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(portal_bp)
+
+    # --- DOMAIN API REGISTRATION (v1 namespaced) ---
+    register_domain_blueprints(app)
 
     # --- API ALIASING ---
     register_api_v1_aliases(app)
