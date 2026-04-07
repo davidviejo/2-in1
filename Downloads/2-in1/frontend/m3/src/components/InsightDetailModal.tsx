@@ -3,6 +3,7 @@ import { X, ExternalLink, Download, Search, Sparkles, Plus, Ban, Undo2, Bot } fr
 import { SeoInsight } from '../types/seoInsights';
 import { generateSEOAnalysis } from '../services/geminiService';
 import { generateSEOAnalysisWithOpenAI } from '../services/openaiService';
+import { buildTaskFromInsight } from '../services/insightFlowService';
 import { useToast } from './ui/ToastContext';
 import { useSettings } from '../context/SettingsContext';
 import { useProject } from '../context/ProjectContext';
@@ -55,20 +56,19 @@ export const InsightDetailModal: React.FC<InsightDetailModalProps> = ({
       return;
     }
 
-    const title = `Optimizar: ${item.keys[0]}`;
-    const description = [
-      `Insight: ${insight.title}`,
-      `Resumen: ${insight.summary}`,
-      `Motivo: ${insight.reason}`,
-      `Acción sugerida: ${insight.action}`,
-      `Query: ${item.keys[0]}`,
-      `URL: ${item.keys[1] || 'N/A'}`,
-      `Posición: ${item.position.toFixed(1)}`,
-      `CTR: ${(item.ctr * 100).toFixed(1)}%`,
-    ].join('\n');
-
-    addTask(targetModule.id, title, description, 'High', 'Strategy');
-    showSuccess(`Tarea creada en módulo "${targetModule.title}"`);
+    const taskDraft = buildTaskFromInsight(insight, item);
+    addTask(
+      targetModule.id,
+      taskDraft.title || `Optimizar: ${item.keys?.[0] || 'consulta'}`,
+      taskDraft.description || '',
+      taskDraft.impact || 'Medium',
+      taskDraft.category || 'Strategy',
+      {
+        isInCustomRoadmap: true,
+        flow: taskDraft.flow,
+      },
+    );
+    showSuccess(`Tarea creada en roadmap en módulo "${targetModule.title}"`);
   };
 
   const handleExport = () => {

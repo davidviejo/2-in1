@@ -20,6 +20,38 @@ export interface Task {
   externalLink?: string;
   assignee?: string;
   dueDate?: string;
+  flow?: InsightFlowTrace;
+}
+
+export interface InsightFlowEvidence {
+  label: string;
+  value: string;
+  context?: string;
+}
+
+export interface InsightFlowTrace {
+  finding: string;
+  insight: {
+    id: string;
+    title: string;
+    summary: string;
+    reason: string;
+  };
+  opportunityOrRisk: 'opportunity' | 'risk';
+  recommendedAction: string;
+  evidence: InsightFlowEvidence[];
+  impact: {
+    score: number;
+    confidence: number;
+    opportunity: number;
+    businessValue?: number;
+  };
+  source: {
+    tool: string;
+    query?: string;
+    url?: string;
+  };
+  phase?: 'phase1';
 }
 
 export interface CompletedTask {

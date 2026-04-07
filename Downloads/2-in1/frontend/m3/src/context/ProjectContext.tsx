@@ -18,6 +18,7 @@ import {
   IAVisibilityPromptConfig,
   IAVisibilityRunResult,
   createDefaultIAVisibilityState,
+  InsightFlowTrace,
 } from '../types';
 import { ClientRepository } from '../services/clientRepository';
 import { ProjectRemoteRepository } from '../services/projectRemoteRepository';
@@ -44,6 +45,10 @@ interface ProjectContextType {
     description: string,
     impact: 'High' | 'Medium' | 'Low',
     category: string,
+    options?: {
+      isInCustomRoadmap?: boolean;
+      flow?: InsightFlowTrace;
+    },
   ) => void;
   addTasksBulk: (
     tasks: {
@@ -274,6 +279,10 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       description: string,
       impact: 'High' | 'Medium' | 'Low',
       category: string,
+      options?: {
+        isInCustomRoadmap?: boolean;
+        flow?: InsightFlowTrace;
+      },
     ) => {
       const newModules = modules.map((m) => {
         if (m.id !== moduleId) return m;
@@ -285,6 +294,8 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
           status: 'pending',
           category,
           isCustom: true,
+          isInCustomRoadmap: options?.isInCustomRoadmap || false,
+          flow: options?.flow,
         };
         return {
           ...m,
