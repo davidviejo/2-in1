@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import { Terminal, Play } from 'lucide-react';
@@ -13,7 +13,29 @@ const OperatorPage: React.FC = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [output, setOutput] = useState<string[]>([]);
+  const [executionMode, setExecutionMode] = useState('simulation');
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const loadHistory = async () => {
+      try {
+        const res = await api.getOperatorExecutions();
+        setExecutionMode(res.mode || 'simulation');
+        setOutput(
+          res.items.map(
+            (entry) =>
+              `> [${entry.executed_at}] ${entry.executed_by} (${entry.role}) -> ${entry.tool} [${entry.mode}]`,
+          ),
+        );
+      } catch {
+        setOutput((prev) => [...prev, '> No se pudo cargar historial de ejecuciones']);
+      }
+    };
+
+    void loadHistory();
+  }, [isAuthenticated]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,7 +59,12 @@ const OperatorPage: React.FC = () => {
   const runTool = async (toolName: string) => {
     try {
       const res = await api.runOperatorTool(toolName);
-      setOutput((prev) => [...prev, `> Run ${toolName}: ${res.status} - ${res.message}`]);
+      setExecutionMode(res.mode || 'simulation');
+      const trace = res.trace;
+      setOutput((prev) => [
+        ...prev,
+        `> [${trace.executed_at}] ${trace.executed_by} (${trace.role}) -> ${toolName} [${res.mode}] :: ${res.status}`,
+      ]);
     } catch {
       setOutput((prev) => [...prev, `> Error running ${toolName}`]);
     }
@@ -50,15 +77,20 @@ const OperatorPage: React.FC = () => {
             <h1 className="text-2xl font-bold text-green-400 flex items-center">
               <Terminal className="mr-2" /> Operator Console
             </h1>
-            <button
-              onClick={() => {
-                api.logout();
-                navigate('/');
-              }}
-              className="text-sm text-slate-400 hover:text-white"
-            >
-              Logout
-            </button>
+            <div className="text-right">
+              <p className="text-xs uppercase tracking-wide text-amber-300">
+                Mode: {executionMode} (explicit)
+              </p>
+              <button
+                onClick={() => {
+                  api.logout();
+                  navigate('/');
+                }}
+                className="text-sm text-slate-400 hover:text-white"
+              >
+                Logout
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

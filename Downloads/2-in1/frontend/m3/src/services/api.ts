@@ -20,6 +20,28 @@ interface ToolsCatalogResponse {
   tools: ToolCatalogItem[];
 }
 
+interface OperatorExecutionTrace {
+  tool: string;
+  mode: string;
+  executed_at: string;
+  executed_by: string;
+  role: string;
+  ip: string | null;
+}
+
+interface RunOperatorToolResponse {
+  status: string;
+  message: string;
+  tool: string;
+  mode: string;
+  trace: OperatorExecutionTrace;
+}
+
+interface OperatorExecutionHistoryResponse {
+  mode: string;
+  items: OperatorExecutionTrace[];
+}
+
 const httpClient = createHttpClient({ service: 'api' });
 
 export const api = {
@@ -65,7 +87,9 @@ export const api = {
   getProjectOverview: async (slug: string) => httpClient.get(endpoints.clients.projectOverview(slug)),
 
   runOperatorTool: async (tool: string) =>
-    httpClient.post(endpoints.tools.run(tool), undefined),
+    httpClient.post<RunOperatorToolResponse>(endpoints.tools.run(tool), undefined),
+  getOperatorExecutions: async () =>
+    httpClient.get<OperatorExecutionHistoryResponse>(endpoints.tools.executions()),
 
   getToolsCatalog: async () =>
     httpClient.get<ToolsCatalogResponse>(endpoints.tools.catalog(), { includeAuth: false }),

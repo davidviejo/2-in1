@@ -1,12 +1,17 @@
+from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, make_response, session, redirect, url_for, render_template
 from apps.auth_utils import verify_token
 from apps.web.clients_store import get_safe_clients
 from apps.web.api_routes_map import TOOLS_CATALOG
 from functools import wraps
+from collections import deque
 
 portal_bp = Blueprint('portal_bp', __name__)
 
 WEB_AUTH_COOKIE = 'portal_auth_token'
+OPERATOR_EXECUTION_MODE = 'simulation'
+OPERATOR_AUDIT_LIMIT = 200
+OPERATOR_AUDIT_LOG = deque(maxlen=OPERATOR_AUDIT_LIMIT)
 
 
 def _extract_bearer_token_from_header():
@@ -125,11 +130,33 @@ def project_overview(slug):
 @portal_bp.route('/api/tools/run/<tool>', methods=['POST'])
 @require_role(['operator'])
 def run_tool(tool):
-    # Dummy endpoint
+    payload = request.user_payload or {}
+    executed_at = datetime.now(timezone.utc).isoformat()
+    audit_entry = {
+        'tool': tool,
+        'mode': OPERATOR_EXECUTION_MODE,
+        'executed_at': executed_at,
+        'executed_by': payload.get('sub') or payload.get('role') or 'operator',
+        'role': payload.get('role', 'operator'),
+        'ip': request.remote_addr,
+    }
+    OPERATOR_AUDIT_LOG.appendleft(audit_entry)
+
     return jsonify({
         "status": "accepted",
-        "message": f"Tool {tool} execution queued (dummy)",
-        "tool": tool
+        "message": f"Tool {tool} execution queued ({OPERATOR_EXECUTION_MODE})",
+        "tool": tool,
+        "mode": OPERATOR_EXECUTION_MODE,
+        "trace": audit_entry,
+    })
+
+
+@portal_bp.route('/api/tools/executions', methods=['GET'])
+@require_role(['operator'])
+def list_tool_executions():
+    return jsonify({
+        'mode': OPERATOR_EXECUTION_MODE,
+        'items': list(OPERATOR_AUDIT_LOG),
     })
 
 
