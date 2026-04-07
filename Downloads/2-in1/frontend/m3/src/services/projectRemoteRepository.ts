@@ -2,6 +2,7 @@ import { resolveApiUrl } from './apiUrlHelper';
 import { Client, Note } from '../types';
 import { ClientRepository } from './clientRepository';
 import { ProjectSnapshotDTO } from '../types/projectApi';
+import { StrategyFactory } from '../strategies/StrategyFactory';
 
 const PROJECT_SYNC_META_KEY = 'mediaflow_project_sync_meta_v1';
 const LEGACY_IMPORTED_FLAG_KEY = 'mediaflow_legacy_uploaded_v1';
@@ -36,6 +37,7 @@ const getFallbackSnapshot = (): ProjectSnapshotDTO => ({
 
 export class ProjectRemoteRepository {
   static async bootstrap(): Promise<ProjectSnapshotDTO> {
+    await StrategyFactory.primeTemplates();
     const localSnapshot = getFallbackSnapshot();
 
     try {

@@ -119,6 +119,7 @@ export interface Client {
   aiRoadmap?: Task[];
   kanbanColumns?: KanbanColumn[];
   iaVisibility?: IAVisibilityState;
+  templateVersion?: string;
 }
 
 export interface GeminiResponse {

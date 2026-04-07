@@ -3,6 +3,7 @@ from flask import Blueprint, request, jsonify, make_response, session, redirect,
 from apps.auth_utils import verify_token
 from apps.web.clients_store import get_safe_clients
 from apps.web.api_routes_map import TOOLS_CATALOG
+from apps.web.template_catalog import get_template_catalog
 from functools import wraps
 from collections import deque
 
@@ -159,6 +160,14 @@ def list_tool_executions():
         'items': list(OPERATOR_AUDIT_LOG),
     })
 
+
+
+
+@portal_bp.route('/api/templates', methods=['GET'])
+def templates_catalog():
+    response = make_response(jsonify(get_template_catalog()))
+    response.headers['Cache-Control'] = 'public, max-age=60, stale-while-revalidate=300'
+    return response
 
 @portal_bp.route('/api/tools/catalog', methods=['GET'])
 def tools_catalog():
