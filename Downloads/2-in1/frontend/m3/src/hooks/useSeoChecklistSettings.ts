@@ -23,6 +23,8 @@ const getDefaultSettings = (): SeoChecklistSettings => {
       maxKeywordsPerUrl: 10,
       maxCompetitorsPerKeyword: 3,
       useGlobalDataforseo: true,
+      dataforseoDetail: 'advanced',
+      dataforseoExecutionMode: 'live',
       ...globalCredentials,
     },
     budgets: {

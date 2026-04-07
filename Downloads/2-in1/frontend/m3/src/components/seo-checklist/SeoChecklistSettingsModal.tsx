@@ -280,6 +280,39 @@ export const SeoChecklistSettingsModal: React.FC<Props> = ({
                         </div>
                       </>
                     )}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                          Formato SERP
+                        </label>
+                        <select
+                          value={formData.serp.dataforseoDetail || 'advanced'}
+                          onChange={(e) =>
+                            handleChange('serp', 'dataforseoDetail', e.target.value)
+                          }
+                          className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="advanced">Advanced (recomendado)</option>
+                          <option value="regular">Regular (top 10 básico)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                          Modo de ejecución
+                        </label>
+                        <select
+                          value={formData.serp.dataforseoExecutionMode || 'live'}
+                          onChange={(e) =>
+                            handleChange('serp', 'dataforseoExecutionMode', e.target.value)
+                          }
+                          className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="live">Live (tiempo real)</option>
+                          <option value="standard">Standard (asíncrono)</option>
+                          <option value="priority">Priority (asíncrono rápido)</option>
+                        </select>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
