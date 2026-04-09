@@ -87,7 +87,29 @@ def _compact_nones(item: Any) -> Any:
     return item
 
 
+def _dedupe_stable_strings(values: List[Any]) -> List[str]:
+    seen = set()
+    deduped: List[str] = []
+    for value in values:
+        normalized = str(value)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(normalized)
+    return deduped
+
+
 def _normalize_module(raw: Dict[str, Any]) -> Dict[str, Any]:
+    normalized_tasks = [_compact_nones(_normalize_task(task)) for task in raw.get('tasks', []) if isinstance(task, dict)]
+    seen_task_ids = set()
+    deduped_tasks: List[Dict[str, Any]] = []
+    for task in normalized_tasks:
+        task_id = str(task.get('id', ''))
+        if task_id in seen_task_ids:
+            continue
+        seen_task_ids.add(task_id)
+        deduped_tasks.append(task)
+
     return {
         'id': int(raw.get('id', 0)),
         'title': str(raw.get('title', '')),
@@ -95,7 +117,7 @@ def _normalize_module(raw: Dict[str, Any]) -> Dict[str, Any]:
         'levelRange': str(raw.get('levelRange', '')),
         'description': str(raw.get('description', '')),
         'iconName': str(raw.get('iconName', '')), 
-        'tasks': [_compact_nones(_normalize_task(task)) for task in raw.get('tasks', []) if isinstance(task, dict)],
+        'tasks': deduped_tasks,
         'isCustom': bool(raw.get('isCustom')) if 'isCustom' in raw else None,
     }
 
@@ -109,7 +131,7 @@ def _normalize_client(raw: Dict[str, Any]) -> Dict[str, Any]:
         'createdAt': int(raw.get('createdAt', int(time.time() * 1000))),
         'notes': [_normalize_note(n) for n in raw.get('notes', []) if isinstance(n, dict)],
         'completedTasksLog': raw.get('completedTasksLog', []),
-        'customRoadmapOrder': [str(x) for x in raw.get('customRoadmapOrder', [])],
+        'customRoadmapOrder': _dedupe_stable_strings(raw.get('customRoadmapOrder', [])),
         'aiRoadmap': [_compact_nones(_normalize_task(task)) for task in raw.get('aiRoadmap', []) if isinstance(task, dict)],
         'kanbanColumns': raw.get('kanbanColumns', []),
         'iaVisibility': raw.get('iaVisibility'),
