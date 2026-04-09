@@ -441,7 +441,10 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       setClients((prev) =>
         prev.map((c) => {
           if (c.id !== currentClientId) return c;
-          const currentColumns = c.kanbanColumns || DEFAULT_KANBAN_COLUMNS;
+          const currentColumns =
+            c.kanbanColumns && c.kanbanColumns.length > 0
+              ? c.kanbanColumns
+              : DEFAULT_KANBAN_COLUMNS;
           const newColumn = { id: crypto.randomUUID(), title };
           return { ...c, kanbanColumns: [...currentColumns, newColumn] };
         }),
@@ -455,7 +458,10 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       setClients((prev) =>
         prev.map((c) => {
           if (c.id !== currentClientId) return c;
-          const currentColumns = c.kanbanColumns || DEFAULT_KANBAN_COLUMNS;
+          const currentColumns =
+            c.kanbanColumns && c.kanbanColumns.length > 0
+              ? c.kanbanColumns
+              : DEFAULT_KANBAN_COLUMNS;
           return { ...c, kanbanColumns: currentColumns.filter((col) => col.id !== columnId) };
         }),
       );
