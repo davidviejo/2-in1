@@ -20,6 +20,18 @@ interface ClientRoadmapProps {
   onToggleTaskCommunicated: (moduleId: number, taskId: string) => void;
 }
 
+const parseTaskNumericId = (taskId: string): { moduleNumber: number; taskNumber: number } | null => {
+  const match = /^m(\d+)-(\d+)$/.exec(taskId);
+  if (!match) {
+    return null;
+  }
+
+  return {
+    moduleNumber: Number(match[1]),
+    taskNumber: Number(match[2]),
+  };
+};
+
 const ClientRoadmap: React.FC<ClientRoadmapProps> = ({
   modules,
   customRoadmapOrder = [],
@@ -55,15 +67,51 @@ const ClientRoadmap: React.FC<ClientRoadmapProps> = ({
       });
     });
 
-    // Sort based on customRoadmapOrder
+    // Sort based on customRoadmapOrder first, then fallback to module/task order
     return roadmapTasks.sort((a, b) => {
       const indexA = customRoadmapOrder.indexOf(a.task.id);
       const indexB = customRoadmapOrder.indexOf(b.task.id);
+      const hasCustomOrderA = indexA !== -1;
+      const hasCustomOrderB = indexB !== -1;
 
-      if (indexA === -1 && indexB === -1) return 0;
-      if (indexA === -1) return 1;
-      if (indexB === -1) return -1;
-      return indexA - indexB;
+      if (hasCustomOrderA && hasCustomOrderB) {
+        return indexA - indexB;
+      }
+
+      if (hasCustomOrderA) {
+        return -1;
+      }
+
+      if (hasCustomOrderB) {
+        return 1;
+      }
+
+      if (a.moduleId !== b.moduleId) {
+        return a.moduleId - b.moduleId;
+      }
+
+      const parsedA = parseTaskNumericId(a.task.id);
+      const parsedB = parseTaskNumericId(b.task.id);
+
+      if (parsedA && parsedB) {
+        if (parsedA.moduleNumber !== parsedB.moduleNumber) {
+          return parsedA.moduleNumber - parsedB.moduleNumber;
+        }
+
+        if (parsedA.taskNumber !== parsedB.taskNumber) {
+          return parsedA.taskNumber - parsedB.taskNumber;
+        }
+      }
+
+      if (parsedA && !parsedB) {
+        return -1;
+      }
+
+      if (!parsedA && parsedB) {
+        return 1;
+      }
+
+      return a.task.id.localeCompare(b.task.id);
     });
   }, [modules, customRoadmapOrder]);
 
