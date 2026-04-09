@@ -113,14 +113,52 @@ const normalizeIAVisibilityState = (iaVisibility: unknown): IAVisibilityState =>
   };
 };
 
-const normalizeClient = (client: Client): Client => ({
-  ...client,
-  vertical: normalizeClientVertical(client.vertical),
-  notes: client.notes || [],
-  completedTasksLog: client.completedTasksLog || [],
-  customRoadmapOrder: client.customRoadmapOrder || [],
-  iaVisibility: normalizeIAVisibilityState(client.iaVisibility),
-});
+const dedupeStable = (items: string[]): string[] => {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    if (seen.has(item)) {
+      return false;
+    }
+    seen.add(item);
+    return true;
+  });
+};
+
+const warnDuplicateTaskIdsAcrossModules = (client: Client): void => {
+  const seenTaskIds = new Set<string>();
+  const duplicatedTaskIds = new Set<string>();
+
+  client.modules.forEach((module) => {
+    module.tasks.forEach((task) => {
+      if (seenTaskIds.has(task.id)) {
+        duplicatedTaskIds.add(task.id);
+        return;
+      }
+      seenTaskIds.add(task.id);
+    });
+  });
+
+  if (duplicatedTaskIds.size > 0) {
+    console.warn(
+      `[ClientRepository] Duplicate task IDs detected across modules for client "${client.name}" (${client.id}): ${Array.from(duplicatedTaskIds).join(', ')}`,
+    );
+  }
+};
+
+const normalizeClient = (client: Client, options?: { validateDuplicateTaskIds?: boolean }): Client => {
+  if (options?.validateDuplicateTaskIds) {
+    warnDuplicateTaskIdsAcrossModules(client);
+  }
+
+  return {
+    ...client,
+    vertical: normalizeClientVertical(client.vertical),
+    notes: client.notes || [],
+    completedTasksLog: client.completedTasksLog || [],
+    customRoadmapOrder: dedupeStable(client.customRoadmapOrder || []),
+    iaVisibility: normalizeIAVisibilityState(client.iaVisibility),
+  };
+};
 
 const deepCopy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
@@ -164,7 +202,9 @@ export class ClientRepository {
     if (savedClients) {
       try {
         const parsedClients = JSON.parse(savedClients);
-        const migratedClients = parsedClients.map(normalizeClient);
+        const migratedClients = parsedClients.map((client: Client) =>
+          normalizeClient(client, { validateDuplicateTaskIds: true }),
+        );
 
         return this.migrateModules(migratedClients);
       } catch (e) {
@@ -176,7 +216,9 @@ export class ClientRepository {
     if (legacyClients) {
       try {
         const parsedClients = JSON.parse(legacyClients);
-        const migratedClients = parsedClients.map(normalizeClient);
+        const migratedClients = parsedClients.map((client: Client) =>
+          normalizeClient(client, { validateDuplicateTaskIds: true }),
+        );
         const normalized = this.migrateModules(migratedClients);
         localStorage.setItem(CLIENTS_KEY, JSON.stringify(normalized));
         return normalized;
