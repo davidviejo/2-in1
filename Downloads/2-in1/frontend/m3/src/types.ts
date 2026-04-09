@@ -183,6 +183,44 @@ export interface GSCResponse {
   rows?: GSCRow[];
 }
 
+export type GSCSearchType = 'web' | 'image' | 'video' | 'news' | 'discover' | 'googleNews';
+export type GSCDimension = 'date' | 'query' | 'page' | 'country' | 'device' | 'searchAppearance';
+export type GSCDimensionFilterOperator =
+  | 'equals'
+  | 'notEquals'
+  | 'contains'
+  | 'notContains'
+  | 'includingRegex'
+  | 'excludingRegex';
+
+export interface GSCDimensionFilter {
+  dimension: GSCDimension;
+  operator: GSCDimensionFilterOperator;
+  expression: string;
+}
+
+export interface GSCDimensionFilterGroup {
+  groupType?: 'and' | 'or';
+  filters: GSCDimensionFilter[];
+}
+
+export type GSCTruncatedReason =
+  | 'max_pages_reached'
+  | 'max_rows_reached'
+  | 'safety_stop'
+  | 'api_error';
+
+export interface GSCExtractionMetadata {
+  isPartial: boolean;
+  pagesFetched: number;
+  rowsFetched: number;
+  truncatedReason?: GSCTruncatedReason;
+}
+
+export interface GSCPagedSearchAnalyticsResponse extends GSCResponse {
+  metadata: GSCExtractionMetadata;
+}
+
 export interface GoogleUser {
   id: string;
   email: string;
