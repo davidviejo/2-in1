@@ -21,6 +21,13 @@ import {
   parseTemplateRules,
   QuerySegmentFilter,
 } from '@/utils/gscFilters';
+import {
+  buildDefaultRanges,
+  buildPeriodRangesFromParams,
+  mapPeriodRangesToSearchParams,
+  PeriodRanges,
+  validatePeriodRanges,
+} from '@/utils/gscImpactPeriodRanges';
 
 type DeviceFilter = 'all' | 'DESKTOP' | 'MOBILE' | 'TABLET';
 
@@ -57,12 +64,6 @@ type UrlSampleRow = ImpactRow & {
   positionDelta: number;
   severityScore: number;
 };
-
-interface PeriodRanges {
-  pre: { start: string; end: string };
-  rollout: { start: string; end: string };
-  post: { start: string; end: string };
-}
 
 const toISODate = (date: Date) => date.toISOString().split('T')[0];
 
@@ -166,32 +167,6 @@ const getActionableSignals = (row: UrlInspectionRow): string[] => {
   return signals;
 };
 
-const buildDefaultRanges = (rolloutDate: string): PeriodRanges => {
-  const rollout = new Date(`${rolloutDate}T00:00:00Z`);
-
-  const preEnd = new Date(rollout);
-  preEnd.setUTCDate(preEnd.getUTCDate() - 1);
-  const preStart = new Date(preEnd);
-  preStart.setUTCDate(preStart.getUTCDate() - 27);
-
-  const rolloutStart = new Date(rollout);
-  rolloutStart.setUTCDate(rolloutStart.getUTCDate() - 6);
-  const rolloutEnd = new Date(rollout);
-  rolloutEnd.setUTCDate(rolloutEnd.getUTCDate() + 7);
-
-  const postStart = new Date(rollout);
-  postStart.setUTCDate(postStart.getUTCDate() + 1);
-  const postEnd = new Date(postStart);
-  postEnd.setUTCDate(postEnd.getUTCDate() + 27);
-  const today = new Date();
-
-  return {
-    pre: { start: toISODate(preStart), end: toISODate(preEnd) },
-    rollout: { start: toISODate(rolloutStart), end: toISODate(rolloutEnd) },
-    post: { start: toISODate(postStart), end: toISODate(postEnd > today ? today : postEnd) },
-  };
-};
-
 const GSC_IMPACT_BRAND_TERMS_PREFIX = 'mediaflow_gsc_impact_brand_terms_';
 
 const buildFilterStateFromParams = (params: URLSearchParams, fallbackBrandTermsText: string): FilterState => ({
@@ -213,8 +188,11 @@ const GscImpactPage: React.FC = () => {
   const brandTermsStorageKey = `${GSC_IMPACT_BRAND_TERMS_PREFIX}${currentClientId || 'default'}`;
   const persistedBrandTermsText = typeof window !== 'undefined' ? localStorage.getItem(brandTermsStorageKey) || '' : '';
   const initialFilters = buildFilterStateFromParams(searchParams, persistedBrandTermsText);
+  const initialRolloutDate = searchParams.get('rolloutDate') || toISODate(new Date());
+  const initialRangesFromParams = buildPeriodRangesFromParams(searchParams, initialRolloutDate);
 
-  const [rolloutDate, setRolloutDate] = useState(() => toISODate(new Date()));
+  const [rolloutDate, setRolloutDate] = useState(initialRolloutDate);
+  const [periodRanges, setPeriodRanges] = useState<PeriodRanges>(initialRangesFromParams.ranges);
   const [siteSearch, setSiteSearch] = useState('');
   const [filters, setFilters] = useState<FilterState>(initialFilters);
   const [loadingImpact, setLoadingImpact] = useState(false);
@@ -249,7 +227,8 @@ const GscImpactPage: React.FC = () => {
     return gscSites.filter((site) => site.siteUrl.toLowerCase().includes(q));
   }, [gscSites, siteSearch]);
 
-  const ranges = useMemo(() => buildDefaultRanges(rolloutDate), [rolloutDate]);
+  const ranges = periodRanges;
+  const periodRangeErrors = useMemo(() => validatePeriodRanges(periodRanges), [periodRanges]);
   const brandTerms = useMemo(() => parseBrandTermsInput(filters.brandTermsText), [filters.brandTermsText]);
   const templateRules = useMemo(() => parseTemplateRules(filters.templateRulesText), [filters.templateRulesText]);
   const templateManualMap = useMemo(
@@ -269,10 +248,12 @@ const GscImpactPage: React.FC = () => {
     next.set('device', filters.device);
     next.set('country', filters.country);
     next.set('searchType', filters.searchType);
+    next.set('rolloutDate', rolloutDate);
+    mapPeriodRangesToSearchParams(next, periodRanges);
     if (next.toString() !== searchParams.toString()) {
       setSearchParams(next, { replace: true });
     }
-  }, [filters, searchParams, setSearchParams]);
+  }, [filters, periodRanges, rolloutDate, searchParams, setSearchParams]);
 
   useEffect(() => {
     localStorage.setItem(brandTermsStorageKey, filters.brandTermsText);
@@ -300,6 +281,13 @@ const GscImpactPage: React.FC = () => {
   useEffect(() => {
     const fetchImpact = async () => {
       if (!gscAccessToken || !selectedSite) return;
+
+      if (periodRangeErrors.length > 0) {
+        setImpactError(`Rangos inválidos: ${periodRangeErrors.join(' ')}`);
+        setQueryRows([]);
+        setUrlRows([]);
+        return;
+      }
 
       setLoadingImpact(true);
       setImpactError(null);
@@ -373,7 +361,7 @@ const GscImpactPage: React.FC = () => {
     };
 
     void fetchImpact();
-  }, [dimensionFilterGroups, filters.searchType, gscAccessToken, selectedSite, ranges, refreshTick]);
+  }, [dimensionFilterGroups, filters.searchType, gscAccessToken, selectedSite, ranges, refreshTick, periodRangeErrors]);
 
   const gscSummary = useMemo(() => {
     const current = sumRows(gscData);
@@ -566,7 +554,7 @@ const GscImpactPage: React.FC = () => {
           </section>
 
           <section className="surface-panel p-6">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-5">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
               <div className="lg:col-span-2">
                 <label className="metric-label">Propiedad Search Console (sin GA4)</label>
                 <Input
@@ -588,13 +576,20 @@ const GscImpactPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="metric-label">Fecha rollout</label>
+                <label className="metric-label">Fecha rollout (helper)</label>
                 <input
                   className="form-control"
                   type="date"
                   value={rolloutDate}
                   onChange={(e) => setRolloutDate(e.target.value)}
                 />
+                <Button
+                  className="mt-2"
+                  variant="secondary"
+                  onClick={() => setPeriodRanges(buildDefaultRanges(rolloutDate))}
+                >
+                  Aplicar rangos recomendados
+                </Button>
               </div>
 
               <div>
@@ -622,6 +617,93 @@ const GscImpactPage: React.FC = () => {
                   value={filters.minImpressions}
                   onChange={(e) =>
                     setFilters((prev) => ({ ...prev, minImpressions: Number(e.target.value) || 0 }))
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <label className="metric-label">Pre-update · start</label>
+                <input
+                  className="form-control"
+                  type="date"
+                  value={periodRanges.pre.start}
+                  onChange={(e) =>
+                    setPeriodRanges((prev) => ({
+                      ...prev,
+                      pre: { ...prev.pre, start: e.target.value },
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <label className="metric-label">Pre-update · end</label>
+                <input
+                  className="form-control"
+                  type="date"
+                  value={periodRanges.pre.end}
+                  onChange={(e) =>
+                    setPeriodRanges((prev) => ({
+                      ...prev,
+                      pre: { ...prev.pre, end: e.target.value },
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <label className="metric-label">Rollout · start</label>
+                <input
+                  className="form-control"
+                  type="date"
+                  value={periodRanges.rollout.start}
+                  onChange={(e) =>
+                    setPeriodRanges((prev) => ({
+                      ...prev,
+                      rollout: { ...prev.rollout, start: e.target.value },
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <label className="metric-label">Rollout · end</label>
+                <input
+                  className="form-control"
+                  type="date"
+                  value={periodRanges.rollout.end}
+                  onChange={(e) =>
+                    setPeriodRanges((prev) => ({
+                      ...prev,
+                      rollout: { ...prev.rollout, end: e.target.value },
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <label className="metric-label">Post-update · start</label>
+                <input
+                  className="form-control"
+                  type="date"
+                  value={periodRanges.post.start}
+                  onChange={(e) =>
+                    setPeriodRanges((prev) => ({
+                      ...prev,
+                      post: { ...prev.post, start: e.target.value },
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <label className="metric-label">Post-update · end</label>
+                <input
+                  className="form-control"
+                  type="date"
+                  value={periodRanges.post.end}
+                  onChange={(e) =>
+                    setPeriodRanges((prev) => ({
+                      ...prev,
+                      post: { ...prev.post, end: e.target.value },
+                    }))
                   }
                 />
               </div>
