@@ -44,6 +44,7 @@ const ClientRoadmap: React.FC<ClientRoadmapProps> = ({
   clientName = 'Cliente',
   onToggleTaskCommunicated,
 }) => {
+  const buildTaskKey = useCallback((moduleId: number, taskId: string) => `${moduleId}::${taskId}`, []);
   const { success: showSuccess, error: showError } = useToast();
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const mistralAvailable = isMistralConfigured();
@@ -159,8 +160,8 @@ const ClientRoadmap: React.FC<ClientRoadmapProps> = ({
     [clientVertical, showError, showSuccess],
   );
 
-  const handleToggleExpand = useCallback((taskId: string) => {
-    setExpandedTask((prev) => (prev === taskId ? null : taskId));
+  const handleToggleExpand = useCallback((taskKey: string) => {
+    setExpandedTask((prev) => (prev === taskKey ? null : taskKey));
   }, []);
 
   if (tasks.length === 0) {
@@ -203,28 +204,32 @@ const ClientRoadmap: React.FC<ClientRoadmapProps> = ({
         <Droppable droppableId="roadmap">
           {(provided) => (
             <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-3">
-              {tasks.map((item, index) => (
-                <RoadmapTaskItem
-                  key={item.task.id}
-                  item={item}
-                  index={index}
-                  isExpanded={expandedTask === item.task.id}
-                  onToggleExpand={handleToggleExpand}
-                  onToggleTask={onToggleTask}
-                  onRemoveFromRoadmap={onRemoveFromRoadmap}
-                  onUpdateTaskNotes={onUpdateTaskNotes}
-                  onUpdateTaskImpact={onUpdateTaskImpact}
-                  onToggleTaskCommunicated={onToggleTaskCommunicated}
-                  onVitaminAction={handleVitaminAction}
-                  clientName={clientName}
-                  learningMode={learningMode}
-                  mistralAvailable={mistralAvailable}
-                  openaiAvailable={openaiAvailable}
-                  vitaminResult={expandedTask === item.task.id ? vitaminResult : null}
-                  isVitaminLoading={isVitaminLoading}
-                  vitaminSource={vitaminSource}
-                />
-              ))}
+              {tasks.map((item, index) => {
+                const taskKey = buildTaskKey(item.moduleId, item.task.id);
+                return (
+                  <RoadmapTaskItem
+                    key={taskKey}
+                    item={item}
+                    taskKey={taskKey}
+                    index={index}
+                    isExpanded={expandedTask === taskKey}
+                    onToggleExpand={handleToggleExpand}
+                    onToggleTask={onToggleTask}
+                    onRemoveFromRoadmap={onRemoveFromRoadmap}
+                    onUpdateTaskNotes={onUpdateTaskNotes}
+                    onUpdateTaskImpact={onUpdateTaskImpact}
+                    onToggleTaskCommunicated={onToggleTaskCommunicated}
+                    onVitaminAction={handleVitaminAction}
+                    clientName={clientName}
+                    learningMode={learningMode}
+                    mistralAvailable={mistralAvailable}
+                    openaiAvailable={openaiAvailable}
+                    vitaminResult={expandedTask === taskKey ? vitaminResult : null}
+                    isVitaminLoading={isVitaminLoading}
+                    vitaminSource={vitaminSource}
+                  />
+                );
+              })}
               {provided.placeholder}
             </div>
           )}
