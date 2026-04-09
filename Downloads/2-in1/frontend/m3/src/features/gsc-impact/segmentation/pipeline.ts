@@ -15,6 +15,7 @@ export type SegmentationPipelineInput = SegmentationInput & {
 export type SegmentationPipelineOptions = {
   filters: SegmentationFilters;
   projectConfig: ProjectSegmentationConfig;
+  useCustomRules?: boolean;
 };
 
 export type SegmentationPipelineResult = BaseSegmentationResult & {
@@ -68,7 +69,7 @@ export const runSegmentationPipeline = (
   options: SegmentationPipelineOptions,
 ): SegmentationPipelineResult => {
   const base = computeBaseSegmentation(input, options.filters);
-  const withOverrides = applyProjectOverrides(base, options.projectConfig);
+  const withOverrides = options.useCustomRules === false ? { ...base, customSegment: null, cluster: null, excluded: false } : applyProjectOverrides(base, options.projectConfig);
 
   return {
     ...withOverrides,
@@ -80,7 +81,8 @@ export const filterQueryImpactRows = <TRow extends ImpactRowLike>(
   rows: TRow[],
   input: QueryFilterInput,
   projectConfig: ProjectSegmentationConfig,
-): TRow[] => {
+  options?: Pick<SegmentationPipelineOptions, 'useCustomRules'>,
+): Array<TRow & Pick<SegmentationPipelineResult, 'source' | 'ruleId' | 'ruleType'>> => {
   const filters: SegmentationFilters = {
     segmentFilter: input.segmentFilter,
     brandTerms: input.brandTerms,
@@ -91,23 +93,33 @@ export const filterQueryImpactRows = <TRow extends ImpactRowLike>(
     templateManualMap: {},
   };
 
-  return rows.filter((row) =>
-    runSegmentationPipeline(
+  return rows
+    .map((row) => ({
+      row,
+      segmentation: runSegmentationPipeline(
       {
         mode: 'query',
         query: row.label,
         maxImpressions: getMaxImpressions(row),
       },
-      { filters, projectConfig },
-    ).included,
-  );
+      { filters, projectConfig, useCustomRules: options?.useCustomRules },
+      ),
+    }))
+    .filter(({ segmentation }) => segmentation.included)
+    .map(({ row, segmentation }) => ({
+      ...row,
+      source: segmentation.source,
+      ruleId: segmentation.ruleId,
+      ruleType: segmentation.ruleType,
+    }));
 };
 
 export const mapAndFilterUrlImpactRows = <TRow extends ImpactRowLike>(
   rows: TRow[],
   input: UrlFilterInput,
   projectConfig: ProjectSegmentationConfig,
-): Array<TRow & { template: string }> => {
+  options?: Pick<SegmentationPipelineOptions, 'useCustomRules'>,
+): Array<TRow & { template: string; source: string; ruleId: string | null; ruleType: string | null }> => {
   const filters: SegmentationFilters = {
     segmentFilter: 'all',
     brandTerms: [],
@@ -118,7 +130,7 @@ export const mapAndFilterUrlImpactRows = <TRow extends ImpactRowLike>(
     templateManualMap: input.templateManualMap,
   };
 
-  const output: Array<TRow & { template: string }> = [];
+  const output: Array<TRow & { template: string; source: string; ruleId: string | null; ruleType: string | null }> = [];
 
   rows.forEach((row) => {
     const result = runSegmentationPipeline(
@@ -128,13 +140,16 @@ export const mapAndFilterUrlImpactRows = <TRow extends ImpactRowLike>(
         query: row.label,
         maxImpressions: getMaxImpressions(row),
       },
-      { filters, projectConfig },
+      { filters, projectConfig, useCustomRules: options?.useCustomRules },
     );
 
     if (!result.included) return;
     output.push({
       ...row,
       template: result.template,
+      source: result.source,
+      ruleId: result.ruleId,
+      ruleType: result.ruleType,
     });
   });
 
@@ -145,6 +160,7 @@ export const collectAvailableTemplates = (
   rows: ImpactRowLike[],
   input: Pick<UrlFilterInput, 'templateRules' | 'templateManualMap'>,
   projectConfig: ProjectSegmentationConfig,
+  options?: Pick<SegmentationPipelineOptions, 'useCustomRules'>,
 ): string[] => {
   const filters: SegmentationFilters = {
     segmentFilter: 'all',
@@ -165,7 +181,7 @@ export const collectAvailableTemplates = (
           query: row.label,
           maxImpressions: getMaxImpressions(row),
         },
-        { filters, projectConfig },
+        { filters, projectConfig, useCustomRules: options?.useCustomRules },
       ).template,
     ),
   );

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { BarChart3, LogIn, LogOut, RefreshCcw, Settings2 } from 'lucide-react';
+import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -62,6 +63,23 @@ type UrlSampleRow = ImpactRow & {
   impressionDelta: number;
   positionDelta: number;
   severityScore: number;
+  source: string;
+  ruleId: string | null;
+  ruleType: string | null;
+};
+
+type InsightRowMeta = {
+  source: string;
+  ruleId: string | null;
+  ruleType: string | null;
+};
+
+const getSourceBadgeVariant = (source: string) => (source === 'custom' ? 'primary' : 'neutral');
+
+const getSourceLabel = (row: InsightRowMeta) => {
+  const sourceLabel = row.source === 'custom' ? 'Custom rule' : 'Base rule';
+  if (!row.ruleType) return sourceLabel;
+  return `${sourceLabel} · ${row.ruleType}`;
 };
 
 const toISODate = (date: Date) => date.toISOString().split('T')[0];
@@ -125,7 +143,7 @@ const mergePeriods = (
   });
 };
 
-const toSampleRow = (row: ImpactRow): UrlSampleRow => {
+const toSampleRow = (row: ImpactRow & InsightRowMeta): UrlSampleRow => {
   const clickDelta = row.postClicks - row.preClicks;
   const impressionDelta = row.postImpressions - row.preImpressions;
   const positionDelta = row.postPosition - row.prePosition;
@@ -218,6 +236,11 @@ const GscImpactPage: React.FC = () => {
   const initialFilters = buildFilterState(searchParams, { persistedConfig, useSharedRuleParams });
   const initialRolloutDate = searchParams.get('rolloutDate') || toISODate(new Date());
   const initialRangesFromParams = buildPeriodRangesFromParams(searchParams, initialRolloutDate);
+  const useCustomRulesParam = searchParams.get('useCustomRules');
+  const initialUseCustomRules =
+    useCustomRulesParam === null
+      ? GscImpactSegmentationRepository.getUseCustomRulesByClientId(currentClientId)
+      : useCustomRulesParam === '1';
 
   const [rolloutDate, setRolloutDate] = useState(initialRolloutDate);
   const [periodRanges, setPeriodRanges] = useState<PeriodRanges>(initialRangesFromParams.ranges);
@@ -230,6 +253,7 @@ const GscImpactPage: React.FC = () => {
   const [inspectionErrors, setInspectionErrors] = useState<UrlInspectionErrorItem[]>([]);
   const [isInspecting, setIsInspecting] = useState(false);
   const [inspectionStatus, setInspectionStatus] = useState<string | null>(null);
+  const [useCustomRules, setUseCustomRules] = useState<boolean>(initialUseCustomRules);
 
   const [queryRows, setQueryRows] = useState<ImpactRow[]>([]);
   const [urlRows, setUrlRows] = useState<ImpactRow[]>([]);
@@ -269,6 +293,15 @@ const GscImpactPage: React.FC = () => {
   }, [currentClientId, persistedConfig, searchParams, useSharedRuleParams]);
 
   useEffect(() => {
+    const queryValue = searchParams.get('useCustomRules');
+    if (queryValue !== null) {
+      setUseCustomRules(queryValue === '1');
+      return;
+    }
+    setUseCustomRules(GscImpactSegmentationRepository.getUseCustomRulesByClientId(currentClientId));
+  }, [currentClientId, searchParams]);
+
+  useEffect(() => {
     const next = new URLSearchParams();
     next.set('segment', filters.segmentFilter);
     next.set('minImpressions', String(filters.minImpressions));
@@ -277,6 +310,7 @@ const GscImpactPage: React.FC = () => {
     next.set('device', filters.device);
     next.set('country', filters.country);
     next.set('searchType', filters.searchType);
+    next.set('useCustomRules', useCustomRules ? '1' : '0');
     next.set('rolloutDate', rolloutDate);
     if (useSharedRuleParams) {
       next.set(SHARED_RULES_PARAM, '1');
@@ -288,7 +322,7 @@ const GscImpactPage: React.FC = () => {
     if (next.toString() !== searchParams.toString()) {
       setSearchParams(next, { replace: true });
     }
-  }, [filters, periodRanges, rolloutDate, searchParams, setSearchParams, useSharedRuleParams]);
+  }, [filters, periodRanges, rolloutDate, searchParams, setSearchParams, useCustomRules, useSharedRuleParams]);
 
   useEffect(() => {
     GscImpactSegmentationRepository.saveConfigByClientId(currentClientId, {
@@ -432,8 +466,9 @@ const GscImpactPage: React.FC = () => {
         minImpressions: filters.minImpressions,
       },
       persistedConfig,
+      { useCustomRules },
     );
-  }, [brandTerms, filters.minImpressions, filters.segmentFilter, persistedConfig, queryRows]);
+  }, [brandTerms, filters.minImpressions, filters.segmentFilter, persistedConfig, queryRows, useCustomRules]);
 
   const filteredUrlRows = useMemo(() => {
     return mapAndFilterUrlImpactRows(
@@ -446,8 +481,9 @@ const GscImpactPage: React.FC = () => {
         templateManualMap,
       },
       persistedConfig,
+      { useCustomRules },
     );
-  }, [filters.minImpressions, filters.pathPrefix, filters.selectedTemplate, persistedConfig, templateManualMap, templateRules, urlRows]);
+  }, [filters.minImpressions, filters.pathPrefix, filters.selectedTemplate, persistedConfig, templateManualMap, templateRules, urlRows, useCustomRules]);
 
   const availableTemplates = useMemo(() => {
     return collectAvailableTemplates(
@@ -457,8 +493,9 @@ const GscImpactPage: React.FC = () => {
         templateManualMap,
       },
       persistedConfig,
+      { useCustomRules },
     );
-  }, [persistedConfig, templateManualMap, templateRules, urlRows]);
+  }, [persistedConfig, templateManualMap, templateRules, urlRows, useCustomRules]);
 
   const topQueryWinners = useMemo(
     () =>
@@ -499,6 +536,10 @@ const GscImpactPage: React.FC = () => {
       .sort((a, b) => b.severityScore - a.severityScore)
       .slice(0, 10);
   }, [filteredUrlRows]);
+
+  useEffect(() => {
+    GscImpactSegmentationRepository.saveUseCustomRulesByClientId(currentClientId, useCustomRules);
+  }, [currentClientId, useCustomRules]);
 
   const inspectSampledUrls = async () => {
     if (!selectedSite || sampledAffectedUrls.length === 0) {
@@ -871,6 +912,23 @@ const GscImpactPage: React.FC = () => {
               </div>
             </div>
 
+            <div className="mt-3 surface-subtle p-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold">Usar reglas custom</p>
+                  <p className="text-xs text-muted">
+                    Desactiva para recalcular solo con base segmentation y comparar el impacto directo de reglas custom.
+                  </p>
+                </div>
+                <Button
+                  variant={useCustomRules ? 'primary' : 'secondary'}
+                  onClick={() => setUseCustomRules((prev) => !prev)}
+                >
+                  {useCustomRules ? 'ON · reglas custom activas' : 'OFF · solo base segmentation'}
+                </Button>
+              </div>
+            </div>
+
             <div className="mt-3 flex items-center gap-2">
               <Button variant="secondary" onClick={() => setRefreshTick((value) => value + 1)}>
                 <RefreshCcw size={16} />
@@ -884,10 +942,14 @@ const GscImpactPage: React.FC = () => {
           <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
             <Card className="p-5">
               <h3 className="text-lg font-semibold">Winners por query (solo Search Console, sin GA4)</h3>
+              <p className="mt-2 text-xs text-muted">Leyenda: base = segmentación estándar · custom = reglas del cliente/proyecto.</p>
               <div className="mt-3 space-y-2">
                 {topQueryWinners.map((row) => (
                   <div key={`qw-${row.key}`} className="surface-subtle p-3 text-sm">
-                    <p className="font-medium">{row.label}</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-medium">{row.label}</p>
+                      <Badge variant={getSourceBadgeVariant(row.source)}>{getSourceLabel(row)}</Badge>
+                    </div>
                     <p className="text-muted">Pre {row.preClicks} · Rollout {row.rolloutClicks} · Post {row.postClicks}</p>
                   </div>
                 ))}
@@ -899,7 +961,10 @@ const GscImpactPage: React.FC = () => {
               <div className="mt-3 space-y-2">
                 {topQueryLosers.map((row) => (
                   <div key={`ql-${row.key}`} className="surface-subtle p-3 text-sm">
-                    <p className="font-medium">{row.label}</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-medium">{row.label}</p>
+                      <Badge variant={getSourceBadgeVariant(row.source)}>{getSourceLabel(row)}</Badge>
+                    </div>
                     <p className="text-muted">Pre {row.preClicks} · Rollout {row.rolloutClicks} · Post {row.postClicks}</p>
                   </div>
                 ))}
@@ -911,7 +976,10 @@ const GscImpactPage: React.FC = () => {
               <div className="mt-3 space-y-2">
                 {topUrlWinners.map((row) => (
                   <div key={`uw-${row.key}`} className="surface-subtle p-3 text-sm">
-                    <p className="font-medium truncate">{row.label}</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-medium truncate">{row.label}</p>
+                      <Badge variant={getSourceBadgeVariant(row.source)}>{getSourceLabel(row)}</Badge>
+                    </div>
                     <p className="text-muted">Pre {row.preClicks} · Rollout {row.rolloutClicks} · Post {row.postClicks}</p>
                   </div>
                 ))}
@@ -923,7 +991,10 @@ const GscImpactPage: React.FC = () => {
               <div className="mt-3 space-y-2">
                 {topUrlLosers.map((row) => (
                   <div key={`ul-${row.key}`} className="surface-subtle p-3 text-sm">
-                    <p className="font-medium truncate">{row.label}</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-medium truncate">{row.label}</p>
+                      <Badge variant={getSourceBadgeVariant(row.source)}>{getSourceLabel(row)}</Badge>
+                    </div>
                     <p className="text-muted">Pre {row.preClicks} · Rollout {row.rolloutClicks} · Post {row.postClicks}</p>
                   </div>
                 ))}
@@ -956,6 +1027,7 @@ const GscImpactPage: React.FC = () => {
                       <th className="px-2 py-2">Δ clicks</th>
                       <th className="px-2 py-2">Δ imp</th>
                       <th className="px-2 py-2">Δ pos</th>
+                      <th className="px-2 py-2">Origen</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -965,6 +1037,9 @@ const GscImpactPage: React.FC = () => {
                         <td className="px-2 py-2">{row.clickDelta}</td>
                         <td className="px-2 py-2">{row.impressionDelta}</td>
                         <td className="px-2 py-2">{row.positionDelta.toFixed(2)}</td>
+                        <td className="px-2 py-2">
+                          <Badge variant={getSourceBadgeVariant(row.source)}>{getSourceLabel(row)}</Badge>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

@@ -44,9 +44,15 @@ const resolveCustomSegment = (
   normalizedPath: string,
   pathRules: ProjectPathRule[],
   regexRules: ProjectRegexRule[],
-): string | null => {
+): { segment: string | null; ruleId: string | null; ruleType: string | null } => {
   const byPath = pathRules.find((rule) => normalizedPath.startsWith(rule.prefix));
-  if (byPath) return byPath.segment;
+  if (byPath) {
+    return {
+      segment: byPath.segment,
+      ruleId: `custom:pathRule:${byPath.segment}:${byPath.prefix}`,
+      ruleType: 'path_rule',
+    };
+  }
 
   const byRegex = regexRules.find((rule) => {
     try {
@@ -56,19 +62,41 @@ const resolveCustomSegment = (
     }
   });
 
-  return byRegex?.segment || null;
+  if (byRegex) {
+    return {
+      segment: byRegex.segment,
+      ruleId: `custom:regexRule:${byRegex.segment}:${byRegex.pattern}`,
+      ruleType: 'regex_rule',
+    };
+  }
+
+  return { segment: null, ruleId: null, ruleType: null };
 };
 
-const resolveCluster = (normalizedPath: string, clusters: ProjectCustomCluster[]): string | null => {
+const resolveCluster = (
+  normalizedPath: string,
+  clusters: ProjectCustomCluster[],
+): { cluster: string | null; ruleId: string | null; ruleType: string | null } => {
   const match = clusters.find((cluster) => cluster.paths.some((path) => normalizedPath.startsWith(path)));
-  return match?.name || null;
+  if (!match) return { cluster: null, ruleId: null, ruleType: null };
+  return {
+    cluster: match.name,
+    ruleId: `custom:cluster:${match.name}`,
+    ruleType: 'cluster_rule',
+  };
 };
 
 const resolveTemplateOverride = (
   normalizedPath: string,
   manualMappings: Record<string, string>,
-): string | null => {
-  return manualMappings[normalizedPath] || null;
+): { template: string | null; ruleId: string | null; ruleType: string | null } => {
+  const template = manualMappings[normalizedPath] || null;
+  if (!template) return { template: null, ruleId: null, ruleType: null };
+  return {
+    template,
+    ruleId: `custom:templateManualMap:${normalizedPath}`,
+    ruleType: 'template_manual_map',
+  };
 };
 
 export const applyProjectOverrides = (
@@ -76,13 +104,30 @@ export const applyProjectOverrides = (
   config: ProjectSegmentationConfig,
 ): ProjectOverrideResult => {
   const templateOverride = resolveTemplateOverride(base.normalizedPath, config.manualMappings);
+  const customSegment = resolveCustomSegment(base.normalizedPath, config.pathRules, config.regexRules);
+  const cluster = resolveCluster(base.normalizedPath, config.customClusters);
+  const excluded = evaluateExclusion(config.exclusions, base.normalizedPath, base.normalizedQuery);
+
+  const metadata =
+    excluded
+      ? { source: 'custom' as const, ruleId: `custom:exclusion:${base.normalizedPath}`, ruleType: 'exclusion_rule' }
+      : templateOverride.template
+        ? { source: 'custom' as const, ruleId: templateOverride.ruleId, ruleType: templateOverride.ruleType }
+        : customSegment.segment
+          ? { source: 'custom' as const, ruleId: customSegment.ruleId, ruleType: customSegment.ruleType }
+          : cluster.cluster
+            ? { source: 'custom' as const, ruleId: cluster.ruleId, ruleType: cluster.ruleType }
+            : { source: base.source, ruleId: base.ruleId, ruleType: base.ruleType };
 
   return {
     ...base,
-    template: templateOverride || base.template,
-    customSegment: resolveCustomSegment(base.normalizedPath, config.pathRules, config.regexRules),
-    cluster: resolveCluster(base.normalizedPath, config.customClusters),
-    excluded: evaluateExclusion(config.exclusions, base.normalizedPath, base.normalizedQuery),
+    template: templateOverride.template || base.template,
+    customSegment: customSegment.segment,
+    cluster: cluster.cluster,
+    excluded,
+    source: metadata.source,
+    ruleId: metadata.ruleId,
+    ruleType: metadata.ruleType,
   };
 };
 

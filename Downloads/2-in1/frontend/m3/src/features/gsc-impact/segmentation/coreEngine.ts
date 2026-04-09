@@ -31,6 +31,9 @@ export type BaseSegmentationResult = {
   matchesPathPrefix: boolean;
   maxImpressions: number;
   meetsMinImpressions: boolean;
+  source: 'base' | 'custom';
+  ruleId: string | null;
+  ruleType: string | null;
 };
 
 const QUESTION_PREFIXES = ['como', 'cómo', 'que', 'qué', 'how', 'what', 'when', 'where', 'why'];
@@ -64,22 +67,32 @@ const classifyTemplate = (
   urlOrPath: string,
   rules: ProjectTemplateRule[],
   manualMap: Record<string, string>,
-): string => {
+): { template: string; source: 'base' | 'custom'; ruleId: string | null; ruleType: string | null } => {
   const path = normalizePath(urlOrPath);
-  if (!path) return 'Sin template';
+  if (!path) return { template: 'Sin template', source: 'base', ruleId: null, ruleType: null };
 
   if (manualMap[path]) {
-    return manualMap[path];
+    return {
+      template: manualMap[path],
+      source: 'base',
+      ruleId: `base:templateManualMap:${path}`,
+      ruleType: 'template_manual_map',
+    };
   }
 
-  for (const rule of rules) {
+  for (const [index, rule] of rules.entries()) {
     const regex = new RegExp(`^${wildcardToRegex(normalizePath(rule.pattern))}$`, 'i');
     if (regex.test(path)) {
-      return rule.template;
+      return {
+        template: rule.template,
+        source: 'base',
+        ruleId: `base:templateRule:${index}:${rule.template}`,
+        ruleType: 'template_rule',
+      };
     }
   }
 
-  return 'Sin template';
+  return { template: 'Sin template', source: 'base', ruleId: null, ruleType: null };
 };
 
 const matchesQuerySegment = (query: string, segmentFilter: QuerySegmentFilter, brandTerms: string[]) => {
@@ -111,6 +124,7 @@ export const computeBaseSegmentation = (
 
   const isQuestionQuery = QUESTION_PREFIXES.some((prefix) => normalizedQuery.startsWith(`${prefix} `));
   const isBrandQuery = isBrandTermMatch(normalizedQuery, filters.brandTerms);
+  const templateClassification = classifyTemplate(normalizedPath, filters.templateRules, filters.templateManualMap);
 
   return {
     normalizedPath,
@@ -118,9 +132,12 @@ export const computeBaseSegmentation = (
     isBrandQuery,
     isQuestionQuery,
     queryMatchesSegment: matchesQuerySegment(normalizedQuery, filters.segmentFilter, filters.brandTerms),
-    template: classifyTemplate(normalizedPath, filters.templateRules, filters.templateManualMap),
+    template: templateClassification.template,
     matchesPathPrefix: matchesPathPrefix(normalizedPath, filters.pathPrefix),
     maxImpressions,
     meetsMinImpressions: maxImpressions >= filters.minImpressions,
+    source: templateClassification.source,
+    ruleId: templateClassification.ruleId,
+    ruleType: templateClassification.ruleType,
   };
 };

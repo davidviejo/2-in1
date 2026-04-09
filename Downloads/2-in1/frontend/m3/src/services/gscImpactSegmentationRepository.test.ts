@@ -50,4 +50,14 @@ describe('GscImpactSegmentationRepository', () => {
     expect(config.exclusions).toEqual([]);
     expect(config.manualMappings).toEqual({});
   });
+
+  it('persists useCustomRules preference scoped by client id', () => {
+    expect(GscImpactSegmentationRepository.getUseCustomRulesByClientId('client-a')).toBe(true);
+
+    GscImpactSegmentationRepository.saveUseCustomRulesByClientId('client-a', false);
+    GscImpactSegmentationRepository.saveUseCustomRulesByClientId('client-b', true);
+
+    expect(GscImpactSegmentationRepository.getUseCustomRulesByClientId('client-a')).toBe(false);
+    expect(GscImpactSegmentationRepository.getUseCustomRulesByClientId('client-b')).toBe(true);
+  });
 });
