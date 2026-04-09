@@ -268,6 +268,13 @@ const Layout: React.FC<LayoutProps> = ({
               subLabel="Brief editorial integrado"
               onClick={() => setIsMobileMenuOpen(false)}
             />
+            <NavItem
+              to="/app/gsc-impact"
+              icon={<BarChart3 size={20} />}
+              label="Impacto GSC"
+              subLabel="Solo Search Console (sin GA4)"
+              onClick={() => setIsMobileMenuOpen(false)}
+            />
           </>
         );
       case 'estrategia':
