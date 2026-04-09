@@ -1,8 +1,20 @@
 // Servicio para interactuar con la API de Google Search Console
 // Requiere un Token de Acceso obtenido vía OAuth 2.0 (Implicit Flow)
+import type {
+  GSCDimension,
+  GSCDimensionFilterGroup,
+  GSCPagedSearchAnalyticsResponse,
+  GSCResponse,
+  GSCRow,
+  GSCSearchType,
+} from '../types';
 
 const GSC_API_BASE = 'https://www.googleapis.com/webmasters/v3';
 const USER_INFO_API = 'https://www.googleapis.com/oauth2/v2/userinfo';
+const DEFAULT_PAGED_ROW_LIMIT = 25000;
+const DEFAULT_PAGED_MAX_PAGES = 20;
+const DEFAULT_PAGED_MAX_ROWS = 250000;
+const DEFAULT_PAGED_SEARCH_TYPE: GSCSearchType = 'web';
 
 
 const buildPageUrlVariants = (pageUrl: string) => {
@@ -40,6 +52,96 @@ const queryPageAnalytics = async (
   }
 
   return await response.json();
+};
+
+export interface QuerySearchAnalyticsPagedParams {
+  siteUrl: string;
+  startDate: string;
+  endDate: string;
+  dimensions: GSCDimension[];
+  searchType?: GSCSearchType;
+  dimensionFilterGroups?: GSCDimensionFilterGroup[];
+  rowLimit?: number;
+  startRow?: number;
+  maxPages?: number;
+  maxRows?: number;
+}
+
+export const querySearchAnalyticsPaged = async (
+  accessToken: string,
+  params: QuerySearchAnalyticsPagedParams,
+): Promise<GSCPagedSearchAnalyticsResponse> => {
+  const {
+    siteUrl,
+    startDate,
+    endDate,
+    dimensions,
+    searchType = DEFAULT_PAGED_SEARCH_TYPE,
+    dimensionFilterGroups,
+    rowLimit = DEFAULT_PAGED_ROW_LIMIT,
+    startRow = 0,
+    maxPages = DEFAULT_PAGED_MAX_PAGES,
+    maxRows = DEFAULT_PAGED_MAX_ROWS,
+  } = params;
+
+  const allRows: GSCRow[] = [];
+  let pagesFetched = 0;
+  let currentStartRow = startRow;
+  let truncatedReason: GSCPagedSearchAnalyticsResponse['metadata']['truncatedReason'];
+
+  while (pagesFetched < maxPages && allRows.length < maxRows) {
+    const data: GSCResponse = await queryPageAnalytics(
+      accessToken,
+      siteUrl,
+      {
+        startDate,
+        endDate,
+        dimensions,
+        searchType,
+        dimensionFilterGroups,
+        rowLimit,
+        startRow: currentStartRow,
+      },
+      'Error fetching paged analytics',
+    );
+
+    const pageRows = data.rows || [];
+    pagesFetched += 1;
+
+    if (pageRows.length === 0) {
+      break;
+    }
+
+    const remaining = maxRows - allRows.length;
+    if (pageRows.length > remaining) {
+      allRows.push(...pageRows.slice(0, remaining));
+      truncatedReason = 'max_rows_reached';
+      break;
+    }
+
+    allRows.push(...pageRows);
+    currentStartRow += pageRows.length;
+
+    if (pageRows.length < rowLimit) {
+      break;
+    }
+  }
+
+  if (!truncatedReason && pagesFetched >= maxPages && allRows.length > 0) {
+    truncatedReason = 'max_pages_reached';
+  } else if (!truncatedReason && allRows.length >= maxRows) {
+    truncatedReason = 'max_rows_reached';
+  }
+
+  return {
+    rows: allRows,
+    metadata: {
+      isPartial: Boolean(truncatedReason),
+      pagesFetched,
+      rowsFetched: allRows.length,
+      truncatedReason,
+    },
+  };
 };
 
 /**
@@ -111,32 +213,14 @@ export const getSearchAnalytics = async (
   endDate: string,
 ) => {
   try {
-    // Codificar la URL del sitio (ej: https://example.com -> https%3A%2F%2Fexample.com)
-    const encodedSiteUrl = encodeURIComponent(siteUrl);
-
-    const body = {
+    const result = await querySearchAnalyticsPaged(accessToken, {
+      siteUrl,
       startDate,
       endDate,
       dimensions: ['date'],
       rowLimit: 30,
-    };
-
-    const response = await fetch(`${GSC_API_BASE}/sites/${encodedSiteUrl}/searchAnalytics/query`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
     });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error?.message || 'Error fetching analytics');
-    }
-
-    const data = await response.json();
-    return data.rows || [];
+    return result.rows || [];
   } catch (error) {
     console.error('GSC Analytics Error:', error);
     throw error;
@@ -161,31 +245,14 @@ export const getGSCQueryData = async (
   rowLimit: number = 500,
 ) => {
   try {
-    const encodedSiteUrl = encodeURIComponent(siteUrl);
-
-    const body = {
+    const result = await querySearchAnalyticsPaged(accessToken, {
+      siteUrl,
       startDate,
       endDate,
       dimensions: ['query'],
       rowLimit,
-    };
-
-    const response = await fetch(`${GSC_API_BASE}/sites/${encodedSiteUrl}/searchAnalytics/query`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
     });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error?.message || 'Error fetching query analytics');
-    }
-
-    const data = await response.json();
-    return data.rows || [];
+    return result.rows || [];
   } catch (error) {
     console.error('GSC Query Analytics Error:', error);
     throw error;
@@ -211,31 +278,14 @@ export const getGSCQueryPageData = async (
   rowLimit: number = 1000,
 ) => {
   try {
-    const encodedSiteUrl = encodeURIComponent(siteUrl);
-
-    const body = {
+    const result = await querySearchAnalyticsPaged(accessToken, {
+      siteUrl,
       startDate,
       endDate,
       dimensions: ['query', 'page'],
       rowLimit,
-    };
-
-    const response = await fetch(`${GSC_API_BASE}/sites/${encodedSiteUrl}/searchAnalytics/query`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
     });
-
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error?.message || 'Error fetching query/page analytics');
-    }
-
-    const data = await response.json();
-    return data.rows || [];
+    return result.rows || [];
   } catch (error) {
     console.error('GSC Query/Page Analytics Error:', error);
     throw error;
@@ -348,3 +398,72 @@ export const getPageMetrics = async (
     throw error;
   }
 };
+
+export const getGSCTimeSeriesData = async (
+  accessToken: string,
+  siteUrl: string,
+  startDate: string,
+  endDate: string,
+  rowLimit: number = 1000,
+  searchType: GSCSearchType = 'web',
+) =>
+  querySearchAnalyticsPaged(accessToken, {
+    siteUrl,
+    startDate,
+    endDate,
+    dimensions: ['date'],
+    rowLimit,
+    searchType,
+  });
+
+export const getGSCPageWinnersLosersData = async (
+  accessToken: string,
+  siteUrl: string,
+  startDate: string,
+  endDate: string,
+  rowLimit: number = 1000,
+  searchType: GSCSearchType = 'web',
+) =>
+  querySearchAnalyticsPaged(accessToken, {
+    siteUrl,
+    startDate,
+    endDate,
+    dimensions: ['page'],
+    rowLimit,
+    searchType,
+  });
+
+export const getGSCQueryWinnersLosersData = async (
+  accessToken: string,
+  siteUrl: string,
+  startDate: string,
+  endDate: string,
+  rowLimit: number = 1000,
+  searchType: GSCSearchType = 'web',
+) =>
+  querySearchAnalyticsPaged(accessToken, {
+    siteUrl,
+    startDate,
+    endDate,
+    dimensions: ['query'],
+    rowLimit,
+    searchType,
+  });
+
+export const getGSCSegmentationData = async (
+  accessToken: string,
+  siteUrl: string,
+  startDate: string,
+  endDate: string,
+  dimension: 'country' | 'device' | 'searchAppearance',
+  rowLimit: number = 1000,
+  searchType: GSCSearchType = 'web',
+) =>
+  querySearchAnalyticsPaged(accessToken, {
+    siteUrl,
+    startDate,
+    endDate,
+    dimensions: [dimension],
+    rowLimit,
+    searchType,
+  });
