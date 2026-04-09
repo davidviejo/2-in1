@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { BarChart3, LogIn, LogOut, RefreshCcw, Settings2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -7,11 +8,21 @@ import { Modal } from '@/components/ui/Modal';
 import { Spinner } from '@/components/ui/Spinner';
 import { useGSCAuth } from '@/hooks/useGSCAuth';
 import { useGSCData } from '@/hooks/useGSCData';
-import { GSCRow } from '@/types';
+import { GSCDimensionFilterGroup, GSCRow, GSCSearchType } from '@/types';
 import { getGSCQueryData, getGSCQueryPageData } from '@/services/googleSearchConsole';
+import { ClientRepository } from '@/services/clientRepository';
 import { inspectUrlsBatch, UrlInspectionErrorItem, UrlInspectionRow } from '@/services/gscInspectionService';
+import {
+  classifyTemplateByUrl,
+  matchesPathPrefix,
+  matchesQuerySegment,
+  parseBrandTermsInput,
+  parseTemplateManualMap,
+  parseTemplateRules,
+  QuerySegmentFilter,
+} from '@/utils/gscFilters';
 
-type SegmentFilter = 'all' | 'brand' | 'non_brand' | 'question';
+type DeviceFilter = 'all' | 'DESKTOP' | 'MOBILE' | 'TABLET';
 
 type ImpactRow = {
   key: string;
@@ -25,6 +36,19 @@ type ImpactRow = {
   prePosition: number;
   rolloutPosition: number;
   postPosition: number;
+};
+
+type FilterState = {
+  segmentFilter: QuerySegmentFilter;
+  brandTermsText: string;
+  minImpressions: number;
+  pathPrefix: string;
+  selectedTemplate: string;
+  templateRulesText: string;
+  templateManualMapText: string;
+  device: DeviceFilter;
+  country: string;
+  searchType: GSCSearchType;
 };
 
 type UrlSampleRow = ImpactRow & {
@@ -168,31 +192,31 @@ const buildDefaultRanges = (rolloutDate: string): PeriodRanges => {
   };
 };
 
-const matchesSegment = (text: string, segmentFilter: SegmentFilter, brandTerm: string) => {
-  const normalized = text.toLowerCase();
-  const brand = brandTerm.trim().toLowerCase();
+const GSC_IMPACT_BRAND_TERMS_PREFIX = 'mediaflow_gsc_impact_brand_terms_';
 
-  if (segmentFilter === 'brand') {
-    return brand.length > 0 && normalized.includes(brand);
-  }
-
-  if (segmentFilter === 'non_brand') {
-    return brand.length === 0 ? true : !normalized.includes(brand);
-  }
-
-  if (segmentFilter === 'question') {
-    return normalized.startsWith('como') || normalized.startsWith('qué') || normalized.startsWith('how');
-  }
-
-  return true;
-};
+const buildFilterStateFromParams = (params: URLSearchParams, fallbackBrandTermsText: string): FilterState => ({
+  segmentFilter: (params.get('segment') as QuerySegmentFilter) || 'all',
+  brandTermsText: params.get('brandTerms') || fallbackBrandTermsText,
+  minImpressions: Number(params.get('minImpressions') || 50) || 0,
+  pathPrefix: params.get('pathPrefix') || '',
+  selectedTemplate: params.get('template') || 'all',
+  templateRulesText: params.get('templateRules') || 'Blog|/blog/*\nCategoria|/categoria/*\nHome|/',
+  templateManualMapText: params.get('templateMap') || '',
+  device: (params.get('device') as DeviceFilter) || 'all',
+  country: (params.get('country') || '').toUpperCase(),
+  searchType: (params.get('searchType') as GSCSearchType) || 'web',
+});
 
 const GscImpactPage: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const currentClientId = ClientRepository.getCurrentClientId();
+  const brandTermsStorageKey = `${GSC_IMPACT_BRAND_TERMS_PREFIX}${currentClientId || 'default'}`;
+  const persistedBrandTermsText = typeof window !== 'undefined' ? localStorage.getItem(brandTermsStorageKey) || '' : '';
+  const initialFilters = buildFilterStateFromParams(searchParams, persistedBrandTermsText);
+
   const [rolloutDate, setRolloutDate] = useState(() => toISODate(new Date()));
   const [siteSearch, setSiteSearch] = useState('');
-  const [segmentFilter, setSegmentFilter] = useState<SegmentFilter>('all');
-  const [brandTerm, setBrandTerm] = useState('');
-  const [minImpressions, setMinImpressions] = useState(50);
+  const [filters, setFilters] = useState<FilterState>(initialFilters);
   const [loadingImpact, setLoadingImpact] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
   const [impactError, setImpactError] = useState<string | null>(null);
@@ -226,6 +250,52 @@ const GscImpactPage: React.FC = () => {
   }, [gscSites, siteSearch]);
 
   const ranges = useMemo(() => buildDefaultRanges(rolloutDate), [rolloutDate]);
+  const brandTerms = useMemo(() => parseBrandTermsInput(filters.brandTermsText), [filters.brandTermsText]);
+  const templateRules = useMemo(() => parseTemplateRules(filters.templateRulesText), [filters.templateRulesText]);
+  const templateManualMap = useMemo(
+    () => parseTemplateManualMap(filters.templateManualMapText),
+    [filters.templateManualMapText],
+  );
+
+  useEffect(() => {
+    const next = new URLSearchParams();
+    next.set('segment', filters.segmentFilter);
+    next.set('brandTerms', filters.brandTermsText);
+    next.set('minImpressions', String(filters.minImpressions));
+    next.set('pathPrefix', filters.pathPrefix);
+    next.set('template', filters.selectedTemplate);
+    next.set('templateRules', filters.templateRulesText);
+    next.set('templateMap', filters.templateManualMapText);
+    next.set('device', filters.device);
+    next.set('country', filters.country);
+    next.set('searchType', filters.searchType);
+    if (next.toString() !== searchParams.toString()) {
+      setSearchParams(next, { replace: true });
+    }
+  }, [filters, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    localStorage.setItem(brandTermsStorageKey, filters.brandTermsText);
+  }, [brandTermsStorageKey, filters.brandTermsText]);
+
+  const dimensionFilterGroups = useMemo<GSCDimensionFilterGroup[] | undefined>(() => {
+    const filtersByDimension = [];
+    if (filters.device !== 'all') {
+      filtersByDimension.push({
+        dimension: 'device' as const,
+        operator: 'equals' as const,
+        expression: filters.device,
+      });
+    }
+    if (filters.country.trim()) {
+      filtersByDimension.push({
+        dimension: 'country' as const,
+        operator: 'equals' as const,
+        expression: filters.country.trim().toUpperCase(),
+      });
+    }
+    return filtersByDimension.length > 0 ? [{ groupType: 'and', filters: filtersByDimension }] : undefined;
+  }, [filters.country, filters.device]);
 
   useEffect(() => {
     const fetchImpact = async () => {
@@ -243,24 +313,38 @@ const GscImpactPage: React.FC = () => {
           rolloutQueryPage,
           postQueryPage,
         ] = await Promise.all([
-          getGSCQueryData(gscAccessToken, selectedSite, ranges.pre.start, ranges.pre.end, 1000),
+          getGSCQueryData(gscAccessToken, selectedSite, ranges.pre.start, ranges.pre.end, 1000, {
+            searchType: filters.searchType,
+            dimensionFilterGroups,
+          }),
           getGSCQueryData(
             gscAccessToken,
             selectedSite,
             ranges.rollout.start,
             ranges.rollout.end,
             1000,
+            { searchType: filters.searchType, dimensionFilterGroups },
           ),
-          getGSCQueryData(gscAccessToken, selectedSite, ranges.post.start, ranges.post.end, 1000),
-          getGSCQueryPageData(gscAccessToken, selectedSite, ranges.pre.start, ranges.pre.end, 1200),
+          getGSCQueryData(gscAccessToken, selectedSite, ranges.post.start, ranges.post.end, 1000, {
+            searchType: filters.searchType,
+            dimensionFilterGroups,
+          }),
+          getGSCQueryPageData(gscAccessToken, selectedSite, ranges.pre.start, ranges.pre.end, 1200, {
+            searchType: filters.searchType,
+            dimensionFilterGroups,
+          }),
           getGSCQueryPageData(
             gscAccessToken,
             selectedSite,
             ranges.rollout.start,
             ranges.rollout.end,
             1200,
+            { searchType: filters.searchType, dimensionFilterGroups },
           ),
-          getGSCQueryPageData(gscAccessToken, selectedSite, ranges.post.start, ranges.post.end, 1200),
+          getGSCQueryPageData(gscAccessToken, selectedSite, ranges.post.start, ranges.post.end, 1200, {
+            searchType: filters.searchType,
+            dimensionFilterGroups,
+          }),
         ]);
 
         const queryMerged = mergePeriods(
@@ -289,7 +373,7 @@ const GscImpactPage: React.FC = () => {
     };
 
     void fetchImpact();
-  }, [gscAccessToken, selectedSite, ranges, refreshTick]);
+  }, [dimensionFilterGroups, filters.searchType, gscAccessToken, selectedSite, ranges, refreshTick]);
 
   const gscSummary = useMemo(() => {
     const current = sumRows(gscData);
@@ -307,15 +391,31 @@ const GscImpactPage: React.FC = () => {
 
   const filteredQueryRows = useMemo(() => {
     return queryRows
-      .filter((row) => matchesSegment(row.label, segmentFilter, brandTerm))
-      .filter((row) => Math.max(row.preImpressions, row.rolloutImpressions, row.postImpressions) >= minImpressions);
-  }, [queryRows, segmentFilter, brandTerm, minImpressions]);
+      .filter((row) => matchesQuerySegment(row.label, filters.segmentFilter, brandTerms))
+      .filter(
+        (row) => Math.max(row.preImpressions, row.rolloutImpressions, row.postImpressions) >= filters.minImpressions,
+      );
+  }, [brandTerms, filters.minImpressions, filters.segmentFilter, queryRows]);
 
   const filteredUrlRows = useMemo(() => {
-    return urlRows.filter(
-      (row) => Math.max(row.preImpressions, row.rolloutImpressions, row.postImpressions) >= minImpressions,
+    return urlRows
+      .map((row) => ({
+        ...row,
+        template: classifyTemplateByUrl(row.key, templateRules, templateManualMap),
+      }))
+      .filter((row) => matchesPathPrefix(row.key, filters.pathPrefix))
+      .filter((row) => filters.selectedTemplate === 'all' || row.template === filters.selectedTemplate)
+      .filter(
+        (row) => Math.max(row.preImpressions, row.rolloutImpressions, row.postImpressions) >= filters.minImpressions,
+      );
+  }, [filters.minImpressions, filters.pathPrefix, filters.selectedTemplate, templateManualMap, templateRules, urlRows]);
+
+  const availableTemplates = useMemo(() => {
+    const values = new Set<string>(
+      urlRows.map((row) => classifyTemplateByUrl(row.key, templateRules, templateManualMap)).filter(Boolean),
     );
-  }, [urlRows, minImpressions]);
+    return Array.from(values).sort((a, b) => a.localeCompare(b));
+  }, [templateManualMap, templateRules, urlRows]);
 
   const topQueryWinners = useMemo(
     () =>
@@ -501,8 +601,10 @@ const GscImpactPage: React.FC = () => {
                 <label className="metric-label">Segmentación query</label>
                 <select
                   className="form-control"
-                  value={segmentFilter}
-                  onChange={(e) => setSegmentFilter(e.target.value as SegmentFilter)}
+                  value={filters.segmentFilter}
+                  onChange={(e) =>
+                    setFilters((prev) => ({ ...prev, segmentFilter: e.target.value as QuerySegmentFilter }))
+                  }
                 >
                   <option value="all">Todo</option>
                   <option value="brand">Brand</option>
@@ -517,24 +619,117 @@ const GscImpactPage: React.FC = () => {
                   className="form-control"
                   type="number"
                   min={0}
-                  value={minImpressions}
-                  onChange={(e) => setMinImpressions(Number(e.target.value) || 0)}
+                  value={filters.minImpressions}
+                  onChange={(e) =>
+                    setFilters((prev) => ({ ...prev, minImpressions: Number(e.target.value) || 0 }))
+                  }
                 />
+              </div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+              <div>
+                <label className="metric-label">Términos de marca (por proyecto/cliente)</label>
+                <Input
+                  value={filters.brandTermsText}
+                  onChange={(e) => setFilters((prev) => ({ ...prev, brandTermsText: e.target.value }))}
+                  placeholder="mediaflow, marca x, producto y"
+                />
+              </div>
+              <div>
+                <label className="metric-label">Directorio (path prefix)</label>
+                <Input
+                  value={filters.pathPrefix}
+                  onChange={(e) => setFilters((prev) => ({ ...prev, pathPrefix: e.target.value }))}
+                  placeholder="/blog/"
+                />
+              </div>
+              <div>
+                <label className="metric-label">Template URL</label>
+                <select
+                  className="form-control"
+                  value={filters.selectedTemplate}
+                  onChange={(e) => setFilters((prev) => ({ ...prev, selectedTemplate: e.target.value }))}
+                >
+                  <option value="all">Todos</option>
+                  {availableTemplates.map((template) => (
+                    <option key={template} value={template}>
+                      {template}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+              <div>
+                <label className="metric-label">Device</label>
+                <select
+                  className="form-control"
+                  value={filters.device}
+                  onChange={(e) => setFilters((prev) => ({ ...prev, device: e.target.value as DeviceFilter }))}
+                >
+                  <option value="all">Todos</option>
+                  <option value="DESKTOP">Desktop</option>
+                  <option value="MOBILE">Mobile</option>
+                  <option value="TABLET">Tablet</option>
+                </select>
+              </div>
+              <div>
+                <label className="metric-label">Country (ISO-2)</label>
+                <Input
+                  value={filters.country}
+                  onChange={(e) => setFilters((prev) => ({ ...prev, country: e.target.value.toUpperCase() }))}
+                  placeholder="ES, MX, US"
+                />
+              </div>
+              <div>
+                <label className="metric-label">Search type</label>
+                <select
+                  className="form-control"
+                  value={filters.searchType}
+                  onChange={(e) => setFilters((prev) => ({ ...prev, searchType: e.target.value as GSCSearchType }))}
+                >
+                  <option value="web">Web</option>
+                  <option value="image">Image</option>
+                  <option value="video">Video</option>
+                  <option value="news">News</option>
+                  <option value="discover">Discover</option>
+                  <option value="googleNews">Google News</option>
+                </select>
               </div>
             </div>
 
             <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
               <div>
-                <label className="metric-label">Término de marca (solo Search Console)</label>
-                <Input
-                  value={brandTerm}
-                  onChange={(e) => setBrandTerm(e.target.value)}
-                  placeholder="ejemplo: mediaflow"
+                <label className="metric-label">Reglas template (template|/patron/*)</label>
+                <textarea
+                  className="form-control min-h-[88px]"
+                  value={filters.templateRulesText}
+                  onChange={(e) => setFilters((prev) => ({ ...prev, templateRulesText: e.target.value }))}
                 />
               </div>
+              <div>
+                <label className="metric-label">Mapeo manual (path|template)</label>
+                <textarea
+                  className="form-control min-h-[88px]"
+                  value={filters.templateManualMapText}
+                  onChange={(e) => setFilters((prev) => ({ ...prev, templateManualMapText: e.target.value }))}
+                  placeholder="/landing/pricing|Pricing"
+                />
+              </div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
               <div className="surface-subtle p-3 text-sm">
                 <p>
                   Comparativa pre/rollout/post basada en Search Console: pre ({ranges.pre.start} → {ranges.pre.end}), rollout ({ranges.rollout.start} → {ranges.rollout.end}), post ({ranges.post.start} → {ranges.post.end}).
+                </p>
+              </div>
+              <div className="surface-subtle p-3 text-sm">
+                <p>
+                  Filtros activos sincronizados en query params para compartir vista: segmentación, marca,
+                  directorio/template, device/country/searchType y mínimo de impresiones.
                 </p>
               </div>
             </div>

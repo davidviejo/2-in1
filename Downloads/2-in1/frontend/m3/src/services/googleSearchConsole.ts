@@ -243,6 +243,10 @@ export const getGSCQueryData = async (
   startDate: string,
   endDate: string,
   rowLimit: number = 500,
+  options?: {
+    searchType?: GSCSearchType;
+    dimensionFilterGroups?: GSCDimensionFilterGroup[];
+  },
 ) => {
   try {
     const result = await querySearchAnalyticsPaged(accessToken, {
@@ -251,6 +255,8 @@ export const getGSCQueryData = async (
       endDate,
       dimensions: ['query'],
       rowLimit,
+      searchType: options?.searchType,
+      dimensionFilterGroups: options?.dimensionFilterGroups,
     });
     return result.rows || [];
   } catch (error) {
@@ -276,6 +282,10 @@ export const getGSCQueryPageData = async (
   startDate: string,
   endDate: string,
   rowLimit: number = 1000,
+  options?: {
+    searchType?: GSCSearchType;
+    dimensionFilterGroups?: GSCDimensionFilterGroup[];
+  },
 ) => {
   try {
     const result = await querySearchAnalyticsPaged(accessToken, {
@@ -284,6 +294,8 @@ export const getGSCQueryPageData = async (
       endDate,
       dimensions: ['query', 'page'],
       rowLimit,
+      searchType: options?.searchType,
+      dimensionFilterGroups: options?.dimensionFilterGroups,
     });
     return result.rows || [];
   } catch (error) {
