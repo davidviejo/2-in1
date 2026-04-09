@@ -10,8 +10,8 @@ import { useGSCAuth } from '@/hooks/useGSCAuth';
 import { useGSCData } from '@/hooks/useGSCData';
 import { GSCDimensionFilterGroup, GSCRow, GSCSearchType } from '@/types';
 import { getGSCQueryData, getGSCQueryPageData } from '@/services/googleSearchConsole';
-import { ClientRepository } from '@/services/clientRepository';
 import { inspectUrlsBatch, UrlInspectionErrorItem, UrlInspectionRow } from '@/services/gscInspectionService';
+import { GscImpactSegmentationRepository } from '@/services/gscImpactSegmentationRepository';
 import {
   classifyTemplateByUrl,
   matchesPathPrefix,
@@ -21,6 +21,7 @@ import {
   parseTemplateRules,
   QuerySegmentFilter,
 } from '@/utils/gscFilters';
+import { useProject } from '@/context/ProjectContext';
 import {
   buildDefaultRanges,
   buildPeriodRangesFromParams,
@@ -167,27 +168,56 @@ const getActionableSignals = (row: UrlInspectionRow): string[] => {
   return signals;
 };
 
-const GSC_IMPACT_BRAND_TERMS_PREFIX = 'mediaflow_gsc_impact_brand_terms_';
+const SHARED_RULES_PARAM = 'sharedRules';
 
-const buildFilterStateFromParams = (params: URLSearchParams, fallbackBrandTermsText: string): FilterState => ({
-  segmentFilter: (params.get('segment') as QuerySegmentFilter) || 'all',
-  brandTermsText: params.get('brandTerms') || fallbackBrandTermsText,
-  minImpressions: Number(params.get('minImpressions') || 50) || 0,
-  pathPrefix: params.get('pathPrefix') || '',
-  selectedTemplate: params.get('template') || 'all',
-  templateRulesText: params.get('templateRules') || '',
-  templateManualMapText: params.get('templateMap') || '',
-  device: (params.get('device') as DeviceFilter) || 'all',
-  country: (params.get('country') || '').toUpperCase(),
-  searchType: (params.get('searchType') as GSCSearchType) || 'web',
-});
+const splitByLines = (value: string[]) => value.join('\n');
+
+const buildFilterState = (
+  params: URLSearchParams,
+  input: {
+    persistedConfig: ReturnType<typeof GscImpactSegmentationRepository.getConfigByClientId>;
+    useSharedRuleParams: boolean;
+  },
+): FilterState => {
+  const { persistedConfig, useSharedRuleParams } = input;
+  const persistedBrandTermsText = splitByLines(persistedConfig.brandedTerms);
+  const persistedTemplateRulesText = persistedConfig.templateRules
+    .map((rule) => `${rule.template}|${rule.pattern}`)
+    .join('\n');
+  const persistedTemplateManualMapText = Object.entries(persistedConfig.manualMappings)
+    .map(([path, template]) => `${path}|${template}`)
+    .join('\n');
+
+  return {
+    segmentFilter: (params.get('segment') as QuerySegmentFilter) || 'all',
+    brandTermsText:
+      useSharedRuleParams && params.has('brandTerms') ? params.get('brandTerms') || '' : persistedBrandTermsText,
+    minImpressions: Number(params.get('minImpressions') || 50) || 0,
+    pathPrefix: params.get('pathPrefix') || '',
+    selectedTemplate: params.get('template') || 'all',
+    templateRulesText:
+      useSharedRuleParams && params.has('templateRules')
+        ? params.get('templateRules') || ''
+        : persistedTemplateRulesText,
+    templateManualMapText:
+      useSharedRuleParams && params.has('templateMap')
+        ? params.get('templateMap') || ''
+        : persistedTemplateManualMapText,
+    device: (params.get('device') as DeviceFilter) || 'all',
+    country: (params.get('country') || '').toUpperCase(),
+    searchType: (params.get('searchType') as GSCSearchType) || 'web',
+  };
+};
 
 const GscImpactPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const currentClientId = ClientRepository.getCurrentClientId();
-  const brandTermsStorageKey = `${GSC_IMPACT_BRAND_TERMS_PREFIX}${currentClientId || 'default'}`;
-  const persistedBrandTermsText = typeof window !== 'undefined' ? localStorage.getItem(brandTermsStorageKey) || '' : '';
-  const initialFilters = buildFilterStateFromParams(searchParams, persistedBrandTermsText);
+  const { currentClientId } = useProject();
+  const useSharedRuleParams = searchParams.get(SHARED_RULES_PARAM) === '1';
+  const persistedConfig = useMemo(
+    () => GscImpactSegmentationRepository.getConfigByClientId(currentClientId),
+    [currentClientId],
+  );
+  const initialFilters = buildFilterState(searchParams, { persistedConfig, useSharedRuleParams });
   const initialRolloutDate = searchParams.get('rolloutDate') || toISODate(new Date());
   const initialRangesFromParams = buildPeriodRangesFromParams(searchParams, initialRolloutDate);
 
@@ -237,27 +267,45 @@ const GscImpactPage: React.FC = () => {
   );
 
   useEffect(() => {
+    setFilters(buildFilterState(searchParams, { persistedConfig, useSharedRuleParams }));
+  }, [currentClientId, persistedConfig, searchParams, useSharedRuleParams]);
+
+  useEffect(() => {
     const next = new URLSearchParams();
     next.set('segment', filters.segmentFilter);
-    next.set('brandTerms', filters.brandTermsText);
     next.set('minImpressions', String(filters.minImpressions));
     next.set('pathPrefix', filters.pathPrefix);
     next.set('template', filters.selectedTemplate);
-    next.set('templateRules', filters.templateRulesText);
-    next.set('templateMap', filters.templateManualMapText);
     next.set('device', filters.device);
     next.set('country', filters.country);
     next.set('searchType', filters.searchType);
     next.set('rolloutDate', rolloutDate);
+    if (useSharedRuleParams) {
+      next.set(SHARED_RULES_PARAM, '1');
+      next.set('brandTerms', filters.brandTermsText);
+      next.set('templateRules', filters.templateRulesText);
+      next.set('templateMap', filters.templateManualMapText);
+    }
     mapPeriodRangesToSearchParams(next, periodRanges);
     if (next.toString() !== searchParams.toString()) {
       setSearchParams(next, { replace: true });
     }
-  }, [filters, periodRanges, rolloutDate, searchParams, setSearchParams]);
+  }, [filters, periodRanges, rolloutDate, searchParams, setSearchParams, useSharedRuleParams]);
 
   useEffect(() => {
-    localStorage.setItem(brandTermsStorageKey, filters.brandTermsText);
-  }, [brandTermsStorageKey, filters.brandTermsText]);
+    GscImpactSegmentationRepository.saveConfigByClientId(currentClientId, {
+      ...persistedConfig,
+      brandedTerms: parseBrandTermsInput(filters.brandTermsText),
+      templateRules: parseTemplateRules(filters.templateRulesText),
+      manualMappings: parseTemplateManualMap(filters.templateManualMapText),
+    });
+  }, [
+    currentClientId,
+    filters.brandTermsText,
+    filters.templateManualMapText,
+    filters.templateRulesText,
+    persistedConfig,
+  ]);
 
   const dimensionFilterGroups = useMemo<GSCDimensionFilterGroup[] | undefined>(() => {
     const filtersByDimension = [];
