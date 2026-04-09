@@ -175,7 +175,7 @@ const buildFilterStateFromParams = (params: URLSearchParams, fallbackBrandTermsT
   minImpressions: Number(params.get('minImpressions') || 50) || 0,
   pathPrefix: params.get('pathPrefix') || '',
   selectedTemplate: params.get('template') || 'all',
-  templateRulesText: params.get('templateRules') || 'Blog|/blog/*\nCategoria|/categoria/*\nHome|/',
+  templateRulesText: params.get('templateRules') || '',
   templateManualMapText: params.get('templateMap') || '',
   device: (params.get('device') as DeviceFilter) || 'all',
   country: (params.get('country') || '').toUpperCase(),
