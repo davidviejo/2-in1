@@ -30,6 +30,9 @@ export const endpoints = {
     visibilityScheduleAction: (clientId: string, action: 'pause' | 'resume') =>
       `api/ai/visibility/schedule/${encodePathParam(clientId)}/${action}`,
   },
+  gsc: {
+    inspectUrlsBatch: () => 'api/gsc/url-inspection/batch',
+  },
   engine: {
     capabilities: () => 'api/capabilities',
     analyze: () => 'api/analyze',
