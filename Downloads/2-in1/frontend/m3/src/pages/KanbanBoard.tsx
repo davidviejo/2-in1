@@ -72,6 +72,8 @@ const KanbanBoard: React.FC = () => {
       ? currentClient.kanbanColumns
       : DEFAULT_KANBAN_COLUMNS;
 
+  const buildTaskKey = (moduleId: number, taskId: string) => `${moduleId}::${taskId}`;
+
   const tasksByStatus = useMemo(() => {
     const grouped: Record<string, { task: Task; moduleId: number }[]> = {};
     columns.forEach((col) => {
@@ -113,18 +115,11 @@ const KanbanBoard: React.FC = () => {
 
     const newStatus = destination.droppableId;
 
-    let foundModuleId = -1;
-    let foundTaskId = '';
+    const [moduleIdPart, ...taskIdParts] = String(draggableId).split('::');
+    const foundModuleId = Number(moduleIdPart);
+    const foundTaskId = taskIdParts.join('::');
 
-    modules.forEach((m) => {
-      const t = m.tasks.find((t) => t.id === draggableId);
-      if (t) {
-        foundModuleId = m.id;
-        foundTaskId = t.id;
-      }
-    });
-
-    if (foundModuleId !== -1) {
+    if (!Number.isNaN(foundModuleId) && foundTaskId) {
       updateTaskStatus(foundModuleId, foundTaskId, newStatus);
     }
   };
@@ -284,19 +279,21 @@ const KanbanBoard: React.FC = () => {
                         snapshot.isDraggingOver ? 'bg-primary-soft/40' : ''
                       }`}
                     >
-                      {tasksByStatus[column.id]?.map((item, index) => (
-                        <Draggable key={item.task.id} draggableId={item.task.id} index={index}>
-                          {(provided, snapshot) => (
-                            <div
-                              onClick={() => setSelectedTask(item)}
-                              ref={provided.innerRef}
-                              {...provided.draggableProps}
-                              className={`group mb-3 cursor-pointer rounded-lg border border-border bg-surface p-4 shadow-sm transition-all hover:border-primary/40 ${
-                                snapshot.isDragging
-                                  ? 'rotate-1 shadow-xl ring-2 ring-primary'
-                                  : ''
-                              }`}
-                            >
+                      {tasksByStatus[column.id]?.map((item, index) => {
+                        const taskKey = buildTaskKey(item.moduleId, item.task.id);
+                        return (
+                          <Draggable key={taskKey} draggableId={taskKey} index={index}>
+                            {(provided, snapshot) => (
+                              <div
+                                onClick={() => setSelectedTask(item)}
+                                ref={provided.innerRef}
+                                {...provided.draggableProps}
+                                className={`group mb-3 cursor-pointer rounded-lg border border-border bg-surface p-4 shadow-sm transition-all hover:border-primary/40 ${
+                                  snapshot.isDragging
+                                    ? 'rotate-1 shadow-xl ring-2 ring-primary'
+                                    : ''
+                                }`}
+                              >
                               <div className="flex items-start justify-between gap-2 mb-3">
                                 <Link
                                   to={`/app/module/${item.moduleId}`}
@@ -439,10 +436,11 @@ const KanbanBoard: React.FC = () => {
                                   {item.task.impact}
                                 </span>
                               </div>
-                            </div>
-                          )}
-                        </Draggable>
-                      ))}
+                              </div>
+                            )}
+                          </Draggable>
+                        );
+                      })}
                       {provided.placeholder}
 
                       {/* Add Task Button/Input at bottom of column */}

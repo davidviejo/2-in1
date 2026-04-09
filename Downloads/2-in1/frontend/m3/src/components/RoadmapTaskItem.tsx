@@ -21,9 +21,10 @@ import { Spinner } from '../components/ui/Spinner';
 
 interface RoadmapTaskItemProps {
   item: { task: Task; moduleId: number };
+  taskKey: string;
   index: number;
   isExpanded: boolean;
-  onToggleExpand: (taskId: string) => void;
+  onToggleExpand: (taskKey: string) => void;
   onToggleTask: (moduleId: number, taskId: string) => void;
   onRemoveFromRoadmap: (moduleId: number, taskId: string) => void;
   onUpdateTaskNotes: (moduleId: number, taskId: string, notes: string) => void;
@@ -42,6 +43,7 @@ interface RoadmapTaskItemProps {
 const RoadmapTaskItem: React.FC<RoadmapTaskItemProps> = memo(
   ({
     item,
+    taskKey,
     index,
     isExpanded,
     onToggleExpand,
@@ -84,7 +86,7 @@ const RoadmapTaskItem: React.FC<RoadmapTaskItemProps> = memo(
     };
 
     return (
-      <Draggable draggableId={item.task.id} index={index}>
+      <Draggable draggableId={taskKey} index={index}>
         {(provided, snapshot) => (
           <div
             ref={provided.innerRef}
@@ -101,7 +103,7 @@ const RoadmapTaskItem: React.FC<RoadmapTaskItemProps> = memo(
           >
             <div
               className="p-4 flex items-start gap-4 cursor-pointer"
-              onClick={() => onToggleExpand(item.task.id)}
+              onClick={() => onToggleExpand(taskKey)}
             >
               <div
                 {...provided.dragHandleProps}
