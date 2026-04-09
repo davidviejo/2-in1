@@ -3,9 +3,8 @@ import {
   parseProjectSegmentationConfig,
   type PartialProjectSegmentationConfig,
 } from '@/features/gsc-impact/segmentation/configAdapter';
+import { type QuerySegmentFilter } from '@/features/gsc-impact/segmentation/coreEngine';
 import { type ProjectTemplateRule } from '@/features/gsc-impact/segmentation/types';
-
-export type QuerySegmentFilter = 'all' | 'brand' | 'non_brand' | 'question';
 
 export type TemplateRule = ProjectTemplateRule;
 

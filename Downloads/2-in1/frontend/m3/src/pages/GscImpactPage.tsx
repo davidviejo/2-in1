@@ -12,15 +12,13 @@ import { GSCDimensionFilterGroup, GSCRow, GSCSearchType } from '@/types';
 import { getGSCQueryData, getGSCQueryPageData } from '@/services/googleSearchConsole';
 import { inspectUrlsBatch, UrlInspectionErrorItem, UrlInspectionRow } from '@/services/gscInspectionService';
 import { GscImpactSegmentationRepository } from '@/services/gscImpactSegmentationRepository';
+import { parseBrandTermsInput, parseTemplateManualMap, parseTemplateRules } from '@/utils/gscFilters';
+import { QuerySegmentFilter } from '@/features/gsc-impact/segmentation/coreEngine';
 import {
-  classifyTemplateByUrl,
-  matchesPathPrefix,
-  matchesQuerySegment,
-  parseBrandTermsInput,
-  parseTemplateManualMap,
-  parseTemplateRules,
-  QuerySegmentFilter,
-} from '@/utils/gscFilters';
+  collectAvailableTemplates,
+  filterQueryImpactRows,
+  mapAndFilterUrlImpactRows,
+} from '@/features/gsc-impact/segmentation/pipeline';
 import { useProject } from '@/context/ProjectContext';
 import {
   buildDefaultRanges,
@@ -426,32 +424,41 @@ const GscImpactPage: React.FC = () => {
   }, [gscData, comparisonGscData]);
 
   const filteredQueryRows = useMemo(() => {
-    return queryRows
-      .filter((row) => matchesQuerySegment(row.label, filters.segmentFilter, brandTerms))
-      .filter(
-        (row) => Math.max(row.preImpressions, row.rolloutImpressions, row.postImpressions) >= filters.minImpressions,
-      );
-  }, [brandTerms, filters.minImpressions, filters.segmentFilter, queryRows]);
+    return filterQueryImpactRows(
+      queryRows,
+      {
+        segmentFilter: filters.segmentFilter,
+        brandTerms,
+        minImpressions: filters.minImpressions,
+      },
+      persistedConfig,
+    );
+  }, [brandTerms, filters.minImpressions, filters.segmentFilter, persistedConfig, queryRows]);
 
   const filteredUrlRows = useMemo(() => {
-    return urlRows
-      .map((row) => ({
-        ...row,
-        template: classifyTemplateByUrl(row.key, templateRules, templateManualMap),
-      }))
-      .filter((row) => matchesPathPrefix(row.key, filters.pathPrefix))
-      .filter((row) => filters.selectedTemplate === 'all' || row.template === filters.selectedTemplate)
-      .filter(
-        (row) => Math.max(row.preImpressions, row.rolloutImpressions, row.postImpressions) >= filters.minImpressions,
-      );
-  }, [filters.minImpressions, filters.pathPrefix, filters.selectedTemplate, templateManualMap, templateRules, urlRows]);
+    return mapAndFilterUrlImpactRows(
+      urlRows,
+      {
+        minImpressions: filters.minImpressions,
+        pathPrefix: filters.pathPrefix,
+        selectedTemplate: filters.selectedTemplate,
+        templateRules,
+        templateManualMap,
+      },
+      persistedConfig,
+    );
+  }, [filters.minImpressions, filters.pathPrefix, filters.selectedTemplate, persistedConfig, templateManualMap, templateRules, urlRows]);
 
   const availableTemplates = useMemo(() => {
-    const values = new Set<string>(
-      urlRows.map((row) => classifyTemplateByUrl(row.key, templateRules, templateManualMap)).filter(Boolean),
+    return collectAvailableTemplates(
+      urlRows,
+      {
+        templateRules,
+        templateManualMap,
+      },
+      persistedConfig,
     );
-    return Array.from(values).sort((a, b) => a.localeCompare(b));
-  }, [templateManualMap, templateRules, urlRows]);
+  }, [persistedConfig, templateManualMap, templateRules, urlRows]);
 
   const topQueryWinners = useMemo(
     () =>

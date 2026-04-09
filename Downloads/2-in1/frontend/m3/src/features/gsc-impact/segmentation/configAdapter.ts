@@ -8,6 +8,84 @@ import {
   ProjectTemplateRule,
 } from './types';
 
+import type { BaseSegmentationResult } from './coreEngine';
+
+export type ProjectOverrideResult = BaseSegmentationResult & {
+  template: string;
+  customSegment: string | null;
+  cluster: string | null;
+  excluded: boolean;
+};
+
+const normalizeKind = (value: string): string => normalizeText(value);
+
+const evaluateExclusion = (
+  exclusions: ProjectExclusionRule[],
+  normalizedPath: string,
+  normalizedQuery: string,
+): boolean =>
+  exclusions.some((rule) => {
+    const kind = normalizeKind(rule.kind);
+    const value = rule.value.trim();
+    if (!value) return false;
+
+    if (kind.includes('path')) {
+      return normalizedPath.startsWith(normalizePath(value));
+    }
+
+    if (kind.includes('query')) {
+      return normalizedQuery.includes(normalizeText(value));
+    }
+
+    return false;
+  });
+
+const resolveCustomSegment = (
+  normalizedPath: string,
+  pathRules: ProjectPathRule[],
+  regexRules: ProjectRegexRule[],
+): string | null => {
+  const byPath = pathRules.find((rule) => normalizedPath.startsWith(rule.prefix));
+  if (byPath) return byPath.segment;
+
+  const byRegex = regexRules.find((rule) => {
+    try {
+      return new RegExp(rule.pattern, rule.flags).test(normalizedPath);
+    } catch {
+      return false;
+    }
+  });
+
+  return byRegex?.segment || null;
+};
+
+const resolveCluster = (normalizedPath: string, clusters: ProjectCustomCluster[]): string | null => {
+  const match = clusters.find((cluster) => cluster.paths.some((path) => normalizedPath.startsWith(path)));
+  return match?.name || null;
+};
+
+const resolveTemplateOverride = (
+  normalizedPath: string,
+  manualMappings: Record<string, string>,
+): string | null => {
+  return manualMappings[normalizedPath] || null;
+};
+
+export const applyProjectOverrides = (
+  base: BaseSegmentationResult,
+  config: ProjectSegmentationConfig,
+): ProjectOverrideResult => {
+  const templateOverride = resolveTemplateOverride(base.normalizedPath, config.manualMappings);
+
+  return {
+    ...base,
+    template: templateOverride || base.template,
+    customSegment: resolveCustomSegment(base.normalizedPath, config.pathRules, config.regexRules),
+    cluster: resolveCluster(base.normalizedPath, config.customClusters),
+    excluded: evaluateExclusion(config.exclusions, base.normalizedPath, base.normalizedQuery),
+  };
+};
+
 export type PartialProjectSegmentationConfig = Partial<
   Omit<ProjectSegmentationConfig, 'manualMappings' | 'brandedTerms' | 'templateRules'> & {
     templateRules: ProjectTemplateRule[] | string;
