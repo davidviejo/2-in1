@@ -9,6 +9,7 @@ import { useGSCAuth } from '@/hooks/useGSCAuth';
 import { useGSCData } from '@/hooks/useGSCData';
 import { GSCRow } from '@/types';
 import { getGSCQueryData, getGSCQueryPageData } from '@/services/googleSearchConsole';
+import { inspectUrlsBatch, UrlInspectionErrorItem, UrlInspectionRow } from '@/services/gscInspectionService';
 
 type SegmentFilter = 'all' | 'brand' | 'non_brand' | 'question';
 
@@ -21,6 +22,16 @@ type ImpactRow = {
   preImpressions: number;
   rolloutImpressions: number;
   postImpressions: number;
+  prePosition: number;
+  rolloutPosition: number;
+  postPosition: number;
+};
+
+type UrlSampleRow = ImpactRow & {
+  clickDelta: number;
+  impressionDelta: number;
+  positionDelta: number;
+  severityScore: number;
 };
 
 interface PeriodRanges {
@@ -42,14 +53,17 @@ const sumRows = (rows: GSCRow[]) =>
   );
 
 const aggregateByKey = (rows: GSCRow[], index: number) => {
-  const map = new Map<string, { clicks: number; impressions: number }>();
+  const map = new Map<string, { clicks: number; impressions: number; positionSum: number; positionWeight: number }>();
 
   rows.forEach((row) => {
     const key = row.keys[index] || 'Sin dato';
-    const current = map.get(key) || { clicks: 0, impressions: 0 };
+    const current = map.get(key) || { clicks: 0, impressions: 0, positionSum: 0, positionWeight: 0 };
+    const weight = Math.max(row.impressions, 1);
     map.set(key, {
       clicks: current.clicks + row.clicks,
       impressions: current.impressions + row.impressions,
+      positionSum: current.positionSum + row.position * weight,
+      positionWeight: current.positionWeight + weight,
     });
   });
 
@@ -57,16 +71,19 @@ const aggregateByKey = (rows: GSCRow[], index: number) => {
 };
 
 const mergePeriods = (
-  pre: Map<string, { clicks: number; impressions: number }>,
-  rollout: Map<string, { clicks: number; impressions: number }>,
-  post: Map<string, { clicks: number; impressions: number }>,
+  pre: Map<string, { clicks: number; impressions: number; positionSum: number; positionWeight: number }>,
+  rollout: Map<string, { clicks: number; impressions: number; positionSum: number; positionWeight: number }>,
+  post: Map<string, { clicks: number; impressions: number; positionSum: number; positionWeight: number }>,
 ): ImpactRow[] => {
   const keys = new Set<string>([...pre.keys(), ...rollout.keys(), ...post.keys()]);
 
   return Array.from(keys).map((key) => {
-    const preValue = pre.get(key) || { clicks: 0, impressions: 0 };
-    const rolloutValue = rollout.get(key) || { clicks: 0, impressions: 0 };
-    const postValue = post.get(key) || { clicks: 0, impressions: 0 };
+    const preValue = pre.get(key) || { clicks: 0, impressions: 0, positionSum: 0, positionWeight: 0 };
+    const rolloutValue = rollout.get(key) || { clicks: 0, impressions: 0, positionSum: 0, positionWeight: 0 };
+    const postValue = post.get(key) || { clicks: 0, impressions: 0, positionSum: 0, positionWeight: 0 };
+
+    const avgPosition = (value: { positionSum: number; positionWeight: number }) =>
+      value.positionWeight > 0 ? Number((value.positionSum / value.positionWeight).toFixed(2)) : 0;
 
     return {
       key,
@@ -77,8 +94,52 @@ const mergePeriods = (
       preImpressions: preValue.impressions,
       rolloutImpressions: rolloutValue.impressions,
       postImpressions: postValue.impressions,
+      prePosition: avgPosition(preValue),
+      rolloutPosition: avgPosition(rolloutValue),
+      postPosition: avgPosition(postValue),
     };
   });
+};
+
+const toSampleRow = (row: ImpactRow): UrlSampleRow => {
+  const clickDelta = row.postClicks - row.preClicks;
+  const impressionDelta = row.postImpressions - row.preImpressions;
+  const positionDelta = row.postPosition - row.prePosition;
+  const severityScore =
+    Math.max(0, -clickDelta) * 3 +
+    Math.max(0, -impressionDelta) * 0.5 +
+    Math.max(0, positionDelta) * 40;
+
+  return {
+    ...row,
+    clickDelta,
+    impressionDelta,
+    positionDelta,
+    severityScore,
+  };
+};
+
+const getActionableSignals = (row: UrlInspectionRow): string[] => {
+  const signals: string[] = [];
+  if (row.coverageState && !/submitted and indexed|indexed/i.test(row.coverageState)) {
+    signals.push('Revisar cobertura/indexación');
+  }
+  if (row.indexingState && /blocked|not indexed|soft 404/i.test(row.indexingState)) {
+    signals.push('Validar bloqueo/no index');
+  }
+  if (row.userCanonical && row.googleCanonical && row.userCanonical !== row.googleCanonical) {
+    signals.push('Canónica declarada != Google');
+  }
+  if (row.pageFetchState && row.pageFetchState !== 'SUCCESSFUL') {
+    signals.push('Error de fetch por Googlebot');
+  }
+  if (row.robotsTxtState && row.robotsTxtState !== 'ALLOWED') {
+    signals.push('Revisar robots.txt');
+  }
+  if (signals.length === 0) {
+    signals.push('Sin bloqueadores críticos detectados');
+  }
+  return signals;
 };
 
 const buildDefaultRanges = (rolloutDate: string): PeriodRanges => {
@@ -135,6 +196,10 @@ const GscImpactPage: React.FC = () => {
   const [loadingImpact, setLoadingImpact] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
   const [impactError, setImpactError] = useState<string | null>(null);
+  const [inspectionRows, setInspectionRows] = useState<UrlInspectionRow[]>([]);
+  const [inspectionErrors, setInspectionErrors] = useState<UrlInspectionErrorItem[]>([]);
+  const [isInspecting, setIsInspecting] = useState(false);
+  const [inspectionStatus, setInspectionStatus] = useState<string | null>(null);
 
   const [queryRows, setQueryRows] = useState<ImpactRow[]>([]);
   const [urlRows, setUrlRows] = useState<ImpactRow[]>([]);
@@ -283,6 +348,54 @@ const GscImpactPage: React.FC = () => {
         .slice(0, 8),
     [filteredUrlRows],
   );
+
+  const sampledAffectedUrls = useMemo(() => {
+    return filteredUrlRows
+      .map(toSampleRow)
+      .filter((row) => row.clickDelta < 0 || row.impressionDelta < 0 || row.positionDelta > 0)
+      .sort((a, b) => b.severityScore - a.severityScore)
+      .slice(0, 10);
+  }, [filteredUrlRows]);
+
+  const inspectSampledUrls = async () => {
+    if (!selectedSite || sampledAffectedUrls.length === 0) {
+      setInspectionStatus('No hay URLs afectadas para inspeccionar en esta vista.');
+      return;
+    }
+
+    setIsInspecting(true);
+    setInspectionRows([]);
+    setInspectionErrors([]);
+    setInspectionStatus('Iniciando inspección de URLs afectadas…');
+
+    try {
+      const response = await inspectUrlsBatch(
+        selectedSite,
+        sampledAffectedUrls.map((row) => row.key),
+        { retries: 1 },
+      );
+      setInspectionRows(response.results || []);
+      setInspectionErrors(response.errors || []);
+
+      if (response.meta?.quotaHit) {
+        setInspectionStatus('Se alcanzó cuota parcial de URL Inspection. Muestra incompleta; reintenta más tarde.');
+      } else if (response.status === 'partial') {
+        setInspectionStatus('Inspección parcial: algunas URLs no pudieron evaluarse.');
+      } else if (response.status === 'error') {
+        setInspectionStatus('No se pudo completar la inspección de URLs en backend.');
+      } else {
+        setInspectionStatus(`Inspección completada: ${response.meta.successCount} URLs procesadas.`);
+      }
+    } catch (error) {
+      setInspectionStatus(
+        error instanceof Error
+          ? `Error inspeccionando URLs: ${error.message}`
+          : 'Error inesperado inspeccionando URLs.',
+      );
+    } finally {
+      setIsInspecting(false);
+    }
+  };
 
   return (
     <div className="page-shell pb-20">
@@ -484,6 +597,87 @@ const GscImpactPage: React.FC = () => {
                 ))}
               </div>
             </Card>
+          </section>
+
+          <section className="surface-panel p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold">URLs inspeccionadas (URL Inspection)</h3>
+                <p className="section-subtitle">
+                  Muestra automática de URLs afectadas por caída de clics/impresiones o peor delta de posición.
+                </p>
+              </div>
+              <Button onClick={() => void inspectSampledUrls()} disabled={isInspecting || sampledAffectedUrls.length === 0}>
+                {isInspecting ? <Spinner size={16} /> : null}
+                Inspeccionar muestra ({sampledAffectedUrls.length})
+              </Button>
+            </div>
+
+            {inspectionStatus && <p className="mt-3 text-sm text-muted">{inspectionStatus}</p>}
+
+            {sampledAffectedUrls.length > 0 && (
+              <div className="mt-3 overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-muted">
+                      <th className="px-2 py-2">URL</th>
+                      <th className="px-2 py-2">Δ clicks</th>
+                      <th className="px-2 py-2">Δ imp</th>
+                      <th className="px-2 py-2">Δ pos</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sampledAffectedUrls.map((row) => (
+                      <tr key={`sample-${row.key}`} className="border-t border-border/50">
+                        <td className="max-w-[480px] truncate px-2 py-2">{row.key}</td>
+                        <td className="px-2 py-2">{row.clickDelta}</td>
+                        <td className="px-2 py-2">{row.impressionDelta}</td>
+                        <td className="px-2 py-2">{row.positionDelta.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {inspectionRows.length > 0 && (
+              <div className="mt-4 overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-muted">
+                      <th className="px-2 py-2">URL</th>
+                      <th className="px-2 py-2">Coverage</th>
+                      <th className="px-2 py-2">Indexing</th>
+                      <th className="px-2 py-2">Último crawl</th>
+                      <th className="px-2 py-2">Canónica Google</th>
+                      <th className="px-2 py-2">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inspectionRows.map((row) => (
+                      <tr key={`inspection-${row.url}`} className="border-t border-border/50">
+                        <td className="max-w-[360px] truncate px-2 py-2">{row.url}</td>
+                        <td className="px-2 py-2">{row.coverageState}</td>
+                        <td className="px-2 py-2">{row.indexingState}</td>
+                        <td className="px-2 py-2">{row.lastCrawlTime ? new Date(row.lastCrawlTime).toLocaleString('es-ES') : '-'}</td>
+                        <td className="max-w-[280px] truncate px-2 py-2">{row.googleCanonical || '-'}</td>
+                        <td className="px-2 py-2">{getActionableSignals(row).join(' · ')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {inspectionErrors.length > 0 && (
+              <div className="mt-4 space-y-2">
+                {inspectionErrors.map((item) => (
+                  <p key={`inspection-error-${item.url}`} className="text-sm text-danger">
+                    {item.url}: {item.error.code} {item.error.message ? `- ${item.error.message}` : ''}
+                  </p>
+                ))}
+              </div>
+            )}
           </section>
         </>
       )}
