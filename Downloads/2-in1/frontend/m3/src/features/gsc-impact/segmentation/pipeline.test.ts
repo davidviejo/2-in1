@@ -35,6 +35,8 @@ describe('segmentation pipeline', () => {
 
     expect(included.template).toBe('Landing especial');
     expect(included.included).toBe(true);
+    expect(included.source).toBe('custom');
+    expect(included.ruleType).toBe('template_manual_map');
 
     const excluded = runSegmentationPipeline(
       {
@@ -58,6 +60,8 @@ describe('segmentation pipeline', () => {
 
     expect(excluded.excluded).toBe(true);
     expect(excluded.included).toBe(false);
+    expect(excluded.source).toBe('custom');
+    expect(excluded.ruleType).toBe('exclusion_rule');
   });
 
   it('filters query and url rows through pipeline helpers', () => {
@@ -77,7 +81,7 @@ describe('segmentation pipeline', () => {
         },
         config,
       ),
-    ).toEqual([queryRows[0]]);
+    ).toEqual([{ ...queryRows[0], source: 'base', ruleId: null, ruleType: null }]);
 
     const urlRows = [
       { key: '/blog/post', label: 'x', preImpressions: 30, rolloutImpressions: 40, postImpressions: 20 },
@@ -97,7 +101,17 @@ describe('segmentation pipeline', () => {
     );
 
     expect(filteredUrlRows).toEqual([
-      { key: '/blog/post', label: 'x', preImpressions: 30, rolloutImpressions: 40, postImpressions: 20, template: 'Blog' },
+      {
+        key: '/blog/post',
+        label: 'x',
+        preImpressions: 30,
+        rolloutImpressions: 40,
+        postImpressions: 20,
+        template: 'Blog',
+        source: 'base',
+        ruleId: 'base:templateRule:0:Blog',
+        ruleType: 'template_rule',
+      },
     ]);
 
     expect(
@@ -110,5 +124,49 @@ describe('segmentation pipeline', () => {
         config,
       ),
     ).toEqual(['Blog', 'Money']);
+  });
+
+  it('can disable custom rules for direct base segmentation comparison', () => {
+    const config = createDefaultProjectSegmentationConfig();
+    config.manualMappings = { '/blog/post': 'Override' };
+
+    const withCustom = runSegmentationPipeline(
+      { mode: 'url', url: '/blog/post', maxImpressions: 100 },
+      {
+        filters: {
+          segmentFilter: 'all',
+          brandTerms: [],
+          pathPrefix: '/blog',
+          minImpressions: 0,
+          selectedTemplate: 'all',
+          templateRules: [{ template: 'Blog', pattern: '/blog/*' }],
+          templateManualMap: {},
+        },
+        projectConfig: config,
+        useCustomRules: true,
+      },
+    );
+
+    const baseOnly = runSegmentationPipeline(
+      { mode: 'url', url: '/blog/post', maxImpressions: 100 },
+      {
+        filters: {
+          segmentFilter: 'all',
+          brandTerms: [],
+          pathPrefix: '/blog',
+          minImpressions: 0,
+          selectedTemplate: 'all',
+          templateRules: [{ template: 'Blog', pattern: '/blog/*' }],
+          templateManualMap: {},
+        },
+        projectConfig: config,
+        useCustomRules: false,
+      },
+    );
+
+    expect(withCustom.template).toBe('Override');
+    expect(withCustom.source).toBe('custom');
+    expect(baseOnly.template).toBe('Blog');
+    expect(baseOnly.source).toBe('base');
   });
 });
