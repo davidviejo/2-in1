@@ -67,7 +67,10 @@ const KanbanBoard: React.FC = () => {
   // Task detail modal state
   const [selectedTask, setSelectedTask] = useState<{ task: Task; moduleId: number } | null>(null);
 
-  const columns = currentClient?.kanbanColumns || DEFAULT_KANBAN_COLUMNS;
+  const columns =
+    currentClient?.kanbanColumns && currentClient.kanbanColumns.length > 0
+      ? currentClient.kanbanColumns
+      : DEFAULT_KANBAN_COLUMNS;
 
   const tasksByStatus = useMemo(() => {
     const grouped: Record<string, { task: Task; moduleId: number }[]> = {};
