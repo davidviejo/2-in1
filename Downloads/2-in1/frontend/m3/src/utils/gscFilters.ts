@@ -1,11 +1,13 @@
-import { parseBrandTerms, isBrandTermMatch } from './brandTerms';
+import { isBrandTermMatch } from './brandTerms';
+import {
+  parseProjectSegmentationConfig,
+  type PartialProjectSegmentationConfig,
+} from '@/features/gsc-impact/segmentation/configAdapter';
+import { type ProjectTemplateRule } from '@/features/gsc-impact/segmentation/types';
 
 export type QuerySegmentFilter = 'all' | 'brand' | 'non_brand' | 'question';
 
-export interface TemplateRule {
-  template: string;
-  pattern: string;
-}
+export type TemplateRule = ProjectTemplateRule;
 
 const QUESTION_PREFIXES = ['como', 'cómo', 'que', 'qué', 'how', 'what', 'when', 'where', 'why'];
 
@@ -34,35 +36,18 @@ const normalizePath = (urlOrPath: string) => {
   }
 };
 
-export const parseBrandTermsInput = (value: string) => {
-  const unique = new Set(parseBrandTerms(value).map((term) => normalizeTextForMatching(term)).filter(Boolean));
-  return Array.from(unique);
-};
+const parseFromProjectConfig = <T extends keyof ReturnType<typeof parseProjectSegmentationConfig>>(
+  partial: PartialProjectSegmentationConfig,
+  key: T,
+): ReturnType<typeof parseProjectSegmentationConfig>[T] => parseProjectSegmentationConfig(partial)[key];
+
+export const parseBrandTermsInput = (value: string) => parseFromProjectConfig({ brandedTerms: value }, 'brandedTerms');
 
 export const parseTemplateRules = (value: string): TemplateRule[] =>
-  value
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const [templateRaw, patternRaw] = line.split('|');
-      return { template: (templateRaw || '').trim(), pattern: (patternRaw || '').trim() };
-    })
-    .filter((rule) => rule.template.length > 0 && rule.pattern.length > 0);
+  parseFromProjectConfig({ templateRules: value }, 'templateRules');
 
 export const parseTemplateManualMap = (value: string): Record<string, string> =>
-  value
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .reduce<Record<string, string>>((acc, line) => {
-      const [pathRaw, templateRaw] = line.split('|');
-      const path = normalizePath(pathRaw || '');
-      const template = (templateRaw || '').trim();
-      if (!path || !template) return acc;
-      acc[path] = template;
-      return acc;
-    }, {});
+  parseFromProjectConfig({ manualMappings: value }, 'manualMappings');
 
 export const classifyTemplateByUrl = (
   urlOrPath: string,
