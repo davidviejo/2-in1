@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { useProject } from '../context/ProjectContext';
 import { Task } from '../types';
@@ -63,6 +63,7 @@ const KanbanBoard: React.FC = () => {
   // New task creation state
   const [isAddingTask, setIsAddingTask] = useState<{ columnId: string } | null>(null);
   const [newTaskTitle, setNewTaskTitle] = useState('');
+  const isCreatingTaskRef = useRef(false);
 
   // Task detail modal state
   const [selectedTask, setSelectedTask] = useState<{ task: Task; moduleId: number } | null>(null);
@@ -125,6 +126,10 @@ const KanbanBoard: React.FC = () => {
   };
 
   const handleAddTask = (columnId: string) => {
+    if (isCreatingTaskRef.current) return;
+
+    isCreatingTaskRef.current = true;
+
     if (newTaskTitle.trim()) {
       // Find default custom module or fallback to first
       let targetModule = modules.find((m) => m.isCustom);
@@ -143,10 +148,15 @@ const KanbanBoard: React.FC = () => {
 
         // We use addTasksBulk since it supports setting status and isInRoadmap directly
         addTasksBulk([newTask]);
+        successAction('Tarjeta creada');
       }
     }
     setNewTaskTitle('');
     setIsAddingTask(null);
+
+    setTimeout(() => {
+      isCreatingTaskRef.current = false;
+    }, 250);
   };
 
   const handleAddColumn = () => {
