@@ -124,6 +124,31 @@ const dedupeStable = (items: string[]): string[] => {
   });
 };
 
+const deepCopy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+
+const normalizeModules = (modules: ModuleData[]): ModuleData[] => {
+  const mergedById = new Map<number, ModuleData>();
+
+  modules.forEach((module) => {
+    const existing = mergedById.get(module.id);
+
+    if (!existing) {
+      mergedById.set(module.id, deepCopy(module));
+      return;
+    }
+
+    const seenTaskIds = new Set(existing.tasks.map((task) => task.id));
+    const additionalTasks = module.tasks.filter((task) => !seenTaskIds.has(task.id));
+
+    mergedById.set(module.id, {
+      ...existing,
+      tasks: [...existing.tasks, ...deepCopy(additionalTasks)],
+    });
+  });
+
+  return Array.from(mergedById.values()).sort((a, b) => a.id - b.id);
+};
+
 const warnDuplicateTaskIdsAcrossModules = (client: Client): void => {
   const seenTaskIds = new Set<string>();
   const duplicatedTaskIds = new Set<string>();
@@ -153,14 +178,13 @@ const normalizeClient = (client: Client, options?: { validateDuplicateTaskIds?: 
   return {
     ...client,
     vertical: normalizeClientVertical(client.vertical),
+    modules: normalizeModules(client.modules || []),
     notes: client.notes || [],
     completedTasksLog: client.completedTasksLog || [],
     customRoadmapOrder: dedupeStable(client.customRoadmapOrder || []),
     iaVisibility: normalizeIAVisibilityState(client.iaVisibility),
   };
 };
-
-const deepCopy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 const mergeWithTemplateModules = (currentModules: ModuleData[], templateModules: ModuleData[]): ModuleData[] => {
   const moduleById = new Map(currentModules.map((module) => [module.id, module]));
