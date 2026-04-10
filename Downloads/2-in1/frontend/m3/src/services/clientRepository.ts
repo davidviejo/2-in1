@@ -188,6 +188,7 @@ const normalizeClient = (client: Client, options?: { validateDuplicateTaskIds?: 
 
 const mergeWithTemplateModules = (currentModules: ModuleData[], templateModules: ModuleData[]): ModuleData[] => {
   const moduleById = new Map(currentModules.map((module) => [module.id, module]));
+  const templateModuleIds = new Set(templateModules.map((module) => module.id));
   const merged = templateModules.map((templateModule) => {
     const existingModule = moduleById.get(templateModule.id);
     if (!existingModule) {
@@ -212,9 +213,7 @@ const mergeWithTemplateModules = (currentModules: ModuleData[], templateModules:
     };
   });
 
-  const customModules = currentModules.filter(
-    (module) => module.isCustom || !templateModules.some((templateModule) => templateModule.id === module.id),
-  );
+  const customModules = currentModules.filter((module) => !templateModuleIds.has(module.id));
 
   return [...merged, ...deepCopy(customModules)];
 };

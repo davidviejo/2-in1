@@ -95,6 +95,47 @@ describe('ClientRepository', () => {
     expect(clients[0].modules.find((m) => m.id === 8)?.tasks[0].status).toBe('completed');
   });
 
+  it('does not duplicate template modules marked as custom during migration', () => {
+    localStorage.setItem(
+      'mediaflow_clients_cache_v2',
+      JSON.stringify([
+        {
+          id: 'client-dup-1',
+          name: 'Client Dup 1',
+          vertical: 'media',
+          templateVersion: 'old-version',
+          modules: [
+            {
+              id: 8,
+              title: 'Extras',
+              subtitle: '',
+              levelRange: '',
+              description: '',
+              iconName: '',
+              isCustom: true,
+              tasks: [],
+            },
+            {
+              id: 9,
+              title: 'MIA',
+              subtitle: '',
+              levelRange: '',
+              description: '',
+              iconName: '',
+              tasks: [],
+            },
+          ],
+          createdAt: Date.now(),
+        },
+      ]),
+    );
+
+    const clients = ClientRepository.getClients();
+    const extrasModules = clients[0].modules.filter((m) => m.id === 8);
+
+    expect(extrasModules).toHaveLength(1);
+  });
+
   it('initializes iaVisibility defaults for legacy clients without the field', () => {
     localStorage.setItem(
       'mediaflow_clients',
