@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { Download, Upload } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { useProject } from '../context/ProjectContext';
 import { useSettings } from '../context/SettingsContext';
 import { buildBackupPayload, isBackupPayload, restoreMediaFlowStorageSnapshot } from '../utils/backup';
@@ -14,6 +15,16 @@ const DataManagementPanel: React.FC = () => {
   const { settings, updateSettings } = useSettings();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingBackup, setPendingBackup] = React.useState<any | null>(null);
+
+  const formatMesColumn = (dueDate?: string) => {
+    if (!dueDate) return '';
+    const parsedDate = new Date(dueDate);
+    if (Number.isNaN(parsedDate.getTime())) return '';
+
+    const monthLabel = new Intl.DateTimeFormat('es-ES', { month: 'long' }).format(parsedDate);
+    const yearShort = parsedDate.getFullYear().toString().slice(-2);
+    return `${monthLabel} ${yearShort}`;
+  };
 
   const handleExport = () => {
     const data = buildBackupPayload({
@@ -33,33 +44,28 @@ const DataManagementPanel: React.FC = () => {
   };
 
   const handleExportCSV = () => {
-    const headers = ['Proyecto', 'Vertical', 'Módulo', 'Tarea', 'Estado', 'Impacto'];
+    const headers = ['MES', 'TAREA', 'IMPLEMENTACIÓN', 'ÁREA', 'ESTADO', 'COMENTARIOS'];
     const rows: string[][] = [];
 
     clients.forEach((client) => {
       client.modules.forEach((module) => {
         module.tasks.forEach((task) => {
           rows.push([
-            `"${client.name.replace(/"/g, '""')}"`,
-            `"${client.vertical.replace(/"/g, '""')}"`,
-            `"${module.title.replace(/"/g, '""')}"`,
-            `"${task.title.replace(/"/g, '""')}"`,
-            `"${task.status.replace(/"/g, '""')}"`,
-            `"${task.impact.replace(/"/g, '""')}"`,
+            formatMesColumn(task.dueDate),
+            task.title,
+            client.name,
+            task.category || module.title,
+            task.status,
+            task.userNotes || task.description || '',
           ]);
         });
       });
     });
 
-    const csvContent = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `MediaFlow_Tasks_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Tareas');
+    XLSX.writeFile(workbook, `MediaFlow_Tareas_Sheet_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -145,7 +151,7 @@ const DataManagementPanel: React.FC = () => {
           onClick={handleExportCSV}
           className="flex items-center justify-center gap-2 px-3 py-2 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg text-xs font-medium text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/50 transition-colors"
         >
-          <Download size={14} /> Exportar CSV Tareas
+          <Download size={14} /> Exportar Sheet Tareas
         </button>
         <input
           type="file"
