@@ -44,6 +44,7 @@ export class ProjectRemoteRepository {
       const remoteSnapshot = await this.fetchRemoteSnapshot();
 
       if (remoteSnapshot.clients.length === 0) {
+        await this.seedRemoteFromLocal(localSnapshot, remoteSnapshot.version);
         await this.migrateLegacyOnce(localSnapshot, remoteSnapshot.version);
       }
 
@@ -97,6 +98,25 @@ export class ProjectRemoteRepository {
       throw new Error(`remote_fetch_failed_${response.status}`);
     }
     return (await response.json()) as ProjectSnapshotDTO;
+  }
+
+  private static async seedRemoteFromLocal(localSnapshot: ProjectSnapshotDTO, expectedVersion: number): Promise<void> {
+    if (localSnapshot.clients.length === 0) {
+      return;
+    }
+
+    const response = await fetch(`${resolveApiUrl()}/api/v1/project-api/snapshot`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...localSnapshot,
+        expectedVersion,
+      }),
+    });
+
+    if (!response.ok && response.status !== 409) {
+      throw new Error(`seed_failed_${response.status}`);
+    }
   }
 
   private static persistCache(snapshot: ProjectSnapshotDTO): void {
