@@ -418,11 +418,11 @@ const Layout: React.FC<LayoutProps> = ({
 
         {/* Right Side Actions */}
         <div className="hidden lg:flex items-center gap-3">
-          {clients && currentClientId && onSwitchClient && onAddClient && onDeleteClient && (
+          {clients && onSwitchClient && onAddClient && onDeleteClient && (
             <div className="w-64">
               <ClientSwitcher
                 clients={clients}
-                currentClientId={currentClientId}
+                currentClientId={currentClientId || ''}
                 onSwitchClient={onSwitchClient}
                 onAddClient={onAddClient}
                 onDeleteClient={onDeleteClient}
@@ -452,10 +452,10 @@ const Layout: React.FC<LayoutProps> = ({
         <div className="px-4 pb-4 flex-1 overflow-y-auto custom-scrollbar flex flex-col">
           {/* Mobile Client Switcher */}
           <div className="lg:hidden mb-4">
-            {clients && currentClientId && onSwitchClient && onAddClient && onDeleteClient && (
+            {clients && onSwitchClient && onAddClient && onDeleteClient && (
               <ClientSwitcher
                 clients={clients}
-                currentClientId={currentClientId}
+                currentClientId={currentClientId || ''}
                 onSwitchClient={onSwitchClient}
                 onAddClient={onAddClient}
                 onDeleteClient={onDeleteClient}
