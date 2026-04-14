@@ -13,21 +13,73 @@ import io
 import concurrent.futures
 import logging
 import requests
+import xml.etree.ElementTree as ET
 
 audit_bp = Blueprint('audit', __name__, url_prefix='/audit')
 
 def fetch_sitemap_urls(sitemap_url):
-    """Función auxiliar para sitemaps (siempre requests directo por velocidad)"""
+    """Expande recursivamente un sitemap (index o urlset) y devuelve URLs finales deduplicadas."""
     if not is_safe_url(sitemap_url):
         return []
-    try:
-        headers = {'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1)'}
-        response = requests.get(sitemap_url, headers=headers, timeout=10)
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.content, 'xml')
-            return [loc.text for loc in soup.find_all('loc')]
-    except Exception: pass
-    return []
+
+    def _local_name(tag):
+        return tag.split('}', 1)[1] if '}' in tag else tag
+
+    headers = {'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1)'}
+    to_visit = [sitemap_url]
+    visited_sitemaps = set()
+    final_urls = set()
+    max_collected_urls = 5000
+
+    while to_visit:
+        current_sitemap = to_visit.pop()
+        if current_sitemap in visited_sitemaps:
+            continue
+        visited_sitemaps.add(current_sitemap)
+
+        if not is_safe_url(current_sitemap):
+            continue
+
+        try:
+            response = requests.get(current_sitemap, headers=headers, timeout=10)
+        except Exception:
+            continue
+
+        if response.status_code != 200:
+            continue
+
+        try:
+            root = ET.fromstring(response.content)
+        except ET.ParseError:
+            if current_sitemap == sitemap_url:
+                return []
+            continue
+
+        root_name = _local_name(root.tag).lower()
+        if root_name == 'sitemapindex':
+            for sitemap_node in root.findall('.//{*}sitemap'):
+                loc_node = sitemap_node.find('{*}loc')
+                if loc_node is None or not loc_node.text:
+                    continue
+                next_sitemap = loc_node.text.strip()
+                if not next_sitemap or not is_safe_url(next_sitemap):
+                    continue
+                if next_sitemap not in visited_sitemaps:
+                    to_visit.append(next_sitemap)
+        elif root_name == 'urlset':
+            for url_node in root.findall('.//{*}url'):
+                loc_node = url_node.find('{*}loc')
+                if loc_node is None or not loc_node.text:
+                    continue
+                final_url = loc_node.text.strip()
+                if final_url:
+                    final_urls.add(final_url)
+                    if len(final_urls) >= max_collected_urls:
+                        return list(final_urls)
+        elif current_sitemap == sitemap_url:
+            return []
+
+    return list(final_urls)
 
 def analyze_single_url_hybrid(url):
     """
@@ -120,7 +172,8 @@ def scan():
 
     # Si es XML sacamos URLs, si no, asumimos que es una URL suelta para probar
     if url_input.endswith('.xml'):
-        urls = fetch_sitemap_urls(url_input)[:50] # Limitamos a 50 para la demo
+        urls = fetch_sitemap_urls(url_input)
+        urls = urls[:50] # Limitamos a 50 para la demo
     else:
         urls = [url_input]
 
