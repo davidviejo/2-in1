@@ -321,6 +321,8 @@ const GscImpactPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<ImpactViewMode>(initialViewMode);
   const [periodRanges, setPeriodRanges] = useState<PeriodRanges>(initialRangesFromParams.ranges);
   const [siteSearch, setSiteSearch] = useState('');
+  const [portfolioSiteSearch, setPortfolioSiteSearch] = useState('');
+  const [selectedPortfolioSites, setSelectedPortfolioSites] = useState<string[]>([]);
   const [filters, setFilters] = useState<FilterState>(initialFilters);
   const [loadingImpact, setLoadingImpact] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
@@ -368,6 +370,17 @@ const GscImpactPage: React.FC = () => {
     if (!q) return gscSites;
     return gscSites.filter((site) => site.siteUrl.toLowerCase().includes(q));
   }, [gscSites, siteSearch]);
+  const filteredPortfolioSites = useMemo(() => {
+    const q = portfolioSiteSearch.trim().toLowerCase();
+    if (!q) return gscSites;
+    return gscSites.filter((site) => site.siteUrl.toLowerCase().includes(q));
+  }, [gscSites, portfolioSiteSearch]);
+
+  useEffect(() => {
+    if (selectedPortfolioSites.length === 0) return;
+    const available = new Set(gscSites.map((site) => site.siteUrl));
+    setSelectedPortfolioSites((prev) => prev.filter((siteUrl) => available.has(siteUrl)));
+  }, [gscSites, selectedPortfolioSites.length]);
 
   const ranges = periodRanges;
   const periodRangeErrors = useMemo(() => validatePeriodRanges(periodRanges), [periodRanges]);
@@ -671,7 +684,10 @@ const GscImpactPage: React.FC = () => {
           rollout: getDaysBetweenInclusive(ranges.rollout.start, ranges.rollout.end),
           post: getDaysBetweenInclusive(ranges.post.start, ranges.post.end),
         };
-        const sitesToAnalyze = siteSearch.trim() ? filteredSites : gscSites;
+        const sitesToAnalyze =
+          selectedPortfolioSites.length > 0
+            ? gscSites.filter((site) => selectedPortfolioSites.includes(site.siteUrl))
+            : gscSites;
         const perSite: PortfolioPropertyRow[] = [];
 
         for (let i = 0; i < sitesToAnalyze.length; i += PORTFOLIO_BATCH_SIZE) {
@@ -743,7 +759,6 @@ const GscImpactPage: React.FC = () => {
   }, [
     brandTerms,
     dimensionFilterGroups,
-    filteredSites,
     filters.searchType,
     gscAccessToken,
     gscSites,
@@ -755,7 +770,7 @@ const GscImpactPage: React.FC = () => {
     ranges.rollout.end,
     ranges.rollout.start,
     refreshTick,
-    siteSearch,
+    selectedPortfolioSites,
   ]);
 
   const windowDays = useMemo(
@@ -1383,6 +1398,60 @@ const GscImpactPage: React.FC = () => {
 
             {viewMode === 'global' && (
               <>
+                <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-3">
+                  <div className="surface-subtle p-3 text-sm lg:col-span-2">
+                    <label className="metric-label">Portfolios a analizar (opcional)</label>
+                    <Input
+                      value={portfolioSiteSearch}
+                      onChange={(e) => setPortfolioSiteSearch(e.target.value)}
+                      placeholder="Buscar propiedad para seleccionar"
+                    />
+                    <select
+                      className="form-control mt-2 min-h-[180px]"
+                      multiple
+                      value={selectedPortfolioSites}
+                      onChange={(e) =>
+                        setSelectedPortfolioSites(Array.from(e.target.selectedOptions, (option) => option.value))
+                      }
+                    >
+                      {filteredPortfolioSites.map((site) => (
+                        <option key={site.siteUrl} value={site.siteUrl}>
+                          {site.siteUrl}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-2 text-xs text-muted">
+                      Si no seleccionas ninguna propiedad, se analiza todo el portfolio.
+                    </p>
+                  </div>
+                  <div className="surface-subtle p-3 text-sm">
+                    <p className="font-semibold">Selección actual</p>
+                    <p className="mt-1">
+                      {selectedPortfolioSites.length === 0
+                        ? `Todas (${gscSites.length})`
+                        : `${selectedPortfolioSites.length} propiedades`}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        variant="secondary"
+                        onClick={() =>
+                          setSelectedPortfolioSites(filteredPortfolioSites.map((site) => site.siteUrl))
+                        }
+                        disabled={filteredPortfolioSites.length === 0}
+                      >
+                        Seleccionar visibles
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={() => setSelectedPortfolioSites([])}
+                        disabled={selectedPortfolioSites.length === 0}
+                      >
+                        Limpiar selección
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
                   <div>
                     <label className="metric-label">Fecha rollout (helper)</label>
