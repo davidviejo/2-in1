@@ -45,7 +45,6 @@ vi.mock('./pages/Dashboard', () => ({
   default: () => <div>dashboard page</div>,
 }));
 vi.mock('./pages/ModuleDetail', () => ({ default: () => <div>module detail</div> }));
-vi.mock('./pages/SpeedChallenge', () => ({ default: () => <div>speed challenge</div> }));
 vi.mock('./pages/CompletedTasks', () => ({ default: () => <div>completed tasks</div> }));
 vi.mock('./pages/ClientRoadmap', () => ({ default: () => <div>client roadmap</div> }));
 vi.mock('./pages/KanbanBoard', () => ({ default: () => <div>kanban</div> }));

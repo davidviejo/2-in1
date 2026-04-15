@@ -9,7 +9,6 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const ModuleDetail = lazy(() => import('./pages/ModuleDetail'));
-const SpeedChallenge = lazy(() => import('./pages/SpeedChallenge'));
 const CompletedTasks = lazy(() => import('./pages/CompletedTasks'));
 const ClientRoadmap = lazy(() => import('./pages/ClientRoadmap'));
 const KanbanBoard = lazy(() => import('./pages/KanbanBoard'));
@@ -157,7 +156,6 @@ export const AppRoutes: React.FC = () => {
                 <Route path="ia-visibility" element={<IAVisibility />} />
                 <Route path="gsc-impact" element={<GscImpactPage />} />
                 <Route path="settings" element={<Settings />} />
-                <Route path="challenge" element={<SpeedChallenge />} />
                 <Route path="trends-media" element={<TrendsMediaPage />} />
                 <Route path="tools-hub" element={<ToolsHub />} />
                 <Route path="admin/ideas" element={<AdminIdeasPage />} />
