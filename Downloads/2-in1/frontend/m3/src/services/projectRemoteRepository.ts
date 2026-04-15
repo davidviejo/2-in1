@@ -39,6 +39,7 @@ export class ProjectRemoteRepository {
   static async bootstrap(): Promise<ProjectSnapshotDTO> {
     await StrategyFactory.primeTemplates();
     const localSnapshot = getFallbackSnapshot();
+    const hasLocalClients = localSnapshot.clients.length > 0;
 
     try {
       const remoteSnapshot = await this.fetchRemoteSnapshot();
@@ -49,6 +50,23 @@ export class ProjectRemoteRepository {
       }
 
       const finalSnapshot = await this.fetchRemoteSnapshot();
+
+      if (finalSnapshot.clients.length === 0 && hasLocalClients) {
+        this.persistCache(localSnapshot);
+        saveSyncMeta({ version: localSnapshot.version });
+        return localSnapshot;
+      }
+
+      if (finalSnapshot.clients.length === 0 && !hasLocalClients) {
+        const fallbackSnapshot = getFallbackSnapshot();
+        if (fallbackSnapshot.clients.length > 0) {
+          await this.seedRemoteFromLocal(fallbackSnapshot, finalSnapshot.version);
+          this.persistCache(fallbackSnapshot);
+          saveSyncMeta({ version: fallbackSnapshot.version });
+          return fallbackSnapshot;
+        }
+      }
+
       this.persistCache(finalSnapshot);
       saveSyncMeta({ version: finalSnapshot.version });
       return finalSnapshot;
