@@ -51,7 +51,10 @@ interface NavItemProps {
 
 const NavItem: React.FC<NavItemProps> = ({ to, icon, label, subLabel, onClick, isComplete }) => {
   const location = useLocation();
-  const isActive = location.pathname === to;
+  const [targetPath, targetQuery = ''] = to.split('?');
+  const isActive = targetQuery
+    ? location.pathname === targetPath && location.search === `?${targetQuery}`
+    : location.pathname === targetPath;
 
   return (
     <NavLink
@@ -253,10 +256,17 @@ const Layout: React.FC<LayoutProps> = ({
               onClick={() => setIsMobileMenuOpen(false)}
             />
             <NavItem
-              to="/app/gsc-impact"
+              to="/app/gsc-impact?view=individual"
               icon={<BarChart3 size={20} />}
-              label="Impacto GSC"
-              subLabel="Solo Search Console (sin GA4)"
+              label="Impacto GSC · Propiedad"
+              subLabel="Análisis por propiedad"
+              onClick={() => setIsMobileMenuOpen(false)}
+            />
+            <NavItem
+              to="/app/gsc-impact?view=global"
+              icon={<Globe size={20} />}
+              label="Impacto GSC · Portfolio"
+              subLabel="Vista global multi-site"
               onClick={() => setIsMobileMenuOpen(false)}
             />
           </>
