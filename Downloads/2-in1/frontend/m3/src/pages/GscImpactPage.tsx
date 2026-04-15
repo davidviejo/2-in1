@@ -712,6 +712,7 @@ const GscImpactPage: React.FC = () => {
             ? gscSites.filter((site) => selectedPortfolioSites.includes(site.siteUrl))
             : gscSites;
         const perSite: PortfolioPropertyRow[] = [];
+        const skippedSites: Array<{ siteUrl: string; reason: string }> = [];
 
         for (let i = 0; i < sitesToAnalyze.length; i += PORTFOLIO_BATCH_SIZE) {
           const batch = sitesToAnalyze.slice(i, i + PORTFOLIO_BATCH_SIZE);
@@ -721,58 +722,71 @@ const GscImpactPage: React.FC = () => {
 
           const batchResults = await Promise.all(
             batch.map(async (site) => {
-              const [preQuery, rolloutQuery, postQuery] = await Promise.all([
-                getGSCQueryData(gscAccessToken, site.siteUrl, ranges.pre.start, ranges.pre.end, GSC_ANALYSIS_PAGE_SIZE, {
-                  searchType: filters.searchType,
-                  dimensionFilterGroups,
-                  maxPages: GSC_ANALYSIS_MAX_PAGES,
-                  maxRows: GSC_ANALYSIS_MAX_ROWS,
-                }),
-                getGSCQueryData(
-                  gscAccessToken,
-                  site.siteUrl,
-                  ranges.rollout.start,
-                  ranges.rollout.end,
-                  GSC_ANALYSIS_PAGE_SIZE,
-                  {
+              try {
+                const [preQuery, rolloutQuery, postQuery] = await Promise.all([
+                  getGSCQueryData(gscAccessToken, site.siteUrl, ranges.pre.start, ranges.pre.end, GSC_ANALYSIS_PAGE_SIZE, {
                     searchType: filters.searchType,
                     dimensionFilterGroups,
                     maxPages: GSC_ANALYSIS_MAX_PAGES,
                     maxRows: GSC_ANALYSIS_MAX_ROWS,
-                  },
-                ),
-                getGSCQueryData(gscAccessToken, site.siteUrl, ranges.post.start, ranges.post.end, GSC_ANALYSIS_PAGE_SIZE, {
-                  searchType: filters.searchType,
-                  dimensionFilterGroups,
-                  maxPages: GSC_ANALYSIS_MAX_PAGES,
-                  maxRows: GSC_ANALYSIS_MAX_ROWS,
-                }),
-              ]);
+                  }),
+                  getGSCQueryData(
+                    gscAccessToken,
+                    site.siteUrl,
+                    ranges.rollout.start,
+                    ranges.rollout.end,
+                    GSC_ANALYSIS_PAGE_SIZE,
+                    {
+                      searchType: filters.searchType,
+                      dimensionFilterGroups,
+                      maxPages: GSC_ANALYSIS_MAX_PAGES,
+                      maxRows: GSC_ANALYSIS_MAX_ROWS,
+                    },
+                  ),
+                  getGSCQueryData(gscAccessToken, site.siteUrl, ranges.post.start, ranges.post.end, GSC_ANALYSIS_PAGE_SIZE, {
+                    searchType: filters.searchType,
+                    dimensionFilterGroups,
+                    maxPages: GSC_ANALYSIS_MAX_PAGES,
+                    maxRows: GSC_ANALYSIS_MAX_ROWS,
+                  }),
+                ]);
 
-              const mergedRows = mergePeriods(
-                aggregateByKey(preQuery, 0),
-                aggregateByKey(rolloutQuery, 0),
-                aggregateByKey(postQuery, 0),
-              );
-              const brandRows = mergedRows.filter((row) => isBrandQuery(row.label, brandTerms));
-              const nonBrandRows = mergedRows.filter((row) => !isBrandQuery(row.label, brandTerms));
-              const totalSummary = summarizeRows(mergedRows, days);
-              const brandSummary = summarizeRows(brandRows, days);
-              const nonBrandSummary = summarizeRows(nonBrandRows, days);
+                const mergedRows = mergePeriods(
+                  aggregateByKey(preQuery, 0),
+                  aggregateByKey(rolloutQuery, 0),
+                  aggregateByKey(postQuery, 0),
+                );
+                const brandRows = mergedRows.filter((row) => isBrandQuery(row.label, brandTerms));
+                const nonBrandRows = mergedRows.filter((row) => !isBrandQuery(row.label, brandTerms));
+                const totalSummary = summarizeRows(mergedRows, days);
+                const brandSummary = summarizeRows(brandRows, days);
+                const nonBrandSummary = summarizeRows(nonBrandRows, days);
 
-              return buildPortfolioPropertyRow({
-                property: site.siteUrl,
-                total: totalSummary,
-                brand: brandSummary,
-                nonBrand: nonBrandSummary,
-              });
+                return buildPortfolioPropertyRow({
+                  property: site.siteUrl,
+                  total: totalSummary,
+                  brand: brandSummary,
+                  nonBrand: nonBrandSummary,
+                });
+              } catch (error) {
+                const reason = error instanceof Error ? error.message : 'Error no identificado desde Search Console.';
+                skippedSites.push({ siteUrl: site.siteUrl, reason });
+                console.warn('[GSC Impact] Se omite propiedad en portfolio por error:', site.siteUrl, reason);
+                return null;
+              }
             }),
           );
-          perSite.push(...batchResults);
+          perSite.push(...batchResults.filter((row): row is PortfolioPropertyRow => row !== null));
         }
 
         setPortfolioRows(perSite);
-        setPortfolioStatus(`Portfolio completado: ${perSite.length} propiedades analizadas.`);
+        if (skippedSites.length > 0) {
+          setPortfolioStatus(
+            `Portfolio completado: ${perSite.length} propiedades analizadas, ${skippedSites.length} omitidas por permisos u otros errores.`,
+          );
+        } else {
+          setPortfolioStatus(`Portfolio completado: ${perSite.length} propiedades analizadas.`);
+        }
       } catch (error) {
         setPortfolioError(
           error instanceof Error ? error.message : 'No se pudo cargar el análisis multi-site desde Search Console.',
