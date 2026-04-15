@@ -380,6 +380,17 @@ const GscImpactPage: React.FC = () => {
     if (!q) return gscSites;
     return gscSites.filter((site) => site.siteUrl.toLowerCase().includes(q));
   }, [gscSites, portfolioSiteSearch]);
+  const filteredPortfolioSiteUrls = useMemo(
+    () => new Set(filteredPortfolioSites.map((site) => site.siteUrl)),
+    [filteredPortfolioSites],
+  );
+
+  const handlePortfolioSitesSelectionChange = (nextVisibleSelection: string[]) => {
+    setSelectedPortfolioSites((prev) => {
+      const keepHiddenSelections = prev.filter((siteUrl) => !filteredPortfolioSiteUrls.has(siteUrl));
+      return Array.from(new Set([...keepHiddenSelections, ...nextVisibleSelection]));
+    });
+  };
 
   useEffect(() => {
     if (selectedPortfolioSites.length === 0) return;
@@ -1039,6 +1050,11 @@ const GscImpactPage: React.FC = () => {
     () => buildPortfolioExecutiveSummaryText(filteredPortfolioRows),
     [filteredPortfolioRows],
   );
+  const portfolioRowsForExport = useMemo(() => {
+    if (selectedPortfolioSites.length === 0) return sortedPortfolioRows;
+    const selectedSet = new Set(selectedPortfolioSites);
+    return sortedPortfolioRows.filter((row) => selectedSet.has(row.property));
+  }, [selectedPortfolioSites, sortedPortfolioRows]);
 
   const topPortfolioImprovers = useMemo(
     () =>
@@ -1212,7 +1228,7 @@ const GscImpactPage: React.FC = () => {
   };
 
   const exportPortfolioDataset = () => {
-    const rows = sortedPortfolioRows.map((row) => [
+    const rows = portfolioRowsForExport.map((row) => [
       row.property,
       row.preClicks,
       row.rolloutClicks,
@@ -1269,6 +1285,49 @@ const GscImpactPage: React.FC = () => {
         'consistency_score',
       ],
       rows,
+    );
+  };
+
+  const exportPortfolioByPropertyDataset = () => {
+    const workbook = XLSX.utils.book_new();
+    const summaryRows = portfolioRowsForExport.map((row) => ({
+      property: row.property,
+      pre_clicks: row.preClicks,
+      rollout_clicks: row.rolloutClicks,
+      post_clicks: row.postClicks,
+      pre_clicks_day: row.preClicksPerDay,
+      post_clicks_day: row.postClicksPerDay,
+      delta_clicks: row.deltaClicks,
+      delta_clicks_pct: row.deltaClicksPct,
+      pre_impressions: row.preImpressions,
+      post_impressions: row.postImpressions,
+      pre_impressions_day: row.preImpressionsPerDay,
+      post_impressions_day: row.postImpressionsPerDay,
+      pre_ctr: row.preCtr,
+      post_ctr: row.postCtr,
+      delta_ctr: row.deltaCtr,
+      pre_position: row.prePosition,
+      post_position: row.postPosition,
+      delta_position: row.deltaPosition,
+      brand_delta_clicks_day: row.brandDeltaClicksPerDay,
+      non_brand_delta_clicks_day: row.nonBrandDeltaClicksPerDay,
+      risk_score: row.riskScore,
+      status: row.status,
+      quality: row.quality,
+      quality_reason: row.qualityReason,
+      consistency_score: row.consistencyScore,
+    }));
+
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), 'Resumen');
+    portfolioRowsForExport.forEach((row) => {
+      const sheetName = row.property.replace(/[^a-z0-9]/gi, '_').slice(0, 31) || 'property';
+      const rowSheet = summaryRows.filter((item) => item.property === row.property);
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rowSheet), sheetName);
+    });
+
+    XLSX.writeFile(
+      workbook,
+      `gsc_impact_portfolio_individual_${new Date().toISOString().slice(0, 10)}.xlsx`,
     );
   };
 
@@ -1480,7 +1539,9 @@ const GscImpactPage: React.FC = () => {
                       multiple
                       value={selectedPortfolioSites}
                       onChange={(e) =>
-                        setSelectedPortfolioSites(Array.from(e.target.selectedOptions, (option) => option.value))
+                        handlePortfolioSitesSelectionChange(
+                          Array.from(e.target.selectedOptions, (option) => option.value),
+                        )
                       }
                     >
                       {filteredPortfolioSites.map((site) => (
@@ -1688,10 +1749,19 @@ const GscImpactPage: React.FC = () => {
               <section className="surface-panel p-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <h3 className="text-lg font-semibold">Tabla principal de propiedades</h3>
-                  <Button variant="secondary" onClick={exportPortfolioDataset} disabled={sortedPortfolioRows.length === 0}>
-                    Exportar portfolio (CSV/Sheets)
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="secondary" onClick={exportPortfolioDataset} disabled={portfolioRowsForExport.length === 0}>
+                      Exportar portfolio (CSV/Sheets)
+                    </Button>
+                    <Button variant="secondary" onClick={exportPortfolioByPropertyDataset} disabled={portfolioRowsForExport.length === 0}>
+                      Exportar por propiedad (XLSX)
+                    </Button>
+                  </div>
                 </div>
+                <p className="mt-2 text-xs text-muted">
+                  Se exportan {portfolioRowsForExport.length} propiedades
+                  {selectedPortfolioSites.length > 0 ? ' (según selección actual).' : ' (todas las visibles tras filtros).'}
+                </p>
                 <div className="mt-3 overflow-x-auto">
                   <table className="min-w-full text-sm">
                     <thead>
