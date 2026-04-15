@@ -49,6 +49,7 @@ import { InsightDetailModal } from '../components/InsightDetailModal';
 import { SeoInsight, SeoInsightCategory } from '../types/seoInsights';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { buildIgnoredEntryKey, useSeoIgnoredItems } from '../hooks/useSeoIgnoredItems';
+import * as XLSX from 'xlsx';
 
 const GSC_COMPARISON_MODE_LABELS: Record<GSCComparisonMode, string> = {
   previous_period: 'Periodo anterior',
@@ -95,9 +96,18 @@ const formatPositionSafe = (value: unknown, fallback = '—') => {
   return Number.isFinite(numericValue) ? numericValue.toFixed(1) : fallback;
 };
 
-const escapeCsvValue = (value: unknown) => {
-  const normalizedValue = value === null || value === undefined ? '' : String(value);
-  return `"${normalizedValue.replace(/"/g, '""')}"`;
+const sanitizeSheetName = (value: string, fallback: string) => {
+  const invalidChars = ['\\', '/', '?', '*', '[', ']', ':'];
+  const sanitized = invalidChars
+    .reduce((result, char) => result.replaceAll(char, ' '), value)
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!sanitized) {
+    return fallback;
+  }
+
+  return sanitized.slice(0, 31);
 };
 
 const HeroMetric: React.FC<HeroMetricProps> = ({ title, value, description, tone }) => (
@@ -318,85 +328,168 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     showSuccess('Reporte descargado.');
   };
 
-  const handleExportInsightsCsv = () => {
+  const handleExportInsightsWorkbook = () => {
     if (actionableInsights.length === 0) {
       showSuccess('No hay puntos para exportar en este momento.');
       return;
     }
 
-    const headers = [
-      'Punto',
-      'Categoría',
-      'Insight ID',
-      'Título',
-      'Prioridad',
-      'Severidad',
-      'Score',
-      'Oportunidad',
-      'Confianza',
-      'Impacto',
-      'Urgencia',
-      'Facilidad',
-      'Acción sugerida',
-      'Resumen',
-      'Motivo',
-      'Query',
-      'URL',
-      'Clicks',
-      'Impressions',
-      'CTR',
-      'Position',
-    ];
+    const workbook = XLSX.utils.book_new();
 
-    const rows = actionableInsights.flatMap((insight) => {
-      const base = [
-        insight.title,
-        insight.category,
-        insight.id,
-        insight.title,
-        insight.priority,
-        insight.severity,
-        insight.score,
-        insight.opportunity,
-        insight.confidence,
-        insight.impact,
-        insight.urgency,
-        insight.ease,
-        insight.action,
-        insight.summary,
-        insight.reason,
-      ];
-
+    const expandedRows = actionableInsights.flatMap((insight) => {
       if (insight.relatedRows.length === 0) {
         return [
-          [...base, '', '', '', '', '', ''].map(escapeCsvValue).join(','),
+          {
+            categoria: insight.category,
+            insightId: insight.id,
+            titulo: insight.title,
+            prioridad: insight.priority,
+            severidad: insight.severity,
+            score: insight.score,
+            oportunidad: insight.opportunity,
+            confianza: insight.confidence,
+            impacto: insight.impact,
+            urgencia: insight.urgency,
+            facilidad: insight.ease,
+            accionSugerida: insight.action,
+            resumen: insight.summary,
+            motivo: insight.reason,
+            query: '',
+            url: '',
+            clicks: '',
+            impressions: '',
+            ctr: '',
+            position: '',
+          },
         ];
       }
 
-      return insight.relatedRows.map((row) =>
-        [
-          ...base,
-          row.query ?? '',
-          row.url ?? row.page ?? '',
-          row.clicks ?? '',
-          row.impressions ?? '',
-          row.ctr ?? '',
-          row.position ?? '',
-        ]
-          .map(escapeCsvValue)
-          .join(','),
-      );
+      return insight.relatedRows.map((row) => ({
+        categoria: insight.category,
+        insightId: insight.id,
+        titulo: insight.title,
+        prioridad: insight.priority,
+        severidad: insight.severity,
+        score: insight.score,
+        oportunidad: insight.opportunity,
+        confianza: insight.confidence,
+        impacto: insight.impact,
+        urgencia: insight.urgency,
+        facilidad: insight.ease,
+        accionSugerida: insight.action,
+        resumen: insight.summary,
+        motivo: insight.reason,
+        query: row.query ?? '',
+        url: row.url ?? row.page ?? '',
+        clicks: row.clicks ?? '',
+        impressions: row.impressions ?? '',
+        ctr: row.ctr ?? '',
+        position: row.position ?? '',
+      }));
     });
 
-    const csvContent = [headers.map(escapeCsvValue).join(','), ...rows].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `SEO_Insights_Completos_${new Date().toISOString().slice(0, 10)}.csv`);
-    link.click();
-    URL.revokeObjectURL(url);
-    showSuccess(`CSV exportado con ${actionableInsights.length} puntos de análisis.`);
+    const summaryRows = actionableInsights.map((insight) => ({
+      categoria: insight.category,
+      insightId: insight.id,
+      titulo: insight.title,
+      prioridad: insight.priority,
+      severidad: insight.severity,
+      score: insight.score,
+      oportunidad: insight.opportunity,
+      confianza: insight.confidence,
+      impacto: insight.impact,
+      urgencia: insight.urgency,
+      facilidad: insight.ease,
+      accionSugerida: insight.action,
+      resumen: insight.summary,
+      motivo: insight.reason,
+      filasRelacionadas: insight.relatedRows.length,
+    }));
+
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), 'Resumen insights');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(expandedRows), 'Detalle completo');
+
+    const usedSheetNames = new Set<string>(['Resumen insights', 'Detalle completo']);
+
+    actionableInsights
+      .reduce((acc, insight) => {
+        const key = insight.action?.trim() || 'Sin acción sugerida';
+        if (!acc.has(key)) {
+          acc.set(key, []);
+        }
+        acc.get(key)?.push(insight);
+        return acc;
+      }, new Map<string, SeoInsight[]>())
+      .forEach((groupInsights, actionLabel, index) => {
+        const actionRows = groupInsights.flatMap((insight) => {
+          if (insight.relatedRows.length === 0) {
+            return [
+              {
+                categoria: insight.category,
+                insightId: insight.id,
+                titulo: insight.title,
+                prioridad: insight.priority,
+                severidad: insight.severity,
+                score: insight.score,
+                oportunidad: insight.opportunity,
+                confianza: insight.confidence,
+                impacto: insight.impact,
+                urgencia: insight.urgency,
+                facilidad: insight.ease,
+                accionSugerida: insight.action,
+                resumen: insight.summary,
+                motivo: insight.reason,
+                query: '',
+                url: '',
+                clicks: '',
+                impressions: '',
+                ctr: '',
+                position: '',
+              },
+            ];
+          }
+
+          return insight.relatedRows.map((row) => ({
+            categoria: insight.category,
+            insightId: insight.id,
+            titulo: insight.title,
+            prioridad: insight.priority,
+            severidad: insight.severity,
+            score: insight.score,
+            oportunidad: insight.opportunity,
+            confianza: insight.confidence,
+            impacto: insight.impact,
+            urgencia: insight.urgency,
+            facilidad: insight.ease,
+            accionSugerida: insight.action,
+            resumen: insight.summary,
+            motivo: insight.reason,
+            query: row.query ?? '',
+            url: row.url ?? row.page ?? '',
+            clicks: row.clicks ?? '',
+            impressions: row.impressions ?? '',
+            ctr: row.ctr ?? '',
+            position: row.position ?? '',
+          }));
+        });
+
+        const baseName = sanitizeSheetName(actionLabel, `Accion ${index + 1}`);
+        let sheetName = baseName;
+        let suffix = 2;
+        while (usedSheetNames.has(sheetName)) {
+          const trimmed = baseName.slice(0, Math.max(1, 31 - (` (${suffix})`.length)));
+          sheetName = `${trimmed} (${suffix})`;
+          suffix += 1;
+        }
+        usedSheetNames.add(sheetName);
+
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(actionRows), sheetName);
+      });
+
+    XLSX.writeFile(workbook, `SEO_Insights_Detallados_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    showSuccess(
+      `Excel exportado con ${actionableInsights.length} insights y ${Math.max(1, new Set(actionableInsights.map((item) => item.action?.trim() || 'Sin acción sugerida')).size)} pestañas de acción.`,
+    );
   };
 
   const simulateVoiceRecording = () => {
@@ -735,10 +828,10 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
           <div className="flex flex-col sm:flex-row gap-3">
             <button
               type="button"
-              onClick={handleExportInsightsCsv}
+              onClick={handleExportInsightsWorkbook}
               className="inline-flex items-center justify-center gap-2 rounded-lg border border-success/30 bg-success-soft px-3 py-2 text-sm font-medium text-success hover:border-success/50"
             >
-              <Download size={16} /> Exportar análisis completo CSV
+              <Download size={16} /> Exportar análisis detallado Excel
             </button>
             <button
               type="button"
