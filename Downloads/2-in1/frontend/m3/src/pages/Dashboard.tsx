@@ -862,10 +862,20 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                       />
                       <XAxis dataKey="label" hide axisLine={false} tickLine={false} />
                       <YAxis
+                        yAxisId="clicks"
+                        orientation="left"
+                        tick={{ fontSize: 10, fill: '#3b82f6' }}
+                        axisLine={false}
+                        tickLine={false}
+                        width={44}
+                      />
+                      <YAxis
+                        yAxisId="impressions"
                         orientation="right"
                         tick={{ fontSize: 10, fill: '#94a3b8' }}
                         axisLine={false}
                         tickLine={false}
+                        width={50}
                       />
                       <Tooltip
                         contentStyle={{
@@ -880,6 +890,7 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                       <Area
                         type="monotone"
                         dataKey="currentClicks"
+                        yAxisId="clicks"
                         stroke="#3b82f6"
                         strokeWidth={3}
                         fillOpacity={1}
@@ -890,6 +901,7 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                       <Area
                         type="monotone"
                         dataKey="comparisonClicks"
+                        yAxisId="clicks"
                         stroke="#0f766e"
                         strokeWidth={2}
                         fillOpacity={0}
@@ -903,6 +915,7 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                       <Area
                         type="monotone"
                         dataKey="currentImpressions"
+                        yAxisId="impressions"
                         stroke="#94a3b8"
                         strokeWidth={2}
                         fillOpacity={0}
