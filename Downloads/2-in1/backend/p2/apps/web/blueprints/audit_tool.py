@@ -170,14 +170,18 @@ def scan():
     if not is_safe_url(url_input):
         return jsonify({'error': 'URL no permitida'})
 
-    # Si es XML sacamos URLs, si no, asumimos que es una URL suelta para probar
-    if url_input.endswith('.xml'):
+    # Si parece sitemap, intentamos expandirlo; si no, auditamos como URL única
+    looks_like_sitemap = 'sitemap' in url_input.lower() or url_input.lower().endswith('.xml')
+    if looks_like_sitemap:
         urls = fetch_sitemap_urls(url_input)
         urls = urls[:50] # Limitamos a 50 para la demo
     else:
         urls = [url_input]
 
-    if not urls: return jsonify({'error': 'Error leyendo sitemap'})
+    if not urls:
+        if looks_like_sitemap:
+            return jsonify({'error': 'No se pudo leer sitemap o sitemap vacío'})
+        return jsonify({'error': 'No se pudo procesar la URL'})
 
     results = []
     # Paralelismo controlado
