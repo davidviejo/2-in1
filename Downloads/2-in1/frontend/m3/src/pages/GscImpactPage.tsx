@@ -232,9 +232,12 @@ const getActionableSignals = (row: UrlInspectionRow): string[] => {
 };
 
 const SHARED_RULES_PARAM = 'sharedRules';
-const GSC_ANALYSIS_ROWS = 1000;
+const GSC_ANALYSIS_PAGE_SIZE = 25000;
+const GSC_ANALYSIS_MAX_PAGES = 40;
+const GSC_ANALYSIS_MAX_ROWS = GSC_ANALYSIS_PAGE_SIZE * GSC_ANALYSIS_MAX_PAGES;
 const PORTFOLIO_BATCH_SIZE = 5;
-const DISPLAY_LIMIT_OPTIONS = [10, 25, 50, 100, 250, 500, 1000] as const;
+const DISPLAY_LIMIT_OPTIONS = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000] as const;
+const RESULTS_PAGE_SIZE = 100;
 
 const splitByLines = (value: string[]) => value.join('\n');
 
@@ -327,6 +330,8 @@ const GscImpactPage: React.FC = () => {
   const [loadingImpact, setLoadingImpact] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
   const [displayLimit, setDisplayLimit] = useState<number>(Number(searchParams.get('topN') || 1000) || 1000);
+  const [sampledUrlsPage, setSampledUrlsPage] = useState(1);
+  const [portfolioTablePage, setPortfolioTablePage] = useState(1);
   const [impactError, setImpactError] = useState<string | null>(null);
   const [inspectionRows, setInspectionRows] = useState<UrlInspectionRow[]>([]);
   const [inspectionErrors, setInspectionErrors] = useState<UrlInspectionErrorItem[]>([]);
@@ -524,37 +529,55 @@ const GscImpactPage: React.FC = () => {
           postByCountry,
           fullSeries,
         ] = await Promise.all([
-          getGSCQueryData(gscAccessToken, selectedSite, ranges.pre.start, ranges.pre.end, GSC_ANALYSIS_ROWS, {
+          getGSCQueryData(gscAccessToken, selectedSite, ranges.pre.start, ranges.pre.end, GSC_ANALYSIS_PAGE_SIZE, {
             searchType: filters.searchType,
             dimensionFilterGroups,
+            maxPages: GSC_ANALYSIS_MAX_PAGES,
+            maxRows: GSC_ANALYSIS_MAX_ROWS,
           }),
           getGSCQueryData(
             gscAccessToken,
             selectedSite,
             ranges.rollout.start,
             ranges.rollout.end,
-            GSC_ANALYSIS_ROWS,
-            { searchType: filters.searchType, dimensionFilterGroups },
+            GSC_ANALYSIS_PAGE_SIZE,
+            {
+              searchType: filters.searchType,
+              dimensionFilterGroups,
+              maxPages: GSC_ANALYSIS_MAX_PAGES,
+              maxRows: GSC_ANALYSIS_MAX_ROWS,
+            },
           ),
-          getGSCQueryData(gscAccessToken, selectedSite, ranges.post.start, ranges.post.end, GSC_ANALYSIS_ROWS, {
+          getGSCQueryData(gscAccessToken, selectedSite, ranges.post.start, ranges.post.end, GSC_ANALYSIS_PAGE_SIZE, {
             searchType: filters.searchType,
             dimensionFilterGroups,
+            maxPages: GSC_ANALYSIS_MAX_PAGES,
+            maxRows: GSC_ANALYSIS_MAX_ROWS,
           }),
-          getGSCQueryPageData(gscAccessToken, selectedSite, ranges.pre.start, ranges.pre.end, GSC_ANALYSIS_ROWS, {
+          getGSCQueryPageData(gscAccessToken, selectedSite, ranges.pre.start, ranges.pre.end, GSC_ANALYSIS_PAGE_SIZE, {
             searchType: filters.searchType,
             dimensionFilterGroups,
+            maxPages: GSC_ANALYSIS_MAX_PAGES,
+            maxRows: GSC_ANALYSIS_MAX_ROWS,
           }),
           getGSCQueryPageData(
             gscAccessToken,
             selectedSite,
             ranges.rollout.start,
             ranges.rollout.end,
-            GSC_ANALYSIS_ROWS,
-            { searchType: filters.searchType, dimensionFilterGroups },
+            GSC_ANALYSIS_PAGE_SIZE,
+            {
+              searchType: filters.searchType,
+              dimensionFilterGroups,
+              maxPages: GSC_ANALYSIS_MAX_PAGES,
+              maxRows: GSC_ANALYSIS_MAX_ROWS,
+            },
           ),
-          getGSCQueryPageData(gscAccessToken, selectedSite, ranges.post.start, ranges.post.end, GSC_ANALYSIS_ROWS, {
+          getGSCQueryPageData(gscAccessToken, selectedSite, ranges.post.start, ranges.post.end, GSC_ANALYSIS_PAGE_SIZE, {
             searchType: filters.searchType,
             dimensionFilterGroups,
+            maxPages: GSC_ANALYSIS_MAX_PAGES,
+            maxRows: GSC_ANALYSIS_MAX_ROWS,
           }),
           querySearchAnalyticsPaged(gscAccessToken, {
             siteUrl: selectedSite,
@@ -699,24 +722,30 @@ const GscImpactPage: React.FC = () => {
           const batchResults = await Promise.all(
             batch.map(async (site) => {
               const [preQuery, rolloutQuery, postQuery] = await Promise.all([
-                getGSCQueryData(gscAccessToken, site.siteUrl, ranges.pre.start, ranges.pre.end, GSC_ANALYSIS_ROWS, {
+                getGSCQueryData(gscAccessToken, site.siteUrl, ranges.pre.start, ranges.pre.end, GSC_ANALYSIS_PAGE_SIZE, {
                   searchType: filters.searchType,
                   dimensionFilterGroups,
+                  maxPages: GSC_ANALYSIS_MAX_PAGES,
+                  maxRows: GSC_ANALYSIS_MAX_ROWS,
                 }),
                 getGSCQueryData(
                   gscAccessToken,
                   site.siteUrl,
                   ranges.rollout.start,
                   ranges.rollout.end,
-                  GSC_ANALYSIS_ROWS,
+                  GSC_ANALYSIS_PAGE_SIZE,
                   {
                     searchType: filters.searchType,
                     dimensionFilterGroups,
+                    maxPages: GSC_ANALYSIS_MAX_PAGES,
+                    maxRows: GSC_ANALYSIS_MAX_ROWS,
                   },
                 ),
-                getGSCQueryData(gscAccessToken, site.siteUrl, ranges.post.start, ranges.post.end, GSC_ANALYSIS_ROWS, {
+                getGSCQueryData(gscAccessToken, site.siteUrl, ranges.post.start, ranges.post.end, GSC_ANALYSIS_PAGE_SIZE, {
                   searchType: filters.searchType,
                   dimensionFilterGroups,
+                  maxPages: GSC_ANALYSIS_MAX_PAGES,
+                  maxRows: GSC_ANALYSIS_MAX_ROWS,
                 }),
               ]);
 
@@ -861,6 +890,15 @@ const GscImpactPage: React.FC = () => {
         .slice(0, displayLimit),
     [displayLimit, filteredUrlRows],
   );
+  const sampledUrlsTotalPages = useMemo(
+    () => Math.max(1, Math.ceil(sampledAffectedUrls.length / RESULTS_PAGE_SIZE)),
+    [sampledAffectedUrls.length],
+  );
+  const pagedSampledAffectedUrls = useMemo(() => {
+    const page = Math.min(sampledUrlsPage, sampledUrlsTotalPages);
+    const start = (page - 1) * RESULTS_PAGE_SIZE;
+    return sampledAffectedUrls.slice(start, start + RESULTS_PAGE_SIZE);
+  }, [sampledAffectedUrls, sampledUrlsPage, sampledUrlsTotalPages]);
 
   const globalSummary = useMemo(() => summarizeRows(filteredUrlRows, windowDays), [filteredUrlRows, windowDays]);
   const queryBrandSplit = useMemo(() => {
@@ -972,6 +1010,15 @@ const GscImpactPage: React.FC = () => {
     () => sortPortfolioRows(filteredPortfolioRows, globalFilters.sortBy),
     [filteredPortfolioRows, globalFilters.sortBy],
   );
+  const portfolioTableTotalPages = useMemo(
+    () => Math.max(1, Math.ceil(sortedPortfolioRows.length / RESULTS_PAGE_SIZE)),
+    [sortedPortfolioRows.length],
+  );
+  const pagedPortfolioRows = useMemo(() => {
+    const page = Math.min(portfolioTablePage, portfolioTableTotalPages);
+    const start = (page - 1) * RESULTS_PAGE_SIZE;
+    return sortedPortfolioRows.slice(start, start + RESULTS_PAGE_SIZE);
+  }, [portfolioTablePage, portfolioTableTotalPages, sortedPortfolioRows]);
   const portfolioCounts = useMemo(() => summarizePortfolioStatusCounts(filteredPortfolioRows), [filteredPortfolioRows]);
   const portfolioSignals = useMemo(() => detectPortfolioPatterns(filteredPortfolioRows), [filteredPortfolioRows]);
   const portfolioSummaryText = useMemo(
@@ -1005,6 +1052,14 @@ const GscImpactPage: React.FC = () => {
   useEffect(() => {
     GscImpactSegmentationRepository.saveUseCustomRulesByClientId(currentClientId, useCustomRules);
   }, [currentClientId, useCustomRules]);
+
+  useEffect(() => {
+    setSampledUrlsPage(1);
+  }, [displayLimit, filteredUrlRows, viewMode]);
+
+  useEffect(() => {
+    setPortfolioTablePage(1);
+  }, [globalFilters, selectedPortfolioSites, sortedPortfolioRows.length, viewMode]);
 
   const exportIndividualDataset = () => {
     const workbook = XLSX.utils.book_new();
@@ -1353,7 +1408,7 @@ const GscImpactPage: React.FC = () => {
               </div>
               <div className="surface-subtle p-2 text-sm md:col-span-2">
                 <p>
-                  Extracción por periodo: hasta {GSC_ANALYSIS_ROWS.toLocaleString('es-ES')} filas de GSC para queries y URLs.
+                  Extracción por periodo: hasta {GSC_ANALYSIS_MAX_ROWS.toLocaleString('es-ES')} filas de GSC (paginado de {GSC_ANALYSIS_PAGE_SIZE.toLocaleString('es-ES')}).
                   Puedes exportar todo lo cargado a CSV para abrirlo en Google Sheets.
                 </p>
               </div>
@@ -1631,7 +1686,7 @@ const GscImpactPage: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {sortedPortfolioRows.map((row) => (
+                      {pagedPortfolioRows.map((row) => (
                         <tr key={row.property} className="border-t border-border/50">
                           <td className="px-2 py-2">{row.property}</td><td className="px-2 py-2">{row.preClicks.toFixed(0)}</td><td className="px-2 py-2">{row.rolloutClicks.toFixed(0)}</td><td className="px-2 py-2">{row.postClicks.toFixed(0)}</td><td className="px-2 py-2">{row.preClicksPerDay.toFixed(2)}</td><td className="px-2 py-2">{row.postClicksPerDay.toFixed(2)}</td><td className="px-2 py-2">{row.deltaClicks.toFixed(0)}</td><td className="px-2 py-2">{row.deltaClicksPct === null ? 'n/a' : `${(row.deltaClicksPct * 100).toFixed(1)}%`}</td><td className="px-2 py-2">{row.preImpressions.toFixed(0)}</td><td className="px-2 py-2">{row.postImpressions.toFixed(0)}</td><td className="px-2 py-2">{row.preImpressionsPerDay.toFixed(2)}</td><td className="px-2 py-2">{row.postImpressionsPerDay.toFixed(2)}</td><td className="px-2 py-2">{(row.preCtr * 100).toFixed(2)}%</td><td className="px-2 py-2">{(row.postCtr * 100).toFixed(2)}%</td><td className="px-2 py-2">{(row.deltaCtr * 100).toFixed(2)}pp</td><td className="px-2 py-2">{row.prePosition.toFixed(2)}</td><td className="px-2 py-2">{row.postPosition.toFixed(2)}</td><td className="px-2 py-2">{row.deltaPosition.toFixed(2)}</td><td className="px-2 py-2">{row.brandDeltaClicksPerDay.toFixed(2)}</td><td className="px-2 py-2">{row.nonBrandDeltaClicksPerDay.toFixed(2)}</td><td className="px-2 py-2">{row.riskScore.toFixed(1)}</td>
                           <td className="px-2 py-2"><Badge variant={getPortfolioStatusBadgeVariant(row.status)}>{row.status}</Badge></td>
@@ -1642,6 +1697,32 @@ const GscImpactPage: React.FC = () => {
                     </tbody>
                   </table>
                 </div>
+                {sortedPortfolioRows.length > RESULTS_PAGE_SIZE && (
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <p className="text-muted">
+                      Mostrando {pagedPortfolioRows.length} de {sortedPortfolioRows.length} propiedades.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="secondary"
+                        onClick={() => setPortfolioTablePage((prev) => Math.max(1, prev - 1))}
+                        disabled={portfolioTablePage <= 1}
+                      >
+                        Anterior
+                      </Button>
+                      <span className="text-muted">
+                        Página {portfolioTablePage} de {portfolioTableTotalPages}
+                      </span>
+                      <Button
+                        variant="secondary"
+                        onClick={() => setPortfolioTablePage((prev) => Math.min(portfolioTableTotalPages, prev + 1))}
+                        disabled={portfolioTablePage >= portfolioTableTotalPages}
+                      >
+                        Siguiente
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </section>
             </>
           ) : (
@@ -2217,7 +2298,7 @@ const GscImpactPage: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {sampledAffectedUrls.map((row) => (
+                    {pagedSampledAffectedUrls.map((row) => (
                       <tr key={`sample-${row.key}`} className="border-t border-border/50">
                         <td className="max-w-[480px] truncate px-2 py-2">{row.key}</td>
                         <td className="px-2 py-2">{row.clickDelta}</td>
@@ -2233,6 +2314,32 @@ const GscImpactPage: React.FC = () => {
                     ))}
                   </tbody>
                 </table>
+                {sampledAffectedUrls.length > RESULTS_PAGE_SIZE && (
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <p className="text-muted">
+                      Mostrando {pagedSampledAffectedUrls.length} de {sampledAffectedUrls.length} URLs.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="secondary"
+                        onClick={() => setSampledUrlsPage((prev) => Math.max(1, prev - 1))}
+                        disabled={sampledUrlsPage <= 1}
+                      >
+                        Anterior
+                      </Button>
+                      <span className="text-muted">
+                        Página {sampledUrlsPage} de {sampledUrlsTotalPages}
+                      </span>
+                      <Button
+                        variant="secondary"
+                        onClick={() => setSampledUrlsPage((prev) => Math.min(sampledUrlsTotalPages, prev + 1))}
+                        disabled={sampledUrlsPage >= sampledUrlsTotalPages}
+                      >
+                        Siguiente
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

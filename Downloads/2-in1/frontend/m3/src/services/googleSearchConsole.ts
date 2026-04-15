@@ -246,6 +246,8 @@ export const getGSCQueryData = async (
   options?: {
     searchType?: GSCSearchType;
     dimensionFilterGroups?: GSCDimensionFilterGroup[];
+    maxPages?: number;
+    maxRows?: number;
   },
 ) => {
   try {
@@ -257,6 +259,8 @@ export const getGSCQueryData = async (
       rowLimit,
       searchType: options?.searchType,
       dimensionFilterGroups: options?.dimensionFilterGroups,
+      maxPages: options?.maxPages,
+      maxRows: options?.maxRows,
     });
     return result.rows || [];
   } catch (error) {
@@ -285,6 +289,8 @@ export const getGSCQueryPageData = async (
   options?: {
     searchType?: GSCSearchType;
     dimensionFilterGroups?: GSCDimensionFilterGroup[];
+    maxPages?: number;
+    maxRows?: number;
   },
 ) => {
   try {
@@ -296,6 +302,8 @@ export const getGSCQueryPageData = async (
       rowLimit,
       searchType: options?.searchType,
       dimensionFilterGroups: options?.dimensionFilterGroups,
+      maxPages: options?.maxPages,
+      maxRows: options?.maxRows,
     });
     return result.rows || [];
   } catch (error) {
