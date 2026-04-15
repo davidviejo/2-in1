@@ -1,6 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { BarChart3, LogIn, LogOut, RefreshCcw, Settings2 } from 'lucide-react';
+import {
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -10,7 +20,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { useGSCAuth } from '@/hooks/useGSCAuth';
 import { useGSCData } from '@/hooks/useGSCData';
 import { GSCDimensionFilterGroup, GSCRow, GSCSearchType } from '@/types';
-import { getGSCQueryData, getGSCQueryPageData } from '@/services/googleSearchConsole';
+import { getGSCQueryData, getGSCQueryPageData, querySearchAnalyticsPaged } from '@/services/googleSearchConsole';
 import { inspectUrlsBatch, UrlInspectionErrorItem, UrlInspectionRow } from '@/services/gscInspectionService';
 import { GscImpactSegmentationRepository } from '@/services/gscImpactSegmentationRepository';
 import { parseBrandTermsInput, parseTemplateManualMap, parseTemplateRules } from '@/utils/gscFilters';
@@ -28,6 +38,15 @@ import {
   PeriodRanges,
   validatePeriodRanges,
 } from '@/utils/gscImpactPeriodRanges';
+import {
+  detectPatternSignals,
+  getDaysBetweenInclusive,
+  inferLanguagePrefix,
+  inferPageType,
+  isBrandQuery,
+  scoreImpactRows,
+  summarizeRows,
+} from '@/features/gsc-impact/impactAnalysis';
 
 type DeviceFilter = 'all' | 'DESKTOP' | 'MOBILE' | 'TABLET';
 
@@ -49,6 +68,7 @@ type FilterState = {
   segmentFilter: QuerySegmentFilter;
   brandTermsText: string;
   minImpressions: number;
+  minClicks: number;
   pathPrefix: string;
   selectedTemplate: string;
   templateRulesText: string;
@@ -61,8 +81,10 @@ type FilterState = {
 type UrlSampleRow = ImpactRow & {
   clickDelta: number;
   impressionDelta: number;
+  ctrDelta: number;
   positionDelta: number;
-  severityScore: number;
+  priorityScore: number;
+  reason: string;
   source: string;
   ruleId: string | null;
   ruleType: string | null;
@@ -83,16 +105,6 @@ const getSourceLabel = (row: InsightRowMeta) => {
 };
 
 const toISODate = (date: Date) => date.toISOString().split('T')[0];
-
-const sumRows = (rows: GSCRow[]) =>
-  rows.reduce(
-    (acc, row) => {
-      acc.clicks += row.clicks;
-      acc.impressions += row.impressions;
-      return acc;
-    },
-    { clicks: 0, impressions: 0 },
-  );
 
 const aggregateByKey = (rows: GSCRow[], index: number) => {
   const map = new Map<string, { clicks: number; impressions: number; positionSum: number; positionWeight: number }>();
@@ -146,18 +158,32 @@ const mergePeriods = (
 const toSampleRow = (row: ImpactRow & InsightRowMeta): UrlSampleRow => {
   const clickDelta = row.postClicks - row.preClicks;
   const impressionDelta = row.postImpressions - row.preImpressions;
+  const preCtr = row.preImpressions > 0 ? row.preClicks / row.preImpressions : 0;
+  const postCtr = row.postImpressions > 0 ? row.postClicks / row.postImpressions : 0;
+  const ctrDelta = postCtr - preCtr;
   const positionDelta = row.postPosition - row.prePosition;
-  const severityScore =
-    Math.max(0, -clickDelta) * 3 +
-    Math.max(0, -impressionDelta) * 0.5 +
-    Math.max(0, positionDelta) * 40;
+  const baseVolume = Math.max(row.preImpressions, 1);
+  const volumeWeight = Math.log10(baseVolume + 10);
+  const priorityScore =
+    Math.max(0, -clickDelta) * 3 * volumeWeight +
+    Math.max(0, -impressionDelta) * 0.4 * volumeWeight +
+    Math.max(0, -ctrDelta * 100) * 8 * volumeWeight +
+    Math.max(0, positionDelta) * 35 * volumeWeight;
+
+  let reason = 'posible revisión técnica';
+  if (clickDelta < -20) reason = 'alto impacto en clicks';
+  else if (ctrDelta < -0.03) reason = 'caída fuerte de CTR';
+  else if (impressionDelta < -100) reason = 'pérdida de visibilidad';
+  else if (positionDelta > 1.5) reason = 'empeoramiento de posición';
 
   return {
     ...row,
     clickDelta,
     impressionDelta,
+    ctrDelta,
     positionDelta,
-    severityScore,
+    priorityScore: Number(priorityScore.toFixed(2)),
+    reason,
   };
 };
 
@@ -209,6 +235,7 @@ const buildFilterState = (
     brandTermsText:
       useSharedRuleParams && params.has('brandTerms') ? params.get('brandTerms') || '' : persistedBrandTermsText,
     minImpressions: Number(params.get('minImpressions') || 50) || 0,
+    minClicks: Number(params.get('minClicks') || 5) || 0,
     pathPrefix: params.get('pathPrefix') || '',
     selectedTemplate: params.get('template') || 'all',
     templateRulesText:
@@ -257,6 +284,9 @@ const GscImpactPage: React.FC = () => {
 
   const [queryRows, setQueryRows] = useState<ImpactRow[]>([]);
   const [urlRows, setUrlRows] = useState<ImpactRow[]>([]);
+  const [timeSeriesRows, setTimeSeriesRows] = useState<GSCRow[]>([]);
+  const [deviceRows, setDeviceRows] = useState<ImpactRow[]>([]);
+  const [countryRows, setCountryRows] = useState<ImpactRow[]>([]);
 
   const {
     gscAccessToken,
@@ -270,8 +300,7 @@ const GscImpactPage: React.FC = () => {
     setClientId,
   } = useGSCAuth();
 
-  const { gscSites, selectedSite, setSelectedSite, gscData, comparisonGscData, isLoadingGsc } =
-    useGSCData(gscAccessToken);
+  const { gscSites, selectedSite, setSelectedSite, isLoadingGsc } = useGSCData(gscAccessToken);
 
   const filteredSites = useMemo(() => {
     const q = siteSearch.trim().toLowerCase();
@@ -305,6 +334,7 @@ const GscImpactPage: React.FC = () => {
     const next = new URLSearchParams();
     next.set('segment', filters.segmentFilter);
     next.set('minImpressions', String(filters.minImpressions));
+    next.set('minClicks', String(filters.minClicks));
     next.set('pathPrefix', filters.pathPrefix);
     next.set('template', filters.selectedTemplate);
     next.set('device', filters.device);
@@ -380,6 +410,13 @@ const GscImpactPage: React.FC = () => {
           preQueryPage,
           rolloutQueryPage,
           postQueryPage,
+          preByDevice,
+          rolloutByDevice,
+          postByDevice,
+          preByCountry,
+          rolloutByCountry,
+          postByCountry,
+          fullSeries,
         ] = await Promise.all([
           getGSCQueryData(gscAccessToken, selectedSite, ranges.pre.start, ranges.pre.end, 1000, {
             searchType: filters.searchType,
@@ -413,6 +450,69 @@ const GscImpactPage: React.FC = () => {
             searchType: filters.searchType,
             dimensionFilterGroups,
           }),
+          querySearchAnalyticsPaged(gscAccessToken, {
+            siteUrl: selectedSite,
+            startDate: ranges.pre.start,
+            endDate: ranges.pre.end,
+            dimensions: ['device'],
+            rowLimit: 100,
+            searchType: filters.searchType,
+            dimensionFilterGroups,
+          }).then((data) => data.rows || []),
+          querySearchAnalyticsPaged(gscAccessToken, {
+            siteUrl: selectedSite,
+            startDate: ranges.rollout.start,
+            endDate: ranges.rollout.end,
+            dimensions: ['device'],
+            rowLimit: 100,
+            searchType: filters.searchType,
+            dimensionFilterGroups,
+          }).then((data) => data.rows || []),
+          querySearchAnalyticsPaged(gscAccessToken, {
+            siteUrl: selectedSite,
+            startDate: ranges.post.start,
+            endDate: ranges.post.end,
+            dimensions: ['device'],
+            rowLimit: 100,
+            searchType: filters.searchType,
+            dimensionFilterGroups,
+          }).then((data) => data.rows || []),
+          querySearchAnalyticsPaged(gscAccessToken, {
+            siteUrl: selectedSite,
+            startDate: ranges.pre.start,
+            endDate: ranges.pre.end,
+            dimensions: ['country'],
+            rowLimit: 100,
+            searchType: filters.searchType,
+            dimensionFilterGroups,
+          }).then((data) => data.rows || []),
+          querySearchAnalyticsPaged(gscAccessToken, {
+            siteUrl: selectedSite,
+            startDate: ranges.rollout.start,
+            endDate: ranges.rollout.end,
+            dimensions: ['country'],
+            rowLimit: 100,
+            searchType: filters.searchType,
+            dimensionFilterGroups,
+          }).then((data) => data.rows || []),
+          querySearchAnalyticsPaged(gscAccessToken, {
+            siteUrl: selectedSite,
+            startDate: ranges.post.start,
+            endDate: ranges.post.end,
+            dimensions: ['country'],
+            rowLimit: 100,
+            searchType: filters.searchType,
+            dimensionFilterGroups,
+          }).then((data) => data.rows || []),
+          querySearchAnalyticsPaged(gscAccessToken, {
+            siteUrl: selectedSite,
+            startDate: ranges.pre.start,
+            endDate: ranges.post.end,
+            dimensions: ['date'],
+            rowLimit: 1500,
+            searchType: filters.searchType,
+            dimensionFilterGroups,
+          }).then((data) => data.rows || []),
         ]);
 
         const queryMerged = mergePeriods(
@@ -429,12 +529,22 @@ const GscImpactPage: React.FC = () => {
 
         setQueryRows(queryMerged);
         setUrlRows(urlMerged);
+        setDeviceRows(
+          mergePeriods(aggregateByKey(preByDevice, 0), aggregateByKey(rolloutByDevice, 0), aggregateByKey(postByDevice, 0)),
+        );
+        setCountryRows(
+          mergePeriods(aggregateByKey(preByCountry, 0), aggregateByKey(rolloutByCountry, 0), aggregateByKey(postByCountry, 0)),
+        );
+        setTimeSeriesRows(fullSeries);
       } catch (error) {
         setImpactError(
           error instanceof Error
             ? error.message
             : 'No se pudieron cargar los bloques pre/rollout/post desde Search Console.',
         );
+        setDeviceRows([]);
+        setCountryRows([]);
+        setTimeSeriesRows([]);
       } finally {
         setLoadingImpact(false);
       }
@@ -443,19 +553,14 @@ const GscImpactPage: React.FC = () => {
     void fetchImpact();
   }, [dimensionFilterGroups, filters.searchType, gscAccessToken, selectedSite, ranges, refreshTick, periodRangeErrors]);
 
-  const gscSummary = useMemo(() => {
-    const current = sumRows(gscData);
-    const previous = sumRows(comparisonGscData);
-    const clickDelta = current.clicks - previous.clicks;
-    const impressionDelta = current.impressions - previous.impressions;
-
-    return {
-      current,
-      previous,
-      clickDelta,
-      impressionDelta,
-    };
-  }, [gscData, comparisonGscData]);
+  const windowDays = useMemo(
+    () => ({
+      pre: getDaysBetweenInclusive(ranges.pre.start, ranges.pre.end),
+      rollout: getDaysBetweenInclusive(ranges.rollout.start, ranges.rollout.end),
+      post: getDaysBetweenInclusive(ranges.post.start, ranges.post.end),
+    }),
+    [ranges.post.end, ranges.post.start, ranges.pre.end, ranges.pre.start, ranges.rollout.end, ranges.rollout.start],
+  );
 
   const filteredQueryRows = useMemo(() => {
     return filterQueryImpactRows(
@@ -497,45 +602,129 @@ const GscImpactPage: React.FC = () => {
     );
   }, [persistedConfig, templateManualMap, templateRules, urlRows, useCustomRules]);
 
-  const topQueryWinners = useMemo(
-    () =>
-      [...filteredQueryRows]
-        .sort((a, b) => b.postClicks - b.preClicks - (a.postClicks - a.preClicks))
-        .slice(0, 8),
-    [filteredQueryRows],
+  const scoredQueryRows = useMemo(
+    () => scoreImpactRows(filteredQueryRows, { minImpressions: filters.minImpressions, minClicks: filters.minClicks }),
+    [filteredQueryRows, filters.minClicks, filters.minImpressions],
+  );
+  const scoredUrlRows = useMemo(
+    () => scoreImpactRows(filteredUrlRows, { minImpressions: filters.minImpressions, minClicks: filters.minClicks }),
+    [filteredUrlRows, filters.minClicks, filters.minImpressions],
   );
 
-  const topQueryLosers = useMemo(
-    () =>
-      [...filteredQueryRows]
-        .sort((a, b) => a.postClicks - a.preClicks - (b.postClicks - b.preClicks))
-        .slice(0, 8),
-    [filteredQueryRows],
+  const topQueryWinners = useMemo(() => [...scoredQueryRows].sort((a, b) => b.opportunityScore - a.opportunityScore).slice(0, 8), [scoredQueryRows]);
+  const topQueryLosers = useMemo(() => [...scoredQueryRows].sort((a, b) => b.impactScore - a.impactScore).slice(0, 8), [scoredQueryRows]);
+  const topUrlWinners = useMemo(() => [...scoredUrlRows].sort((a, b) => b.opportunityScore - a.opportunityScore).slice(0, 8), [scoredUrlRows]);
+  const topUrlLosers = useMemo(() => [...scoredUrlRows].sort((a, b) => b.impactScore - a.impactScore).slice(0, 8), [scoredUrlRows]);
+  const topCtrDeterioration = useMemo(
+    () => [...scoredUrlRows].sort((a, b) => b.ctrDeteriorationScore - a.ctrDeteriorationScore).slice(0, 8),
+    [scoredUrlRows],
   );
 
-  const topUrlWinners = useMemo(
+  const sampledAffectedUrls = useMemo(
     () =>
-      [...filteredUrlRows]
-        .sort((a, b) => b.postClicks - b.preClicks - (a.postClicks - a.preClicks))
-        .slice(0, 8),
+      filteredUrlRows
+        .map(toSampleRow)
+        .filter((row) => row.clickDelta < 0 || row.impressionDelta < 0 || row.positionDelta > 0 || row.ctrDelta < 0)
+        .sort((a, b) => b.priorityScore - a.priorityScore)
+        .slice(0, 10),
     [filteredUrlRows],
   );
 
-  const topUrlLosers = useMemo(
-    () =>
-      [...filteredUrlRows]
-        .sort((a, b) => a.postClicks - a.preClicks - (b.postClicks - b.preClicks))
-        .slice(0, 8),
-    [filteredUrlRows],
+  const globalSummary = useMemo(() => summarizeRows(filteredUrlRows, windowDays), [filteredUrlRows, windowDays]);
+  const queryBrandSplit = useMemo(() => {
+    const brand = filteredQueryRows.filter((row) => isBrandQuery(row.label, brandTerms));
+    const nonBrand = filteredQueryRows.filter((row) => !isBrandQuery(row.label, brandTerms));
+    return { brand, nonBrand };
+  }, [brandTerms, filteredQueryRows]);
+  const brandSummary = useMemo(() => summarizeRows(queryBrandSplit.brand, windowDays), [queryBrandSplit.brand, windowDays]);
+  const nonBrandSummary = useMemo(
+    () => summarizeRows(queryBrandSplit.nonBrand, windowDays),
+    [queryBrandSplit.nonBrand, windowDays],
   );
 
-  const sampledAffectedUrls = useMemo(() => {
-    return filteredUrlRows
-      .map(toSampleRow)
-      .filter((row) => row.clickDelta < 0 || row.impressionDelta < 0 || row.positionDelta > 0)
-      .sort((a, b) => b.severityScore - a.severityScore)
-      .slice(0, 10);
-  }, [filteredUrlRows]);
+  const executiveInterpretation = useMemo(() => {
+    const notes: string[] = [];
+    if (globalSummary.postVsPre.impressionsPerDay.absolute > 0 && globalSummary.postVsPre.clicksPerDay.absolute < 0) {
+      notes.push('Impresiones/día al alza con clics/día a la baja: probable caída de CTR o cambio en mix de queries.');
+    }
+    if (brandSummary.postVsPre.clicksPerDay.absolute < -Math.max(1, Math.abs(nonBrandSummary.postVsPre.clicksPerDay.absolute))) {
+      notes.push('La caída está más concentrada en brand que en non-brand: revisar branded SERP y home.');
+    }
+    if (globalSummary.rollout.clicksPerDay < globalSummary.pre.clicksPerDay && globalSummary.post.clicksPerDay > globalSummary.rollout.clicksPerDay) {
+      notes.push('Rollout con caída y recuperación parcial post: patrón compatible con efecto temporal del despliegue.');
+    }
+    if (globalSummary.postVsPre.position.absolute > 0.5) {
+      notes.push('El empeoramiento de posición media sugiere pérdida de visibilidad estructural.');
+    }
+    if (notes.length === 0) {
+      notes.push('Sin señal dominante única: revisar patrones detectados y segmentaciones para confirmar hipótesis.');
+    }
+    return notes.slice(0, 3);
+  }, [brandSummary.postVsPre.clicksPerDay.absolute, globalSummary, nonBrandSummary.postVsPre.clicksPerDay.absolute]);
+
+  const breakdownFromRows = (rows: (ImpactRow & { template?: string })[], getBucket: (row: ImpactRow & { template?: string }) => string) => {
+    const map = new Map<string, ImpactRow[]>();
+    rows.forEach((row) => {
+      const bucket = getBucket(row) || 'Sin dato';
+      const current = map.get(bucket) || [];
+      current.push(row);
+      map.set(bucket, current);
+    });
+    return Array.from(map.entries())
+      .map(([bucket, groupedRows]) => ({ bucket, summary: summarizeRows(groupedRows, windowDays) }))
+      .sort((a, b) => (a.summary.postVsPre.clicksPerDay.absolute - b.summary.postVsPre.clicksPerDay.absolute));
+  };
+
+  const directoryBreakdown = useMemo(() => breakdownFromRows(filteredUrlRows, (row) => {
+    try {
+      const url = new URL(row.key);
+      const first = url.pathname.split('/').filter(Boolean)[0];
+      return first ? `/${first}/` : '/';
+    } catch {
+      return 'Sin dato';
+    }
+  }), [filteredUrlRows, windowDays]);
+  const templateBreakdown = useMemo(() => breakdownFromRows(filteredUrlRows, (row) => row.template || 'Sin template'), [filteredUrlRows, windowDays]);
+  const languageBreakdown = useMemo(() => breakdownFromRows(filteredUrlRows, (row) => inferLanguagePrefix(row.key)), [filteredUrlRows, windowDays]);
+  const pageTypeBreakdown = useMemo(() => breakdownFromRows(filteredUrlRows, (row) => inferPageType(row.key)), [filteredUrlRows, windowDays]);
+  const deviceBreakdown = useMemo(() => breakdownFromRows(deviceRows, (row) => row.key), [deviceRows, windowDays]);
+  const countryBreakdown = useMemo(() => breakdownFromRows(countryRows, (row) => row.key), [countryRows, windowDays]);
+
+  const patternSignals = useMemo(() => {
+    const clicksSeries = timeSeriesRows.map((row) => row.clicks);
+    const mean = clicksSeries.reduce((sum, value) => sum + value, 0) / Math.max(1, clicksSeries.length);
+    const variance = clicksSeries.reduce((sum, value) => sum + (value - mean) ** 2, 0) / Math.max(1, clicksSeries.length);
+    const volatility = mean > 0 ? Math.sqrt(variance) / mean : 0;
+    return detectPatternSignals({
+      global: globalSummary,
+      brand: brandSummary,
+      nonBrand: nonBrandSummary,
+      rolloutVolatility: volatility,
+      topNegativeDirectory: directoryBreakdown[0]?.bucket,
+      topNegativeCountry: countryBreakdown[0]?.bucket,
+      topNegativeDevice: deviceBreakdown[0]?.bucket,
+    });
+  }, [brandSummary, countryBreakdown, deviceBreakdown, directoryBreakdown, globalSummary, nonBrandSummary, timeSeriesRows]);
+
+  const timelineData = useMemo(
+    () =>
+      timeSeriesRows
+        .map((row) => ({
+          date: row.keys[0],
+          clicks: row.clicks,
+          impressions: row.impressions,
+          ctr: Number((row.ctr * 100).toFixed(2)),
+          position: Number(row.position.toFixed(2)),
+          phase:
+            row.keys[0] < ranges.rollout.start
+              ? 'pre'
+              : row.keys[0] <= ranges.rollout.end
+                ? 'rollout'
+                : 'post',
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date)),
+    [ranges.rollout.end, ranges.rollout.start, timeSeriesRows],
+  );
 
   useEffect(() => {
     GscImpactSegmentationRepository.saveUseCustomRulesByClientId(currentClientId, useCustomRules);
@@ -629,28 +818,82 @@ const GscImpactPage: React.FC = () => {
         <>
           <section className="surface-panel p-6">
             <h2 className="text-lg font-semibold">Resumen ejecutivo (solo Search Console, sin GA4)</h2>
+            <p className="mt-2 text-sm text-muted">
+              Comparativa normalizada por día para evitar sesgos por ventanas de distinta duración. Este módulo detecta patrones, no causalidad absoluta.
+            </p>
             <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
               <div className="metric-chip">
-                <p className="metric-label">Clics periodo actual</p>
-                <p className="text-2xl font-bold">{gscSummary.current.clicks.toLocaleString('es-ES')}</p>
+                <p className="metric-label">Clics/día post vs pre</p>
+                <p className="text-2xl font-bold">
+                  {globalSummary.post.clicksPerDay.toFixed(1)} vs {globalSummary.pre.clicksPerDay.toFixed(1)}
+                </p>
+                <p className="text-xs text-muted">
+                  Δ {globalSummary.postVsPre.clicksPerDay.absolute.toFixed(1)} ·{' '}
+                  {globalSummary.postVsPre.clicksPerDay.pct === null
+                    ? 'n/a'
+                    : `${(globalSummary.postVsPre.clicksPerDay.pct * 100).toFixed(1)}%`}
+                </p>
               </div>
               <div className="metric-chip">
-                <p className="metric-label">Clics comparativo</p>
-                <p className="text-2xl font-bold">{gscSummary.previous.clicks.toLocaleString('es-ES')}</p>
+                <p className="metric-label">Impresiones/día post vs pre</p>
+                <p className="text-2xl font-bold">
+                  {globalSummary.post.impressionsPerDay.toFixed(1)} vs {globalSummary.pre.impressionsPerDay.toFixed(1)}
+                </p>
+                <p className="text-xs text-muted">
+                  Δ {globalSummary.postVsPre.impressionsPerDay.absolute.toFixed(1)} ·{' '}
+                  {globalSummary.postVsPre.impressionsPerDay.pct === null
+                    ? 'n/a'
+                    : `${(globalSummary.postVsPre.impressionsPerDay.pct * 100).toFixed(1)}%`}
+                </p>
               </div>
               <div className="metric-chip">
-                <p className="metric-label">Delta clics</p>
-                <p className="text-2xl font-bold">{gscSummary.clickDelta.toLocaleString('es-ES')}</p>
+                <p className="metric-label">CTR post vs pre</p>
+                <p className="text-2xl font-bold">
+                  {(globalSummary.post.ctr * 100).toFixed(2)}% vs {(globalSummary.pre.ctr * 100).toFixed(2)}%
+                </p>
+                <p className="text-xs text-muted">
+                  Δ {(globalSummary.postVsPre.ctr.absolute * 100).toFixed(2)} pp ·{' '}
+                  {globalSummary.postVsPre.ctr.pct === null ? 'n/a' : `${(globalSummary.postVsPre.ctr.pct * 100).toFixed(1)}%`}
+                </p>
               </div>
               <div className="metric-chip">
-                <p className="metric-label">Delta impresiones</p>
-                <p className="text-2xl font-bold">{gscSummary.impressionDelta.toLocaleString('es-ES')}</p>
+                <p className="metric-label">Posición media post vs pre</p>
+                <p className="text-2xl font-bold">
+                  {globalSummary.post.position.toFixed(2)} vs {globalSummary.pre.position.toFixed(2)}
+                </p>
+                <p className="text-xs text-muted">Δ {globalSummary.postVsPre.position.absolute.toFixed(2)}</p>
               </div>
+            </div>
+            <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-3">
+              {[
+                { label: 'Todo', value: globalSummary },
+                { label: 'Brand', value: brandSummary },
+                { label: 'Non-brand', value: nonBrandSummary },
+              ].map((segment) => (
+                <div key={segment.label} className="surface-subtle p-3 text-sm">
+                  <p className="font-semibold">{segment.label}</p>
+                  <p>
+                    Clics/día {segment.value.pre.clicksPerDay.toFixed(1)} → {segment.value.post.clicksPerDay.toFixed(1)} ·
+                    CTR {(segment.value.pre.ctr * 100).toFixed(2)}% → {(segment.value.post.ctr * 100).toFixed(2)}%
+                  </p>
+                  <p className="text-xs text-muted">
+                    Ventanas: pre {segment.value.pre.days}d · rollout {segment.value.rollout.days}d · post {segment.value.post.days}d
+                  </p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 surface-subtle p-3 text-sm">
+              <p className="font-semibold">Interpretación automática (basada en reglas observables)</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5">
+                {executiveInterpretation.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
             </div>
           </section>
 
           <section className="surface-panel p-6">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-5">
               <div className="lg:col-span-2">
                 <label className="metric-label">Propiedad Search Console (sin GA4)</label>
                 <Input
@@ -714,6 +957,16 @@ const GscImpactPage: React.FC = () => {
                   onChange={(e) =>
                     setFilters((prev) => ({ ...prev, minImpressions: Number(e.target.value) || 0 }))
                   }
+                />
+              </div>
+              <div>
+                <label className="metric-label">Filtro mínimo clics</label>
+                <input
+                  className="form-control"
+                  type="number"
+                  min={0}
+                  value={filters.minClicks}
+                  onChange={(e) => setFilters((prev) => ({ ...prev, minClicks: Number(e.target.value) || 0 }))}
                 />
               </div>
             </div>
@@ -907,7 +1160,7 @@ const GscImpactPage: React.FC = () => {
               <div className="surface-subtle p-3 text-sm">
                 <p>
                   Filtros activos sincronizados en query params para compartir vista: segmentación, marca,
-                  directorio/template, device/country/searchType y mínimo de impresiones.
+                  directorio/template, device/country/searchType y mínimos de impresiones/clics.
                 </p>
               </div>
             </div>
@@ -939,10 +1192,85 @@ const GscImpactPage: React.FC = () => {
             {impactError && <p className="mt-2 text-sm text-danger">{impactError}</p>}
           </section>
 
+          <section className="surface-panel p-6">
+            <h3 className="text-lg font-semibold">Patrones detectados</h3>
+            <p className="section-subtitle">Señales heurísticas priorizadas por impacto probable. No implican causalidad absoluta.</p>
+            <div className="mt-3 space-y-2">
+              {patternSignals.map((signal) => (
+                <div key={signal.id} className="surface-subtle p-3 text-sm">
+                  <p className="font-semibold">
+                    {signal.title} <span className="text-xs text-muted">(confianza: {signal.confidence})</span>
+                  </p>
+                  <p>{signal.detail}</p>
+                </div>
+              ))}
+              {patternSignals.length === 0 && <p className="text-sm text-muted">Sin patrones robustos con la muestra actual.</p>}
+            </div>
+          </section>
+
+          <section className="surface-panel p-6">
+            <h3 className="text-lg font-semibold">Evolución temporal diaria</h3>
+            <p className="section-subtitle">
+              Serie diaria Search Console para validar si la caída coincide con rollout ({ranges.rollout.start} → {ranges.rollout.end}) o venía de antes.
+            </p>
+            <div className="mt-3 h-[320px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={timelineData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis yAxisId="left" />
+                  <YAxis yAxisId="right" orientation="right" />
+                  <Tooltip />
+                  <Legend />
+                  <Line yAxisId="left" type="monotone" dataKey="clicks" stroke="#2563eb" dot={false} name="Clicks" />
+                  <Line yAxisId="left" type="monotone" dataKey="impressions" stroke="#16a34a" dot={false} name="Impr." />
+                  <Line yAxisId="right" type="monotone" dataKey="ctr" stroke="#f97316" dot={false} name="CTR %" />
+                  <Line yAxisId="right" type="monotone" dataKey="position" stroke="#a855f7" dot={false} name="Posición" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            <p className="mt-2 text-xs text-muted">
+              Hitos de ventana: pre inicia {ranges.pre.start}, rollout inicia {ranges.rollout.start}, rollout termina {ranges.rollout.end}, post inicia {ranges.post.start}.
+            </p>
+          </section>
+
+          <section className="surface-panel p-6">
+            <h3 className="text-lg font-semibold">Segmentación agregada (impacto normalizado)</h3>
+            <p className="section-subtitle">Ordenado por mayor impacto negativo de clics/día (post vs pre).</p>
+            <div className="mt-3 grid grid-cols-1 gap-4 xl:grid-cols-2">
+              {[
+                { title: 'Directorio', data: directoryBreakdown },
+                { title: 'Template', data: templateBreakdown },
+                { title: 'Device', data: deviceBreakdown },
+                { title: 'Country', data: countryBreakdown },
+                { title: 'Idioma/prefijo', data: languageBreakdown },
+                { title: 'Tipo de página', data: pageTypeBreakdown },
+              ].map((block) => (
+                <Card key={block.title} className="p-4">
+                  <h4 className="font-semibold">{block.title}</h4>
+                  <div className="mt-2 space-y-2 text-sm">
+                    {block.data.slice(0, 6).map((item) => (
+                      <div key={`${block.title}-${item.bucket}`} className="surface-subtle p-2">
+                        <p className="font-medium">{item.bucket}</p>
+                        <p>
+                          Clicks/día {item.summary.pre.clicksPerDay.toFixed(1)} → {item.summary.post.clicksPerDay.toFixed(1)} ·
+                          Imp/día {item.summary.pre.impressionsPerDay.toFixed(1)} → {item.summary.post.impressionsPerDay.toFixed(1)}
+                        </p>
+                        <p className="text-xs text-muted">
+                          CTR {(item.summary.pre.ctr * 100).toFixed(2)}% → {(item.summary.post.ctr * 100).toFixed(2)}% · Pos {item.summary.pre.position.toFixed(2)} → {item.summary.post.position.toFixed(2)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </section>
+
           <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
             <Card className="p-5">
-              <h3 className="text-lg font-semibold">Winners por query (solo Search Console, sin GA4)</h3>
-              <p className="mt-2 text-xs text-muted">Leyenda: base = segmentación estándar · custom = reglas del cliente/proyecto.</p>
+              <h3 className="text-lg font-semibold">Mayor crecimiento por query</h3>
+              <p className="mt-2 text-xs text-muted">Score de oportunidad = delta clicks + delta CTR + mejora de posición ponderada por volumen base.</p>
               <div className="mt-3 space-y-2">
                 {topQueryWinners.map((row) => (
                   <div key={`qw-${row.key}`} className="surface-subtle p-3 text-sm">
@@ -950,14 +1278,16 @@ const GscImpactPage: React.FC = () => {
                       <p className="font-medium">{row.label}</p>
                       <Badge variant={getSourceBadgeVariant(row.source)}>{getSourceLabel(row)}</Badge>
                     </div>
-                    <p className="text-muted">Pre {row.preClicks} · Rollout {row.rolloutClicks} · Post {row.postClicks}</p>
+                    <p className="text-muted">
+                      Δ clicks {row.deltaClicks.toFixed(0)} · Δ CTR {(row.deltaCtr * 100).toFixed(2)}pp · score {row.opportunityScore}
+                    </p>
                   </div>
                 ))}
               </div>
             </Card>
 
             <Card className="p-5">
-              <h3 className="text-lg font-semibold">Losers por query (solo Search Console, sin GA4)</h3>
+              <h3 className="text-lg font-semibold">Mayor caída por query</h3>
               <div className="mt-3 space-y-2">
                 {topQueryLosers.map((row) => (
                   <div key={`ql-${row.key}`} className="surface-subtle p-3 text-sm">
@@ -965,14 +1295,16 @@ const GscImpactPage: React.FC = () => {
                       <p className="font-medium">{row.label}</p>
                       <Badge variant={getSourceBadgeVariant(row.source)}>{getSourceLabel(row)}</Badge>
                     </div>
-                    <p className="text-muted">Pre {row.preClicks} · Rollout {row.rolloutClicks} · Post {row.postClicks}</p>
+                    <p className="text-muted">
+                      Δ clicks {row.deltaClicks.toFixed(0)} · Δ CTR {(row.deltaCtr * 100).toFixed(2)}pp · score impacto {row.impactScore}
+                    </p>
                   </div>
                 ))}
               </div>
             </Card>
 
             <Card className="p-5">
-              <h3 className="text-lg font-semibold">Winners por URL (solo Search Console, sin GA4)</h3>
+              <h3 className="text-lg font-semibold">Mayor crecimiento por URL</h3>
               <div className="mt-3 space-y-2">
                 {topUrlWinners.map((row) => (
                   <div key={`uw-${row.key}`} className="surface-subtle p-3 text-sm">
@@ -980,14 +1312,16 @@ const GscImpactPage: React.FC = () => {
                       <p className="font-medium truncate">{row.label}</p>
                       <Badge variant={getSourceBadgeVariant(row.source)}>{getSourceLabel(row)}</Badge>
                     </div>
-                    <p className="text-muted">Pre {row.preClicks} · Rollout {row.rolloutClicks} · Post {row.postClicks}</p>
+                    <p className="text-muted">
+                      Δ clicks {row.deltaClicks.toFixed(0)} · Δ CTR {(row.deltaCtr * 100).toFixed(2)}pp · score {row.opportunityScore}
+                    </p>
                   </div>
                 ))}
               </div>
             </Card>
 
             <Card className="p-5">
-              <h3 className="text-lg font-semibold">Losers por URL (solo Search Console, sin GA4)</h3>
+              <h3 className="text-lg font-semibold">Mayor caída por URL</h3>
               <div className="mt-3 space-y-2">
                 {topUrlLosers.map((row) => (
                   <div key={`ul-${row.key}`} className="surface-subtle p-3 text-sm">
@@ -995,7 +1329,9 @@ const GscImpactPage: React.FC = () => {
                       <p className="font-medium truncate">{row.label}</p>
                       <Badge variant={getSourceBadgeVariant(row.source)}>{getSourceLabel(row)}</Badge>
                     </div>
-                    <p className="text-muted">Pre {row.preClicks} · Rollout {row.rolloutClicks} · Post {row.postClicks}</p>
+                    <p className="text-muted">
+                      Δ clicks {row.deltaClicks.toFixed(0)} · Δ CTR {(row.deltaCtr * 100).toFixed(2)}pp · score impacto {row.impactScore}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -1003,11 +1339,25 @@ const GscImpactPage: React.FC = () => {
           </section>
 
           <section className="surface-panel p-6">
+            <h3 className="text-lg font-semibold">Mayor deterioro de CTR (URLs)</h3>
+            <div className="mt-3 space-y-2">
+              {topCtrDeterioration.map((row) => (
+                <div key={`ctr-loss-${row.key}`} className="surface-subtle p-3 text-sm">
+                  <p className="font-medium truncate">{row.label}</p>
+                  <p className="text-muted">
+                    CTR {(row.preCtr * 100).toFixed(2)}% → {(row.postCtr * 100).toFixed(2)}% · Δ {(row.deltaCtr * 100).toFixed(2)}pp
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="surface-panel p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h3 className="text-lg font-semibold">URLs inspeccionadas (URL Inspection)</h3>
                 <p className="section-subtitle">
-                  Muestra automática de URLs afectadas por caída de clics/impresiones o peor delta de posición.
+                  Priorización por pérdida neta de clicks/impresiones, caída de CTR, empeoramiento de posición y volumen base.
                 </p>
               </div>
               <Button onClick={() => void inspectSampledUrls()} disabled={isInspecting || sampledAffectedUrls.length === 0}>
@@ -1026,7 +1376,10 @@ const GscImpactPage: React.FC = () => {
                       <th className="px-2 py-2">URL</th>
                       <th className="px-2 py-2">Δ clicks</th>
                       <th className="px-2 py-2">Δ imp</th>
+                      <th className="px-2 py-2">Δ CTR</th>
                       <th className="px-2 py-2">Δ pos</th>
+                      <th className="px-2 py-2">Score</th>
+                      <th className="px-2 py-2">Motivo</th>
                       <th className="px-2 py-2">Origen</th>
                     </tr>
                   </thead>
@@ -1036,7 +1389,10 @@ const GscImpactPage: React.FC = () => {
                         <td className="max-w-[480px] truncate px-2 py-2">{row.key}</td>
                         <td className="px-2 py-2">{row.clickDelta}</td>
                         <td className="px-2 py-2">{row.impressionDelta}</td>
+                        <td className="px-2 py-2">{(row.ctrDelta * 100).toFixed(2)}pp</td>
                         <td className="px-2 py-2">{row.positionDelta.toFixed(2)}</td>
+                        <td className="px-2 py-2">{row.priorityScore}</td>
+                        <td className="px-2 py-2">{row.reason}</td>
                         <td className="px-2 py-2">
                           <Badge variant={getSourceBadgeVariant(row.source)}>{getSourceLabel(row)}</Badge>
                         </td>
