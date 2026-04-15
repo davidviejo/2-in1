@@ -57,6 +57,7 @@ import {
   sortPortfolioRows,
   summarizePortfolioStatusCounts,
 } from '@/features/gsc-impact/portfolioAnalysis';
+import * as XLSX from 'xlsx';
 
 type DeviceFilter = 'all' | 'DESKTOP' | 'MOBILE' | 'TABLET';
 
@@ -252,6 +253,12 @@ const downloadCsv = (fileName: string, headers: string[], rows: Array<Array<stri
   anchor.download = fileName;
   anchor.click();
   URL.revokeObjectURL(url);
+};
+
+const safePctString = (value: number | null | undefined) => (value === null || value === undefined ? 'NA' : value);
+const safePctDelta = (current: number, previous: number) => {
+  if (previous === 0) return current === 0 ? 0 : null;
+  return (current - previous) / Math.abs(previous);
 };
 
 const buildFilterState = (
@@ -985,56 +992,139 @@ const GscImpactPage: React.FC = () => {
   }, [currentClientId, useCustomRules]);
 
   const exportIndividualDataset = () => {
-    const rows = filteredUrlRows.map((row) => [
-      row.key,
-      row.template || '',
-      row.preClicks,
-      row.rolloutClicks,
-      row.postClicks,
-      row.deltaClicks,
-      row.deltaClicksPct,
-      row.preImpressions,
-      row.postImpressions,
-      row.deltaImpressions,
-      row.preCtr,
-      row.postCtr,
-      row.deltaCtr,
-      row.prePosition,
-      row.postPosition,
-      row.deltaPosition,
-      row.impactScore,
-      row.opportunityScore,
-      row.source,
-      row.ruleId,
-      row.ruleType,
-    ]);
-    downloadCsv(
-      `gsc_impact_individual_${new Date().toISOString().slice(0, 10)}.csv`,
-      [
-        'url',
-        'template',
-        'pre_clicks',
-        'rollout_clicks',
-        'post_clicks',
-        'delta_clicks',
-        'delta_clicks_pct',
-        'pre_impressions',
-        'post_impressions',
-        'delta_impressions',
-        'pre_ctr',
-        'post_ctr',
-        'delta_ctr',
-        'pre_position',
-        'post_position',
-        'delta_position',
-        'impact_score',
-        'opportunity_score',
-        'source',
-        'rule_id',
-        'rule_type',
-      ],
-      rows,
+    const workbook = XLSX.utils.book_new();
+
+    const summaryRows = [
+      {
+        analysis_mode: 'solo_search_console_sin_ga4',
+        exported_at: new Date().toISOString(),
+        property: selectedSite,
+        search_type: filters.searchType,
+        device_filter: filters.device,
+        country_filter: filters.country || 'all',
+        segment_filter: filters.segmentFilter,
+        min_impressions: filters.minImpressions,
+        min_clicks: filters.minClicks,
+        path_prefix: filters.pathPrefix || 'all',
+        template_filter: filters.selectedTemplate,
+        use_custom_rules: useCustomRules,
+        pre_start: ranges.pre.start,
+        pre_end: ranges.pre.end,
+        rollout_start: ranges.rollout.start,
+        rollout_end: ranges.rollout.end,
+        post_start: ranges.post.start,
+        post_end: ranges.post.end,
+        total_urls_analyzed: scoredUrlRows.length,
+        total_queries_analyzed: scoredQueryRows.length,
+      },
+    ];
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), 'Resumen');
+
+    const urlRows = scoredUrlRows.map((row) => ({
+      url: row.key,
+      template: row.template || 'Sin template',
+      pre_clicks: row.preClicks,
+      rollout_clicks: row.rolloutClicks,
+      post_clicks: row.postClicks,
+      pre_impressions: row.preImpressions,
+      rollout_impressions: row.rolloutImpressions,
+      post_impressions: row.postImpressions,
+      pre_position: row.prePosition,
+      rollout_position: row.rolloutPosition,
+      post_position: row.postPosition,
+      pre_ctr: row.preCtr,
+      post_ctr: row.postCtr,
+      delta_clicks: row.deltaClicks,
+      delta_clicks_pct: safePctString(row.deltaClicksPct),
+      delta_impressions: row.postImpressions - row.preImpressions,
+      delta_impressions_pct: safePctString(safePctDelta(row.postImpressions, row.preImpressions)),
+      delta_ctr: row.deltaCtr,
+      delta_position: row.deltaPosition,
+      impact_score: row.impactScore,
+      opportunity_score: row.opportunityScore,
+      ctr_deterioration_score: row.ctrDeteriorationScore,
+      source: row.source,
+      rule_id: row.ruleId,
+      rule_type: row.ruleType,
+    }));
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(urlRows), 'URLs');
+
+    const queryRows = scoredQueryRows.map((row) => ({
+      query: row.label,
+      pre_clicks: row.preClicks,
+      rollout_clicks: row.rolloutClicks,
+      post_clicks: row.postClicks,
+      pre_impressions: row.preImpressions,
+      rollout_impressions: row.rolloutImpressions,
+      post_impressions: row.postImpressions,
+      pre_position: row.prePosition,
+      rollout_position: row.rolloutPosition,
+      post_position: row.postPosition,
+      pre_ctr: row.preCtr,
+      post_ctr: row.postCtr,
+      delta_clicks: row.deltaClicks,
+      delta_clicks_pct: safePctString(row.deltaClicksPct),
+      delta_impressions: row.postImpressions - row.preImpressions,
+      delta_impressions_pct: safePctString(safePctDelta(row.postImpressions, row.preImpressions)),
+      delta_ctr: row.deltaCtr,
+      delta_position: row.deltaPosition,
+      impact_score: row.impactScore,
+      opportunity_score: row.opportunityScore,
+      ctr_deterioration_score: row.ctrDeteriorationScore,
+      source: row.source,
+      rule_id: row.ruleId,
+      rule_type: row.ruleType,
+    }));
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(queryRows), 'Queries');
+
+    const timelineRows = timelineData.map((row) => ({
+      date: row.date,
+      phase: row.phase,
+      clicks: row.clicks,
+      impressions: row.impressions,
+      ctr_pct: row.ctr,
+      position: row.position,
+    }));
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(timelineRows), 'Timeline');
+
+    const breakdownBlocks = [
+      { category: 'directory', rows: directoryBreakdown },
+      { category: 'template', rows: templateBreakdown },
+      { category: 'device', rows: deviceBreakdown },
+      { category: 'country', rows: countryBreakdown },
+      { category: 'language_prefix', rows: languageBreakdown },
+      { category: 'page_type', rows: pageTypeBreakdown },
+    ];
+    const breakdownRows = breakdownBlocks.flatMap((block) =>
+      block.rows.map((row) => ({
+        category: block.category,
+        bucket: row.bucket,
+        pre_clicks_day: row.summary.pre.clicksPerDay,
+        post_clicks_day: row.summary.post.clicksPerDay,
+        delta_clicks_day: row.summary.postVsPre.clicksPerDay.absolute,
+        pre_impressions_day: row.summary.pre.impressionsPerDay,
+        post_impressions_day: row.summary.post.impressionsPerDay,
+        delta_impressions_day: row.summary.postVsPre.impressionsPerDay.absolute,
+        pre_ctr: row.summary.pre.ctr,
+        post_ctr: row.summary.post.ctr,
+        delta_ctr: row.summary.postVsPre.ctr.absolute,
+        pre_position: row.summary.pre.position,
+        post_position: row.summary.post.position,
+        delta_position: row.summary.postVsPre.position.absolute,
+      })),
     );
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(breakdownRows), 'Segmentacion');
+
+    const signalRows = patternSignals.map((signal) => ({
+      id: signal.id,
+      title: signal.title,
+      detail: signal.detail,
+      confidence: signal.confidence,
+      priority: signal.priority,
+    }));
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(signalRows), 'Patrones');
+
+    XLSX.writeFile(workbook, `gsc_impact_individual_full_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   const exportPortfolioDataset = () => {
@@ -1742,7 +1832,7 @@ const GscImpactPage: React.FC = () => {
                 Refrescar bloque pre/rollout/post
               </Button>
               <Button variant="secondary" onClick={exportIndividualDataset} disabled={filteredUrlRows.length === 0}>
-                Exportar impacto URL (CSV/Sheets)
+                Exportar informe completo (XLSX)
               </Button>
               {(isLoadingGsc || loadingImpact) && <Spinner size={18} />}
             </div>
