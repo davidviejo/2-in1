@@ -218,6 +218,22 @@ const mergeWithTemplateModules = (currentModules: ModuleData[], templateModules:
   return [...merged, ...deepCopy(customModules)];
 };
 
+const createFallbackClient = (): Client => {
+  const mediaStrategy = StrategyFactory.getStrategy('media');
+  return {
+    id: crypto.randomUUID(),
+    name: 'Proyecto Demo',
+    vertical: 'media',
+    modules: mediaStrategy.getModules(),
+    templateVersion: mediaStrategy.getTemplateVersion(),
+    createdAt: Date.now(),
+    notes: [],
+    completedTasksLog: [],
+    customRoadmapOrder: [],
+    iaVisibility: createDefaultIAVisibilityState(),
+  };
+};
+
 export class ClientRepository {
   static getClients(): Client[] {
     const savedClients = localStorage.getItem(CLIENTS_KEY);
@@ -228,8 +244,13 @@ export class ClientRepository {
         const migratedClients = parsedClients.map((client: Client) =>
           normalizeClient(client, { validateDuplicateTaskIds: true }),
         );
-
-        return this.migrateModules(migratedClients);
+        const normalized = this.migrateModules(migratedClients);
+        if (normalized.length === 0) {
+          const fallbackClient = createFallbackClient();
+          localStorage.setItem(CLIENTS_KEY, JSON.stringify([fallbackClient]));
+          return [fallbackClient];
+        }
+        return normalized;
       } catch (e) {
         console.error('Failed to parse clients', e);
       }
@@ -243,6 +264,11 @@ export class ClientRepository {
           normalizeClient(client, { validateDuplicateTaskIds: true }),
         );
         const normalized = this.migrateModules(migratedClients);
+        if (normalized.length === 0) {
+          const fallbackClient = createFallbackClient();
+          localStorage.setItem(CLIENTS_KEY, JSON.stringify([fallbackClient]));
+          return [fallbackClient];
+        }
         localStorage.setItem(CLIENTS_KEY, JSON.stringify(normalized));
         return normalized;
       } catch (e) {
@@ -273,21 +299,7 @@ export class ClientRepository {
       }
     }
 
-    const mediaStrategy = StrategyFactory.getStrategy('media');
-    return [
-      {
-        id: crypto.randomUUID(),
-        name: 'Proyecto Demo',
-        vertical: 'media',
-        modules: mediaStrategy.getModules(),
-        templateVersion: mediaStrategy.getTemplateVersion(),
-        createdAt: Date.now(),
-        notes: [],
-        completedTasksLog: [],
-        customRoadmapOrder: [],
-        iaVisibility: createDefaultIAVisibilityState(),
-      },
-    ];
+    return [createFallbackClient()];
   }
 
   static saveClients(clients: Client[]): void {

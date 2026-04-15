@@ -53,6 +53,30 @@ describe('ClientRepository', () => {
     expect(saved[0].vertical).toBe('media');
   });
 
+  it('creates and persists a fallback client when v2 cache is an empty array', () => {
+    localStorage.setItem('mediaflow_clients_cache_v2', JSON.stringify([]));
+
+    const clients = ClientRepository.getClients();
+    const persisted = JSON.parse(localStorage.getItem('mediaflow_clients_cache_v2') || '[]');
+
+    expect(clients.length).toBeGreaterThan(0);
+    expect(clients[0].name).toBe('Proyecto Demo');
+    expect(clients[0].vertical).toBe('media');
+    expect(persisted.length).toBeGreaterThan(0);
+  });
+
+  it('creates and persists a fallback client when legacy cache migrates to an empty array', () => {
+    localStorage.setItem('mediaflow_clients', JSON.stringify([]));
+
+    const clients = ClientRepository.getClients();
+    const persisted = JSON.parse(localStorage.getItem('mediaflow_clients_cache_v2') || '[]');
+
+    expect(clients.length).toBeGreaterThan(0);
+    expect(clients[0].name).toBe('Proyecto Demo');
+    expect(clients[0].vertical).toBe('media');
+    expect(persisted.length).toBeGreaterThan(0);
+  });
+
 
 
   it('migrates modules when template version changes preserving completed task states', () => {
