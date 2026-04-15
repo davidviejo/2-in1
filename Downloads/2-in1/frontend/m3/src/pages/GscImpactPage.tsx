@@ -231,8 +231,28 @@ const getActionableSignals = (row: UrlInspectionRow): string[] => {
 };
 
 const SHARED_RULES_PARAM = 'sharedRules';
+const GSC_ANALYSIS_ROWS = 1000;
+const PORTFOLIO_BATCH_SIZE = 5;
+const DISPLAY_LIMIT_OPTIONS = [10, 25, 50, 100, 250, 500, 1000] as const;
 
 const splitByLines = (value: string[]) => value.join('\n');
+
+const toCsvCell = (value: string | number | boolean | null | undefined) => {
+  const normalized = value === null || value === undefined ? '' : String(value);
+  const escaped = normalized.replace(/"/g, '""');
+  return `"${escaped}"`;
+};
+
+const downloadCsv = (fileName: string, headers: string[], rows: Array<Array<string | number | boolean | null | undefined>>) => {
+  const csv = [headers.map(toCsvCell).join(','), ...rows.map((row) => row.map(toCsvCell).join(','))].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.click();
+  URL.revokeObjectURL(url);
+};
 
 const buildFilterState = (
   params: URLSearchParams,
@@ -297,6 +317,7 @@ const GscImpactPage: React.FC = () => {
   const [filters, setFilters] = useState<FilterState>(initialFilters);
   const [loadingImpact, setLoadingImpact] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
+  const [displayLimit, setDisplayLimit] = useState<number>(Number(searchParams.get('topN') || 1000) || 1000);
   const [impactError, setImpactError] = useState<string | null>(null);
   const [inspectionRows, setInspectionRows] = useState<UrlInspectionRow[]>([]);
   const [inspectionErrors, setInspectionErrors] = useState<UrlInspectionErrorItem[]>([]);
@@ -313,6 +334,7 @@ const GscImpactPage: React.FC = () => {
   const [portfolioRows, setPortfolioRows] = useState<PortfolioPropertyRow[]>([]);
   const [loadingPortfolio, setLoadingPortfolio] = useState(false);
   const [portfolioError, setPortfolioError] = useState<string | null>(null);
+  const [portfolioStatus, setPortfolioStatus] = useState<string | null>(null);
 
   const [queryRows, setQueryRows] = useState<ImpactRow[]>([]);
   const [urlRows, setUrlRows] = useState<ImpactRow[]>([]);
@@ -370,6 +392,13 @@ const GscImpactPage: React.FC = () => {
   }, [searchParams, viewMode]);
 
   useEffect(() => {
+    const nextTopN = Number(searchParams.get('topN') || 1000) || 1000;
+    if (nextTopN !== displayLimit) {
+      setDisplayLimit(nextTopN);
+    }
+  }, [displayLimit, searchParams]);
+
+  useEffect(() => {
     const next = new URLSearchParams();
     next.set('segment', filters.segmentFilter);
     next.set('minImpressions', String(filters.minImpressions));
@@ -387,6 +416,7 @@ const GscImpactPage: React.FC = () => {
     next.set('onlyNegative', globalFilters.onlyNegative ? '1' : '0');
     next.set('onlyUrgent', globalFilters.onlyUrgent ? '1' : '0');
     next.set('globalSort', globalFilters.sortBy);
+    next.set('topN', String(displayLimit));
     if (useSharedRuleParams) {
       next.set(SHARED_RULES_PARAM, '1');
       next.set('brandTerms', filters.brandTermsText);
@@ -397,7 +427,18 @@ const GscImpactPage: React.FC = () => {
     if (next.toString() !== searchParams.toString()) {
       setSearchParams(next, { replace: true });
     }
-  }, [filters, globalFilters, periodRanges, rolloutDate, searchParams, setSearchParams, useCustomRules, useSharedRuleParams, viewMode]);
+  }, [
+    displayLimit,
+    filters,
+    globalFilters,
+    periodRanges,
+    rolloutDate,
+    searchParams,
+    setSearchParams,
+    useCustomRules,
+    useSharedRuleParams,
+    viewMode,
+  ]);
 
   useEffect(() => {
     GscImpactSegmentationRepository.saveConfigByClientId(currentClientId, {
@@ -463,7 +504,7 @@ const GscImpactPage: React.FC = () => {
           postByCountry,
           fullSeries,
         ] = await Promise.all([
-          getGSCQueryData(gscAccessToken, selectedSite, ranges.pre.start, ranges.pre.end, 1000, {
+          getGSCQueryData(gscAccessToken, selectedSite, ranges.pre.start, ranges.pre.end, GSC_ANALYSIS_ROWS, {
             searchType: filters.searchType,
             dimensionFilterGroups,
           }),
@@ -472,14 +513,14 @@ const GscImpactPage: React.FC = () => {
             selectedSite,
             ranges.rollout.start,
             ranges.rollout.end,
-            1000,
+            GSC_ANALYSIS_ROWS,
             { searchType: filters.searchType, dimensionFilterGroups },
           ),
-          getGSCQueryData(gscAccessToken, selectedSite, ranges.post.start, ranges.post.end, 1000, {
+          getGSCQueryData(gscAccessToken, selectedSite, ranges.post.start, ranges.post.end, GSC_ANALYSIS_ROWS, {
             searchType: filters.searchType,
             dimensionFilterGroups,
           }),
-          getGSCQueryPageData(gscAccessToken, selectedSite, ranges.pre.start, ranges.pre.end, 1200, {
+          getGSCQueryPageData(gscAccessToken, selectedSite, ranges.pre.start, ranges.pre.end, GSC_ANALYSIS_ROWS, {
             searchType: filters.searchType,
             dimensionFilterGroups,
           }),
@@ -488,10 +529,10 @@ const GscImpactPage: React.FC = () => {
             selectedSite,
             ranges.rollout.start,
             ranges.rollout.end,
-            1200,
+            GSC_ANALYSIS_ROWS,
             { searchType: filters.searchType, dimensionFilterGroups },
           ),
-          getGSCQueryPageData(gscAccessToken, selectedSite, ranges.post.start, ranges.post.end, 1200, {
+          getGSCQueryPageData(gscAccessToken, selectedSite, ranges.post.start, ranges.post.end, GSC_ANALYSIS_ROWS, {
             searchType: filters.searchType,
             dimensionFilterGroups,
           }),
@@ -602,17 +643,20 @@ const GscImpactPage: React.FC = () => {
     const fetchPortfolioImpact = async () => {
       if (!gscAccessToken || gscSites.length === 0) {
         setPortfolioRows([]);
+        setPortfolioStatus(null);
         return;
       }
 
       if (periodRangeErrors.length > 0) {
         setPortfolioError(`Rangos inválidos: ${periodRangeErrors.join(' ')}`);
         setPortfolioRows([]);
+        setPortfolioStatus(null);
         return;
       }
 
       setLoadingPortfolio(true);
       setPortfolioError(null);
+      setPortfolioStatus('Preparando análisis portfolio…');
 
       try {
         const days = {
@@ -620,51 +664,69 @@ const GscImpactPage: React.FC = () => {
           rollout: getDaysBetweenInclusive(ranges.rollout.start, ranges.rollout.end),
           post: getDaysBetweenInclusive(ranges.post.start, ranges.post.end),
         };
-        const sitesToAnalyze = (siteSearch.trim() ? filteredSites : gscSites).slice(0, 30);
-        const perSite = await Promise.all(
-          sitesToAnalyze.map(async (site) => {
-            const [preQuery, rolloutQuery, postQuery] = await Promise.all([
-              getGSCQueryData(gscAccessToken, site.siteUrl, ranges.pre.start, ranges.pre.end, 900, {
-                searchType: filters.searchType,
-                dimensionFilterGroups,
-              }),
-              getGSCQueryData(gscAccessToken, site.siteUrl, ranges.rollout.start, ranges.rollout.end, 900, {
-                searchType: filters.searchType,
-                dimensionFilterGroups,
-              }),
-              getGSCQueryData(gscAccessToken, site.siteUrl, ranges.post.start, ranges.post.end, 900, {
-                searchType: filters.searchType,
-                dimensionFilterGroups,
-              }),
-            ]);
+        const sitesToAnalyze = siteSearch.trim() ? filteredSites : gscSites;
+        const perSite: PortfolioPropertyRow[] = [];
 
-            const mergedRows = mergePeriods(
-              aggregateByKey(preQuery, 0),
-              aggregateByKey(rolloutQuery, 0),
-              aggregateByKey(postQuery, 0),
-            );
-            const brandRows = mergedRows.filter((row) => isBrandQuery(row.label, brandTerms));
-            const nonBrandRows = mergedRows.filter((row) => !isBrandQuery(row.label, brandTerms));
-            const totalSummary = summarizeRows(mergedRows, days);
-            const brandSummary = summarizeRows(brandRows, days);
-            const nonBrandSummary = summarizeRows(nonBrandRows, days);
+        for (let i = 0; i < sitesToAnalyze.length; i += PORTFOLIO_BATCH_SIZE) {
+          const batch = sitesToAnalyze.slice(i, i + PORTFOLIO_BATCH_SIZE);
+          setPortfolioStatus(
+            `Analizando portfolio: ${Math.min(i + batch.length, sitesToAnalyze.length)}/${sitesToAnalyze.length} propiedades`,
+          );
 
-            // Fallback actual: la app mantiene términos brand por cliente/proyecto.
-            // Si en el futuro hay configuración brand por propiedad, se debe resolver aquí.
-            return buildPortfolioPropertyRow({
-              property: site.siteUrl,
-              total: totalSummary,
-              brand: brandSummary,
-              nonBrand: nonBrandSummary,
-            });
-          }),
-        );
+          const batchResults = await Promise.all(
+            batch.map(async (site) => {
+              const [preQuery, rolloutQuery, postQuery] = await Promise.all([
+                getGSCQueryData(gscAccessToken, site.siteUrl, ranges.pre.start, ranges.pre.end, GSC_ANALYSIS_ROWS, {
+                  searchType: filters.searchType,
+                  dimensionFilterGroups,
+                }),
+                getGSCQueryData(
+                  gscAccessToken,
+                  site.siteUrl,
+                  ranges.rollout.start,
+                  ranges.rollout.end,
+                  GSC_ANALYSIS_ROWS,
+                  {
+                    searchType: filters.searchType,
+                    dimensionFilterGroups,
+                  },
+                ),
+                getGSCQueryData(gscAccessToken, site.siteUrl, ranges.post.start, ranges.post.end, GSC_ANALYSIS_ROWS, {
+                  searchType: filters.searchType,
+                  dimensionFilterGroups,
+                }),
+              ]);
+
+              const mergedRows = mergePeriods(
+                aggregateByKey(preQuery, 0),
+                aggregateByKey(rolloutQuery, 0),
+                aggregateByKey(postQuery, 0),
+              );
+              const brandRows = mergedRows.filter((row) => isBrandQuery(row.label, brandTerms));
+              const nonBrandRows = mergedRows.filter((row) => !isBrandQuery(row.label, brandTerms));
+              const totalSummary = summarizeRows(mergedRows, days);
+              const brandSummary = summarizeRows(brandRows, days);
+              const nonBrandSummary = summarizeRows(nonBrandRows, days);
+
+              return buildPortfolioPropertyRow({
+                property: site.siteUrl,
+                total: totalSummary,
+                brand: brandSummary,
+                nonBrand: nonBrandSummary,
+              });
+            }),
+          );
+          perSite.push(...batchResults);
+        }
+
         setPortfolioRows(perSite);
+        setPortfolioStatus(`Portfolio completado: ${perSite.length} propiedades analizadas.`);
       } catch (error) {
         setPortfolioError(
           error instanceof Error ? error.message : 'No se pudo cargar el análisis multi-site desde Search Console.',
         );
         setPortfolioRows([]);
+        setPortfolioStatus(null);
       } finally {
         setLoadingPortfolio(false);
       }
@@ -747,13 +809,25 @@ const GscImpactPage: React.FC = () => {
     [filteredUrlRows, filters.minClicks, filters.minImpressions],
   );
 
-  const topQueryWinners = useMemo(() => [...scoredQueryRows].sort((a, b) => b.opportunityScore - a.opportunityScore).slice(0, 8), [scoredQueryRows]);
-  const topQueryLosers = useMemo(() => [...scoredQueryRows].sort((a, b) => b.impactScore - a.impactScore).slice(0, 8), [scoredQueryRows]);
-  const topUrlWinners = useMemo(() => [...scoredUrlRows].sort((a, b) => b.opportunityScore - a.opportunityScore).slice(0, 8), [scoredUrlRows]);
-  const topUrlLosers = useMemo(() => [...scoredUrlRows].sort((a, b) => b.impactScore - a.impactScore).slice(0, 8), [scoredUrlRows]);
+  const topQueryWinners = useMemo(
+    () => [...scoredQueryRows].sort((a, b) => b.opportunityScore - a.opportunityScore).slice(0, displayLimit),
+    [displayLimit, scoredQueryRows],
+  );
+  const topQueryLosers = useMemo(
+    () => [...scoredQueryRows].sort((a, b) => b.impactScore - a.impactScore).slice(0, displayLimit),
+    [displayLimit, scoredQueryRows],
+  );
+  const topUrlWinners = useMemo(
+    () => [...scoredUrlRows].sort((a, b) => b.opportunityScore - a.opportunityScore).slice(0, displayLimit),
+    [displayLimit, scoredUrlRows],
+  );
+  const topUrlLosers = useMemo(
+    () => [...scoredUrlRows].sort((a, b) => b.impactScore - a.impactScore).slice(0, displayLimit),
+    [displayLimit, scoredUrlRows],
+  );
   const topCtrDeterioration = useMemo(
-    () => [...scoredUrlRows].sort((a, b) => b.ctrDeteriorationScore - a.ctrDeteriorationScore).slice(0, 8),
-    [scoredUrlRows],
+    () => [...scoredUrlRows].sort((a, b) => b.ctrDeteriorationScore - a.ctrDeteriorationScore).slice(0, displayLimit),
+    [displayLimit, scoredUrlRows],
   );
 
   const sampledAffectedUrls = useMemo(
@@ -762,8 +836,8 @@ const GscImpactPage: React.FC = () => {
         .map(toSampleRow)
         .filter((row) => row.clickDelta < 0 || row.impressionDelta < 0 || row.positionDelta > 0 || row.ctrDelta < 0)
         .sort((a, b) => b.priorityScore - a.priorityScore)
-        .slice(0, 10),
-    [filteredUrlRows],
+        .slice(0, displayLimit),
+    [displayLimit, filteredUrlRows],
   );
 
   const globalSummary = useMemo(() => summarizeRows(filteredUrlRows, windowDays), [filteredUrlRows, windowDays]);
@@ -910,6 +984,120 @@ const GscImpactPage: React.FC = () => {
     GscImpactSegmentationRepository.saveUseCustomRulesByClientId(currentClientId, useCustomRules);
   }, [currentClientId, useCustomRules]);
 
+  const exportIndividualDataset = () => {
+    const rows = filteredUrlRows.map((row) => [
+      row.key,
+      row.template || '',
+      row.preClicks,
+      row.rolloutClicks,
+      row.postClicks,
+      row.deltaClicks,
+      row.deltaClicksPct,
+      row.preImpressions,
+      row.postImpressions,
+      row.deltaImpressions,
+      row.preCtr,
+      row.postCtr,
+      row.deltaCtr,
+      row.prePosition,
+      row.postPosition,
+      row.deltaPosition,
+      row.impactScore,
+      row.opportunityScore,
+      row.source,
+      row.ruleId,
+      row.ruleType,
+    ]);
+    downloadCsv(
+      `gsc_impact_individual_${new Date().toISOString().slice(0, 10)}.csv`,
+      [
+        'url',
+        'template',
+        'pre_clicks',
+        'rollout_clicks',
+        'post_clicks',
+        'delta_clicks',
+        'delta_clicks_pct',
+        'pre_impressions',
+        'post_impressions',
+        'delta_impressions',
+        'pre_ctr',
+        'post_ctr',
+        'delta_ctr',
+        'pre_position',
+        'post_position',
+        'delta_position',
+        'impact_score',
+        'opportunity_score',
+        'source',
+        'rule_id',
+        'rule_type',
+      ],
+      rows,
+    );
+  };
+
+  const exportPortfolioDataset = () => {
+    const rows = sortedPortfolioRows.map((row) => [
+      row.property,
+      row.preClicks,
+      row.rolloutClicks,
+      row.postClicks,
+      row.preClicksPerDay,
+      row.postClicksPerDay,
+      row.deltaClicks,
+      row.deltaClicksPct,
+      row.preImpressions,
+      row.postImpressions,
+      row.preImpressionsPerDay,
+      row.postImpressionsPerDay,
+      row.preCtr,
+      row.postCtr,
+      row.deltaCtr,
+      row.prePosition,
+      row.postPosition,
+      row.deltaPosition,
+      row.brandDeltaClicksPerDay,
+      row.nonBrandDeltaClicksPerDay,
+      row.riskScore,
+      row.status,
+      row.quality,
+      row.qualityReason,
+      row.consistencyScore,
+    ]);
+    downloadCsv(
+      `gsc_impact_portfolio_${new Date().toISOString().slice(0, 10)}.csv`,
+      [
+        'property',
+        'pre_clicks',
+        'rollout_clicks',
+        'post_clicks',
+        'pre_clicks_day',
+        'post_clicks_day',
+        'delta_clicks',
+        'delta_clicks_pct',
+        'pre_impressions',
+        'post_impressions',
+        'pre_impressions_day',
+        'post_impressions_day',
+        'pre_ctr',
+        'post_ctr',
+        'delta_ctr',
+        'pre_position',
+        'post_position',
+        'delta_position',
+        'brand_delta_clicks_day',
+        'non_brand_delta_clicks_day',
+        'risk_score',
+        'status',
+        'quality',
+        'quality_reason',
+        'consistency_score',
+      ],
+      rows,
+    );
+  };
+
   const inspectSampledUrls = async () => {
     if (!selectedSite || sampledAffectedUrls.length === 0) {
       setInspectionStatus('No hay URLs afectadas para inspeccionar en esta vista.');
@@ -1043,6 +1231,29 @@ const GscImpactPage: React.FC = () => {
               )}
             </div>
 
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+              <div>
+                <label className="metric-label">Resultados visibles (Top N)</label>
+                <select
+                  className="form-control"
+                  value={displayLimit}
+                  onChange={(e) => setDisplayLimit(Number(e.target.value) || 1000)}
+                >
+                  {DISPLAY_LIMIT_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="surface-subtle p-2 text-sm md:col-span-2">
+                <p>
+                  Extracción por periodo: hasta {GSC_ANALYSIS_ROWS.toLocaleString('es-ES')} filas de GSC para queries y URLs.
+                  Puedes exportar todo lo cargado a CSV para abrirlo en Google Sheets.
+                </p>
+              </div>
+            </div>
+
             {viewMode === 'global' && (
               <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
                 <label className="surface-subtle flex items-center gap-2 p-2 text-sm">
@@ -1102,6 +1313,7 @@ const GscImpactPage: React.FC = () => {
                   </ul>
                 </div>
                 {(loadingPortfolio || isLoadingGsc) && <div className="mt-3"><Spinner size={18} /></div>}
+                {portfolioStatus && <p className="mt-2 text-sm text-muted">{portfolioStatus}</p>}
                 {portfolioError && <p className="mt-2 text-sm text-danger">{portfolioError}</p>}
               </section>
 
@@ -1129,7 +1341,12 @@ const GscImpactPage: React.FC = () => {
               </section>
 
               <section className="surface-panel p-6">
-                <h3 className="text-lg font-semibold">Tabla principal de propiedades</h3>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h3 className="text-lg font-semibold">Tabla principal de propiedades</h3>
+                  <Button variant="secondary" onClick={exportPortfolioDataset} disabled={sortedPortfolioRows.length === 0}>
+                    Exportar portfolio (CSV/Sheets)
+                  </Button>
+                </div>
                 <div className="mt-3 overflow-x-auto">
                   <table className="min-w-full text-sm">
                     <thead>
@@ -1523,6 +1740,9 @@ const GscImpactPage: React.FC = () => {
               <Button variant="secondary" onClick={() => setRefreshTick((value) => value + 1)}>
                 <RefreshCcw size={16} />
                 Refrescar bloque pre/rollout/post
+              </Button>
+              <Button variant="secondary" onClick={exportIndividualDataset} disabled={filteredUrlRows.length === 0}>
+                Exportar impacto URL (CSV/Sheets)
               </Button>
               {(isLoadingGsc || loadingImpact) && <Spinner size={18} />}
             </div>
