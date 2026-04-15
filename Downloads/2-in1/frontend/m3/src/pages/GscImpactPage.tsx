@@ -1380,6 +1380,123 @@ const GscImpactPage: React.FC = () => {
                 </div>
               </div>
             )}
+
+            {viewMode === 'global' && (
+              <>
+                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+                  <div>
+                    <label className="metric-label">Fecha rollout (helper)</label>
+                    <input
+                      className="form-control"
+                      type="date"
+                      value={rolloutDate}
+                      onChange={(e) => setRolloutDate(e.target.value)}
+                    />
+                    <Button
+                      className="mt-2"
+                      variant="secondary"
+                      onClick={() => setPeriodRanges(buildDefaultRanges(rolloutDate))}
+                    >
+                      Aplicar rangos recomendados
+                    </Button>
+                  </div>
+                  <div className="surface-subtle p-3 text-sm md:col-span-2">
+                    <p className="font-semibold">Ventanas del análisis portfolio</p>
+                    <p>
+                      Ajusta manualmente pre-update, rollout y post-update para evitar solapes o rangos inválidos
+                      antes de recalcular el portfolio.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+                  <div>
+                    <label className="metric-label">Pre-update · start</label>
+                    <input
+                      className="form-control"
+                      type="date"
+                      value={periodRanges.pre.start}
+                      onChange={(e) =>
+                        setPeriodRanges((prev) => ({
+                          ...prev,
+                          pre: { ...prev.pre, start: e.target.value },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="metric-label">Pre-update · end</label>
+                    <input
+                      className="form-control"
+                      type="date"
+                      value={periodRanges.pre.end}
+                      onChange={(e) =>
+                        setPeriodRanges((prev) => ({
+                          ...prev,
+                          pre: { ...prev.pre, end: e.target.value },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="metric-label">Rollout · start</label>
+                    <input
+                      className="form-control"
+                      type="date"
+                      value={periodRanges.rollout.start}
+                      onChange={(e) =>
+                        setPeriodRanges((prev) => ({
+                          ...prev,
+                          rollout: { ...prev.rollout, start: e.target.value },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="metric-label">Rollout · end</label>
+                    <input
+                      className="form-control"
+                      type="date"
+                      value={periodRanges.rollout.end}
+                      onChange={(e) =>
+                        setPeriodRanges((prev) => ({
+                          ...prev,
+                          rollout: { ...prev.rollout, end: e.target.value },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="metric-label">Post-update · start</label>
+                    <input
+                      className="form-control"
+                      type="date"
+                      value={periodRanges.post.start}
+                      onChange={(e) =>
+                        setPeriodRanges((prev) => ({
+                          ...prev,
+                          post: { ...prev.post, start: e.target.value },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="metric-label">Post-update · end</label>
+                    <input
+                      className="form-control"
+                      type="date"
+                      value={periodRanges.post.end}
+                      onChange={(e) =>
+                        setPeriodRanges((prev) => ({
+                          ...prev,
+                          post: { ...prev.post, end: e.target.value },
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              </>
+            )}
           </section>
 
           {viewMode === 'global' ? (
