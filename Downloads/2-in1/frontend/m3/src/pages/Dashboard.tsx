@@ -318,16 +318,15 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     showSuccess('Reporte descargado.');
   };
 
-  const handleExportOpportunitiesCsv = () => {
-    const opportunityInsights = actionableInsights.filter((insight) => insight.category === 'opportunity');
-
-    if (opportunityInsights.length === 0) {
-      showSuccess('No hay oportunidades para exportar en este momento.');
+  const handleExportInsightsCsv = () => {
+    if (actionableInsights.length === 0) {
+      showSuccess('No hay puntos para exportar en este momento.');
       return;
     }
 
     const headers = [
-      'Pestaña',
+      'Punto',
+      'Categoría',
       'Insight ID',
       'Título',
       'Prioridad',
@@ -349,9 +348,10 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       'Position',
     ];
 
-    const rows = opportunityInsights.flatMap((insight) => {
+    const rows = actionableInsights.flatMap((insight) => {
       const base = [
         insight.title,
+        insight.category,
         insight.id,
         insight.title,
         insight.priority,
@@ -393,10 +393,10 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `SEO_Insights_Oportunidades_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `SEO_Insights_Completos_${new Date().toISOString().slice(0, 10)}.csv`);
     link.click();
     URL.revokeObjectURL(url);
-    showSuccess(`CSV exportado con ${opportunityInsights.length} pestañas de oportunidades.`);
+    showSuccess(`CSV exportado con ${actionableInsights.length} puntos de análisis.`);
   };
 
   const simulateVoiceRecording = () => {
@@ -735,10 +735,10 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
           <div className="flex flex-col sm:flex-row gap-3">
             <button
               type="button"
-              onClick={handleExportOpportunitiesCsv}
+              onClick={handleExportInsightsCsv}
               className="inline-flex items-center justify-center gap-2 rounded-lg border border-success/30 bg-success-soft px-3 py-2 text-sm font-medium text-success hover:border-success/50"
             >
-              <Download size={16} /> Exportar oportunidades CSV
+              <Download size={16} /> Exportar análisis completo CSV
             </button>
             <button
               type="button"
