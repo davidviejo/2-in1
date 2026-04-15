@@ -47,6 +47,16 @@ import {
   scoreImpactRows,
   summarizeRows,
 } from '@/features/gsc-impact/impactAnalysis';
+import {
+  buildPortfolioExecutiveSummaryText,
+  buildPortfolioPropertyRow,
+  detectPortfolioPatterns,
+  getPortfolioStatusBadgeVariant,
+  PortfolioPropertyRow,
+  PortfolioSortKey,
+  sortPortfolioRows,
+  summarizePortfolioStatusCounts,
+} from '@/features/gsc-impact/portfolioAnalysis';
 
 type DeviceFilter = 'all' | 'DESKTOP' | 'MOBILE' | 'TABLET';
 
@@ -76,6 +86,16 @@ type FilterState = {
   device: DeviceFilter;
   country: string;
   searchType: GSCSearchType;
+};
+
+type ImpactViewMode = 'individual' | 'global';
+
+type GlobalFilters = {
+  includeBrandInTotals: boolean;
+  minimumDailyClicks: number;
+  onlyNegative: boolean;
+  onlyUrgent: boolean;
+  sortBy: PortfolioSortKey;
 };
 
 type UrlSampleRow = ImpactRow & {
@@ -262,6 +282,7 @@ const GscImpactPage: React.FC = () => {
   );
   const initialFilters = buildFilterState(searchParams, { persistedConfig, useSharedRuleParams });
   const initialRolloutDate = searchParams.get('rolloutDate') || toISODate(new Date());
+  const initialViewMode = (searchParams.get('view') as ImpactViewMode) || 'individual';
   const initialRangesFromParams = buildPeriodRangesFromParams(searchParams, initialRolloutDate);
   const useCustomRulesParam = searchParams.get('useCustomRules');
   const initialUseCustomRules =
@@ -270,6 +291,7 @@ const GscImpactPage: React.FC = () => {
       : useCustomRulesParam === '1';
 
   const [rolloutDate, setRolloutDate] = useState(initialRolloutDate);
+  const [viewMode, setViewMode] = useState<ImpactViewMode>(initialViewMode);
   const [periodRanges, setPeriodRanges] = useState<PeriodRanges>(initialRangesFromParams.ranges);
   const [siteSearch, setSiteSearch] = useState('');
   const [filters, setFilters] = useState<FilterState>(initialFilters);
@@ -281,6 +303,16 @@ const GscImpactPage: React.FC = () => {
   const [isInspecting, setIsInspecting] = useState(false);
   const [inspectionStatus, setInspectionStatus] = useState<string | null>(null);
   const [useCustomRules, setUseCustomRules] = useState<boolean>(initialUseCustomRules);
+  const [globalFilters, setGlobalFilters] = useState<GlobalFilters>({
+    includeBrandInTotals: searchParams.get('includeBrand') !== '0',
+    minimumDailyClicks: Number(searchParams.get('minDailyClicks') || 0),
+    onlyNegative: searchParams.get('onlyNegative') === '1',
+    onlyUrgent: searchParams.get('onlyUrgent') === '1',
+    sortBy: (searchParams.get('globalSort') as PortfolioSortKey) || 'risk',
+  });
+  const [portfolioRows, setPortfolioRows] = useState<PortfolioPropertyRow[]>([]);
+  const [loadingPortfolio, setLoadingPortfolio] = useState(false);
+  const [portfolioError, setPortfolioError] = useState<string | null>(null);
 
   const [queryRows, setQueryRows] = useState<ImpactRow[]>([]);
   const [urlRows, setUrlRows] = useState<ImpactRow[]>([]);
@@ -331,6 +363,13 @@ const GscImpactPage: React.FC = () => {
   }, [currentClientId, searchParams]);
 
   useEffect(() => {
+    const nextViewMode = (searchParams.get('view') as ImpactViewMode) || 'individual';
+    if (nextViewMode !== viewMode) {
+      setViewMode(nextViewMode);
+    }
+  }, [searchParams, viewMode]);
+
+  useEffect(() => {
     const next = new URLSearchParams();
     next.set('segment', filters.segmentFilter);
     next.set('minImpressions', String(filters.minImpressions));
@@ -342,6 +381,12 @@ const GscImpactPage: React.FC = () => {
     next.set('searchType', filters.searchType);
     next.set('useCustomRules', useCustomRules ? '1' : '0');
     next.set('rolloutDate', rolloutDate);
+    next.set('view', viewMode);
+    next.set('includeBrand', globalFilters.includeBrandInTotals ? '1' : '0');
+    next.set('minDailyClicks', String(globalFilters.minimumDailyClicks));
+    next.set('onlyNegative', globalFilters.onlyNegative ? '1' : '0');
+    next.set('onlyUrgent', globalFilters.onlyUrgent ? '1' : '0');
+    next.set('globalSort', globalFilters.sortBy);
     if (useSharedRuleParams) {
       next.set(SHARED_RULES_PARAM, '1');
       next.set('brandTerms', filters.brandTermsText);
@@ -352,7 +397,7 @@ const GscImpactPage: React.FC = () => {
     if (next.toString() !== searchParams.toString()) {
       setSearchParams(next, { replace: true });
     }
-  }, [filters, periodRanges, rolloutDate, searchParams, setSearchParams, useCustomRules, useSharedRuleParams]);
+  }, [filters, globalFilters, periodRanges, rolloutDate, searchParams, setSearchParams, useCustomRules, useSharedRuleParams, viewMode]);
 
   useEffect(() => {
     GscImpactSegmentationRepository.saveConfigByClientId(currentClientId, {
@@ -553,6 +598,97 @@ const GscImpactPage: React.FC = () => {
     void fetchImpact();
   }, [dimensionFilterGroups, filters.searchType, gscAccessToken, selectedSite, ranges, refreshTick, periodRangeErrors]);
 
+  useEffect(() => {
+    const fetchPortfolioImpact = async () => {
+      if (!gscAccessToken || gscSites.length === 0) {
+        setPortfolioRows([]);
+        return;
+      }
+
+      if (periodRangeErrors.length > 0) {
+        setPortfolioError(`Rangos inválidos: ${periodRangeErrors.join(' ')}`);
+        setPortfolioRows([]);
+        return;
+      }
+
+      setLoadingPortfolio(true);
+      setPortfolioError(null);
+
+      try {
+        const days = {
+          pre: getDaysBetweenInclusive(ranges.pre.start, ranges.pre.end),
+          rollout: getDaysBetweenInclusive(ranges.rollout.start, ranges.rollout.end),
+          post: getDaysBetweenInclusive(ranges.post.start, ranges.post.end),
+        };
+        const sitesToAnalyze = (siteSearch.trim() ? filteredSites : gscSites).slice(0, 30);
+        const perSite = await Promise.all(
+          sitesToAnalyze.map(async (site) => {
+            const [preQuery, rolloutQuery, postQuery] = await Promise.all([
+              getGSCQueryData(gscAccessToken, site.siteUrl, ranges.pre.start, ranges.pre.end, 900, {
+                searchType: filters.searchType,
+                dimensionFilterGroups,
+              }),
+              getGSCQueryData(gscAccessToken, site.siteUrl, ranges.rollout.start, ranges.rollout.end, 900, {
+                searchType: filters.searchType,
+                dimensionFilterGroups,
+              }),
+              getGSCQueryData(gscAccessToken, site.siteUrl, ranges.post.start, ranges.post.end, 900, {
+                searchType: filters.searchType,
+                dimensionFilterGroups,
+              }),
+            ]);
+
+            const mergedRows = mergePeriods(
+              aggregateByKey(preQuery, 0),
+              aggregateByKey(rolloutQuery, 0),
+              aggregateByKey(postQuery, 0),
+            );
+            const brandRows = mergedRows.filter((row) => isBrandQuery(row.label, brandTerms));
+            const nonBrandRows = mergedRows.filter((row) => !isBrandQuery(row.label, brandTerms));
+            const totalSummary = summarizeRows(mergedRows, days);
+            const brandSummary = summarizeRows(brandRows, days);
+            const nonBrandSummary = summarizeRows(nonBrandRows, days);
+
+            // Fallback actual: la app mantiene términos brand por cliente/proyecto.
+            // Si en el futuro hay configuración brand por propiedad, se debe resolver aquí.
+            return buildPortfolioPropertyRow({
+              property: site.siteUrl,
+              total: totalSummary,
+              brand: brandSummary,
+              nonBrand: nonBrandSummary,
+            });
+          }),
+        );
+        setPortfolioRows(perSite);
+      } catch (error) {
+        setPortfolioError(
+          error instanceof Error ? error.message : 'No se pudo cargar el análisis multi-site desde Search Console.',
+        );
+        setPortfolioRows([]);
+      } finally {
+        setLoadingPortfolio(false);
+      }
+    };
+
+    void fetchPortfolioImpact();
+  }, [
+    brandTerms,
+    dimensionFilterGroups,
+    filteredSites,
+    filters.searchType,
+    gscAccessToken,
+    gscSites,
+    periodRangeErrors,
+    ranges.post.end,
+    ranges.post.start,
+    ranges.pre.end,
+    ranges.pre.start,
+    ranges.rollout.end,
+    ranges.rollout.start,
+    refreshTick,
+    siteSearch,
+  ]);
+
   const windowDays = useMemo(
     () => ({
       pre: getDaysBetweenInclusive(ranges.pre.start, ranges.pre.end),
@@ -726,6 +862,50 @@ const GscImpactPage: React.FC = () => {
     [ranges.rollout.end, ranges.rollout.start, timeSeriesRows],
   );
 
+  const filteredPortfolioRows = useMemo(() => {
+    return portfolioRows.filter((row) => {
+      if (!globalFilters.includeBrandInTotals && row.nonBrandDeltaClicksPerDay === 0) return false;
+      if (row.preClicksPerDay < globalFilters.minimumDailyClicks) return false;
+      if (globalFilters.onlyNegative && row.postClicksPerDay >= row.preClicksPerDay) return false;
+      if (globalFilters.onlyUrgent && row.status !== 'urgente') return false;
+      return true;
+    });
+  }, [globalFilters, portfolioRows]);
+
+  const sortedPortfolioRows = useMemo(
+    () => sortPortfolioRows(filteredPortfolioRows, globalFilters.sortBy),
+    [filteredPortfolioRows, globalFilters.sortBy],
+  );
+  const portfolioCounts = useMemo(() => summarizePortfolioStatusCounts(filteredPortfolioRows), [filteredPortfolioRows]);
+  const portfolioSignals = useMemo(() => detectPortfolioPatterns(filteredPortfolioRows), [filteredPortfolioRows]);
+  const portfolioSummaryText = useMemo(
+    () => buildPortfolioExecutiveSummaryText(filteredPortfolioRows),
+    [filteredPortfolioRows],
+  );
+
+  const topPortfolioImprovers = useMemo(
+    () =>
+      [...sortedPortfolioRows]
+        .sort((a, b) => b.postClicksPerDay - b.preClicksPerDay - (a.postClicksPerDay - a.preClicksPerDay))
+        .slice(0, 5),
+    [sortedPortfolioRows],
+  );
+  const topPortfolioDeclines = useMemo(
+    () => [...sortedPortfolioRows].sort((a, b) => a.postClicksPerDay - a.preClicksPerDay - (b.postClicksPerDay - b.preClicksPerDay)).slice(0, 5),
+    [sortedPortfolioRows],
+  );
+  const urgentPortfolioRows = useMemo(
+    () => sortedPortfolioRows.filter((row) => row.status === 'urgente').slice(0, 5),
+    [sortedPortfolioRows],
+  );
+  const anomalousPortfolioRows = useMemo(
+    () =>
+      sortedPortfolioRows
+        .filter((row) => row.quality !== 'ok' || row.consistencyScore >= 4)
+        .slice(0, 5),
+    [sortedPortfolioRows],
+  );
+
   useEffect(() => {
     GscImpactSegmentationRepository.saveUseCustomRulesByClientId(currentClientId, useCustomRules);
   }, [currentClientId, useCustomRules]);
@@ -816,6 +996,163 @@ const GscImpactPage: React.FC = () => {
         </Card>
       ) : (
         <>
+          <section className="surface-panel p-6">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <div>
+                <label className="metric-label">Vista</label>
+                <select
+                  className="form-control"
+                  value={viewMode}
+                  onChange={(e) => setViewMode(e.target.value as ImpactViewMode)}
+                >
+                  <option value="individual">Impacto GSC por rollout (propiedad)</option>
+                  <option value="global">Impacto global GSC (portfolio)</option>
+                </select>
+              </div>
+              {viewMode === 'global' && (
+                <>
+                  <div>
+                    <label className="metric-label">Orden portfolio</label>
+                    <select
+                      className="form-control"
+                      value={globalFilters.sortBy}
+                      onChange={(e) =>
+                        setGlobalFilters((prev) => ({ ...prev, sortBy: e.target.value as PortfolioSortKey }))
+                      }
+                    >
+                      <option value="risk">Riesgo/prioridad</option>
+                      <option value="delta_clicks_day">Delta clicks/day</option>
+                      <option value="delta_non_brand">Delta non-brand</option>
+                      <option value="delta_ctr">Delta CTR</option>
+                      <option value="volume_affected">Volumen afectado</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="metric-label">Volumen mínimo (clicks/day pre)</label>
+                    <input
+                      className="form-control"
+                      type="number"
+                      min={0}
+                      value={globalFilters.minimumDailyClicks}
+                      onChange={(e) =>
+                        setGlobalFilters((prev) => ({ ...prev, minimumDailyClicks: Number(e.target.value) || 0 }))
+                      }
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+
+            {viewMode === 'global' && (
+              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
+                <label className="surface-subtle flex items-center gap-2 p-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={globalFilters.includeBrandInTotals}
+                    onChange={(e) =>
+                      setGlobalFilters((prev) => ({ ...prev, includeBrandInTotals: e.target.checked }))
+                    }
+                  />
+                  Incluir brand en lectura total
+                </label>
+                <label className="surface-subtle flex items-center gap-2 p-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={globalFilters.onlyNegative}
+                    onChange={(e) => setGlobalFilters((prev) => ({ ...prev, onlyNegative: e.target.checked }))}
+                  />
+                  Solo propiedades con caída
+                </label>
+                <label className="surface-subtle flex items-center gap-2 p-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={globalFilters.onlyUrgent}
+                    onChange={(e) => setGlobalFilters((prev) => ({ ...prev, onlyUrgent: e.target.checked }))}
+                  />
+                  Solo urgentes
+                </label>
+                <div className="surface-subtle p-2 text-sm">
+                  <p className="font-semibold">Cobertura portfolio</p>
+                  <p>
+                    {filteredPortfolioRows.length}/{portfolioRows.length} propiedades mostradas
+                  </p>
+                </div>
+              </div>
+            )}
+          </section>
+
+          {viewMode === 'global' ? (
+            <>
+              <section className="surface-panel p-6">
+                <h2 className="text-lg font-semibold">Resumen ejecutivo global</h2>
+                <p className="section-subtitle">Radar portfolio multi-site para priorizar análisis por propiedad.</p>
+                <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-6">
+                  <div className="metric-chip"><p className="metric-label">Total</p><p className="text-2xl font-bold">{portfolioCounts.total}</p></div>
+                  <div className="metric-chip"><p className="metric-label">Mejora</p><p className="text-2xl font-bold">{portfolioCounts.mejora}</p></div>
+                  <div className="metric-chip"><p className="metric-label">Estable</p><p className="text-2xl font-bold">{portfolioCounts.estable}</p></div>
+                  <div className="metric-chip"><p className="metric-label">Atención</p><p className="text-2xl font-bold">{portfolioCounts.atención}</p></div>
+                  <div className="metric-chip"><p className="metric-label">Riesgo</p><p className="text-2xl font-bold">{portfolioCounts.riesgo}</p></div>
+                  <div className="metric-chip"><p className="metric-label">Urgente</p><p className="text-2xl font-bold">{portfolioCounts.urgente}</p></div>
+                </div>
+                <div className="mt-3 surface-subtle p-3 text-sm">
+                  <ul className="list-disc space-y-1 pl-5">
+                    {portfolioSummaryText.map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ul>
+                </div>
+                {(loadingPortfolio || isLoadingGsc) && <div className="mt-3"><Spinner size={18} /></div>}
+                {portfolioError && <p className="mt-2 text-sm text-danger">{portfolioError}</p>}
+              </section>
+
+              <section className="surface-panel p-6">
+                <h3 className="text-lg font-semibold">Patrones detectados (portfolio)</h3>
+                <div className="mt-3 space-y-2">
+                  {portfolioSignals.map((signal) => (
+                    <div key={signal.id} className="surface-subtle p-3 text-sm">
+                      <p className="font-semibold">{signal.title} <span className="text-xs text-muted">(confianza: {signal.confidence})</span></p>
+                      <p>{signal.detail}</p>
+                    </div>
+                  ))}
+                  {portfolioSignals.length === 0 && <p className="text-sm text-muted">Sin patrones agregados robustos con la muestra actual.</p>}
+                </div>
+              </section>
+
+              <section className="surface-panel p-6">
+                <h3 className="text-lg font-semibold">Propiedades prioritarias</h3>
+                <div className="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-4">
+                  <Card className="p-3"><p className="font-semibold">Top mejora</p>{topPortfolioImprovers.map((row) => <p key={`imp-${row.property}`} className="mt-2 text-sm">{row.property} · Δ/day {(row.postClicksPerDay - row.preClicksPerDay).toFixed(2)}</p>)}</Card>
+                  <Card className="p-3"><p className="font-semibold">Top caída</p>{topPortfolioDeclines.map((row) => <p key={`dec-${row.property}`} className="mt-2 text-sm">{row.property} · Δ/day {(row.postClicksPerDay - row.preClicksPerDay).toFixed(2)}</p>)}</Card>
+                  <Card className="p-3"><p className="font-semibold">Urgentes</p>{urgentPortfolioRows.map((row) => <p key={`urg-${row.property}`} className="mt-2 text-sm">{row.property} · score {row.riskScore.toFixed(1)}</p>)}{urgentPortfolioRows.length === 0 && <p className="mt-2 text-sm text-muted">Sin urgentes.</p>}</Card>
+                  <Card className="p-3"><p className="font-semibold">Anomalías / baja confianza</p>{anomalousPortfolioRows.map((row) => <p key={`ano-${row.property}`} className="mt-2 text-sm">{row.property} · {row.qualityReason}</p>)}{anomalousPortfolioRows.length === 0 && <p className="mt-2 text-sm text-muted">Sin anomalías relevantes.</p>}</Card>
+                </div>
+              </section>
+
+              <section className="surface-panel p-6">
+                <h3 className="text-lg font-semibold">Tabla principal de propiedades</h3>
+                <div className="mt-3 overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-muted">
+                        <th className="px-2 py-2">Propiedad</th><th className="px-2 py-2">Clicks pre</th><th className="px-2 py-2">Rollout</th><th className="px-2 py-2">Clicks post</th><th className="px-2 py-2">Clicks/day pre</th><th className="px-2 py-2">Clicks/day post</th><th className="px-2 py-2">Δ clicks</th><th className="px-2 py-2">Δ clicks %</th><th className="px-2 py-2">Imp pre</th><th className="px-2 py-2">Imp post</th><th className="px-2 py-2">Imp/day pre</th><th className="px-2 py-2">Imp/day post</th><th className="px-2 py-2">CTR pre</th><th className="px-2 py-2">CTR post</th><th className="px-2 py-2">Δ CTR</th><th className="px-2 py-2">Pos pre</th><th className="px-2 py-2">Pos post</th><th className="px-2 py-2">Δ pos</th><th className="px-2 py-2">Brand Δ/day</th><th className="px-2 py-2">Non-brand Δ/day</th><th className="px-2 py-2">Riesgo</th><th className="px-2 py-2">Estado</th><th className="px-2 py-2">Calidad</th><th className="px-2 py-2">Drill-down</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedPortfolioRows.map((row) => (
+                        <tr key={row.property} className="border-t border-border/50">
+                          <td className="px-2 py-2">{row.property}</td><td className="px-2 py-2">{row.preClicks.toFixed(0)}</td><td className="px-2 py-2">{row.rolloutClicks.toFixed(0)}</td><td className="px-2 py-2">{row.postClicks.toFixed(0)}</td><td className="px-2 py-2">{row.preClicksPerDay.toFixed(2)}</td><td className="px-2 py-2">{row.postClicksPerDay.toFixed(2)}</td><td className="px-2 py-2">{row.deltaClicks.toFixed(0)}</td><td className="px-2 py-2">{row.deltaClicksPct === null ? 'n/a' : `${(row.deltaClicksPct * 100).toFixed(1)}%`}</td><td className="px-2 py-2">{row.preImpressions.toFixed(0)}</td><td className="px-2 py-2">{row.postImpressions.toFixed(0)}</td><td className="px-2 py-2">{row.preImpressionsPerDay.toFixed(2)}</td><td className="px-2 py-2">{row.postImpressionsPerDay.toFixed(2)}</td><td className="px-2 py-2">{(row.preCtr * 100).toFixed(2)}%</td><td className="px-2 py-2">{(row.postCtr * 100).toFixed(2)}%</td><td className="px-2 py-2">{(row.deltaCtr * 100).toFixed(2)}pp</td><td className="px-2 py-2">{row.prePosition.toFixed(2)}</td><td className="px-2 py-2">{row.postPosition.toFixed(2)}</td><td className="px-2 py-2">{row.deltaPosition.toFixed(2)}</td><td className="px-2 py-2">{row.brandDeltaClicksPerDay.toFixed(2)}</td><td className="px-2 py-2">{row.nonBrandDeltaClicksPerDay.toFixed(2)}</td><td className="px-2 py-2">{row.riskScore.toFixed(1)}</td>
+                          <td className="px-2 py-2"><Badge variant={getPortfolioStatusBadgeVariant(row.status)}>{row.status}</Badge></td>
+                          <td className="px-2 py-2"><Badge variant={row.quality === 'ok' ? 'success' : 'warning'}>{row.quality}</Badge></td>
+                          <td className="px-2 py-2"><Button variant="secondary" onClick={() => { setSelectedSite(row.property); setViewMode('individual'); }}>Abrir</Button></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </>
+          ) : (
+          <>
           <section className="surface-panel p-6">
             <h2 className="text-lg font-semibold">Resumen ejecutivo (solo Search Console, sin GA4)</h2>
             <p className="mt-2 text-sm text-muted">
@@ -1442,6 +1779,8 @@ const GscImpactPage: React.FC = () => {
               </div>
             )}
           </section>
+          </>
+          )}
         </>
       )}
 
