@@ -5,12 +5,12 @@
 :root {
   --font-sans: 'Inter';
 
-  --color-primary: 37 99 235;
-  --color-primary-hover: 29 78 216;
+  --color-primary: 5 14 69;
+  --color-primary-hover: 10 23 100;
   --color-success: 5 150 105;
-  --color-warning: 217 119 6;
-  --color-danger: 220 38 38;
-  --color-danger-hover: 185 28 28;
+  --color-warning: 255 127 122;
+  --color-danger: 255 127 122;
+  --color-danger-hover: 242 102 96;
   --color-surface: 255 255 255;
   --color-surface-alt: 248 250 252;
   --color-border: 226 232 240;
@@ -18,7 +18,7 @@
   --color-muted: 100 116 139;
   --color-on-primary: 255 255 255;
 
-  --color-primary-soft: 219 234 254;
+  --color-primary-soft: 226 234 255;
   --color-success-soft: 209 250 229;
   --color-warning-soft: 254 243 199;
   --color-danger-soft: 254 226 226;
@@ -32,7 +32,7 @@
   --space-18: 4.5rem;
 
   --shadow-card: 0 10px 24px -20px rgb(15 23 42 / 0.35);
-  --shadow-brand: 0 12px 20px -16px rgb(37 99 235 / 0.45);
+  --shadow-brand: 0 12px 20px -16px rgb(5 14 69 / 0.45);
 }
 
 .dark {
