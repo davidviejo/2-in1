@@ -61,12 +61,12 @@ const NavItem: React.FC<NavItemProps> = ({ to, icon, label, subLabel, onClick, i
       onClick={onClick}
       className={`relative flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${
         isActive
-          ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30'
+          ? 'bg-primary text-white shadow-lg shadow-primary/30'
           : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200'
       }`}
     >
       <div
-        className={`${isActive ? 'text-white' : 'text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400'}`}
+        className={`${isActive ? 'text-white' : 'text-slate-400 group-hover:text-primary dark:group-hover:text-primary'}`}
       >
         {icon}
       </div>
@@ -74,7 +74,7 @@ const NavItem: React.FC<NavItemProps> = ({ to, icon, label, subLabel, onClick, i
         <span className={`text-sm font-medium ${isActive ? 'text-white' : ''}`}>{label}</span>
         {subLabel && (
           <span
-            className={`text-[10px] uppercase tracking-wider ${isActive ? 'text-blue-200' : 'text-slate-400'}`}
+            className={`text-[10px] uppercase tracking-wider ${isActive ? 'text-white/80' : 'text-slate-400'}`}
           >
             {subLabel}
           </span>
@@ -371,10 +371,14 @@ const Layout: React.FC<LayoutProps> = ({
         <div className="flex items-center gap-8">
           {/* Logo */}
           <div className="flex items-center gap-2 font-bold text-xl text-slate-900 dark:text-white">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">
-              M
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-white font-bold text-sm">
+              A
             </div>
-            <span className="hidden lg:block">MediaFlow</span>
+            <span className="hidden lg:block">
+              <span className="text-primary">agencia</span>
+              <span className="text-danger">seo</span>
+              <span className="text-primary">.eu</span>
+            </span>
           </div>
 
           {/* Tabs */}
@@ -397,7 +401,7 @@ const Layout: React.FC<LayoutProps> = ({
                     }}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors capitalize ${
                       activeTab === tab
-                        ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 ring-1 ring-blue-100 dark:ring-blue-800'
+                        ? 'bg-danger/10 text-primary dark:bg-primary/30 dark:text-white ring-1 ring-danger/30'
                         : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'
                     }`}
                   >
@@ -484,7 +488,7 @@ const Layout: React.FC<LayoutProps> = ({
                       }}
                       className={`block text-center px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors border ${
                         activeTab === tab
-                          ? 'bg-blue-600 text-white border-blue-600'
+                          ? 'bg-primary text-white border-primary'
                           : 'text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50'
                       }`}
                     >
@@ -498,7 +502,7 @@ const Layout: React.FC<LayoutProps> = ({
 
           {activeTab === 'analitica' && (
             <div className="bg-slate-900 dark:bg-slate-800 rounded-2xl p-4 text-white relative overflow-hidden mb-6 border border-slate-800 dark:border-slate-700 shrink-0">
-              <div className="absolute top-0 right-0 w-20 h-20 bg-blue-500 rounded-full blur-3xl opacity-20 -mr-10 -mt-10"></div>
+              <div className="absolute top-0 right-0 w-20 h-20 bg-danger rounded-full blur-3xl opacity-20 -mr-10 -mt-10"></div>
               <p className="text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">
                 {t('global_score')}
               </p>
@@ -508,7 +512,7 @@ const Layout: React.FC<LayoutProps> = ({
               </div>
               <div className="w-full bg-slate-800 h-1.5 rounded-full mt-3 overflow-hidden">
                 <div
-                  className="bg-gradient-to-r from-blue-400 to-emerald-400 h-full rounded-full transition-all duration-1000"
+                  className="bg-gradient-to-r from-danger to-primary h-full rounded-full transition-all duration-1000"
                   style={{ width: `${globalScore}%` }}
                 ></div>
               </div>
@@ -539,7 +543,7 @@ const Layout: React.FC<LayoutProps> = ({
 
             <button
               onClick={() => setIsNotesOpen(true)}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 mt-2 rounded-xl text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-800 transition-colors"
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 mt-2 rounded-xl text-slate-500 hover:text-primary hover:bg-danger/10 dark:hover:bg-slate-800 transition-colors"
             >
               <StickyNote size={20} />
               <span className="font-medium">{t('nav.notes')}</span>

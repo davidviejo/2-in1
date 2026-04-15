@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}MediaFlow SEO Suite{% endblock %}</title>
+    <title>{% block title %}agenciaseo.eu{% endblock %}</title>
 
     <!-- Font Awesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -47,9 +47,15 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
     <style>
+        :root {
+            --brand-primary: #050E45;
+            --brand-accent: #FF7F7A;
+            --brand-white: #FFFFFF;
+        }
+
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #f8fafc;
+            background-color: #ffffff;
             margin: 0; /* Reset body margin manually since preflight is off */
         }
 
@@ -83,8 +89,8 @@
             font-weight: 500;
         }
         .nav-item-custom:hover {
-            background-color: #f1f5f9; /* hover:bg-slate-100 */
-            color: #2563eb; /* hover:text-blue-600 */
+            background-color: #fff1f0;
+            color: var(--brand-primary);
         }
         .nav-item-custom i, .nav-item-custom span.icon {
             width: 1.25rem;
@@ -140,12 +146,12 @@
 
                 <!-- Logo -->
                 <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-blue-500/20">
-                        M
+                    <div class="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg" style="background: var(--brand-primary); box-shadow: 0 10px 16px -14px var(--brand-primary);">
+                        A
                     </div>
                     <div>
-                        <h1 class="font-bold text-slate-800 text-lg leading-tight">MediaFlow</h1>
-                        <p class="text-xs text-slate-400 font-medium">SEO Suite v17</p>
+                        <h1 class="font-bold text-lg leading-tight"><span style="color: var(--brand-primary);">agencia</span><span style="color: var(--brand-accent);">seo</span><span style="color: var(--brand-primary);">.eu</span></h1>
+                        <p class="text-xs text-slate-400 font-medium">Suite SEO</p>
                     </div>
                 </div>
 
@@ -153,7 +159,7 @@
                 <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
                     <div class="flex justify-between items-center mb-1">
                         <span class="text-[10px] uppercase font-bold text-slate-400">Proyecto Activo</span>
-                        <a href="/projects/manager" class="text-[10px] text-blue-600 hover:underline">Cambiar</a>
+                        <a href="/projects/manager" class="text-[10px] hover:underline" style="color: var(--brand-primary);">Cambiar</a>
                     </div>
                     {% if current_project and current_project.id != 0 %}
                         <div class="font-bold text-slate-800 truncate" title="{{ current_project.name }}">
@@ -213,8 +219,8 @@
                     <a href="/workflow/master" class="nav-item-custom bg-slate-50 text-slate-700 font-bold border border-slate-200 mt-2 mb-1">
                         <i class="fas fa-project-diagram text-amber-500"></i> <span>WORKFLOW MAESTRO</span>
                     </a>
-                    <a href="/autopilot/dashboard" class="nav-item-custom bg-blue-50 text-blue-700 font-bold border border-blue-100 mb-3">
-                        <i class="fas fa-robot text-blue-500"></i> <span>AUTO-PILOT</span>
+                    <a href="/autopilot/dashboard" class="nav-item-custom font-bold border mb-3" style="background-color: #fff1f0; color: var(--brand-primary); border-color: #ffd2d0;">
+                        <i class="fas fa-robot" style="color: var(--brand-accent);"></i> <span>AUTO-PILOT</span>
                     </a>
 
                     <!-- Estrategia -->
