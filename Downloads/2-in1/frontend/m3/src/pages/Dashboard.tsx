@@ -95,6 +95,11 @@ const formatPositionSafe = (value: unknown, fallback = '—') => {
   return Number.isFinite(numericValue) ? numericValue.toFixed(1) : fallback;
 };
 
+const escapeCsvValue = (value: unknown) => {
+  const normalizedValue = value === null || value === undefined ? '' : String(value);
+  return `"${normalizedValue.replace(/"/g, '""')}"`;
+};
+
 const HeroMetric: React.FC<HeroMetricProps> = ({ title, value, description, tone }) => (
   <Card className={`rounded-2xl p-5 shadow-brand ${heroToneStyles[tone]}`}>
     <div className="text-xs font-bold uppercase tracking-[0.2em] opacity-80">{title}</div>
@@ -311,6 +316,87 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     a.download = `Reporte_MediaFlow_${new Date().toISOString().slice(0, 10)}.txt`;
     a.click();
     showSuccess('Reporte descargado.');
+  };
+
+  const handleExportAllInsightsCsv = () => {
+    if (actionableInsights.length === 0) {
+      showSuccess('No hay puntos para exportar en este momento.');
+      return;
+    }
+
+    const headers = [
+      'Pestaña',
+      'Categoría',
+      'Insight ID',
+      'Título',
+      'Prioridad',
+      'Severidad',
+      'Score',
+      'Oportunidad',
+      'Confianza',
+      'Impacto',
+      'Urgencia',
+      'Facilidad',
+      'Acción sugerida',
+      'Resumen',
+      'Motivo',
+      'Query',
+      'URL',
+      'Clicks',
+      'Impressions',
+      'CTR',
+      'Position',
+    ];
+
+    const rows = actionableInsights.flatMap((insight) => {
+      const base = [
+        insight.title,
+        insight.category,
+        insight.id,
+        insight.title,
+        insight.priority,
+        insight.severity,
+        insight.score,
+        insight.opportunity,
+        insight.confidence,
+        insight.impact,
+        insight.urgency,
+        insight.ease,
+        insight.action,
+        insight.summary,
+        insight.reason,
+      ];
+
+      if (insight.relatedRows.length === 0) {
+        return [
+          [...base, '', '', '', '', '', ''].map(escapeCsvValue).join(','),
+        ];
+      }
+
+      return insight.relatedRows.map((row) =>
+        [
+          ...base,
+          row.query ?? '',
+          row.url ?? row.page ?? '',
+          row.clicks ?? '',
+          row.impressions ?? '',
+          row.ctr ?? '',
+          row.position ?? '',
+        ]
+          .map(escapeCsvValue)
+          .join(','),
+      );
+    });
+
+    const csvContent = [headers.map(escapeCsvValue).join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `SEO_Insights_Todos_los_puntos_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.click();
+    URL.revokeObjectURL(url);
+    showSuccess(`CSV exportado con ${actionableInsights.length} pestañas/puntos detectados.`);
   };
 
   const simulateVoiceRecording = () => {
@@ -647,6 +733,13 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
             </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3">
+            <button
+              type="button"
+              onClick={handleExportAllInsightsCsv}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-success/30 bg-success-soft px-3 py-2 text-sm font-medium text-success hover:border-success/50"
+            >
+              <Download size={16} /> Exportar todos los puntos CSV
+            </button>
             <button
               type="button"
               onClick={() => setShowInsightsHelp(true)}
