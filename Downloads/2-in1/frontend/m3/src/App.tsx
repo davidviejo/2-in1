@@ -155,6 +155,8 @@ export const AppRoutes: React.FC = () => {
                 <Route path="ai-roadmap" element={<AIRoadmap />} />
                 <Route path="ia-visibility" element={<IAVisibility />} />
                 <Route path="gsc-impact" element={<GscImpactPage />} />
+                <Route path="gsc-impact/portfolio" element={<Navigate to="/app/gsc-impact?view=global" replace />} />
+                <Route path="gsc-impact/portolio" element={<Navigate to="/app/gsc-impact?view=global" replace />} />
                 <Route path="settings" element={<Settings />} />
                 <Route path="trends-media" element={<TrendsMediaPage />} />
                 <Route path="tools-hub" element={<ToolsHub />} />
