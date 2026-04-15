@@ -13,7 +13,6 @@ import {
   X,
   Terminal,
   CheckCircle2,
-  Zap,
   Moon,
   Sun,
   Siren,
@@ -138,7 +137,6 @@ const Layout: React.FC<LayoutProps> = ({
       path === '/app' ||
       path === '/app/' ||
       path.startsWith('/app/checklist') ||
-      path.startsWith('/app/challenge') ||
       path.startsWith('/app/trends-media') ||
       path.startsWith('/app/gsc-impact')
     ) {
@@ -253,13 +251,6 @@ const Layout: React.FC<LayoutProps> = ({
               icon={<ListChecks size={20} />}
               label="Agrupación y Clusterización"
               subLabel="Análisis SEO y Clusters"
-              onClick={() => setIsMobileMenuOpen(false)}
-            />
-            <NavItem
-              to="/app/challenge"
-              icon={<Zap size={20} />}
-              label={t('nav.breaking_sim')}
-              subLabel={t('nav.breaking_sim_sub')}
               onClick={() => setIsMobileMenuOpen(false)}
             />
             <NavItem
