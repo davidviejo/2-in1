@@ -29,7 +29,6 @@ import {
   ListChecks,
   Wrench as Tool,
   Lightbulb,
-  Newspaper,
   Eye,
 } from 'lucide-react';
 import { ModuleData, Client, ClientVertical, Note } from '../types';
@@ -251,13 +250,6 @@ const Layout: React.FC<LayoutProps> = ({
               icon={<ListChecks size={20} />}
               label="Agrupación y Clusterización"
               subLabel="Análisis SEO y Clusters"
-              onClick={() => setIsMobileMenuOpen(false)}
-            />
-            <NavItem
-              to="/app/trends-media"
-              icon={<Newspaper size={20} />}
-              label="Trends Media"
-              subLabel="Brief editorial integrado"
               onClick={() => setIsMobileMenuOpen(false)}
             />
             <NavItem
