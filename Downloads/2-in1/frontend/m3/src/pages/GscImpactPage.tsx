@@ -91,6 +91,11 @@ type FilterState = {
 
 type ImpactViewMode = 'individual' | 'global';
 
+const parseImpactViewMode = (value: string | null): ImpactViewMode | null => {
+  if (value === 'individual' || value === 'global') return value;
+  return null;
+};
+
 type GlobalFilters = {
   includeBrandInTotals: boolean;
   minimumDailyClicks: number;
@@ -312,7 +317,7 @@ const GscImpactPage: React.FC = () => {
   );
   const initialFilters = buildFilterState(searchParams, { persistedConfig, useSharedRuleParams });
   const initialRolloutDate = searchParams.get('rolloutDate') || toISODate(new Date());
-  const initialViewMode = (searchParams.get('view') as ImpactViewMode) || 'individual';
+  const initialViewMode = parseImpactViewMode(searchParams.get('view')) || 'individual';
   const initialRangesFromParams = buildPeriodRangesFromParams(searchParams, initialRolloutDate);
   const useCustomRulesParam = searchParams.get('useCustomRules');
   const initialUseCustomRules =
@@ -421,7 +426,8 @@ const GscImpactPage: React.FC = () => {
   }, [currentClientId, searchParams]);
 
   useEffect(() => {
-    const nextViewMode = (searchParams.get('view') as ImpactViewMode) || 'individual';
+    const nextViewMode = parseImpactViewMode(searchParams.get('view'));
+    if (!nextViewMode) return;
     if (nextViewMode !== viewMode) {
       setViewMode(nextViewMode);
     }
