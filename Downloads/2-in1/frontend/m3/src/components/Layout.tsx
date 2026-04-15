@@ -139,7 +139,8 @@ const Layout: React.FC<LayoutProps> = ({
       path === '/app/' ||
       path.startsWith('/app/checklist') ||
       path.startsWith('/app/challenge') ||
-      path.startsWith('/app/trends-media')
+      path.startsWith('/app/trends-media') ||
+      path.startsWith('/app/gsc-impact')
     ) {
       return 'analitica';
     }
