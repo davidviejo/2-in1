@@ -26,6 +26,21 @@ const DataManagementPanel: React.FC = () => {
     return `${monthLabel} ${yearShort}`;
   };
 
+  const formatCompletedAtColumn = (completedAt?: number) => {
+    if (!completedAt) return '';
+    const completedDate = new Date(completedAt);
+    if (Number.isNaN(completedDate.getTime())) return '';
+
+    return new Intl.DateTimeFormat('es-ES', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    }).format(completedDate);
+  };
+
   const handleExport = () => {
     const data = buildBackupPayload({
       clients,
@@ -44,18 +59,29 @@ const DataManagementPanel: React.FC = () => {
   };
 
   const handleExportCSV = () => {
-    const headers = ['MES', 'TAREA', 'IMPLEMENTACIÓN', 'ÁREA', 'ESTADO', 'COMENTARIOS'];
+    const headers = ['MES', 'TAREA', 'IMPLEMENTACIÓN', 'ÁREA', 'ESTADO', 'FECHA_COMPLETADO', 'COMENTARIOS'];
     const rows: string[][] = [];
 
     clients.forEach((client) => {
+      const completedByTaskId = new Map<string, number>();
+      (client.completedTasksLog || []).forEach((entry) => {
+        if (!entry.taskId || entry.source !== 'module') return;
+        const previousCompletedAt = completedByTaskId.get(entry.taskId);
+        if (!previousCompletedAt || entry.completedAt > previousCompletedAt) {
+          completedByTaskId.set(entry.taskId, entry.completedAt);
+        }
+      });
+
       client.modules.forEach((module) => {
         module.tasks.forEach((task) => {
+          const completedAt = task.status === 'completed' ? completedByTaskId.get(task.id) : undefined;
           rows.push([
             formatMesColumn(task.dueDate),
             task.title,
             client.name,
             task.category || module.title,
             task.status,
+            formatCompletedAtColumn(completedAt),
             task.userNotes || task.description || '',
           ]);
         });
