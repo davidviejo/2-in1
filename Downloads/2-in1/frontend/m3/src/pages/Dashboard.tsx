@@ -110,6 +110,71 @@ const sanitizeSheetName = (value: string, fallback: string) => {
   return sanitized.slice(0, 31);
 };
 
+const mapInsightRowForExport = (row: SeoInsight['relatedRows'][number]) => {
+  const queryFromKeys = row.keys?.[0] ?? '';
+  const urlFromKeys = row.keys?.[1] ?? '';
+
+  return {
+    query: row.query ?? queryFromKeys,
+    url: row.url ?? row.page ?? urlFromKeys,
+    clicks: row.clicks ?? '',
+    impressions: row.impressions ?? '',
+    ctr: row.ctr ?? '',
+    position: row.position ?? '',
+  };
+};
+
+const buildInsightExportRows = (insight: SeoInsight) => {
+  if (insight.relatedRows.length === 0) {
+    return [
+      {
+        categoria: insight.category,
+        insightId: insight.id,
+        titulo: insight.title,
+        prioridad: insight.priority,
+        severidad: insight.severity,
+        score: insight.score,
+        oportunidad: insight.opportunity,
+        confianza: insight.confidence,
+        impacto: insight.impact,
+        urgencia: insight.urgency,
+        facilidad: insight.ease,
+        valorNegocio: insight.businessValue,
+        facilidadImplementacion: insight.implementationEase,
+        accionSugerida: insight.action,
+        resumen: insight.summary,
+        motivo: insight.reason,
+        query: '',
+        url: '',
+        clicks: '',
+        impressions: '',
+        ctr: '',
+        position: '',
+      },
+    ];
+  }
+
+  return insight.relatedRows.map((row) => ({
+    categoria: insight.category,
+    insightId: insight.id,
+    titulo: insight.title,
+    prioridad: insight.priority,
+    severidad: insight.severity,
+    score: insight.score,
+    oportunidad: insight.opportunity,
+    confianza: insight.confidence,
+    impacto: insight.impact,
+    urgencia: insight.urgency,
+    facilidad: insight.ease,
+    valorNegocio: insight.businessValue,
+    facilidadImplementacion: insight.implementationEase,
+    accionSugerida: insight.action,
+    resumen: insight.summary,
+    motivo: insight.reason,
+    ...mapInsightRowForExport(row),
+  }));
+};
+
 const HeroMetric: React.FC<HeroMetricProps> = ({ title, value, description, tone }) => (
   <Card className={`rounded-2xl p-5 shadow-brand ${heroToneStyles[tone]}`}>
     <div className="text-xs font-bold uppercase tracking-[0.2em] opacity-80">{title}</div>
@@ -336,57 +401,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
 
     const workbook = XLSX.utils.book_new();
 
-    const expandedRows = actionableInsights.flatMap((insight) => {
-      if (insight.relatedRows.length === 0) {
-        return [
-          {
-            categoria: insight.category,
-            insightId: insight.id,
-            titulo: insight.title,
-            prioridad: insight.priority,
-            severidad: insight.severity,
-            score: insight.score,
-            oportunidad: insight.opportunity,
-            confianza: insight.confidence,
-            impacto: insight.impact,
-            urgencia: insight.urgency,
-            facilidad: insight.ease,
-            accionSugerida: insight.action,
-            resumen: insight.summary,
-            motivo: insight.reason,
-            query: '',
-            url: '',
-            clicks: '',
-            impressions: '',
-            ctr: '',
-            position: '',
-          },
-        ];
-      }
-
-      return insight.relatedRows.map((row) => ({
-        categoria: insight.category,
-        insightId: insight.id,
-        titulo: insight.title,
-        prioridad: insight.priority,
-        severidad: insight.severity,
-        score: insight.score,
-        oportunidad: insight.opportunity,
-        confianza: insight.confidence,
-        impacto: insight.impact,
-        urgencia: insight.urgency,
-        facilidad: insight.ease,
-        accionSugerida: insight.action,
-        resumen: insight.summary,
-        motivo: insight.reason,
-        query: row.query ?? '',
-        url: row.url ?? row.page ?? '',
-        clicks: row.clicks ?? '',
-        impressions: row.impressions ?? '',
-        ctr: row.ctr ?? '',
-        position: row.position ?? '',
-      }));
-    });
+    const expandedRows = actionableInsights.flatMap((insight) => buildInsightExportRows(insight));
 
     const summaryRows = actionableInsights.map((insight) => ({
       categoria: insight.category,
@@ -400,6 +415,8 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       impacto: insight.impact,
       urgencia: insight.urgency,
       facilidad: insight.ease,
+      valorNegocio: insight.businessValue,
+      facilidadImplementacion: insight.implementationEase,
       accionSugerida: insight.action,
       resumen: insight.summary,
       motivo: insight.reason,
@@ -421,57 +438,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
         return acc;
       }, new Map<string, SeoInsight[]>())
       .forEach((groupInsights, actionLabel, index) => {
-        const actionRows = groupInsights.flatMap((insight) => {
-          if (insight.relatedRows.length === 0) {
-            return [
-              {
-                categoria: insight.category,
-                insightId: insight.id,
-                titulo: insight.title,
-                prioridad: insight.priority,
-                severidad: insight.severity,
-                score: insight.score,
-                oportunidad: insight.opportunity,
-                confianza: insight.confidence,
-                impacto: insight.impact,
-                urgencia: insight.urgency,
-                facilidad: insight.ease,
-                accionSugerida: insight.action,
-                resumen: insight.summary,
-                motivo: insight.reason,
-                query: '',
-                url: '',
-                clicks: '',
-                impressions: '',
-                ctr: '',
-                position: '',
-              },
-            ];
-          }
-
-          return insight.relatedRows.map((row) => ({
-            categoria: insight.category,
-            insightId: insight.id,
-            titulo: insight.title,
-            prioridad: insight.priority,
-            severidad: insight.severity,
-            score: insight.score,
-            oportunidad: insight.opportunity,
-            confianza: insight.confidence,
-            impacto: insight.impact,
-            urgencia: insight.urgency,
-            facilidad: insight.ease,
-            accionSugerida: insight.action,
-            resumen: insight.summary,
-            motivo: insight.reason,
-            query: row.query ?? '',
-            url: row.url ?? row.page ?? '',
-            clicks: row.clicks ?? '',
-            impressions: row.impressions ?? '',
-            ctr: row.ctr ?? '',
-            position: row.position ?? '',
-          }));
-        });
+        const actionRows = groupInsights.flatMap((insight) => buildInsightExportRows(insight));
 
         const baseName = sanitizeSheetName(actionLabel, `Accion ${index + 1}`);
         let sheetName = baseName;
