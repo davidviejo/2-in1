@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import threading
 import time
@@ -6,6 +7,8 @@ from copy import deepcopy
 from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, jsonify, request
+
+from apps.core.database import USE_POSTGRES, get_db_connection
 
 project_api_bp = Blueprint('project_api_bp', __name__, url_prefix='/api/v1/project-api')
 
@@ -16,6 +19,17 @@ _STORE_FILE = os.path.join(
 )
 
 _LOCK = threading.Lock()
+_METRICS: Dict[str, float] = {
+    'read_ops': 0,
+    'read_total_ms': 0.0,
+    'write_ops': 0,
+    'write_total_ms': 0.0,
+    'version_conflicts': 0,
+}
+
+
+def _record_metric(metric_name: str, value: float = 1.0) -> None:
+    _METRICS[metric_name] = _METRICS.get(metric_name, 0.0) + value
 
 
 def _default_snapshot() -> Dict[str, Any]:
@@ -30,24 +44,343 @@ def _default_snapshot() -> Dict[str, Any]:
     }
 
 
-def _load_store() -> Dict[str, Any]:
-    if not os.path.exists(_STORE_FILE):
+def _to_json(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _from_json(value: Optional[str], fallback: Any) -> Any:
+    if not value:
+        return fallback
+    try:
+        return json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return fallback
+
+
+def _enable_foreign_keys_if_needed(cursor: Any) -> None:
+    if not USE_POSTGRES:
+        cursor.execute('PRAGMA foreign_keys = ON;')
+
+
+def _mark_project_api_migration(cursor: Any, value: str) -> None:
+    cursor.execute('DELETE FROM project_api_meta WHERE key = ?', ('project_api_json_migration',))
+    cursor.execute(
+        'INSERT INTO project_api_meta (key, value) VALUES (?, ?)',
+        ('project_api_json_migration', value),
+    )
+
+
+def _get_project_api_migration_state(cursor: Any) -> Optional[str]:
+    cursor.execute('SELECT value FROM project_api_meta WHERE key = ?', ('project_api_json_migration',))
+    row = cursor.fetchone()
+    if row is None:
+        return None
+    try:
+        return row['value']
+    except (TypeError, KeyError):
+        return row[0]
+
+
+def _insert_snapshot_into_db(cursor: Any, snapshot: Dict[str, Any]) -> None:
+    cursor.execute('DELETE FROM project_api_tasks')
+    cursor.execute('DELETE FROM project_api_modules')
+    cursor.execute('DELETE FROM project_api_notes')
+    cursor.execute('DELETE FROM project_api_clients')
+
+    cursor.execute(
+        '''
+        INSERT INTO project_api_snapshot_state (id, version, updated_at, current_client_id, last_mutation_json)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT (id) DO UPDATE SET
+            version = excluded.version,
+            updated_at = excluded.updated_at,
+            current_client_id = excluded.current_client_id,
+            last_mutation_json = excluded.last_mutation_json
+        ''',
+        (
+            1,
+            int(snapshot.get('version', 1)),
+            int(snapshot.get('updatedAt', int(time.time() * 1000))),
+            str(snapshot.get('currentClientId', '')),
+            _to_json(snapshot.get('lastMutation')) if snapshot.get('lastMutation') is not None else None,
+        ),
+    )
+
+    for client in snapshot.get('clients', []):
+        cursor.execute(
+            '''
+            INSERT INTO project_api_clients (
+                id, name, vertical, created_at, completed_tasks_log_json,
+                custom_roadmap_order_json, ai_roadmap_json, kanban_columns_json, ia_visibility_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''',
+            (
+                str(client.get('id', '')),
+                str(client.get('name', '')),
+                str(client.get('vertical', 'media')),
+                int(client.get('createdAt', int(time.time() * 1000))),
+                _to_json(client.get('completedTasksLog', [])),
+                _to_json(client.get('customRoadmapOrder', [])),
+                _to_json(client.get('aiRoadmap', [])),
+                _to_json(client.get('kanbanColumns', [])),
+                _to_json(client.get('iaVisibility')) if 'iaVisibility' in client else None,
+            ),
+        )
+
+        for module in client.get('modules', []):
+            cursor.execute(
+                '''
+                INSERT INTO project_api_modules (
+                    client_id, module_id, title, subtitle, level_range,
+                    description, icon_name, is_custom
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''',
+                (
+                    str(client.get('id', '')),
+                    int(module.get('id', 0)),
+                    str(module.get('title', '')),
+                    str(module.get('subtitle', '')),
+                    str(module.get('levelRange', '')),
+                    str(module.get('description', '')),
+                    str(module.get('iconName', '')),
+                    1 if bool(module.get('isCustom')) else 0 if 'isCustom' in module else None,
+                ),
+            )
+            for task in module.get('tasks', []):
+                cursor.execute(
+                    '''
+                    INSERT INTO project_api_tasks (client_id, module_id, task_id, task_json)
+                    VALUES (?, ?, ?, ?)
+                    ''',
+                    (
+                        str(client.get('id', '')),
+                        int(module.get('id', 0)),
+                        str(task.get('id', '')),
+                        _to_json(task),
+                    ),
+                )
+
+        for note in client.get('notes', []):
+            cursor.execute(
+                '''
+                INSERT INTO project_api_notes (
+                    note_id, scope, client_id, content, created_at, updated_at, extra_json
+                ) VALUES (?, 'client', ?, ?, ?, ?, ?)
+                ''',
+                (
+                    str(note.get('id', '')),
+                    str(client.get('id', '')),
+                    str(note.get('content', '')),
+                    int(note.get('createdAt', int(time.time() * 1000))),
+                    int(note.get('updatedAt')) if isinstance(note.get('updatedAt'), int) else None,
+                    _to_json({
+                        k: v
+                        for k, v in note.items()
+                        if k not in {'id', 'content', 'createdAt', 'updatedAt'}
+                    }),
+                ),
+            )
+
+    for note in snapshot.get('generalNotes', []):
+        cursor.execute(
+            '''
+            INSERT INTO project_api_notes (
+                note_id, scope, client_id, content, created_at, updated_at, extra_json
+            ) VALUES (?, 'general', NULL, ?, ?, ?, ?)
+            ''',
+            (
+                str(note.get('id', '')),
+                str(note.get('content', '')),
+                int(note.get('createdAt', int(time.time() * 1000))),
+                int(note.get('updatedAt')) if isinstance(note.get('updatedAt'), int) else None,
+                _to_json({
+                    k: v
+                    for k, v in note.items()
+                    if k not in {'id', 'content', 'createdAt', 'updatedAt'}
+                }),
+            ),
+        )
+
+
+def _load_snapshot_from_db(cursor: Any) -> Dict[str, Any]:
+    cursor.execute(
+        'SELECT version, updated_at, current_client_id, last_mutation_json FROM project_api_snapshot_state WHERE id = 1'
+    )
+    state_row = cursor.fetchone()
+    if state_row is None:
         return _default_snapshot()
+
+    snapshot: Dict[str, Any] = {
+        'version': int(state_row['version']),
+        'updatedAt': int(state_row['updated_at']),
+        'currentClientId': str(state_row['current_client_id'] or ''),
+        'clients': [],
+        'generalNotes': [],
+        'lastMutation': _from_json(state_row['last_mutation_json'], None),
+    }
+
+    cursor.execute(
+        '''
+        SELECT id, name, vertical, created_at, completed_tasks_log_json, custom_roadmap_order_json,
+               ai_roadmap_json, kanban_columns_json, ia_visibility_json
+        FROM project_api_clients
+        ORDER BY created_at ASC, id ASC
+        '''
+    )
+    client_rows = cursor.fetchall()
+
+    clients_by_id: Dict[str, Dict[str, Any]] = {}
+    for row in client_rows:
+        client = _compact_nones({
+            'id': str(row['id']),
+            'name': str(row['name']),
+            'vertical': str(row['vertical'] or 'media'),
+            'createdAt': int(row['created_at']) if row['created_at'] is not None else int(time.time() * 1000),
+            'modules': [],
+            'notes': [],
+            'completedTasksLog': _from_json(row['completed_tasks_log_json'], []),
+            'customRoadmapOrder': _dedupe_stable_strings(_from_json(row['custom_roadmap_order_json'], [])),
+            'aiRoadmap': [_compact_nones(_normalize_task(t)) for t in _from_json(row['ai_roadmap_json'], []) if isinstance(t, dict)],
+            'kanbanColumns': _from_json(row['kanban_columns_json'], []),
+            'iaVisibility': _from_json(row['ia_visibility_json'], None),
+        })
+        clients_by_id[client['id']] = client
+        snapshot['clients'].append(client)
+
+    cursor.execute(
+        '''
+        SELECT client_id, module_id, title, subtitle, level_range, description, icon_name, is_custom
+        FROM project_api_modules
+        ORDER BY client_id ASC, module_id ASC
+        '''
+    )
+    module_rows = cursor.fetchall()
+    modules_by_client_module: Dict[str, Dict[int, Dict[str, Any]]] = {}
+
+    for row in module_rows:
+        client_id = str(row['client_id'])
+        client = clients_by_id.get(client_id)
+        if client is None:
+            continue
+        module = _compact_nones({
+            'id': int(row['module_id']),
+            'title': str(row['title'] or ''),
+            'subtitle': str(row['subtitle'] or ''),
+            'levelRange': str(row['level_range'] or ''),
+            'description': str(row['description'] or ''),
+            'iconName': str(row['icon_name'] or ''),
+            'tasks': [],
+            'isCustom': bool(row['is_custom']) if row['is_custom'] is not None else None,
+        })
+        client['modules'].append(module)
+        modules_by_client_module.setdefault(client_id, {})[int(row['module_id'])] = module
+
+    cursor.execute(
+        '''
+        SELECT client_id, module_id, task_json
+        FROM project_api_tasks
+        ORDER BY client_id ASC, module_id ASC, id ASC
+        '''
+    )
+    for row in cursor.fetchall():
+        client_id = str(row['client_id'])
+        module_id = int(row['module_id'])
+        module = modules_by_client_module.get(client_id, {}).get(module_id)
+        if module is None:
+            continue
+        task = _from_json(row['task_json'], {})
+        if isinstance(task, dict):
+            module['tasks'].append(_compact_nones(_normalize_task(task)))
+
+    cursor.execute(
+        '''
+        SELECT note_id, scope, client_id, content, created_at, updated_at, extra_json
+        FROM project_api_notes
+        ORDER BY created_at ASC, id ASC
+        '''
+    )
+    for row in cursor.fetchall():
+        note_payload = {
+            'id': str(row['note_id']),
+            'content': str(row['content'] or ''),
+            'createdAt': int(row['created_at']) if row['created_at'] is not None else int(time.time() * 1000),
+            'updatedAt': int(row['updated_at']) if row['updated_at'] is not None else None,
+        }
+        note_payload.update(_from_json(row['extra_json'], {}))
+        note = _compact_nones(_normalize_note(note_payload))
+        if str(row['scope']) == 'general':
+            snapshot['generalNotes'].append(note)
+            continue
+        client_id = str(row['client_id'] or '')
+        client = clients_by_id.get(client_id)
+        if client is not None:
+            client.setdefault('notes', []).append(note)
+
+    return _normalize_snapshot(snapshot)
+
+
+def _maybe_migrate_legacy_store(cursor: Any) -> None:
+    migration_state = _get_project_api_migration_state(cursor)
+    if migration_state is not None:
+        return
+
+    cursor.execute('SELECT COUNT(*) FROM project_api_snapshot_state')
+    existing_rows = cursor.fetchone()[0]
+    if existing_rows > 0:
+        _mark_project_api_migration(cursor, 'skipped_existing_data')
+        return
+
+    if not os.path.exists(_STORE_FILE):
+        _mark_project_api_migration(cursor, 'skipped_missing_json')
+        return
 
     try:
         with open(_STORE_FILE, 'r', encoding='utf-8') as f:
-            parsed = json.load(f)
-            if isinstance(parsed, dict):
-                return _normalize_snapshot(parsed)
-    except (json.JSONDecodeError, OSError):
-        return _default_snapshot()
-    return _default_snapshot()
+            snapshot = _normalize_snapshot(json.load(f))
+        _insert_snapshot_into_db(cursor, snapshot)
+        _mark_project_api_migration(cursor, 'completed')
+        logging.info('project_api legacy JSON migrated to DB successfully')
+    except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        logging.exception('project_api migration failed: %s', exc)
+        _mark_project_api_migration(cursor, f'failed:{type(exc).__name__}')
+
+
+def _load_store() -> Dict[str, Any]:
+    start = time.perf_counter()
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        _enable_foreign_keys_if_needed(cursor)
+        _maybe_migrate_legacy_store(cursor)
+        conn.commit()
+        snapshot = _load_snapshot_from_db(cursor)
+        return snapshot
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        _record_metric('read_ops', 1)
+        _record_metric('read_total_ms', elapsed_ms)
 
 
 def _save_store(payload: Dict[str, Any]) -> None:
-    os.makedirs(os.path.dirname(_STORE_FILE), exist_ok=True)
-    with open(_STORE_FILE, 'w', encoding='utf-8') as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
+    start = time.perf_counter()
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        _enable_foreign_keys_if_needed(cursor)
+        _insert_snapshot_into_db(cursor, payload)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        _record_metric('write_ops', 1)
+        _record_metric('write_total_ms', elapsed_ms)
 
 
 def _normalize_note(raw: Dict[str, Any]) -> Dict[str, Any]:
@@ -117,7 +450,7 @@ def _normalize_module(raw: Dict[str, Any]) -> Dict[str, Any]:
         'subtitle': str(raw.get('subtitle', '')),
         'levelRange': str(raw.get('levelRange', '')),
         'description': str(raw.get('description', '')),
-        'iconName': str(raw.get('iconName', '')), 
+        'iconName': str(raw.get('iconName', '')),
         'tasks': deduped_tasks,
         'isCustom': bool(raw.get('isCustom')) if 'isCustom' in raw else None,
     }
@@ -137,8 +470,6 @@ def _normalize_client(raw: Dict[str, Any]) -> Dict[str, Any]:
         'kanbanColumns': raw.get('kanbanColumns', []),
         'iaVisibility': raw.get('iaVisibility'),
     })
-
-
 
 
 def _normalize_updated_fields(values: Any) -> List[str]:
@@ -206,6 +537,7 @@ def _validate_expected_version(
     if can_auto_merge:
         return None
 
+    _record_metric('version_conflicts', 1)
     return jsonify({
         'error': 'version_conflict',
         'message': 'The snapshot was updated by another client.',
@@ -247,6 +579,7 @@ def _extract_patch_request_metadata(data: Dict[str, Any]) -> Dict[str, Any]:
         'originClientId': str(data.get('originClientId', '')).strip(),
         'updatedFields': _normalize_updated_fields(data.get('updatedFields')),
     }
+
 
 def _normalize_snapshot(raw: Dict[str, Any]) -> Dict[str, Any]:
     base = _default_snapshot()
