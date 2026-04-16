@@ -1,6 +1,7 @@
 import os
 import secrets
 
+
 class Config:
     # Basic Config
     SECRET_KEY = os.environ.get('SECRET_KEY', secrets.token_hex(32))
@@ -31,8 +32,8 @@ class Config:
     DATAFORSEO_PASSWORD = os.environ.get('DATAFORSEO_PASSWORD')
 
     # Portal Auth
-    CLIENTS_AREA_PASSWORD = os.environ.get('CLIENTS_AREA_PASSWORD', '123456')
-    OPERATOR_PASSWORD = os.environ.get('OPERATOR_PASSWORD', '123456')
+    CLIENTS_AREA_PASSWORD = os.environ.get('CLIENTS_AREA_PASSWORD')
+    OPERATOR_PASSWORD = os.environ.get('OPERATOR_PASSWORD')
 
     JWT_SECRET = os.environ.get('JWT_SECRET', secrets.token_hex(32))
 

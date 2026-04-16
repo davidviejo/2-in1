@@ -1,16 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
-import { Terminal, Play } from 'lucide-react';
+import { HttpClientError } from '../../services/httpClient';
+import { Terminal, Play, AlertTriangle } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { OperatorShell } from '../../components/shell/ShellVariants';
 
+const AUTH_INIT_ERROR_CODE = 'auth_not_initialized';
+
 const OperatorPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [error, setError] = useState('');
+  const [authInitAlert, setAuthInitAlert] = useState('');
   const [loading, setLoading] = useState(false);
   const [output, setOutput] = useState<string[]>([]);
   const [executionMode, setExecutionMode] = useState('simulation');
@@ -41,6 +45,7 @@ const OperatorPage: React.FC = () => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setAuthInitAlert('');
 
     try {
       const res = await api.authOperator(password);
@@ -49,8 +54,16 @@ const OperatorPage: React.FC = () => {
       } else {
         setError('Acceso denegado');
       }
-    } catch {
-      setError('Error de conexión');
+    } catch (err) {
+      if (err instanceof HttpClientError && err.payload?.code === AUTH_INIT_ERROR_CODE) {
+        setAuthInitAlert(
+          'Autenticación no inicializada en backend. Ejecuta `make bootstrap-auth` en backend/p2 y reinicia el servidor.',
+        );
+      } else if (err instanceof HttpClientError && err.message) {
+        setError(err.message);
+      } else {
+        setError('Error de conexión');
+      }
     } finally {
       setLoading(false);
     }
@@ -73,61 +86,57 @@ const OperatorPage: React.FC = () => {
   if (isAuthenticated) {
     return (
       <OperatorShell contentClassName="mx-auto w-full max-w-4xl px-4 py-8 font-mono">
-          <div className="flex justify-between items-center mb-8 border-b border-slate-700 pb-4">
-            <h1 className="text-2xl font-bold text-green-400 flex items-center">
-              <Terminal className="mr-2" /> Operator Console
-            </h1>
-            <div className="text-right">
-              <p className="text-xs uppercase tracking-wide text-amber-300">
-                Mode: {executionMode} (explicit)
-              </p>
-              <button
-                onClick={() => {
-                  api.logout();
-                  navigate('/');
-                }}
-                className="text-sm text-slate-400 hover:text-white"
-              >
-                Logout
-              </button>
-            </div>
+        <div className="flex justify-between items-center mb-8 border-b border-slate-700 pb-4">
+          <h1 className="text-2xl font-bold text-green-400 flex items-center">
+            <Terminal className="mr-2" /> Operator Console
+          </h1>
+          <div className="text-right">
+            <p className="text-xs uppercase tracking-wide text-amber-300">Mode: {executionMode} (explicit)</p>
+            <button
+              onClick={() => {
+                api.logout();
+                navigate('/');
+              }}
+              className="text-sm text-slate-400 hover:text-white"
+            >
+              Logout
+            </button>
           </div>
+        </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="md:col-span-1 space-y-4">
-              <h2 className="text-sm font-semibold text-slate-500 uppercase">Available Tools</h2>
-              {['audit_crawl', 'gsc_sync', 'keyword_gap', 'backlink_check'].map((tool) => (
-                <Button
-                  key={tool}
-                  onClick={() => runTool(tool)}
-                  variant="secondary"
-                  className="h-auto w-full justify-between border-slate-700 bg-slate-800 px-4 py-3 text-left text-slate-200 hover:bg-slate-700"
-                >
-                  <span>{tool}</span>
-                  <Play className="w-4 h-4 text-green-500" />
-                </Button>
-              ))}
-            </div>
-            <div className="md:col-span-2">
-              <h2 className="text-sm font-semibold text-slate-500 uppercase mb-4">
-                Console Output
-              </h2>
-              <Card className="h-96 overflow-y-auto border-slate-700 bg-black/50 p-4 text-sm">
-                {output.length === 0 ? (
-                  <EmptyState
-                    className="border-slate-700/80 bg-transparent py-16"
-                    title="Waiting for commands..."
-                  />
-                ) : (
-                  output.map((line, i) => (
-                    <div key={i} className="mb-1 border-b border-white/5 pb-1">
-                      {line}
-                    </div>
-                  ))
-                )}
-              </Card>
-            </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="md:col-span-1 space-y-4">
+            <h2 className="text-sm font-semibold text-slate-500 uppercase">Available Tools</h2>
+            {['audit_crawl', 'gsc_sync', 'keyword_gap', 'backlink_check'].map((tool) => (
+              <Button
+                key={tool}
+                onClick={() => runTool(tool)}
+                variant="secondary"
+                className="h-auto w-full justify-between border-slate-700 bg-slate-800 px-4 py-3 text-left text-slate-200 hover:bg-slate-700"
+              >
+                <span>{tool}</span>
+                <Play className="w-4 h-4 text-green-500" />
+              </Button>
+            ))}
           </div>
+          <div className="md:col-span-2">
+            <h2 className="text-sm font-semibold text-slate-500 uppercase mb-4">Console Output</h2>
+            <Card className="h-96 overflow-y-auto border-slate-700 bg-black/50 p-4 text-sm">
+              {output.length === 0 ? (
+                <EmptyState
+                  className="border-slate-700/80 bg-transparent py-16"
+                  title="Waiting for commands..."
+                />
+              ) : (
+                output.map((line, i) => (
+                  <div key={i} className="mb-1 border-b border-white/5 pb-1">
+                    {line}
+                  </div>
+                ))
+              )}
+            </Card>
+          </div>
+        </div>
       </OperatorShell>
     );
   }
@@ -142,11 +151,18 @@ const OperatorPage: React.FC = () => {
           <h1 className="text-2xl font-bold text-white">Operator Access</h1>
         </div>
 
+        {authInitAlert && (
+          <div className="mb-6 rounded-lg border border-amber-700/50 bg-amber-950/30 px-4 py-3 text-sm text-amber-200">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <p>{authInitAlert}</p>
+            </div>
+          </div>
+        )}
+
         <form onSubmit={handleLogin} className="space-y-6">
           <div>
-            <label className="block text-sm font-medium text-slate-400 mb-2">
-              Security Clearance
-            </label>
+            <label className="block text-sm font-medium text-slate-400 mb-2">Security Clearance</label>
             <input
               type="password"
               value={password}
@@ -172,10 +188,7 @@ const OperatorPage: React.FC = () => {
           </Button>
         </form>
         <div className="mt-6 text-center">
-          <button
-            onClick={() => navigate('/')}
-            className="text-sm text-slate-500 hover:text-slate-400"
-          >
+          <button onClick={() => navigate('/')} className="text-sm text-slate-500 hover:text-slate-400">
             Abort
           </button>
         </div>
