@@ -73,6 +73,14 @@ const isMaskedSecret = (value?: string): boolean => {
   return value.includes('*');
 };
 
+const stripServerManagedSecrets = (settings: AppSettings): AppSettings => {
+  const next = { ...settings };
+  for (const key of SERVER_SETTINGS_KEYS) {
+    delete (next as Record<string, unknown>)[key];
+  }
+  return next;
+};
+
 const extractServerSettings = (settings: Partial<AppSettings>): Partial<AppSettings> => ({
   openaiApiKey: settings.openaiApiKey,
   dataforseoLogin: settings.dataforseoLogin,
@@ -133,7 +141,7 @@ export class SettingsRepository {
         const parsedSettings = JSON.parse(saved) as AppSettings;
         const mergedSettings: AppSettings = {
           defaultSerpProvider: 'dataforseo',
-          ...parsedSettings,
+          ...stripServerManagedSecrets(parsedSettings),
           ...migratedFromLegacy,
         };
         if (Object.keys(migratedFromLegacy).length > 0) {
@@ -164,7 +172,8 @@ export class SettingsRepository {
   }
 
   static saveSettings(settings: AppSettings): void {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    const persistedSettings = stripServerManagedSecrets(settings);
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(persistedSettings));
     if (settings.gscClientId) {
       localStorage.setItem('mediaflow_gsc_client_id', settings.gscClientId);
     }

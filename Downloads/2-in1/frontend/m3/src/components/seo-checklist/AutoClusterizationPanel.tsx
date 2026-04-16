@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import OpenAI from 'openai';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { SeoPage } from '../../types/seoChecklist';
-import { useSettings } from '../../context/SettingsContext';
+import { HttpClientError } from '../../services/httpClient';
+import { openaiApi, ClusterizeAiRequestItem, ClusterizeAiResponse } from '../../services/openaiApi';
 
 type UrlSourceMode = 'existing' | 'existing_gsc' | 'manual';
 type ClusterMode = 'url' | 'scrape' | 'ai_headers';
@@ -98,7 +98,6 @@ const inferClusterFromMetadata = (candidate: ClusterCandidate): { cluster: strin
 };
 
 export const AutoClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) => {
-  const { settings } = useSettings();
   const [urlSourceMode, setUrlSourceMode] = useState<UrlSourceMode>('existing');
   const [clusterMode, setClusterMode] = useState<ClusterMode>('url');
   const [manualUrls, setManualUrls] = useState('');
@@ -174,43 +173,14 @@ export const AutoClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }
         return;
       }
 
-      const apiKey = settings.openaiApiKey;
-      if (!apiKey) {
-        setStatus('Para clusterización IA necesitas configurar OpenAI API Key en Ajustes.');
-        setProposals([]);
-        return;
-      }
-
-      const model = settings.openaiModel || 'gpt-4o-mini';
-      const client = new OpenAI({ apiKey, dangerouslyAllowBrowser: true });
-      const payload = scraped.map((item) => ({
+      const payload: ClusterizeAiRequestItem[] = scraped.map((item) => ({
         id: item.id,
         url: item.url,
         title: item.title || '',
         h1: item.h1 || '',
       }));
 
-      const response = await client.chat.completions.create({
-        model,
-        temperature: 0.2,
-        response_format: { type: 'json_object' },
-        messages: [
-          {
-            role: 'system',
-            content:
-              'Eres un consultor SEO. Agrupa URLs por intención temática. Devuelve JSON válido con key "clusters" y array de {id, cluster, reason}.',
-          },
-          {
-            role: 'user',
-            content: JSON.stringify(payload),
-          },
-        ],
-      });
-
-      const raw = response.choices[0]?.message?.content || '{"clusters": []}';
-      const parsed = JSON.parse(raw) as {
-        clusters?: Array<{ id: string; cluster: string; reason?: string }>;
-      };
+      const parsed: ClusterizeAiResponse = await openaiApi.clusterize(payload);
 
       const map = new Map((parsed.clusters || []).map((item) => [item.id, item]));
       const next = scraped.map((candidate) => {
@@ -228,7 +198,13 @@ export const AutoClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }
       setStatus(`Clusterización IA finalizada: ${next.length} propuestas.`);
     } catch (error) {
       console.error('Auto clusterization error', error);
-      setStatus('Error en la clusterización automática. Revisa la consola o tu API Key.');
+      if (error instanceof HttpClientError && error.status === 424) {
+        setStatus('OpenAI no configurado en servidor. Ve a Ajustes (⚙️).');
+      } else if (error instanceof HttpClientError && (error.status === 401 || error.status === 403)) {
+        setStatus('No autorizado. Inicia sesión de nuevo para clusterizar con IA.');
+      } else {
+        setStatus('Error en la clusterización automática. Revisa la configuración del servidor.');
+      }
     } finally {
       setIsProcessing(false);
     }

@@ -21,6 +21,10 @@ export const endpoints = {
   },
   ai: {
     seoAnalysis: () => 'api/ai/seo-analysis',
+    openaiEnhanceTask: () => 'api/ai/openai/enhance-task',
+    openaiSeoAnalysis: () => 'api/ai/openai/seo-analysis',
+    openaiClusterize: () => 'api/ai/openai/clusterize',
+    openaiConfigStatus: () => 'api/ai/openai/config-status',
     headlineChallenge: () => 'api/ai/headline-challenge',
     checklistEvaluate: () => 'api/ai/checklist-evaluate',
     visibilityRun: () => 'api/ai/visibility/run',

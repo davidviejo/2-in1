@@ -600,6 +600,258 @@ def resume_visibility_schedule(client_id):
         }
     })
 
+def _resolve_openai_credentials():
+    user_settings = get_user_settings('default')
+    openai_key = (
+        session.get('openai_key')
+        or user_settings.get('openai_key')
+        or os.getenv('OPENAI_API_KEY')
+    )
+    openai_model = (
+        user_settings.get('default_model')
+        or session.get('ai_model')
+        or 'gpt-4o-mini'
+    )
+    if openai_model == 'default':
+        openai_model = 'gpt-4o-mini'
+    return openai_key, openai_model
+
+
+def _build_openai_seo_prompt(content, analysis_type, vertical):
+    system_instruction = (
+        'CRITICAL INSTRUCTION: You are an SEO Expert Tool. Do NOT invent, simulate, or hallucinate data, '
+        'metrics, traffic numbers, or statistics. If the user input does not contain enough information '
+        'to perform a specific analysis (e.g. they provide a URL but you cannot crawl it), explicitly '
+        'state what information is missing and provide theoretical advice based ONLY on the visible text '
+        'provided. Base your analysis STRICTLY on the provided input text and general SEO best practices.'
+    )
+
+    if analysis_type == 'headline':
+        return f"""{system_instruction}
+Actúa como un Experto SEO. Analiza el siguiente texto y proporciona 3 variaciones optimizadas de H1 y una Meta Description (máx 155 caracteres) optimizada para CTR. Responde en Español.
+
+Texto: "{content}"."""
+    if analysis_type == 'audit':
+        return f"""{system_instruction}
+Actúa como Auditor SEO Técnico. Proporciona una lista de comprobaciones basada en el input: "{content}". Si el input es una URL, menciona claramente que NO puedes rastrear la web en tiempo real pero da recomendaciones generales basadas en la estructura visible de la URL o el tema inferido. Responde en Español."""
+    if analysis_type == 'schema':
+        return f"""{system_instruction}
+Actúa como Desarrollador SEO Técnico. Genera un marcado Schema 'NewsArticle' JSON-LD válido para: "{content}". Usa marcadores genéricos (ej: "URL_AQUI", "FECHA_AQUI") para datos que no estén explícitamente en el texto. NO inventes autores o fechas si no se dan. Muestra SOLO el código JSON."""
+    if analysis_type == 'calendar':
+        return f"""{system_instruction}
+Actúa como Redactor Jefe. Crea un calendario de contenidos de 5 días enfocado en el tema: "{content}". Sugiere ángulos 'Breaking News' y 'Evergreen'. Responde en Español."""
+    if analysis_type == 'competitor':
+        return f"""{system_instruction}
+Actúa como Estratega SEO. Analiza la estrategia de contenido típica para un sitio del tipo: "{content}". Identifica oportunidades teóricas de "Océano Azul". NO inventes competidores ni métricas de tráfico. Responde en Español."""
+    if analysis_type == 'tone':
+        return f"""{system_instruction}
+Actúa como Editor Senior. Analiza el tono de voz del texto. Da una puntuación del 1-10 en "Objetividad" basada SOLO en el texto.
+Texto: "{content}"."""
+    if analysis_type == 'roadmap':
+        v = vertical or 'media'
+        role = 'Estratega SEO General'
+        focus = 'Visibilidad General'
+        if v == 'media':
+            role = 'Director SEO de Medio de Comunicación'
+            focus = 'Google Discover, Top Stories, Velocidad'
+        elif v == 'ecom':
+            role = 'Head of SEO para E-commerce'
+            focus = 'Fichas de Producto, Categorías, Crawl Budget'
+        elif v == 'local':
+            role = 'Especialista SEO Local'
+            focus = 'Google Business Profile, Citaciones, Reseñas'
+        elif v == 'national':
+            role = 'Consultor SEO Nacional'
+            focus = 'Arquitectura Web, Contenidos, Autoridad de Marca'
+        elif v == 'international':
+            role = 'Estratega SEO Internacional'
+            focus = 'Hreflang, Localización, Dominios Globales'
+
+        return f"""{system_instruction}
+Actúa como {role}. Crea un Roadmap Estratégico de 6 meses para: "{content}".
+Enfoque: {focus}.
+Estructura (Markdown):
+1. Diagnóstico Inicial (Teórico basado en input)
+2. Fases (Mes 1-6)
+3. KPIs Recomendados (Genéricos para el vertical)
+
+Responde en Español."""
+
+    raise ValueError('Tipo de análisis no válido')
+
+
+@ai_bp.route('/api/ai/openai/config-status', methods=['GET'])
+def openai_config_status_endpoint():
+    openai_key, _ = _resolve_openai_credentials()
+    return jsonify({'configured': bool(openai_key)})
+
+
+@ai_bp.route('/api/ai/openai/enhance-task', methods=['POST'])
+def openai_enhance_task_endpoint():
+    data = request.get_json(silent=True) or {}
+    task = data.get('task') or {}
+    vertical = str(data.get('vertical') or 'media')
+
+    title = str(task.get('title') or '').strip()
+    description = str(task.get('description') or '').strip()
+    if not title:
+        return jsonify({'error': 'task.title es requerido'}), 400
+
+    openai_key, default_model = _resolve_openai_credentials()
+    if not openai_key:
+        return jsonify({'error': 'OpenAI no configurado en servidor'}), 424
+
+    from openai import OpenAI
+
+    vertical_map = {
+        'media': 'Medios de Comunicación',
+        'ecom': 'E-commerce',
+        'local': 'Negocios Locales',
+        'national': 'Negocios Nacionales',
+        'international': 'Negocios Internacionales',
+    }
+    vertical_name = vertical_map.get(vertical, vertical)
+
+    prompt = f"""Actúa como un Consultor SEO Senior especializado en {vertical_name}.
+
+Tu objetivo es "vitaminizar" (dar superpoderes) a la siguiente tarea para que el usuario sepa exactamente cómo ejecutarla con excelencia.
+
+Tarea: "{title}"
+Descripción original: "{description}"
+Categoría: {task.get('category') or 'General'}
+Impacto: {task.get('impact') or 'N/A'}
+
+Instrucciones:
+1. Explica BREVEMENTE (1 frase) por qué esta tarea es crítica para un sitio de tipo {vertical}.
+2. Proporciona una "Micro-Guía de Ejecución" paso a paso (máximo 4 pasos).
+3. Sugiere una "Pro Tip" o consejo avanzado que diferencie un trabajo normal de uno excelente.
+4. Si aplica, menciona qué herramienta (GSC, Screaming Frog, Ahrefs) usar.
+
+Responde en Español. Usa formato Markdown limpio (listas, negritas). Sé directo y accionable."""
+
+    try:
+        client = OpenAI(api_key=openai_key)
+        response = client.chat.completions.create(
+            model=default_model or 'gpt-4o-mini',
+            messages=[{'role': 'user', 'content': prompt}],
+        )
+        result = response.choices[0].message.content if response.choices else ''
+        return jsonify({'result': (result or 'No se generó respuesta.').strip()})
+    except Exception as exc:
+        logger.exception('OpenAI enhance-task failed')
+        return jsonify({'error': f'Error conectando con OpenAI: {exc}'}), 502
+
+
+@ai_bp.route('/api/ai/openai/seo-analysis', methods=['POST'])
+def openai_seo_analysis_endpoint():
+    data = request.get_json(silent=True) or {}
+    content = str(data.get('content') or '').strip()
+    analysis_type = data.get('type')
+    vertical = data.get('vertical')
+
+    if not content or not analysis_type:
+        return jsonify({'error': 'Faltan parámetros requeridos'}), 400
+
+    openai_key, default_model = _resolve_openai_credentials()
+    if not openai_key:
+        return jsonify({'error': 'OpenAI no configurado en servidor'}), 424
+
+    try:
+        prompt = _build_openai_seo_prompt(content, analysis_type, vertical)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+
+    from openai import OpenAI
+
+    try:
+        client = OpenAI(api_key=openai_key)
+        response = client.chat.completions.create(
+            model=default_model or 'gpt-4o-mini',
+            messages=[{'role': 'user', 'content': prompt}],
+        )
+        result = response.choices[0].message.content if response.choices else ''
+        return jsonify({'result': (result or 'No se generó análisis.').strip()})
+    except Exception as exc:
+        logger.exception('OpenAI seo-analysis failed')
+        return jsonify({'error': f'Error conectando con OpenAI: {exc}'}), 502
+
+
+@ai_bp.route('/api/ai/openai/clusterize', methods=['POST'])
+def openai_clusterize_endpoint():
+    data = request.get_json(silent=True) or {}
+    items = data.get('items')
+    if not isinstance(items, list) or len(items) == 0:
+        return jsonify({'error': 'items debe ser un array no vacío'}), 400
+
+    normalized_items = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        item_id = str(item.get('id') or '').strip()
+        url = str(item.get('url') or '').strip()
+        if not item_id or not url:
+            continue
+        normalized_items.append({
+            'id': item_id,
+            'url': url,
+            'title': str(item.get('title') or '').strip(),
+            'h1': str(item.get('h1') or '').strip(),
+        })
+
+    if not normalized_items:
+        return jsonify({'error': 'No hay items válidos para clusterizar'}), 400
+
+    openai_key, default_model = _resolve_openai_credentials()
+    if not openai_key:
+        return jsonify({'error': 'OpenAI no configurado en servidor'}), 424
+
+    from openai import OpenAI
+
+    try:
+        client = OpenAI(api_key=openai_key)
+        response = client.chat.completions.create(
+            model=default_model or 'gpt-4o-mini',
+            temperature=0.2,
+            response_format={'type': 'json_object'},
+            messages=[
+                {
+                    'role': 'system',
+                    'content': 'Eres un consultor SEO. Agrupa URLs por intención temática. Devuelve JSON válido con key "clusters" y array de {id, cluster, reason}.',
+                },
+                {
+                    'role': 'user',
+                    'content': json.dumps(normalized_items, ensure_ascii=False),
+                },
+            ],
+        )
+        content = response.choices[0].message.content if response.choices else ''
+        parsed = _extract_json_content(content or '{"clusters": []}')
+        clusters = parsed.get('clusters', []) if isinstance(parsed, dict) else []
+        if not isinstance(clusters, list):
+            clusters = []
+
+        clean_clusters = []
+        for cluster in clusters:
+            if not isinstance(cluster, dict):
+                continue
+            cid = str(cluster.get('id') or '').strip()
+            cname = str(cluster.get('cluster') or '').strip()
+            if not cid or not cname:
+                continue
+            clean_clusters.append(
+                {
+                    'id': cid,
+                    'cluster': cname,
+                    'reason': str(cluster.get('reason') or '').strip(),
+                }
+            )
+
+        return jsonify({'clusters': clean_clusters})
+    except Exception as exc:
+        logger.exception('OpenAI clusterize failed')
+        return jsonify({'error': f'Error conectando con OpenAI: {exc}'}), 502
+
+
 @ai_bp.route('/ai/seo-analysis', methods=['POST'])
 def seo_analysis_endpoint():
     """Genera un análisis SEO utilizando Google Gemini desde el backend."""
