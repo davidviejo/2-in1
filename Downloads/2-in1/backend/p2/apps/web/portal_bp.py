@@ -1,11 +1,11 @@
 from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, make_response, session, redirect, url_for, render_template
-from apps.auth_utils import verify_token
 from apps.web.clients_store import get_safe_clients
 from apps.web.api_routes_map import TOOLS_CATALOG
 from apps.web.template_catalog import get_template_catalog
 from functools import wraps
 from collections import deque
+from apps.web.authz import extract_bearer_token_from_header, get_payload_from_token, require_role
 
 portal_bp = Blueprint('portal_bp', __name__)
 
@@ -13,19 +13,6 @@ WEB_AUTH_COOKIE = 'portal_auth_token'
 OPERATOR_EXECUTION_MODE = 'simulation'
 OPERATOR_AUDIT_LIMIT = 200
 OPERATOR_AUDIT_LOG = deque(maxlen=OPERATOR_AUDIT_LIMIT)
-
-
-def _extract_bearer_token_from_header():
-    auth_header = request.headers.get('Authorization')
-    if auth_header and auth_header.startswith('Bearer '):
-        return auth_header.split(' ', 1)[1].strip()
-    return None
-
-
-def _get_payload_from_token(token):
-    if not token:
-        return None
-    return verify_token(token)
 
 
 def _get_web_payload():
@@ -40,42 +27,14 @@ def _get_web_payload():
     for token in (
         session.get('auth_token'),
         request.cookies.get(WEB_AUTH_COOKIE),
-        _extract_bearer_token_from_header(),
+        extract_bearer_token_from_header(),
     ):
-        payload = _get_payload_from_token(token)
+        payload = get_payload_from_token(token)
         if payload:
             session['auth_payload'] = payload
             return payload
 
     return None
-
-def require_role(allowed_roles):
-    def decorator(f):
-        @wraps(f)
-        def decorated_function(*args, **kwargs):
-            token = _extract_bearer_token_from_header()
-            if not token:
-                return jsonify({'error': 'Missing or invalid Authorization header'}), 401
-
-            payload = _get_payload_from_token(token)
-
-            if not payload:
-                return jsonify({'error': 'Invalid or expired token'}), 401
-
-            if payload.get('role') not in allowed_roles:
-                return jsonify({'error': 'Insufficient permissions'}), 403
-
-            # For project role, verify scope if applicable
-            if payload.get('role') == 'project':
-                # Assuming the route has a <slug> parameter, or we check against something else
-                # In this simple implementation, we might just pass the payload to the function
-                # or attach it to request.
-                pass
-
-            request.user_payload = payload
-            return f(*args, **kwargs)
-        return decorated_function
-    return decorator
 
 
 def require_role_web(allowed_roles, login_endpoint='home'):
