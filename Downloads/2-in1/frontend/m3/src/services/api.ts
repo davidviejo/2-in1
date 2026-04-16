@@ -14,6 +14,12 @@ export interface ToolCatalogItem {
   path: string;
   status: 'legacy' | 'migrada' | 'beta';
   description: string;
+  available: boolean;
+  runtime: {
+    enabled: boolean;
+    requires_credentials: boolean;
+    degraded: boolean;
+  };
 }
 
 interface ToolsCatalogResponse {

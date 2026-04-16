@@ -85,65 +85,6 @@ LEGACY_TO_V1_ROUTES = {
     for route in LEGACY_TOOL_ROUTES
 }
 
-TOOLS_CATALOG = [
-    {
-        'id': 'workflow-master',
-        'name': 'Workflow Maestro',
-        'path': '/workflow/master',
-        'status': 'migrada',
-        'description': 'Flujo orquestado con priorización de tareas SEO.',
-    },
-    {
-        'id': 'gsc-tracker',
-        'name': 'GSC Tracker',
-        'path': '/gsc/dashboard',
-        'status': 'beta',
-        'description': 'Monitoreo de Search Console y alertas operativas.',
-    },
-    {
-        'id': 'eco-trends',
-        'name': 'EcoTrends Realtime',
-        'path': '/trends/media',
-        'status': 'beta',
-        'description': 'Detección de tendencias y briefing editorial.',
-    },
-    {
-        'id': 'audit-suite',
-        'name': 'Audit Suite',
-        'path': '/audit',
-        'status': 'legacy',
-        'description': 'Diagnóstico técnico clásico para auditorías masivas.',
-    },
-    {
-        'id': 'crawler-suite',
-        'name': 'Crawler',
-        'path': '/crawler',
-        'status': 'legacy',
-        'description': 'Rastreo y exportación XML del inventario de URLs.',
-    },
-    {
-        'id': 'keyword-gap',
-        'name': 'Keyword Gap',
-        'path': '/gap',
-        'status': 'migrada',
-        'description': 'Comparativa de brechas semánticas vs competencia.',
-    },
-    {
-        'id': 'schema-tool',
-        'name': 'Schema Tool',
-        'path': '/schema_tool',
-        'status': 'legacy',
-        'description': 'Validación y exportación de marcado estructurado.',
-    },
-    {
-        'id': 'operator-console',
-        'name': 'Operator Console',
-        'path': '/operator',
-        'status': 'migrada',
-        'description': 'Consola para ejecución manual de tareas internas.',
-    },
-]
-
 LEGACY_PREFIX_MAPPINGS = (
     ('/api/seo/tfidf/projects', f'{API_V1_PREFIX}/seo/tfidf/projects'),
     ('/api/seo/tfidf/projects/', f'{API_V1_PREFIX}/seo/tfidf/projects/'),
