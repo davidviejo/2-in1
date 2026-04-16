@@ -14,18 +14,37 @@ Realiza una auditoría básica de SEO On-Page para una URL.
 Verifica imágenes, estructura de encabezados (H1-H3), enlaces internos, snippet y presencia de Schema.
 """
 
+import os
+from urllib.parse import urljoin, urlparse
+
 from flask import Blueprint, redirect
 import requests
 from bs4 import BeautifulSoup
 import re
 import json
-from urllib.parse import urljoin, urlparse
 from apps.tools.utils import is_safe_url
 
 checklist_bp = Blueprint('checklist', __name__, url_prefix='/checklist')
 
 GOOGLE_MAPS_PATTERN = re.compile(r'(google\.[^/]+/maps|maps\.google)', re.IGNORECASE)
 FAQ_SCHEMA_TYPES = {'FAQPage', 'Question', 'Answer'}
+
+
+def resolve_checklist_spa_url() -> str:
+    """
+    Resuelve la URL canónica de Checklist SPA.
+
+    Prioridad:
+    1. `MEDIAFLOW_FRONTEND_URL` cuando frontend/backend viven en hosts distintos.
+    2. HashRouter en la misma origin (`/#/app/checklist`).
+    """
+    configured_base = (os.getenv('MEDIAFLOW_FRONTEND_URL') or '').strip().rstrip('/')
+    hash_route = '/#/app/checklist'
+
+    if configured_base:
+        return urljoin(f'{configured_base}/', hash_route.lstrip('/'))
+
+    return hash_route
 
 
 def _normalize_text(value):
@@ -177,4 +196,4 @@ def check_url_compliance(url):
 @checklist_bp.route('/')
 def index():
     """Endpoint puente legacy -> SPA canónica."""
-    return redirect('/#/app/checklist', code=302)
+    return redirect(resolve_checklist_spa_url(), code=302)
