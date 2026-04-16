@@ -22,4 +22,6 @@ export interface ProjectSnapshotDTO {
   clients: ProjectClientDTO[];
   generalNotes: ProjectNoteDTO[];
   expectedVersion?: number;
+  originClientId?: string;
+  updatedFields?: string[];
 }

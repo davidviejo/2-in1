@@ -5,6 +5,7 @@ import React, {
   useEffect,
   useMemo,
   useCallback,
+  useRef,
   ReactNode,
 } from 'react';
 import {
@@ -109,6 +110,7 @@ interface ProjectContextType {
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
 
 export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const SYNC_DEBOUNCE_MS = 900;
   // --- State Initialization ---
   const [clients, setClients] = useState<Client[]>(() => ClientRepository.getClients());
   const [generalNotes, setGeneralNotes] = useState<Note[]>(() =>
@@ -122,6 +124,80 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
     return clients[0]?.id || '';
   });
   const [isHydrated, setIsHydrated] = useState(false);
+  const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isSyncInFlightRef = useRef(false);
+  const pendingSyncAfterCurrentRef = useRef(false);
+  const latestSnapshotRef = useRef({
+    clients,
+    generalNotes,
+    currentClientId,
+  });
+
+  const syncSnapshot = useCallback(
+    async (
+      snapshot: {
+        clients: Client[];
+        generalNotes: Note[];
+        currentClientId: string;
+      },
+      updatedFields: string[] = ['clients', 'generalNotes', 'currentClientId'],
+    ) => {
+      if (!isHydrated) {
+        return;
+      }
+
+      if (isSyncInFlightRef.current) {
+        pendingSyncAfterCurrentRef.current = true;
+        return;
+      }
+
+      isSyncInFlightRef.current = true;
+      try {
+        await ProjectRemoteRepository.saveSnapshot(snapshot, { updatedFields });
+      } catch (error) {
+        if ((error as Error).message !== 'version_conflict') {
+          console.warn('Project sync failed; keeping local cache.', error);
+        }
+      } finally {
+        isSyncInFlightRef.current = false;
+        if (pendingSyncAfterCurrentRef.current) {
+          pendingSyncAfterCurrentRef.current = false;
+          void syncSnapshot(latestSnapshotRef.current, updatedFields);
+        }
+      }
+    },
+    [isHydrated],
+  );
+
+  const scheduleSnapshotSync = useCallback(
+    (updatedFields: string[] = ['clients', 'generalNotes', 'currentClientId']) => {
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current);
+      }
+      syncTimeoutRef.current = setTimeout(() => {
+        void syncSnapshot(latestSnapshotRef.current, updatedFields);
+      }, SYNC_DEBOUNCE_MS);
+    },
+    [syncSnapshot],
+  );
+
+  const flushSnapshotSync = useCallback(
+    (updatedFields: string[] = ['clients', 'generalNotes', 'currentClientId']) => {
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current);
+        syncTimeoutRef.current = null;
+      }
+      void syncSnapshot(latestSnapshotRef.current, updatedFields);
+    },
+    [syncSnapshot],
+  );
+
+  const flushSnapshotSyncNextTick = useCallback(
+    (updatedFields: string[] = ['clients', 'generalNotes', 'currentClientId']) => {
+      setTimeout(() => flushSnapshotSync(updatedFields), 0);
+    },
+    [flushSnapshotSync],
+  );
 
   // --- Derived State ---
 
@@ -184,23 +260,17 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
     if (currentClientId) {
       ClientRepository.saveCurrentClientId(currentClientId);
     }
-
-    const syncSnapshot = async () => {
-      try {
-        await ProjectRemoteRepository.saveSnapshot({
-          clients,
-          generalNotes,
-          currentClientId,
-        });
-      } catch (error) {
-        if ((error as Error).message !== 'version_conflict') {
-          console.warn('Project sync failed; keeping local cache.', error);
-        }
-      }
+    latestSnapshotRef.current = {
+      clients,
+      generalNotes,
+      currentClientId,
     };
+    scheduleSnapshotSync();
+  }, [clients, generalNotes, currentClientId, isHydrated, scheduleSnapshotSync]);
 
-    syncSnapshot();
-  }, [clients, generalNotes, currentClientId, isHydrated]);
+  useEffect(() => () => {
+    flushSnapshotSync();
+  }, [flushSnapshotSync]);
 
   // --- Actions ---
 
@@ -223,7 +293,8 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
     };
     setClients((prev) => [...prev, newClient]);
     setCurrentClientId(newClient.id);
-  }, []);
+    flushSnapshotSyncNextTick(['clients', 'currentClientId']);
+  }, [flushSnapshotSyncNextTick]);
 
   const deleteClient = useCallback(
     (id: string) => {
@@ -236,8 +307,9 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       if (currentClientId === id) {
         setCurrentClientId(newClients[0].id);
       }
+      flushSnapshotSyncNextTick(['clients', 'currentClientId']);
     },
-    [clients, currentClientId],
+    [clients, currentClientId, flushSnapshotSyncNextTick],
   );
 
   const switchClient = useCallback((id: string) => {
@@ -833,7 +905,8 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       const uniqueNewNotes = newNotes.filter((n) => !existingIds.has(n.id));
       return [...prev, ...uniqueNewNotes];
     });
-  }, []);
+    flushSnapshotSyncNextTick(['clients', 'generalNotes']);
+  }, [flushSnapshotSyncNextTick]);
 
   const restoreProjectData = useCallback(
     (backupClients: Client[], backupNotes: Note[], backupCurrentClientId?: string) => {
@@ -861,8 +934,9 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
           setCurrentClientId(backupCurrentClientId);
         }
       }
+      flushSnapshotSyncNextTick(['clients', 'generalNotes', 'currentClientId']);
     },
-    [],
+    [flushSnapshotSyncNextTick],
   );
 
   const resetCurrentProject = useCallback(() => {
@@ -871,8 +945,9 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       const strategy = StrategyFactory.getStrategy(currentClient.vertical);
       updateCurrentClientModules(strategy.getModules());
       setClients((prev) => prev.map((c) => (c.id === currentClient.id ? { ...c, templateVersion: strategy.getTemplateVersion() } : c)));
+      flushSnapshotSyncNextTick(['clients']);
     }
-  }, [currentClient, updateCurrentClientModules]);
+  }, [currentClient, flushSnapshotSyncNextTick, updateCurrentClientModules]);
 
   const contextValue = useMemo<ProjectContextType>(
     () => ({
