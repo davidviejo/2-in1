@@ -13,7 +13,7 @@
     <div id="resultsArea" style="display:none;">
         <button class="btn btn-success mb-2" onclick="downloadExcel()">Descargar Excel</button>
         <div class="table-responsive border rounded" style="max-height:600px; overflow-y: auto;">
-            <table class="table table-hover table-sm mb-0 small"><thead class="table-dark sticky-top"><tr><th>Status</th><th>URL</th><th>H1</th><th>Words</th><th>Notas</th></tr></thead><tbody id="tableBody"></tbody></table>
+            <table class="table table-hover table-sm mb-0 small"><thead class="table-dark sticky-top"><tr><th>Status</th><th>URL</th><th>Sitemap fuente</th><th>H1</th><th>Words</th><th>Notas</th></tr></thead><tbody id="tableBody"></tbody></table>
         </div>
     </div>
 </div>
@@ -29,7 +29,7 @@ function startAudit(){
         currentData=d.data;
         let html='';
         d.data.forEach(r=>{
-            html+=`<tr><td>${r.status}</td><td>${r.url}</td><td>${r.h1}</td><td>${r.words}</td><td>${r.notes.join(', ')}</td></tr>`;
+            html+=`<tr><td>${r.status}</td><td>${r.url}</td><td>${r.sitemap_source || '-'}</td><td>${r.h1}</td><td>${r.words}</td><td>${r.notes.join(', ')}</td></tr>`;
         });
         document.getElementById('tableBody').innerHTML=html;
         document.getElementById('resultsArea').style.display='block';

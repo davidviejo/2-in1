@@ -18,9 +18,13 @@ import xml.etree.ElementTree as ET
 audit_bp = Blueprint('audit', __name__, url_prefix='/audit')
 
 def fetch_sitemap_urls(sitemap_url):
-    """Expande recursivamente un sitemap (index o urlset) y devuelve URLs finales deduplicadas."""
+    """
+    Expande recursivamente un sitemap (index o urlset) y devuelve:
+    - lista deduplicada de URLs finales
+    - mapa URL -> sitemap fuente del que se extrajo
+    """
     if not is_safe_url(sitemap_url):
-        return []
+        return [], {}
 
     def _local_name(tag):
         return tag.split('}', 1)[1] if '}' in tag else tag
@@ -29,6 +33,7 @@ def fetch_sitemap_urls(sitemap_url):
     to_visit = [sitemap_url]
     visited_sitemaps = set()
     final_urls = set()
+    source_by_url = {}
     max_collected_urls = 5000
 
     while to_visit:
@@ -52,7 +57,7 @@ def fetch_sitemap_urls(sitemap_url):
             root = ET.fromstring(response.content)
         except ET.ParseError:
             if current_sitemap == sitemap_url:
-                return []
+                return [], {}
             continue
 
         root_name = _local_name(root.tag).lower()
@@ -74,12 +79,13 @@ def fetch_sitemap_urls(sitemap_url):
                 final_url = loc_node.text.strip()
                 if final_url:
                     final_urls.add(final_url)
+                    source_by_url.setdefault(final_url, current_sitemap)
                     if len(final_urls) >= max_collected_urls:
-                        return list(final_urls)
+                        return list(final_urls), source_by_url
         elif current_sitemap == sitemap_url:
-            return []
+            return [], {}
 
-    return list(final_urls)
+    return list(final_urls), source_by_url
 
 def analyze_single_url_hybrid(url):
     """
@@ -94,6 +100,7 @@ def analyze_single_url_hybrid(url):
     """
     result = {
         'url': url,
+        'sitemap_source': '',
         'status': 0,
         'method': 'Requests',
         'title': '',
@@ -173,10 +180,11 @@ def scan():
     # Si parece sitemap, intentamos expandirlo; si no, auditamos como URL única
     looks_like_sitemap = 'sitemap' in url_input.lower() or url_input.lower().endswith('.xml')
     if looks_like_sitemap:
-        urls = fetch_sitemap_urls(url_input)
+        urls, source_by_url = fetch_sitemap_urls(url_input)
         urls = urls[:50] # Limitamos a 50 para la demo
     else:
         urls = [url_input]
+        source_by_url = {url_input: url_input}
 
     if not urls:
         if looks_like_sitemap:
@@ -188,7 +196,9 @@ def scan():
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         future_to_url = {executor.submit(analyze_single_url_hybrid, url): url for url in urls}
         for future in concurrent.futures.as_completed(future_to_url):
-            results.append(future.result())
+            row = future.result()
+            row['sitemap_source'] = source_by_url.get(row['url'], url_input)
+            results.append(row)
 
     return jsonify({'status': 'ok', 'total': len(urls), 'data': results})
 
