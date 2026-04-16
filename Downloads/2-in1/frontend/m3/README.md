@@ -52,11 +52,12 @@ Comportamiento por defecto:
 ### Variables de integraciones externas
 
 ```ini
-# APIs Externas (Requerido para funcionalidades AI del cliente)
-VITE_GEMINI_API_KEY=...
 # Google Search Console (Si vas a usar el módulo GSC)
 VITE_GOOGLE_CLIENT_ID=...
 ```
+
+> 🔒 **Flujo IA seguro (nuevo):** el frontend ya no debe incluir API keys de proveedores LLM (`OpenAI`, `Mistral`, `Gemini`) en `import.meta.env`.  
+> Las funciones de roadmap IA y vitaminización de tareas llaman al backend por HTTP (`/api/ai/roadmap-generate`, `/api/ai/task-enhance`) y el backend resuelve las credenciales de forma server-side.
 
 ## ▶️ Ejecución de la App
 
@@ -93,7 +94,7 @@ MEDIAFLOW_FRONTEND_URL=http://localhost:5173
 - **Dashboard de Madurez SEO:** Seguimiento de tareas y progreso por módulos.
 - **Roadmap Dinámico:** Gestión de tareas para diferentes verticales (Media, Ecommerce, Local, etc.).
 - **Integración GSC:** Visualización de datos de Google Search Console directamente en el navegador (OAuth Client-Side).
-- **AI Tools:** Herramientas de generación y análisis potenciadas por Gemini (Client-Side).
+- **AI Tools:** Herramientas de generación y análisis vía backend proxy (sin exponer claves de proveedor en cliente).
 
 ---
 

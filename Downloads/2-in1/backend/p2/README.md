@@ -125,6 +125,27 @@ The Trends module supports multiple providers. It auto-detects based on configur
 2.  **DataForSEO**: Used if `TRENDS_PROVIDER` env var is set to `dataforseo` and credentials (`DATAFORSEO_LOGIN`, `DATAFORSEO_PASSWORD`) are available (env or settings).
 3.  **Google Internal**: Default fallback if no other provider is configured.
 
+## 🔐 Secure AI flow (frontend + backend)
+
+El frontend React consume endpoints backend para tareas IA sensibles y **no** debe leer API keys de proveedor desde `import.meta.env`.
+
+### Endpoints backend recomendados
+
+- `POST /api/ai/task-enhance`
+  - Entrada: `{ task, vertical, userContext?, provider, model? }`
+  - Salida estable: `{ "result": "texto enriquecido markdown" }`
+- `POST /api/ai/roadmap-generate`
+  - Entrada: `{ auditText, availableTasks, provider, model?, prompt? }`
+  - Salida estable: `{ "tasks": Task[] }`
+
+### Resolución de credenciales (solo server-side)
+
+- OpenAI: `session.openai_key` → settings DB (`openai_key`) → `OPENAI_API_KEY`.
+- Gemini: `session.google_key` → `GEMINI_API_KEY` / `GOOGLE_API_KEY`.
+- Mistral: `session.mistral_key` → `MISTRAL_API_KEY`.
+
+Con este esquema, las claves se quedan en backend y el contrato JSON de frontend se mantiene estable.
+
 ## 🔗 Trends Media integrado con el frontend principal
 
 El módulo editorial de Tendencias/Brief ya no se sirve como una app independiente dentro de `backend/p2/static/trends_media`.

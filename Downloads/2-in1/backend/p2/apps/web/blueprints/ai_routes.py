@@ -13,7 +13,7 @@ from apps.core.database import (
     get_ai_visibility_schedule,
 )
 import logging
-from typing import Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field, ValidationError
 from apps.web.authz import require_role
 
@@ -615,6 +615,210 @@ def _resolve_openai_credentials():
     if openai_model == 'default':
         openai_model = 'gpt-4o-mini'
     return openai_key, openai_model
+
+
+def _resolve_provider_credentials(provider: str):
+    provider_id = (provider or 'openai').strip().lower()
+    user_settings = get_user_settings('default')
+
+    if provider_id == 'openai':
+        key = session.get('openai_key') or user_settings.get('openai_key') or os.getenv('OPENAI_API_KEY')
+        model = user_settings.get('default_model') or session.get('ai_model') or 'gpt-4o-mini'
+        if model == 'default':
+            model = 'gpt-4o-mini'
+        return provider_id, key, model
+
+    if provider_id == 'gemini':
+        key = session.get('google_key') or os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')
+        model = 'gemini-2.0-flash'
+        return provider_id, key, model
+
+    if provider_id == 'mistral':
+        key = session.get('mistral_key') or os.getenv('MISTRAL_API_KEY')
+        model = 'mistral-large-latest'
+        return provider_id, key, model
+
+    raise ValueError('Proveedor IA no soportado. Usa: openai, mistral o gemini.')
+
+
+def _execute_provider_prompt(provider: str, prompt: str, model: Optional[str] = None):
+    provider_id, api_key, default_model = _resolve_provider_credentials(provider)
+    if not api_key:
+        raise RuntimeError(f'Proveedor {provider_id} no configurado en servidor.')
+
+    model_id = (model or default_model or '').strip() or default_model
+
+    if provider_id == 'openai':
+        from openai import OpenAI
+
+        client = OpenAI(api_key=api_key)
+        response = client.chat.completions.create(
+            model=model_id,
+            messages=[
+                {'role': 'system', 'content': 'You are a helpful SEO assistant.'},
+                {'role': 'user', 'content': prompt},
+            ],
+            temperature=0.7,
+        )
+        return (response.choices[0].message.content if response.choices else '') or ''
+
+    if provider_id == 'gemini':
+        import google.generativeai as genai
+
+        genai.configure(api_key=api_key)
+        model_instance = genai.GenerativeModel(model_id)
+        response = model_instance.generate_content(prompt)
+        return (getattr(response, 'text', '') or '').strip()
+
+    if provider_id == 'mistral':
+        from mistralai import Mistral
+
+        client = Mistral(api_key=api_key)
+        response = client.chat.complete(
+            model=model_id,
+            messages=[{'role': 'user', 'content': prompt}],
+            temperature=0.7,
+        )
+        message = response.choices[0].message if response.choices else None
+        return (message.content if message and isinstance(message.content, str) else '').strip()
+
+    raise ValueError('Proveedor IA no soportado.')
+
+
+def _normalize_task_payload(raw_task: Dict[str, Any], index: int = 0):
+    task_id = str(raw_task.get('id') or '').strip()
+    is_custom = bool(raw_task.get('isCustom', False))
+    if not task_id:
+        task_id = f'ai-{index}-{int(os.times().elapsed * 1000)}'
+
+    return {
+        'id': task_id,
+        'title': str(raw_task.get('title') or 'Tarea sin título').strip(),
+        'description': str(raw_task.get('description') or '').strip(),
+        'impact': str(raw_task.get('impact') or 'Medium'),
+        'category': str(raw_task.get('category') or 'General'),
+        'isCustom': is_custom,
+    }
+
+
+@ai_bp.route('/api/ai/task-enhance', methods=['POST'])
+def ai_task_enhance_endpoint():
+    data = request.get_json(silent=True) or {}
+    task = data.get('task') or {}
+    provider = str(data.get('provider') or 'openai').strip().lower()
+    model = str(data.get('model') or '').strip()
+    vertical = str(data.get('vertical') or 'media').strip()
+    user_context = str(data.get('userContext') or '').strip()
+
+    title = str(task.get('title') or '').strip()
+    if not title:
+        return jsonify({'error': 'task.title es requerido'}), 400
+
+    description = str(task.get('description') or '').strip()
+    vertical_map = {
+        'media': 'Medios de Comunicación',
+        'ecom': 'E-commerce',
+        'local': 'Negocios Locales',
+        'national': 'Negocios Nacionales',
+        'international': 'Negocios Internacionales',
+    }
+    vertical_name = vertical_map.get(vertical, vertical)
+
+    prompt = f"""Actúa como un Consultor SEO Senior especializado en {vertical_name}.
+
+Tu objetivo es "vitaminizar" (dar superpoderes) a la siguiente tarea para que el usuario sepa exactamente cómo ejecutarla con excelencia.
+
+Tarea: "{title}"
+Descripción original: "{description}"
+Categoría: {task.get('category') or 'General'}
+Impacto: {task.get('impact') or 'N/A'}
+{f'Contexto adicional/Instrucciones del usuario: \"{user_context}\"' if user_context else ''}
+
+Instrucciones:
+1. Explica BREVEMENTE (1 frase) por qué esta tarea es crítica para un sitio de tipo {vertical}.
+2. Proporciona una "Micro-Guía de Ejecución" paso a paso (máximo 4 pasos).
+3. Sugiere una "Pro Tip" o consejo avanzado que diferencie un trabajo normal de uno excelente.
+4. Si aplica, menciona qué herramienta (GSC, Screaming Frog, Ahrefs) usar.
+
+Responde en Español. Usa formato Markdown limpio (listas, negritas). Sé directo y accionable."""
+
+    try:
+        result = _execute_provider_prompt(provider=provider, prompt=prompt, model=model or None)
+        return jsonify({'result': result or 'No se generó respuesta.'})
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    except RuntimeError as exc:
+        return jsonify({'error': str(exc)}), 424
+    except Exception as exc:
+        logger.exception('AI task-enhance failed (%s)', provider)
+        return jsonify({'error': f'Error ejecutando task-enhance: {exc}'}), 502
+
+
+@ai_bp.route('/api/ai/roadmap-generate', methods=['POST'])
+def ai_roadmap_generate_endpoint():
+    data = request.get_json(silent=True) or {}
+    audit_text = str(data.get('auditText') or '').strip()
+    provider = str(data.get('provider') or 'openai').strip().lower()
+    model = str(data.get('model') or '').strip()
+    available_tasks = data.get('availableTasks') or []
+    incoming_prompt = str(data.get('prompt') or '').strip()
+
+    if not audit_text:
+        return jsonify({'tasks': []})
+    if not isinstance(available_tasks, list):
+        return jsonify({'error': 'availableTasks debe ser un array'}), 400
+
+    if incoming_prompt:
+        prompt = incoming_prompt
+    else:
+        system_tasks_list = '\n'.join(
+            [
+                f"- ID: {item.get('id')} | Title: {item.get('title')} ({item.get('category') or 'General'})"
+                for item in available_tasks
+                if isinstance(item, dict)
+            ]
+        )
+        prompt = f"""
+Actúa como un Estratega SEO Experto creando un roadmap personalizado.
+
+AUDITORÍA DEL CLIENTE / NECESIDADES:
+\"\"\"
+{audit_text}
+\"\"\"
+
+TAREAS DEL SISTEMA DISPONIBLES (Referencia estas por ID si aplica):
+{system_tasks_list}
+
+INSTRUCCIONES:
+1. Analiza cuidadosamente la Auditoría del Cliente.
+2. Selecciona tareas relevantes de la lista de TAREAS DEL SISTEMA que aborden los puntos de la auditoría.
+3. Crea NUEVAS TAREAS PERSONALIZADAS para necesidades mencionadas en la auditoría que NO estén cubiertas por las tareas del sistema.
+4. Retorna un array JSON de objetos Task.
+
+CRÍTICO: Todo el contenido de salida (títulos, descripciones) DEBE estar en ESPAÑOL.
+IMPORTANTE: Retorna SOLO el array JSON. Sin formato markdown, sin bloques de código.
+"""
+
+    try:
+        raw_response = _execute_provider_prompt(provider=provider, prompt=prompt, model=model or None)
+        clean_json = (raw_response or '').replace('```json', '').replace('```', '').strip()
+        parsed = json.loads(clean_json)
+        if not isinstance(parsed, list):
+            return jsonify({'error': 'La IA no devolvió un array JSON válido.'}), 422
+        tasks: List[Dict[str, Any]] = [
+            _normalize_task_payload(item, idx) for idx, item in enumerate(parsed) if isinstance(item, dict)
+        ]
+        return jsonify({'tasks': tasks})
+    except json.JSONDecodeError:
+        logger.exception('AI roadmap returned non-JSON output (%s)', provider)
+        return jsonify({'error': 'No se pudo parsear la respuesta IA en formato Task[]'}), 422
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    except RuntimeError as exc:
+        return jsonify({'error': str(exc)}), 424
+    except Exception as exc:
+        logger.exception('AI roadmap-generate failed (%s)', provider)
+        return jsonify({'error': f'Error ejecutando roadmap-generate: {exc}'}), 502
 
 
 def _build_openai_seo_prompt(content, analysis_type, vertical):
