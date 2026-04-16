@@ -25,8 +25,36 @@ def _build_auth_response(token, role, scope=None):
     )
     return response
 
+
+def _require_initialized_auth(*required_keys):
+    missing = []
+
+    for key in required_keys:
+        value = current_app.config.get(key)
+        if not value or not isinstance(value, str) or not value.startswith('$2'):
+            missing.append(key)
+
+    if not missing:
+        return None
+
+    return jsonify(
+        {
+            'error': (
+                'Authentication is not initialized securely. '
+                'Generate bcrypt hashes and set them in backend/p2/.env.'
+            ),
+            'code': 'auth_not_initialized',
+            'missing': missing,
+        }
+    ), 503
+
+
 @auth_bp.route('/api/auth/clients-area', methods=['POST'])
 def auth_clients_area():
+    auth_init_error = _require_initialized_auth('CLIENTS_AREA_PASSWORD')
+    if auth_init_error:
+        return auth_init_error
+
     data = request.get_json()
     password = data.get('password')
 
@@ -39,8 +67,13 @@ def auth_clients_area():
 
     return jsonify({'error': 'Invalid password'}), 401
 
+
 @auth_bp.route('/api/auth/project/<slug>', methods=['POST'])
 def auth_project(slug):
+    auth_init_error = _require_initialized_auth('OPERATOR_PASSWORD')
+    if auth_init_error:
+        return auth_init_error
+
     data = request.get_json()
     password = data.get('password')
 
@@ -64,8 +97,13 @@ def auth_project(slug):
 
     return jsonify({'error': 'Invalid password'}), 401
 
+
 @auth_bp.route('/api/auth/operator', methods=['POST'])
 def auth_operator():
+    auth_init_error = _require_initialized_auth('OPERATOR_PASSWORD')
+    if auth_init_error:
+        return auth_init_error
+
     data = request.get_json()
     password = data.get('password')
 
