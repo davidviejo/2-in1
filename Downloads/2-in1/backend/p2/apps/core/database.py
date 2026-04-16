@@ -338,6 +338,85 @@ def init_db() -> None:
         )
     ''')
 
+    # Project API Snapshot State Table (single row storage)
+    c.execute(f'''
+        CREATE TABLE IF NOT EXISTS project_api_snapshot_state (
+            id INTEGER PRIMARY KEY,
+            version INTEGER NOT NULL DEFAULT 1,
+            updated_at BIGINT NOT NULL,
+            current_client_id TEXT,
+            last_mutation_json TEXT
+        )
+    ''')
+
+    # Project API Clients Table
+    c.execute(f'''
+        CREATE TABLE IF NOT EXISTS project_api_clients (
+            id {text_pk},
+            name TEXT NOT NULL,
+            vertical TEXT,
+            created_at BIGINT,
+            completed_tasks_log_json TEXT,
+            custom_roadmap_order_json TEXT,
+            ai_roadmap_json TEXT,
+            kanban_columns_json TEXT,
+            ia_visibility_json TEXT
+        )
+    ''')
+
+    # Project API Modules Table
+    c.execute(f'''
+        CREATE TABLE IF NOT EXISTS project_api_modules (
+            id {auto_inc_type},
+            client_id TEXT NOT NULL,
+            module_id INTEGER NOT NULL,
+            title TEXT,
+            subtitle TEXT,
+            level_range TEXT,
+            description TEXT,
+            icon_name TEXT,
+            is_custom INTEGER,
+            UNIQUE (client_id, module_id),
+            FOREIGN KEY (client_id) REFERENCES project_api_clients (id) ON DELETE CASCADE
+        )
+    ''')
+
+    # Project API Tasks Table
+    c.execute(f'''
+        CREATE TABLE IF NOT EXISTS project_api_tasks (
+            id {auto_inc_type},
+            client_id TEXT NOT NULL,
+            module_id INTEGER NOT NULL,
+            task_id TEXT NOT NULL,
+            task_json TEXT NOT NULL,
+            UNIQUE (client_id, module_id, task_id),
+            FOREIGN KEY (client_id) REFERENCES project_api_clients (id) ON DELETE CASCADE
+        )
+    ''')
+
+    # Project API Notes Table
+    c.execute(f'''
+        CREATE TABLE IF NOT EXISTS project_api_notes (
+            id {auto_inc_type},
+            note_id TEXT NOT NULL,
+            scope TEXT NOT NULL,
+            client_id TEXT,
+            content TEXT,
+            created_at BIGINT,
+            updated_at BIGINT,
+            extra_json TEXT,
+            UNIQUE (note_id, scope, client_id)
+        )
+    ''')
+
+    # Project API Migration/Metadata Table
+    c.execute(f'''
+        CREATE TABLE IF NOT EXISTS project_api_meta (
+            key {text_pk},
+            value TEXT
+        )
+    ''')
+
     # Check if item_metadata column exists (for migration of existing table)
     # This logic is slightly more complex with Postgres, keeping it simple for now
     try:
