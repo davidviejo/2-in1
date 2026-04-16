@@ -15,6 +15,11 @@ export interface AppSettings {
   brandTerms?: string[];
 }
 
+interface SecretSettingDescriptor {
+  configured?: boolean;
+  maskedValue?: string | null;
+}
+
 export type SettingsSource = 'server' | 'env' | 'local' | 'none';
 
 const SETTINGS_KEY = 'mediaflow_app_settings';
@@ -42,9 +47,31 @@ const LOCAL_SETTINGS_KEYS = [
 export type ServerSettingsKey = (typeof SERVER_SETTINGS_KEYS)[number];
 export type LocalSettingsKey = (typeof LOCAL_SETTINGS_KEYS)[number];
 
-interface ServerSettingsResponse {
-  settings: Partial<AppSettings>;
+interface RawServerSettingsResponse {
+  settings?: Partial<AppSettings> & {
+    openaiApiKey?: string | SecretSettingDescriptor;
+    dataforseoPassword?: string | SecretSettingDescriptor;
+    serpApiKey?: string | SecretSettingDescriptor;
+  };
 }
+
+const readSecretDescriptor = (
+  value: string | SecretSettingDescriptor | undefined,
+): { configured: boolean; maskedValue?: string } => {
+  if (!value) return { configured: false };
+  if (typeof value === 'string') {
+    return { configured: value.trim().length > 0, maskedValue: value };
+  }
+  return {
+    configured: Boolean(value.configured),
+    maskedValue: value.maskedValue || undefined,
+  };
+};
+
+const isMaskedSecret = (value?: string): boolean => {
+  if (!value) return false;
+  return value.includes('*');
+};
 
 const extractServerSettings = (settings: Partial<AppSettings>): Partial<AppSettings> => ({
   openaiApiKey: settings.openaiApiKey,
@@ -152,8 +179,20 @@ export class SettingsRepository {
       throw new Error(`Could not load server settings (${response.status})`);
     }
 
-    const payload = (await response.json()) as ServerSettingsResponse;
-    return payload.settings || {};
+    const payload = (await response.json()) as RawServerSettingsResponse;
+    const serverSettings = payload.settings || {};
+    const openai = readSecretDescriptor(serverSettings.openaiApiKey);
+    const dataforseoPassword = readSecretDescriptor(serverSettings.dataforseoPassword);
+    const serpApiKey = readSecretDescriptor(serverSettings.serpApiKey);
+
+    return {
+      openaiModel: serverSettings.openaiModel,
+      dataforseoLogin: serverSettings.dataforseoLogin,
+      defaultSerpProvider: serverSettings.defaultSerpProvider,
+      openaiApiKey: openai.maskedValue,
+      dataforseoPassword: dataforseoPassword.maskedValue,
+      serpApiKey: serpApiKey.maskedValue,
+    };
   }
 
   static async saveServerSettings(settings: Partial<AppSettings>): Promise<void> {
@@ -191,7 +230,8 @@ export class SettingsRepository {
 
     if (provider === 'openai') {
       const serverKey = serverSettings?.openaiApiKey;
-      return serverKey || envKey || localKey;
+      const usableServerKey = serverKey && !isMaskedSecret(serverKey) ? serverKey : undefined;
+      return usableServerKey || envKey || localKey;
     }
 
     return envKey || localKey;
@@ -202,7 +242,9 @@ export class SettingsRepository {
     localSettings: AppSettings,
     serverSettings?: Partial<AppSettings>,
   ): SettingsSource {
-    if (provider === 'openai' && serverSettings?.openaiApiKey) return 'server';
+    if (provider === 'openai' && serverSettings?.openaiApiKey) {
+      if (!isMaskedSecret(serverSettings.openaiApiKey)) return 'server';
+    }
     if (this.getEnvApiKey(provider)) return 'env';
     if (this.getLocalApiKey(provider, localSettings)) return 'local';
     return 'none';

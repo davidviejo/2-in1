@@ -3,6 +3,7 @@ from flask import Flask, session
 from apps.web.blueprints.ai_routes import ai_bp
 from apps.tools.scraper_core import smart_serp_search
 import os
+from unittest.mock import patch
 
 class TestAIConfig(unittest.TestCase):
     def setUp(self):
@@ -80,19 +81,52 @@ class TestAIConfig(unittest.TestCase):
             'defaultSerpProvider': 'serpapi'
         }
 
-        put_response = self.client.put('/api/settings/config', json=payload)
-        self.assertEqual(put_response.status_code, 200)
+        store = {}
 
-        get_response = self.client.get('/api/settings/config')
-        self.assertEqual(get_response.status_code, 200)
-        body = get_response.get_json()
-        self.assertEqual(body['settings']['openaiApiKey'], 'sk-server-123')
-        self.assertEqual(body['settings']['defaultSerpProvider'], 'serpapi')
+        def fake_get_user_settings(_user_id):
+            return store.copy()
+
+        def fake_upsert_user_settings(_user_id, updates):
+            store.update(updates)
+
+        with patch('apps.web.authz.get_payload_from_token', return_value={'role': 'operator'}), \
+             patch('apps.web.blueprints.ai_routes.get_user_settings', side_effect=fake_get_user_settings), \
+             patch('apps.web.blueprints.ai_routes.upsert_user_settings', side_effect=fake_upsert_user_settings):
+            put_response = self.client.put(
+                '/api/settings/config',
+                json=payload,
+                headers={'Authorization': 'Bearer test-token'},
+            )
+            self.assertEqual(put_response.status_code, 200)
+
+            get_response = self.client.get(
+                '/api/settings/config',
+                headers={'Authorization': 'Bearer test-token'},
+            )
+            self.assertEqual(get_response.status_code, 200)
+            body = get_response.get_json()
+            self.assertEqual(body['settings']['openaiApiKey']['configured'], True)
+            self.assertNotEqual(body['settings']['openaiApiKey']['maskedValue'], 'sk-server-123')
+            self.assertEqual(body['settings']['defaultSerpProvider'], 'serpapi')
 
     def test_settings_config_api_validation(self):
         bad_payload = {'defaultSerpProvider': 'invalid-provider'}
-        response = self.client.put('/api/settings/config', json=bad_payload)
-        self.assertEqual(response.status_code, 400)
+        with patch('apps.web.authz.get_payload_from_token', return_value={'role': 'operator'}):
+            response = self.client.put(
+                '/api/settings/config',
+                json=bad_payload,
+                headers={'Authorization': 'Bearer test-token'},
+            )
+            self.assertEqual(response.status_code, 400)
+
+    def test_settings_config_api_requires_auth_header(self):
+        response = self.client.get('/api/settings/config')
+        self.assertEqual(response.status_code, 401)
+
+    def test_settings_config_api_forbidden_for_non_operator(self):
+        with patch('apps.web.authz.get_payload_from_token', return_value={'role': 'clients_area'}):
+            response = self.client.get('/api/settings/config', headers={'Authorization': 'Bearer test-token'})
+            self.assertEqual(response.status_code, 403)
 
 if __name__ == '__main__':
     unittest.main()

@@ -15,6 +15,7 @@ from apps.core.database import (
 import logging
 from typing import Literal, Optional
 from pydantic import BaseModel, Field, ValidationError
+from apps.web.authz import require_role
 
 logger = logging.getLogger(__name__)
 
@@ -52,15 +53,47 @@ def _map_server_payload_to_user_settings(payload: ServerSettingsSchema):
     }
 
 
+def _mask_secret(value):
+    if not value:
+        return None
+    value = str(value)
+    if len(value) <= 4:
+        return '****'
+    return f"{'*' * max(4, len(value) - 4)}{value[-4:]}"
+
+
+def _build_sanitized_settings_payload(user_settings):
+    raw = _map_user_settings_to_server_payload(user_settings)
+    return {
+        'openaiApiKey': {
+            'configured': bool(raw.get('openaiApiKey')),
+            'maskedValue': _mask_secret(raw.get('openaiApiKey')),
+        },
+        'openaiModel': raw.get('openaiModel'),
+        'dataforseoLogin': raw.get('dataforseoLogin') or '',
+        'dataforseoPassword': {
+            'configured': bool(raw.get('dataforseoPassword')),
+            'maskedValue': _mask_secret(raw.get('dataforseoPassword')),
+        },
+        'serpApiKey': {
+            'configured': bool(raw.get('serpApiKey')),
+            'maskedValue': _mask_secret(raw.get('serpApiKey')),
+        },
+        'defaultSerpProvider': raw.get('defaultSerpProvider'),
+    }
+
+
 @ai_bp.route('/api/settings/config', methods=['GET'])
+@require_role(['operator'])
 def get_settings_config_api():
     """Read backend settings with validated response schema."""
     user_id = 'default'
-    server_settings = _map_user_settings_to_server_payload(get_user_settings(user_id))
-    return jsonify({'status': 'ok', 'settings': ServerSettingsSchema.model_validate(server_settings).model_dump()})
+    settings = _build_sanitized_settings_payload(get_user_settings(user_id))
+    return jsonify({'status': 'ok', 'settings': settings})
 
 
 @ai_bp.route('/api/settings/config', methods=['PUT'])
+@require_role(['operator'])
 def upsert_settings_config_api():
     """Upsert backend settings with request validation schema."""
     data = request.get_json(silent=True) or {}
