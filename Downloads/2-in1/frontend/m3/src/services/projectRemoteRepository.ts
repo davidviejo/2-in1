@@ -12,6 +12,18 @@ interface SyncMeta {
   version: number;
 }
 
+const TAB_ORIGIN_KEY = 'mediaflow_project_origin_client_id_v1';
+
+const getOriginClientId = (): string => {
+  const existing = sessionStorage.getItem(TAB_ORIGIN_KEY);
+  if (existing) {
+    return existing;
+  }
+  const next = crypto.randomUUID();
+  sessionStorage.setItem(TAB_ORIGIN_KEY, next);
+  return next;
+};
+
 const readSyncMeta = (): SyncMeta => {
   try {
     const raw = localStorage.getItem(PROJECT_SYNC_META_KEY);
@@ -76,13 +88,18 @@ export class ProjectRemoteRepository {
     }
   }
 
-  static async saveSnapshot(snapshot: Omit<ProjectSnapshotDTO, 'version' | 'updatedAt'>): Promise<ProjectSnapshotDTO> {
+  static async saveSnapshot(
+    snapshot: Omit<ProjectSnapshotDTO, 'version' | 'updatedAt'>,
+    options?: { updatedFields?: string[] },
+  ): Promise<ProjectSnapshotDTO> {
     const meta = readSyncMeta();
     const payload: ProjectSnapshotDTO = {
       ...snapshot,
       version: meta.version,
       updatedAt: Date.now(),
       expectedVersion: meta.version,
+      originClientId: getOriginClientId(),
+      updatedFields: options?.updatedFields || ['clients', 'generalNotes', 'currentClientId'],
     };
 
     const response = await fetch(`${resolveApiUrl()}/api/v1/project-api/snapshot`, {

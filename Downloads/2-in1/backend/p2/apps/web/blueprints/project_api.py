@@ -3,7 +3,7 @@ import os
 import threading
 import time
 from copy import deepcopy
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, jsonify, request
 
@@ -26,6 +26,7 @@ def _default_snapshot() -> Dict[str, Any]:
         'currentClientId': '',
         'clients': [],
         'generalNotes': [],
+        'lastMutation': None,
     }
 
 
@@ -138,6 +139,115 @@ def _normalize_client(raw: Dict[str, Any]) -> Dict[str, Any]:
     })
 
 
+
+
+def _normalize_updated_fields(values: Any) -> List[str]:
+    if not isinstance(values, list):
+        return []
+    normalized: List[str] = []
+    seen = set()
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        item = value.strip()
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        normalized.append(item)
+    return normalized
+
+
+def _build_mutation_meta(
+    *,
+    origin_client_id: str,
+    resource: str,
+    resource_id: str,
+    updated_fields: List[str],
+    base_version: int,
+    new_version: int,
+) -> Dict[str, Any]:
+    return {
+        'originClientId': origin_client_id,
+        'resource': resource,
+        'resourceId': resource_id,
+        'updatedFields': updated_fields,
+        'baseVersion': base_version,
+        'newVersion': new_version,
+        'updatedAt': int(time.time() * 1000),
+    }
+
+
+def _updated_fields_overlap(first: List[str], second: List[str]) -> bool:
+    return bool(set(first).intersection(second))
+
+
+def _validate_expected_version(
+    *,
+    expected_version: Optional[int],
+    current_snapshot: Dict[str, Any],
+    resource: str,
+    resource_id: str,
+    updated_fields: List[str],
+    origin_client_id: str,
+) -> Optional[Any]:
+    current_version = int(current_snapshot.get('version', 1))
+    if expected_version is None or expected_version == current_version:
+        return None
+
+    last_mutation = current_snapshot.get('lastMutation')
+    can_auto_merge = (
+        isinstance(last_mutation, dict)
+        and int(last_mutation.get('baseVersion', -1)) == int(expected_version)
+        and str(last_mutation.get('resource', '')) == resource
+        and str(last_mutation.get('resourceId', '')) == resource_id
+        and not _updated_fields_overlap(updated_fields, _normalize_updated_fields(last_mutation.get('updatedFields')))
+    )
+
+    if can_auto_merge:
+        return None
+
+    return jsonify({
+        'error': 'version_conflict',
+        'message': 'The snapshot was updated by another client.',
+        'serverSnapshot': current_snapshot,
+        'conflict': {
+            'originClientId': origin_client_id,
+            'resource': resource,
+            'resourceId': resource_id,
+            'updatedFields': updated_fields,
+            'expectedVersion': expected_version,
+            'currentVersion': current_version,
+            'lastMutation': last_mutation,
+        },
+    }), 409
+
+
+def _find_client(snapshot: Dict[str, Any], client_id: str) -> Optional[Dict[str, Any]]:
+    for client in snapshot.get('clients', []):
+        if client.get('id') == client_id:
+            return client
+    return None
+
+
+def _save_snapshot_with_meta(snapshot: Dict[str, Any], mutation_meta: Dict[str, Any]) -> Dict[str, Any]:
+    current_version = int(snapshot.get('version', 1))
+    snapshot['version'] = current_version + 1
+    snapshot['updatedAt'] = int(time.time() * 1000)
+    snapshot['lastMutation'] = mutation_meta
+    _save_store(snapshot)
+    return snapshot
+
+
+def _extract_patch_request_metadata(data: Dict[str, Any]) -> Dict[str, Any]:
+    expected_version_raw = data.get('expectedVersion')
+    expected_version = int(expected_version_raw) if expected_version_raw is not None else None
+
+    return {
+        'expectedVersion': expected_version,
+        'originClientId': str(data.get('originClientId', '')).strip(),
+        'updatedFields': _normalize_updated_fields(data.get('updatedFields')),
+    }
+
 def _normalize_snapshot(raw: Dict[str, Any]) -> Dict[str, Any]:
     base = _default_snapshot()
     return {
@@ -146,6 +256,7 @@ def _normalize_snapshot(raw: Dict[str, Any]) -> Dict[str, Any]:
         'currentClientId': str(raw.get('currentClientId', '')),
         'clients': [_normalize_client(client) for client in raw.get('clients', []) if isinstance(client, dict)],
         'generalNotes': [_normalize_note(note) for note in raw.get('generalNotes', []) if isinstance(note, dict)],
+        'lastMutation': raw.get('lastMutation') if isinstance(raw.get('lastMutation'), dict) else None,
     }
 
 
@@ -160,22 +271,191 @@ def get_snapshot():
 def put_snapshot():
     data = request.get_json(silent=True) or {}
     incoming = _normalize_snapshot(data)
-    expected_version = data.get('expectedVersion')
+    metadata = _extract_patch_request_metadata(data)
 
     with _LOCK:
         current = _load_store()
-        if expected_version is not None and int(expected_version) != int(current.get('version', 1)):
-            return jsonify({
-                'error': 'version_conflict',
-                'message': 'The snapshot was updated by another client.',
-                'serverSnapshot': current,
-            }), 409
+        conflict_response = _validate_expected_version(
+            expected_version=metadata['expectedVersion'],
+            current_snapshot=current,
+            resource='snapshot',
+            resource_id='project',
+            updated_fields=metadata['updatedFields'],
+            origin_client_id=metadata['originClientId'],
+        )
+        if conflict_response is not None:
+            return conflict_response
 
-        incoming['version'] = int(current.get('version', 1)) + 1
-        incoming['updatedAt'] = int(time.time() * 1000)
-        _save_store(incoming)
+        incoming['version'] = int(current.get('version', 1))
+        mutation_meta = _build_mutation_meta(
+            origin_client_id=metadata['originClientId'],
+            resource='snapshot',
+            resource_id='project',
+            updated_fields=metadata['updatedFields'],
+            base_version=int(current.get('version', 1)),
+            new_version=int(current.get('version', 1)) + 1,
+        )
+        saved = _save_snapshot_with_meta(incoming, mutation_meta)
 
-    return jsonify(incoming)
+    return jsonify(saved)
+
+
+@project_api_bp.route('/clients/<client_id>', methods=['PATCH'])
+def patch_client(client_id: str):
+    data = request.get_json(silent=True) or {}
+    patch = data.get('patch') if isinstance(data.get('patch'), dict) else {}
+    metadata = _extract_patch_request_metadata(data)
+
+    allowed_fields = {'name', 'vertical', 'kanbanColumns', 'customRoadmapOrder', 'iaVisibility'}
+
+    with _LOCK:
+        snapshot = _load_store()
+        client = _find_client(snapshot, client_id)
+        if client is None:
+            return jsonify({'error': 'not_found', 'message': 'Client not found.'}), 404
+
+        conflict_response = _validate_expected_version(
+            expected_version=metadata['expectedVersion'],
+            current_snapshot=snapshot,
+            resource='client',
+            resource_id=client_id,
+            updated_fields=metadata['updatedFields'],
+            origin_client_id=metadata['originClientId'],
+        )
+        if conflict_response is not None:
+            return conflict_response
+
+        for field in allowed_fields:
+            if field in patch:
+                if field == 'customRoadmapOrder':
+                    client[field] = _dedupe_stable_strings(patch[field])
+                else:
+                    client[field] = patch[field]
+
+        if 'currentClientId' in patch:
+            snapshot['currentClientId'] = str(patch.get('currentClientId') or '')
+
+        mutation_meta = _build_mutation_meta(
+            origin_client_id=metadata['originClientId'],
+            resource='client',
+            resource_id=client_id,
+            updated_fields=metadata['updatedFields'],
+            base_version=int(snapshot.get('version', 1)),
+            new_version=int(snapshot.get('version', 1)) + 1,
+        )
+        saved = _save_snapshot_with_meta(snapshot, mutation_meta)
+
+    return jsonify(saved)
+
+
+@project_api_bp.route('/notes/<note_id>', methods=['PATCH'])
+def patch_note(note_id: str):
+    data = request.get_json(silent=True) or {}
+    patch = data.get('patch') if isinstance(data.get('patch'), dict) else {}
+    metadata = _extract_patch_request_metadata(data)
+    scope = str(data.get('scope', 'general')).strip().lower()
+    client_id = str(data.get('clientId', '')).strip()
+
+    with _LOCK:
+        snapshot = _load_store()
+
+        if scope == 'general':
+            notes = snapshot.get('generalNotes', [])
+            note = next((n for n in notes if n.get('id') == note_id), None)
+        else:
+            client = _find_client(snapshot, client_id)
+            if client is None:
+                return jsonify({'error': 'not_found', 'message': 'Client not found.'}), 404
+            notes = client.get('notes', [])
+            note = next((n for n in notes if n.get('id') == note_id), None)
+
+        if note is None:
+            return jsonify({'error': 'not_found', 'message': 'Note not found.'}), 404
+
+        resource_id = f'{scope}:{client_id or "global"}:{note_id}'
+        conflict_response = _validate_expected_version(
+            expected_version=metadata['expectedVersion'],
+            current_snapshot=snapshot,
+            resource='note',
+            resource_id=resource_id,
+            updated_fields=metadata['updatedFields'],
+            origin_client_id=metadata['originClientId'],
+        )
+        if conflict_response is not None:
+            return conflict_response
+
+        if 'content' in patch:
+            note['content'] = str(patch.get('content', ''))
+        note['updatedAt'] = int(time.time() * 1000)
+
+        mutation_meta = _build_mutation_meta(
+            origin_client_id=metadata['originClientId'],
+            resource='note',
+            resource_id=resource_id,
+            updated_fields=metadata['updatedFields'],
+            base_version=int(snapshot.get('version', 1)),
+            new_version=int(snapshot.get('version', 1)) + 1,
+        )
+        saved = _save_snapshot_with_meta(snapshot, mutation_meta)
+
+    return jsonify(saved)
+
+
+@project_api_bp.route('/tasks/<task_id>', methods=['PATCH'])
+def patch_task(task_id: str):
+    data = request.get_json(silent=True) or {}
+    patch = data.get('patch') if isinstance(data.get('patch'), dict) else {}
+    metadata = _extract_patch_request_metadata(data)
+    client_id = str(data.get('clientId', '')).strip()
+    module_id_raw = data.get('moduleId')
+    module_id = int(module_id_raw) if module_id_raw is not None else None
+
+    with _LOCK:
+        snapshot = _load_store()
+        client = _find_client(snapshot, client_id)
+        if client is None:
+            return jsonify({'error': 'not_found', 'message': 'Client not found.'}), 404
+
+        target_task = None
+        for module in client.get('modules', []):
+            if module_id is not None and int(module.get('id', -1)) != module_id:
+                continue
+            for task in module.get('tasks', []):
+                if task.get('id') == task_id:
+                    target_task = task
+                    break
+            if target_task is not None:
+                break
+
+        if target_task is None:
+            return jsonify({'error': 'not_found', 'message': 'Task not found.'}), 404
+
+        resource_id = f'{client_id}:{module_id if module_id is not None else "*"}:{task_id}'
+        conflict_response = _validate_expected_version(
+            expected_version=metadata['expectedVersion'],
+            current_snapshot=snapshot,
+            resource='task',
+            resource_id=resource_id,
+            updated_fields=metadata['updatedFields'],
+            origin_client_id=metadata['originClientId'],
+        )
+        if conflict_response is not None:
+            return conflict_response
+
+        for key, value in patch.items():
+            target_task[key] = value
+
+        mutation_meta = _build_mutation_meta(
+            origin_client_id=metadata['originClientId'],
+            resource='task',
+            resource_id=resource_id,
+            updated_fields=metadata['updatedFields'],
+            base_version=int(snapshot.get('version', 1)),
+            new_version=int(snapshot.get('version', 1)) + 1,
+        )
+        saved = _save_snapshot_with_meta(snapshot, mutation_meta)
+
+    return jsonify(saved)
 
 
 @project_api_bp.route('/clients', methods=['GET'])
