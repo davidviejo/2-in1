@@ -12,6 +12,19 @@ const statusVariant: Record<ToolCatalogItem['status'], 'warning' | 'success' | '
   beta: 'primary',
 };
 
+const availabilityBadge = (tool: ToolCatalogItem): { label: string; variant: 'danger' | 'warning' | 'success' } => {
+  if (!tool.runtime.enabled || !tool.available) {
+    return { label: 'Deshabilitada', variant: 'danger' };
+  }
+  if (tool.runtime.degraded) {
+    return { label: 'Degradada', variant: 'warning' };
+  }
+  if (tool.runtime.requires_credentials) {
+    return { label: 'Requiere credenciales', variant: 'warning' };
+  }
+  return { label: 'Disponible', variant: 'success' };
+};
+
 const ToolsHub: React.FC = () => {
   const [tools, setTools] = useState<ToolCatalogItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,6 +68,9 @@ const ToolsHub: React.FC = () => {
   }, [tools]);
 
   const openTool = (tool: ToolCatalogItem) => {
+    if (!tool.runtime.enabled) {
+      return;
+    }
     if (tool.status === 'legacy') {
       setPendingLegacyTool(tool);
       return;
@@ -100,24 +116,30 @@ const ToolsHub: React.FC = () => {
 
       {!loading && !error && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {tools.map((tool) => (
-            <Card key={tool.id} className="border-border bg-surface p-5">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="text-lg font-semibold text-foreground">{tool.name}</h2>
-                  <p className="mt-1 text-sm text-muted">{tool.description}</p>
+          {tools.map((tool) => {
+            const runtimeBadge = availabilityBadge(tool);
+            return (
+              <Card key={tool.id} className="border-border bg-surface p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-semibold text-foreground">{tool.name}</h2>
+                    <p className="mt-1 text-sm text-muted">{tool.description}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <Badge variant={statusVariant[tool.status]}>{tool.status}</Badge>
+                    <Badge variant={runtimeBadge.variant}>{runtimeBadge.label}</Badge>
+                  </div>
                 </div>
-                <Badge variant={statusVariant[tool.status]}>{tool.status}</Badge>
-              </div>
-              <div className="mt-5 flex items-center justify-between">
-                <code className="rounded bg-surface-alt px-2 py-1 text-xs text-muted">{tool.path}</code>
-                <Button variant="secondary" onClick={() => openTool(tool)}>
-                  Abrir
-                  <ArrowUpRight size={16} />
-                </Button>
-              </div>
-            </Card>
-          ))}
+                <div className="mt-5 flex items-center justify-between">
+                  <code className="rounded bg-surface-alt px-2 py-1 text-xs text-muted">{tool.path}</code>
+                  <Button variant="secondary" onClick={() => openTool(tool)} disabled={!tool.runtime.enabled}>
+                    Abrir
+                    <ArrowUpRight size={16} />
+                  </Button>
+                </div>
+              </Card>
+            );
+          })}
         </div>
       )}
 

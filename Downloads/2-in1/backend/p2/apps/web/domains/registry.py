@@ -11,6 +11,17 @@ from apps.web.domains.taxonomy import DOMAIN_PREFIXES
 class BlueprintSpec(NamedTuple):
     module_path: str
     blueprint_attr: str
+    tool_metadata: 'ToolMetadata | None' = None
+
+
+class ToolMetadata(NamedTuple):
+    id: str
+    name: str
+    path: str
+    status: str
+    description: str
+    availability_flag: bool = True
+    required_credentials: Sequence[str] = ()
 
 
 class DomainBootstrap(NamedTuple):
@@ -29,7 +40,17 @@ DOMAIN_BOOTSTRAP: Sequence[DomainBootstrap] = (
         domain='portal',
         core=(
             BlueprintSpec('apps.web.auth_bp', 'auth_bp'),
-            BlueprintSpec('apps.web.portal_bp', 'portal_bp'),
+            BlueprintSpec(
+                'apps.web.portal_bp',
+                'portal_bp',
+                ToolMetadata(
+                    id='operator-console',
+                    name='Operator Console',
+                    path='/operator',
+                    status='migrada',
+                    description='Consola para ejecución manual de tareas internas.',
+                ),
+            ),
         ),
         namespaced=(
             BlueprintSpec('apps.web.auth_bp', 'auth_bp'),
@@ -61,12 +82,43 @@ DOMAIN_BOOTSTRAP: Sequence[DomainBootstrap] = (
             BlueprintSpec('apps.web.blueprints.project_manager', 'project_bp'),
             BlueprintSpec('apps.web.blueprints.project_api', 'project_api_bp'),
             BlueprintSpec('apps.web.blueprints.seo_tool', 'seo_bp'),
-            BlueprintSpec('apps.web.blueprints.audit_tool', 'audit_bp'),
-            BlueprintSpec('apps.web.blueprints.content_gap', 'gap_bp'),
+            BlueprintSpec(
+                'apps.web.blueprints.audit_tool',
+                'audit_bp',
+                ToolMetadata(
+                    id='audit-suite',
+                    name='Audit Suite',
+                    path='/audit',
+                    status='legacy',
+                    description='Diagnóstico técnico clásico para auditorías masivas.',
+                ),
+            ),
+            BlueprintSpec(
+                'apps.web.blueprints.content_gap',
+                'gap_bp',
+                ToolMetadata(
+                    id='keyword-gap',
+                    name='Keyword Gap',
+                    path='/gap',
+                    status='migrada',
+                    description='Comparativa de brechas semánticas vs competencia.',
+                ),
+            ),
             BlueprintSpec('apps.web.blueprints.entity_tool', 'entity_bp'),
             BlueprintSpec('apps.web.blueprints.schema_detector', 'schema_detector_bp'),
             BlueprintSpec('apps.web.blueprints.readability_tool', 'readability_bp'),
-            BlueprintSpec('apps.web.blueprints.gsc_tool', 'gsc_bp'),
+            BlueprintSpec(
+                'apps.web.blueprints.gsc_tool',
+                'gsc_bp',
+                ToolMetadata(
+                    id='gsc-tracker',
+                    name='GSC Tracker',
+                    path='/gsc/dashboard',
+                    status='beta',
+                    description='Monitoreo de Search Console y alertas operativas.',
+                    required_credentials=('DATAFORSEO_EMAIL', 'DATAFORSEO_PASSWORD'),
+                ),
+            ),
             BlueprintSpec('apps.web.blueprints.checklist_tool', 'checklist_bp'),
             BlueprintSpec('apps.web.blueprints.nlp_tool', 'nlp_bp'),
             BlueprintSpec('apps.web.blueprints.eeat_tool', 'eeat_bp'),
@@ -88,7 +140,17 @@ DOMAIN_BOOTSTRAP: Sequence[DomainBootstrap] = (
             BlueprintSpec('apps.web.blueprints.hreflang_tool', 'hreflang_bp'),
             BlueprintSpec('apps.web.blueprints.content_extract', 'extract_bp'),
             BlueprintSpec('apps.web.blueprints.social_tool', 'social_bp'),
-            BlueprintSpec('apps.web.blueprints.schema_tool', 'schema_bp'),
+            BlueprintSpec(
+                'apps.web.blueprints.schema_tool',
+                'schema_bp',
+                ToolMetadata(
+                    id='schema-tool',
+                    name='Schema Tool',
+                    path='/schema_tool',
+                    status='legacy',
+                    description='Validación y exportación de marcado estructurado.',
+                ),
+            ),
             BlueprintSpec('apps.web.blueprints.robots_tool', 'robots_bp'),
             BlueprintSpec('apps.web.blueprints.decay_tool', 'decay_bp'),
             BlueprintSpec('apps.web.blueprints.index_checker', 'indexer_bp'),
@@ -120,7 +182,17 @@ DOMAIN_BOOTSTRAP: Sequence[DomainBootstrap] = (
             BlueprintSpec('apps.web.blueprints.draft_tool', 'draft_bp'),
             BlueprintSpec('apps.web.blueprints.pixel_tool', 'pixel_bp'),
             BlueprintSpec('apps.web.blueprints.anchor_tool', 'anchor_bp'),
-            BlueprintSpec('apps.web.blueprints.crawler_tool', 'crawler_bp'),
+            BlueprintSpec(
+                'apps.web.blueprints.crawler_tool',
+                'crawler_bp',
+                ToolMetadata(
+                    id='crawler-suite',
+                    name='Crawler',
+                    path='/crawler',
+                    status='legacy',
+                    description='Rastreo y exportación XML del inventario de URLs.',
+                ),
+            ),
             BlueprintSpec('apps.web.blueprints.kw_intent', 'kw_intent_bp'),
             BlueprintSpec('apps.web.blueprints.depth_tool', 'depth_bp'),
             BlueprintSpec('apps.web.blueprints.utm_tool', 'utm_bp'),
@@ -133,8 +205,29 @@ DOMAIN_BOOTSTRAP: Sequence[DomainBootstrap] = (
             BlueprintSpec('apps.web.blueprints.usage_tracker', 'usage_bp'),
             BlueprintSpec('apps.web.blueprints.ops_cleaner', 'cleaner_bp'),
             BlueprintSpec('apps.web.blueprints.ops_frameworks', 'frameworks_bp'),
-            BlueprintSpec('apps.web.blueprints.trends_economy', 'trends_bp'),
-            BlueprintSpec('apps.web.blueprints.workflow_tool', 'workflow_bp'),
+            BlueprintSpec(
+                'apps.web.blueprints.trends_economy',
+                'trends_bp',
+                ToolMetadata(
+                    id='eco-trends',
+                    name='EcoTrends Realtime',
+                    path='/trends/media',
+                    status='beta',
+                    description='Detección de tendencias y briefing editorial.',
+                    required_credentials=('SERPAPI_KEY',),
+                ),
+            ),
+            BlueprintSpec(
+                'apps.web.blueprints.workflow_tool',
+                'workflow_bp',
+                ToolMetadata(
+                    id='workflow-master',
+                    name='Workflow Maestro',
+                    path='/workflow/master',
+                    status='migrada',
+                    description='Flujo orquestado con priorización de tareas SEO.',
+                ),
+            ),
         ),
         namespaced=(),
         notes=(),
