@@ -21,6 +21,8 @@ export const endpoints = {
   },
   ai: {
     seoAnalysis: () => 'api/ai/seo-analysis',
+    taskEnhance: () => 'api/ai/task-enhance',
+    roadmapGenerate: () => 'api/ai/roadmap-generate',
     openaiEnhanceTask: () => 'api/ai/openai/enhance-task',
     openaiSeoAnalysis: () => 'api/ai/openai/seo-analysis',
     openaiClusterize: () => 'api/ai/openai/clusterize',

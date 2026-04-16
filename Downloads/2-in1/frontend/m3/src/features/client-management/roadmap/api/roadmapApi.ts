@@ -1,23 +1,23 @@
-import { Mistral } from '@mistralai/mistralai';
-import OpenAI from 'openai';
-import { GoogleGenAI } from '@google/genai';
 import { Task } from '@/types';
+import { HttpClientError, createHttpClient } from '@/services/httpClient';
+import { endpoints } from '@/services/endpoints';
 
 export interface AIProviderConfig {
   provider: 'openai' | 'mistral' | 'gemini';
-  apiKey: string;
+  apiKey?: string;
   model: string;
 }
+
+const httpClient = createHttpClient({ service: 'api' });
 
 export const generateAIRoadmap = async (
   auditText: string,
   availableTasks: { id: string; title: string; category?: string }[],
   config: AIProviderConfig,
 ): Promise<Task[]> => {
-  const { provider, apiKey, model } = config;
+  const { provider, model } = config;
 
   if (!auditText.trim()) return [];
-  if (!apiKey) throw new Error(`API Key for ${provider} is missing.`);
 
   const systemTasksList = availableTasks
     .map((t) => `- ID: ${t.id} | Title: ${t.title} (${t.category || 'General'})`)
@@ -58,55 +58,24 @@ IMPORTANTE:
 `;
 
   try {
-    let responseText = '';
+    const response = await httpClient.post<{ tasks?: Task[] }>(endpoints.ai.roadmapGenerate(), {
+      auditText,
+      availableTasks,
+      provider,
+      model,
+      prompt,
+    });
 
-    if (provider === 'openai') {
-      const openai = new OpenAI({ apiKey, dangerouslyAllowBrowser: true });
-      const response = await openai.chat.completions.create({
-        model: model,
-        messages: [
-          { role: 'system', content: 'You are a helpful SEO assistant that outputs strict JSON.' },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.7,
-      });
-      responseText = response.choices[0].message.content || '';
-    } else if (provider === 'mistral') {
-      const client = new Mistral({ apiKey });
-      const response = await client.chat.complete({
-        model: model,
-        messages: [{ role: 'user', content: prompt }],
-      });
-      responseText = (response.choices?.[0]?.message?.content as string) || '';
-    } else if (provider === 'gemini') {
-      const ai = new GoogleGenAI({ apiKey });
-      const response = await ai.models.generateContent({
-        model: model,
-        contents: prompt,
-      });
-      responseText = response.text || '';
-    }
-
-    const cleanJson = responseText
-      .replace(/```json/g, '')
-      .replace(/```/g, '')
-      .trim();
-
-    let tasks: Task[] = [];
-    try {
-      tasks = JSON.parse(cleanJson);
-    } catch (parseError) {
-      console.error('JSON Parse Error:', parseError);
-      console.error('Raw Response:', responseText);
-      throw new Error('Failed to parse AI response as JSON. Please try again.');
-    }
-
+    const tasks = Array.isArray(response.tasks) ? response.tasks : [];
     return tasks.map((t, index) => ({
       ...t,
       id: t.isCustom ? (t.id.startsWith('ai-') ? t.id : `ai-${Date.now()}-${index}`) : t.id,
       status: 'pending',
     }));
   } catch (error) {
+    if (error instanceof HttpClientError) {
+      throw new Error(error.message || 'Failed to generate roadmap via backend.');
+    }
     console.error('AI Roadmap Generation Error:', error);
     throw error;
   }

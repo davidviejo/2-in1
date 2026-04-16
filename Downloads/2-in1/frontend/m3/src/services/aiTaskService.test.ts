@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { enhanceTaskWithAI } from './aiTaskService';
 import { Task } from '../types';
 
@@ -12,12 +12,21 @@ describe('AI Task Service', () => {
     category: 'Test',
   };
 
-  it('should return error message when API key is missing', async () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('should return backend enriched content', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ result: 'Contenido vitaminizado.' }),
+    } as Response);
+
     const result = await enhanceTaskWithAI(mockTask, 'media', {
       provider: 'openai',
-      apiKey: '',
       model: 'gpt-4o',
     });
-    expect(result).toContain('API Key para openai no configurada');
+    expect(result).toContain('Contenido vitaminizado.');
   });
 });
