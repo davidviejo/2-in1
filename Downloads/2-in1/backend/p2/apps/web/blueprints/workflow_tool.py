@@ -1,9 +1,28 @@
 # apps/workflow_tool.py
+import os
+from urllib.parse import urljoin
+
 from flask import Blueprint, render_template, jsonify, redirect
 
 workflow_bp = Blueprint('workflow_bp', __name__)
 CHECKLIST_BRIDGE_URL = '/workflow/checklist'
-CHECKLIST_SPA_URL = '/#/app/checklist'
+
+
+def resolve_checklist_spa_url() -> str:
+    """
+    Resuelve la URL canónica de Checklist SPA.
+
+    Prioridad:
+    1. `MEDIAFLOW_FRONTEND_URL` cuando frontend/backend viven en hosts distintos.
+    2. HashRouter en la misma origin (`/#/app/checklist`).
+    """
+    configured_base = (os.getenv('MEDIAFLOW_FRONTEND_URL') or '').strip().rstrip('/')
+    hash_route = '/#/app/checklist'
+
+    if configured_base:
+        return urljoin(f'{configured_base}/', hash_route.lstrip('/'))
+
+    return hash_route
 
 @workflow_bp.route('/workflow/master')
 def master_dashboard():
@@ -13,7 +32,7 @@ def master_dashboard():
 @workflow_bp.route(CHECKLIST_BRIDGE_URL)
 def checklist_bridge():
     """Endpoint puente claro para enviar checklist legacy al checklist canónico (SPA)."""
-    return redirect(CHECKLIST_SPA_URL, code=302)
+    return redirect(resolve_checklist_spa_url(), code=302)
 
 
 @workflow_bp.route('/workflow/data')
