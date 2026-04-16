@@ -10,7 +10,6 @@ from apps.core.database import (
     get_next_queued_job, update_job_status, get_job_items_by_status,
     update_item_status, update_job_progress, get_job
 )
-from apps.web.blueprints.api_engine.seo_checklist_orchestrator import run_orchestrated_checklist
 from apps.core.config import Config
 from apps.ai_visibility_runner import process_ai_visibility_schedules
 
@@ -204,6 +203,10 @@ class JobRunner:
             gsc_queries = meta.get('gscQueries')
             if gsc_queries is None:
                 gsc_queries = gsc_queries_map.get(url, [])
+
+            from apps.web.blueprints.api_engine.seo_checklist_orchestrator import (
+                run_orchestrated_checklist,
+            )
 
             result = run_orchestrated_checklist(
                 url=url,
