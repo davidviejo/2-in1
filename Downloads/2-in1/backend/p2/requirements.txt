@@ -314,3 +314,8 @@ wrapt==2.1.1
 
 # The following packages are considered to be unsafe in a requirements file:
 # setuptools
+
+mypy==1.18.2
+    # via -r backend/p2/requirements.in
+ruff==0.14.1
+    # via -r backend/p2/requirements.in

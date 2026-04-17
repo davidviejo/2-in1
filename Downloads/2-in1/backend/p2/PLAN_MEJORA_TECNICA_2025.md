@@ -91,3 +91,33 @@ Instalar `pre-commit` con la siguiente configuración `.pre-commit-config.yaml`:
 **Solución Propuesta:**
 1. Crear `requirements.in` con dependencias de alto nivel.
 2. Usar `pip-compile` para generar un `requirements.txt` con versiones congeladas (e.g., `flask==3.0.0`).
+
+---
+
+## Estado de adopción (Backend Quality Gate)
+
+**Estado:** ✅ **Adoptado**
+
+Se adopta un estándar mínimo de calidad para `backend/p2` con los siguientes componentes:
+
+1. **Linting** con Ruff.
+2. **Formateo** con Ruff formatter.
+3. **Typecheck** con mypy.
+4. **Testing** con pytest.
+5. **CI por PR** ejecutando lint + typecheck + tests.
+
+### Criterios de salida (Definition of Exit)
+
+Se considera completada la adopción cuando en cada PR al menos se cumpla:
+
+- `make lint` en verde.
+- `make typecheck` en verde.
+- `make test` en verde.
+- Configuración centralizada en `pyproject.toml`.
+- Documentación operativa en `backend/p2/README.md` con comandos de ejecución.
+- Workflow de CI versionado en `.github/workflows/`.
+
+### Criterio de mantenimiento
+
+- Cualquier regla nueva debe añadirse en `pyproject.toml` y reflejarse en README.
+- El workflow CI debe mantenerse como gate obligatorio para merge.
