@@ -5,6 +5,7 @@ import pytest
 os.environ['SECRET_KEY'] = 'test-secret-key-for-conftest'
 os.environ['JWT_SECRET'] = 'test-jwt-secret-for-conftest'
 os.environ['GOOGLE_DEFAULT_COOKIE'] = 'test-cookie-for-conftest'
+os.environ['SETTINGS_ENCRYPTION_KEY'] = 'test-settings-encryption-key'
 
 from apps.web import create_app
 from apps.core.config import Config

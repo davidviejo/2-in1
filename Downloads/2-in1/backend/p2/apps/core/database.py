@@ -10,12 +10,15 @@ import json
 import os
 import logging
 import functools
+import base64
 import uuid
 import datetime
 import re
 from typing import List, Dict, Optional, Any
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
+
+from cryptography.fernet import Fernet, InvalidToken
 
 # Database Configuration
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -33,6 +36,89 @@ if DATABASE_URL and DATABASE_URL.startswith("postgres"):
     except ImportError:
         logging.warning("psycopg2 not installed. PostgreSQL support disabled.")
         USE_POSTGRES = False
+
+
+SENSITIVE_USER_SETTINGS_COLUMNS = {
+    'openai_key',
+    'anthropic_key',
+    'dataforseo_password',
+    'serpapi_key',
+    'google_cse_key',
+}
+ENCRYPTED_VALUE_PREFIX = 'enc:v1:'
+
+
+def _get_settings_encryption_key() -> str:
+    key = os.environ.get('SETTINGS_ENCRYPTION_KEY')
+    if not key:
+        raise RuntimeError('SETTINGS_ENCRYPTION_KEY is required to read/write user settings secrets')
+    return key
+
+
+@functools.lru_cache(maxsize=1)
+def _get_settings_cipher() -> Fernet:
+    raw_key = _get_settings_encryption_key().encode('utf-8')
+
+    try:
+        return Fernet(raw_key)
+    except Exception:
+        # Backward-compatible convenience: derive a valid Fernet key from arbitrary input.
+        derived_key = base64.urlsafe_b64encode(raw_key.ljust(32, b'0')[:32])
+        return Fernet(derived_key)
+
+
+def _encrypt_sensitive_setting(column: str, value: Any) -> Any:
+    if column not in SENSITIVE_USER_SETTINGS_COLUMNS or value in (None, ''):
+        return value
+
+    value_str = str(value)
+    if value_str.startswith(ENCRYPTED_VALUE_PREFIX):
+        return value_str
+
+    token = _get_settings_cipher().encrypt(value_str.encode('utf-8')).decode('utf-8')
+    return f"{ENCRYPTED_VALUE_PREFIX}{token}"
+
+
+def _decrypt_sensitive_setting(column: str, value: Any) -> Any:
+    if column not in SENSITIVE_USER_SETTINGS_COLUMNS or value in (None, ''):
+        return value
+
+    value_str = str(value)
+    if not value_str.startswith(ENCRYPTED_VALUE_PREFIX):
+        return value_str
+
+    token = value_str[len(ENCRYPTED_VALUE_PREFIX):]
+    try:
+        return _get_settings_cipher().decrypt(token.encode('utf-8')).decode('utf-8')
+    except (InvalidToken, ValueError):
+        logging.warning("Unable to decrypt user_settings.%s; returning original stored value", column)
+        return value_str
+
+
+def _migrate_user_settings_sensitive_data(conn) -> None:
+    c = conn.cursor()
+    columns = sorted(SENSITIVE_USER_SETTINGS_COLUMNS)
+    c.execute(f"SELECT user_id, {', '.join(columns)} FROM user_settings")
+    rows = c.fetchall()
+
+    for row in rows:
+        row_map = dict(row)
+        updates = {}
+
+        for column in columns:
+            raw_value = row_map.get(column)
+            if raw_value in (None, ''):
+                continue
+            if str(raw_value).startswith(ENCRYPTED_VALUE_PREFIX):
+                continue
+            updates[column] = _encrypt_sensitive_setting(column, raw_value)
+
+        if not updates:
+            continue
+
+        set_clause = ', '.join(f"{column}=?" for column in updates)
+        params = list(updates.values()) + [row_map['user_id']]
+        c.execute(f"UPDATE user_settings SET {set_clause} WHERE user_id=?", params)
 
 
 class PostgresCursorWrapper:
@@ -460,6 +546,13 @@ def init_db() -> None:
             if USE_POSTGRES:
                 conn.rollback()
 
+    try:
+        _migrate_user_settings_sensitive_data(conn)
+    except Exception as e:
+        logging.error(f"Error migrating encrypted user settings: {e}")
+        if USE_POSTGRES:
+            conn.rollback()
+
     conn.commit()
     conn.close()
 
@@ -551,7 +644,13 @@ def get_user_settings(user_id: str = 'default') -> Dict[str, Any]:
         c = conn.cursor()
         c.execute("SELECT * FROM user_settings WHERE user_id = ?", (str(user_id),))
         row = c.fetchone()
-        return dict(row) if row else {}
+        if not row:
+            return {}
+
+        payload = dict(row)
+        for key in SENSITIVE_USER_SETTINGS_COLUMNS:
+            payload[key] = _decrypt_sensitive_setting(key, payload.get(key))
+        return payload
     finally:
         conn.close()
 
@@ -584,10 +683,11 @@ def upsert_user_settings(user_id: str, data: Dict[str, Any]) -> None:
         for key in valid_columns:
             if key in data:
                 update_fields.append(f"{key}=?")
-                update_values.append(data[key])
+                encrypted_value = _encrypt_sensitive_setting(key, data[key])
+                update_values.append(encrypted_value)
 
                 insert_fields.append(key)
-                insert_values.append(data[key])
+                insert_values.append(encrypted_value)
 
         if not update_fields:
             return # Nothing to update

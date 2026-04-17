@@ -16,6 +16,8 @@ from apps.web.domains.registry import register_core_blueprints, register_domain_
 
 
 def create_app(config_class=Config):
+    config_class.validate_required_settings(getattr(config_class, 'TESTING', False))
+
     # Inicializar base de datos
     init_db()
 
