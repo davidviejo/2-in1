@@ -17,7 +17,7 @@ import xml.etree.ElementTree as ET
 
 audit_bp = Blueprint('audit', __name__, url_prefix='/audit')
 
-def fetch_sitemap_urls(sitemap_url):
+def fetch_sitemap_urls(sitemap_url, max_urls=None):
     """
     Expande recursivamente un sitemap (index o urlset) y devuelve:
     - lista deduplicada de URLs finales
@@ -34,7 +34,7 @@ def fetch_sitemap_urls(sitemap_url):
     visited_sitemaps = set()
     final_urls = set()
     source_by_url = {}
-    max_collected_urls = 5000
+    max_collected_urls = max_urls if isinstance(max_urls, int) and max_urls > 0 else None
 
     while to_visit:
         current_sitemap = to_visit.pop()
@@ -80,7 +80,7 @@ def fetch_sitemap_urls(sitemap_url):
                 if final_url:
                     final_urls.add(final_url)
                     source_by_url.setdefault(final_url, current_sitemap)
-                    if len(final_urls) >= max_collected_urls:
+                    if max_collected_urls and len(final_urls) >= max_collected_urls:
                         return list(final_urls), source_by_url
         elif current_sitemap == sitemap_url:
             return [], {}
@@ -172,6 +172,8 @@ def scan():
         JSON: Resultados del análisis.
     """
     url_input = request.form.get('sitemap_url')
+    scan_mode = (request.form.get('scan_mode') or 'analyze').strip().lower()
+    inventory_only = scan_mode == 'inventory'
     if not url_input: return jsonify({'error': 'Falta URL'})
 
     if not is_safe_url(url_input):
@@ -181,7 +183,6 @@ def scan():
     looks_like_sitemap = 'sitemap' in url_input.lower() or url_input.lower().endswith('.xml')
     if looks_like_sitemap:
         urls, source_by_url = fetch_sitemap_urls(url_input)
-        urls = urls[:50] # Limitamos a 50 para la demo
     else:
         urls = [url_input]
         source_by_url = {url_input: url_input}
@@ -190,6 +191,27 @@ def scan():
         if looks_like_sitemap:
             return jsonify({'error': 'No se pudo leer sitemap o sitemap vacío'})
         return jsonify({'error': 'No se pudo procesar la URL'})
+
+    if inventory_only:
+        inventory_data = [
+            {
+                'url': url,
+                'sitemap_source': source_by_url.get(url, url_input),
+                'status': 'INVENTORY',
+                'method': 'Sitemap Parser',
+                'title': '',
+                'h1': '',
+                'words': 0,
+                'notes': ['Solo inventario (sin análisis de contenido)']
+            }
+            for url in urls
+        ]
+        return jsonify({
+            'status': 'ok',
+            'mode': 'inventory',
+            'total': len(urls),
+            'data': inventory_data
+        })
 
     results = []
     # Paralelismo controlado
@@ -200,7 +222,7 @@ def scan():
             row['sitemap_source'] = source_by_url.get(row['url'], url_input)
             results.append(row)
 
-    return jsonify({'status': 'ok', 'total': len(urls), 'data': results})
+    return jsonify({'status': 'ok', 'mode': 'analyze', 'total': len(urls), 'data': results})
 
 @audit_bp.route('/download_report', methods=['POST'])
 def download():

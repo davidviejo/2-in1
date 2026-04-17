@@ -8,6 +8,17 @@
             <input type="text" id="sitemapUrl" class="form-control" placeholder="https://miweb.com/sitemap.xml">
             <button class="btn btn-dark" onclick="startAudit()">Escanear</button>
         </div>
+        <div class="mt-3 d-flex flex-wrap gap-3">
+            <div class="form-check">
+                <input class="form-check-input" type="radio" name="scanMode" id="scanModeAnalyze" value="analyze" checked>
+                <label class="form-check-label" for="scanModeAnalyze">Analizar cada URL</label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="radio" name="scanMode" id="scanModeInventory" value="inventory">
+                <label class="form-check-label" for="scanModeInventory">Solo inventario del sitemap</label>
+            </div>
+        </div>
+        <small class="text-muted d-block mt-2">En modo inventario solo se listan URLs y sitemap fuente para reducir bloqueos.</small>
     </div>
     <div id="loading" style="display:none;" class="text-center py-5"><div class="spinner-border"></div></div>
     <div id="resultsArea" style="display:none;">
@@ -21,11 +32,18 @@
 let currentData=[];
 function startAudit(){
     const url=document.getElementById('sitemapUrl').value;
+    const selectedMode=(document.querySelector('input[name="scanMode"]:checked') || {}).value || 'analyze';
     document.getElementById('loading').style.display='block';
     document.getElementById('resultsArea').style.display='none';
-    const fd=new FormData(); fd.append('sitemap_url', url);
+    const fd=new FormData();
+    fd.append('sitemap_url', url);
+    fd.append('scan_mode', selectedMode);
     fetch('/api/v1/audit/scan', {method:'POST', body:fd}).then(r=>r.json()).then(d=>{
         document.getElementById('loading').style.display='none';
+        if(d.error){
+            alert(d.error);
+            return;
+        }
         currentData=d.data;
         let html='';
         d.data.forEach(r=>{
