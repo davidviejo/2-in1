@@ -1,0 +1,63 @@
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+src = ["apps"]
+include = [
+  "run.py",
+  "apps/core/**/*.py",
+  "apps/web/blueprints/api_engine/**/*.py",
+]
+extend-exclude = [
+  "data",
+  "reports",
+  "snapshots",
+  "static",
+  "templates",
+  "venv",
+]
+
+[tool.ruff.lint]
+select = ["E722", "F401", "F841", "BLE001"]
+
+
+[tool.ruff.lint.per-file-ignores]
+"apps/core/database.py" = ["F401", "BLE001"]
+"apps/web/blueprints/api_engine/__init__.py" = ["F401"]
+"apps/web/blueprints/api_engine/analyzer.py" = ["F401"]
+"apps/web/blueprints/api_engine/job_routes.py" = ["F401"]
+"apps/web/blueprints/api_engine/routes.py" = ["F401"]
+"apps/web/blueprints/api_engine/seo_checklist_orchestrator.py" = ["F401", "BLE001"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.mypy]
+python_version = "3.11"
+files = ["run.py"]
+ignore_missing_imports = true
+follow_imports = "skip"
+warn_unused_configs = true
+show_error_codes = true
+pretty = true
+exclude = [
+  "^data/",
+  "^reports/",
+  "^snapshots/",
+  "^static/",
+  "^templates/",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"
+
+
+[[tool.mypy.overrides]]
+module = [
+  "apps.core.database",
+  "apps.web.blueprints.api_engine.*",
+]
+ignore_errors = true

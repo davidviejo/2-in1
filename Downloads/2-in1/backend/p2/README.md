@@ -243,3 +243,40 @@ Convenciones recomendadas:
 3. Registrar logs con **contexto mínimo**: `endpoint`, `project_id` (si aplica), `provider` y `url`.
 4. Reservar `detail` para diagnóstico técnico (stack-trace o mensaje interno), manteniendo `message` apto para UI.
 5. Para errores de validación, usar `code=validation_error`; para credenciales faltantes, `code=missing_credentials`.
+
+
+## ✅ Backend quality standard (lint, format, typecheck, test)
+
+El backend adopta una base mínima de calidad usando **Ruff + mypy + pytest** con configuración central en `pyproject.toml` (fase inicial sobre `run.py`, `apps/core` y `apps/web/blueprints/api_engine`).
+
+### Comandos rápidos
+```bash
+# Instalar dependencias del backend
+pip install -r requirements.txt
+
+# Lint (reglas mínimas anti-deuda)
+make lint
+
+# Formateo automático
+make format
+
+# Typecheck estático
+make typecheck
+
+# Tests
+make test
+
+# Pipeline local completo
+make quality
+```
+
+### Reglas mínimas activas de lint
+- `E722`: prohíbe `except:` desnudo.
+- `F401`: detecta imports no usados.
+- `F841`: detecta variables asignadas y no usadas.
+- `BLE001`: evita capturas excesivamente genéricas (`except Exception`) sin manejo claro.
+
+Estas reglas están preparadas para ejecutarse tanto localmente como en CI para cada Pull Request.
+
+> Nota: en esta adopción inicial, el comando `make test` ejecuta la suite de smoke quality (`tests/quality`) para asegurar un gate rápido y estable en CI.
+
