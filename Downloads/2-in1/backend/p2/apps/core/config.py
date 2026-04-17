@@ -61,5 +61,6 @@ class Config:
         if not cls.SETTINGS_ENCRYPTION_KEY:
             raise RuntimeError(
                 'Missing required environment variable SETTINGS_ENCRYPTION_KEY. '
+                'Create backend/p2/.env from backend/p2/.env.example and set SETTINGS_ENCRYPTION_KEY, or export it in your shell. '
                 'Generate one with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
             )
