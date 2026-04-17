@@ -60,6 +60,7 @@ Write-Host "-----------------------------------"
 # Start Backend
 $env:FLASK_DEBUG = "true"
 $env:PORT = "5000"
+$env:SETTINGS_ENCRYPTION_KEY = "test_settings_encryption_key"
 
 # Start Backend Process
 $BackendProcess = Start-Process -FilePath $PYTHON -ArgumentList "run.py" -WorkingDirectory $BACKEND_DIR -NoNewWindow -PassThru

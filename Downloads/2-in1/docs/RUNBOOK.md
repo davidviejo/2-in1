@@ -18,6 +18,7 @@ Copia `backend/p2/.env.example` a `backend/p2/.env` y ajusta según necesites:
 | `FLASK_DEBUG` | Modo debug | `true` | `false` |
 | `DATABASE_URL` | URL de conexión a BD | (Vacío = SQLite local) | `postgres://user:pass@host/db` |
 | `JWT_SECRET` | Secreto para tokens JWT | `secreto_local` | Generar uno seguro |
+| `SETTINGS_ENCRYPTION_KEY` | Clave para cifrar secretos de configuración en BD | `dev_settings_key` (o una clave Fernet) | **Obligatoria**, gestionar vía secreto del proveedor |
 | `CLIENTS_AREA_PASSWORD` | Pass zona clientes | `demo_client` | Hash bcrypt (o texto plano, se autohashea) |
 | `OPERATOR_PASSWORD` | Pass zona operador | `demo_operator` | Hash bcrypt (o texto plano, se autohashea) |
 | `FRONTEND_URL` | URL del frontend (CORS) | `http://localhost:5173` | `https://tu-dominio.com` |
@@ -72,6 +73,8 @@ source venv/bin/activate  # o venv\Scripts\activate en Windows
 pip install -r requirements.txt
 python -m spacy download es_core_news_sm
 # Asegúrate de tener el .env creado o variables exportadas
+# Si falta SETTINGS_ENCRYPTION_KEY, genera una Fernet válida:
+# python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 python run.py
 ```
 
