@@ -3,7 +3,9 @@ from flask import Flask, session
 from apps.web.blueprints.ai_routes import ai_bp
 from apps.tools.scraper_core import smart_serp_search
 import os
+import tempfile
 from unittest.mock import patch
+import apps.core.database as database
 
 class TestAIConfig(unittest.TestCase):
     def setUp(self):
@@ -127,6 +129,68 @@ class TestAIConfig(unittest.TestCase):
         with patch('apps.web.authz.get_payload_from_token', return_value={'role': 'clients_area'}):
             response = self.client.get('/api/settings/config', headers={'Authorization': 'Bearer test-token'})
             self.assertEqual(response.status_code, 403)
+
+    def test_settings_config_api_persists_encrypted_secrets_in_database(self):
+        db_fd, db_path = tempfile.mkstemp()
+        original_db_file = database.DB_FILE
+        original_key = os.environ.get('SETTINGS_ENCRYPTION_KEY')
+
+        try:
+            os.environ['SETTINGS_ENCRYPTION_KEY'] = 'test-settings-key-ai-config'
+            database.DB_FILE = db_path
+            database.get_user_settings.cache_clear()
+            database._get_settings_cipher.cache_clear()
+            database.init_db()
+
+            payload = {
+                'openaiApiKey': 'sk-server-123',
+                'dataforseoPassword': 'dfs-pass',
+                'serpApiKey': 'serp-key',
+                'defaultSerpProvider': 'serpapi',
+            }
+
+            with patch('apps.web.authz.get_payload_from_token', return_value={'role': 'operator'}):
+                put_response = self.client.put(
+                    '/api/settings/config',
+                    json=payload,
+                    headers={'Authorization': 'Bearer test-token'},
+                )
+                self.assertEqual(put_response.status_code, 200)
+
+                get_response = self.client.get(
+                    '/api/settings/config',
+                    headers={'Authorization': 'Bearer test-token'},
+                )
+                self.assertEqual(get_response.status_code, 200)
+                body = get_response.get_json()
+                self.assertEqual(body['settings']['openaiApiKey']['configured'], True)
+                self.assertEqual(body['settings']['defaultSerpProvider'], 'serpapi')
+
+            conn = database.get_db_connection()
+            try:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT openai_key, dataforseo_password, serpapi_key FROM user_settings WHERE user_id = ?",
+                    ('default',),
+                )
+                row = cursor.fetchone()
+            finally:
+                conn.close()
+
+            self.assertTrue(row['openai_key'].startswith(database.ENCRYPTED_VALUE_PREFIX))
+            self.assertTrue(row['dataforseo_password'].startswith(database.ENCRYPTED_VALUE_PREFIX))
+            self.assertTrue(row['serpapi_key'].startswith(database.ENCRYPTED_VALUE_PREFIX))
+        finally:
+            database.DB_FILE = original_db_file
+            database.get_user_settings.cache_clear()
+            database._get_settings_cipher.cache_clear()
+            os.close(db_fd)
+            if os.path.exists(db_path):
+                os.remove(db_path)
+            if original_key is None:
+                os.environ.pop('SETTINGS_ENCRYPTION_KEY', None)
+            else:
+                os.environ['SETTINGS_ENCRYPTION_KEY'] = original_key
 
 if __name__ == '__main__':
     unittest.main()

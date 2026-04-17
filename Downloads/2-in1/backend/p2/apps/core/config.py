@@ -36,6 +36,7 @@ class Config:
     OPERATOR_PASSWORD = os.environ.get('OPERATOR_PASSWORD')
 
     JWT_SECRET = os.environ.get('JWT_SECRET', secrets.token_hex(32))
+    SETTINGS_ENCRYPTION_KEY = os.environ.get('SETTINGS_ENCRYPTION_KEY')
 
     # Job Runner Configuration
     JOBS_CONCURRENCY_LIMIT = int(os.environ.get('JOBS_CONCURRENCY_LIMIT', 2))
@@ -52,3 +53,13 @@ class Config:
     GOOGLE_SCRAPING_RETRY_MIN_JITTER = float(os.environ.get('GOOGLE_SCRAPING_RETRY_MIN_JITTER', 0.4))
     GOOGLE_SCRAPING_RETRY_MAX_JITTER = float(os.environ.get('GOOGLE_SCRAPING_RETRY_MAX_JITTER', 1.2))
     ENABLE_DDG_FALLBACK = os.environ.get('ENABLE_DDG_FALLBACK', 'false').lower() == 'true'
+
+    @classmethod
+    def validate_required_settings(cls, testing: bool = False):
+        if testing:
+            return
+        if not cls.SETTINGS_ENCRYPTION_KEY:
+            raise RuntimeError(
+                'Missing required environment variable SETTINGS_ENCRYPTION_KEY. '
+                'Generate one with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
+            )
