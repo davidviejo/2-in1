@@ -16,7 +16,7 @@ import datetime
 import re
 from typing import List, Dict, Optional, Any
 from urllib.parse import urlparse
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -36,6 +36,10 @@ if DATABASE_URL and DATABASE_URL.startswith("postgres"):
     except ImportError:
         logging.warning("psycopg2 not installed. PostgreSQL support disabled.")
         USE_POSTGRES = False
+
+DB_SCHEMA_MIGRATION_ERRORS = (sqlite3.OperationalError,)
+if USE_POSTGRES:
+    DB_SCHEMA_MIGRATION_ERRORS = DB_SCHEMA_MIGRATION_ERRORS + (psycopg2.Error,)
 
 
 SENSITIVE_USER_SETTINGS_COLUMNS = {
@@ -507,13 +511,13 @@ def init_db() -> None:
     # This logic is slightly more complex with Postgres, keeping it simple for now
     try:
         c.execute("SELECT item_metadata FROM analysis_job_items LIMIT 1")
-    except Exception:  # Catch generic exception for both sqlite and pg
+    except DB_SCHEMA_MIGRATION_ERRORS:
         try:
             if USE_POSTGRES:
                 conn.rollback()
             c.execute("ALTER TABLE analysis_job_items ADD COLUMN item_metadata TEXT")
             conn.commit()
-        except Exception as e:
+        except DB_SCHEMA_MIGRATION_ERRORS as e:
             logging.error(f"Error adding item_metadata column: {e}")
             if USE_POSTGRES:
                 conn.rollback()
@@ -526,7 +530,7 @@ def init_db() -> None:
         try:
             c.execute(query)
             conn.commit()
-        except Exception:
+        except DB_SCHEMA_MIGRATION_ERRORS:
             if USE_POSTGRES:
                 conn.rollback()
 
@@ -542,7 +546,7 @@ def init_db() -> None:
         try:
             c.execute(query)
             conn.commit()
-        except Exception:
+        except DB_SCHEMA_MIGRATION_ERRORS:
             if USE_POSTGRES:
                 conn.rollback()
 
@@ -791,7 +795,7 @@ def get_ai_visibility_config(client_id: str) -> Dict[str, Any]:
             if isinstance(raw, str):
                 try:
                     config[key] = json.loads(raw)
-                except Exception:
+                except (json.JSONDecodeError, TypeError, ValueError):
                     config[key] = []
         return config
     finally:
@@ -867,7 +871,7 @@ def _normalize_ai_visibility_row(row: Dict[str, Any]) -> Dict[str, Any]:
         if isinstance(raw, str):
             try:
                 row[key] = json.loads(raw)
-            except Exception:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 row[key] = {} if key != 'raw_evidence' else []
     return row
 
@@ -885,7 +889,7 @@ def upsert_ai_visibility_schedule(client_id: str, data: Dict[str, Any]) -> Dict[
     timezone = str(data.get('timezone') or existing.get('timezone') or 'UTC')
     try:
         ZoneInfo(timezone)
-    except Exception:
+    except ZoneInfoNotFoundError:
         timezone = 'UTC'
 
     run_hour = max(0, min(int(data.get('runHour', existing.get('run_hour', 9))), 23))

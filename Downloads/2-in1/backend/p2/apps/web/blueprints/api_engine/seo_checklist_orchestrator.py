@@ -51,11 +51,16 @@ def run_orchestrated_checklist(
     competitor_urls: List[str] = None,
     serp_api_confirmed: bool = False,
     serp_provider: str = None,
-    analysis_config: Dict[str, Any] = None
+    analysis_config: Dict[str, Any] = None,
+    request_context: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
     Orchestrates the SEO checklist analysis by calling specialized tools.
     """
+    request_context = request_context or {}
+    endpoint = request_context.get("endpoint", "/api/analyze")
+    project_id = request_context.get("project_id") or "unknown"
+
     def extract_strategy_keywords(serp_section: Dict[str, Any]) -> Dict[str, Any]:
         payload = (serp_section or {}).get('strategyWorkbookBase64')
         if not payload:
@@ -550,7 +555,16 @@ def run_orchestrated_checklist(
                              try:
                                  res = dispatcher(kw, cfg)
                                  return (kw, res)
-                             except Exception:
+                             except (requests.exceptions.RequestException, ValueError, RuntimeError) as exc:
+                                 logging.warning(
+                                     "SERP fetch failed endpoint=%s project_id=%s provider=%s url=%s keyword=%s error=%s",
+                                     endpoint,
+                                     project_id,
+                                     "dataforseo",
+                                     url,
+                                     kw,
+                                     str(exc)
+                                 )
                                  return (kw, [])
 
                         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
@@ -560,7 +574,15 @@ def run_orchestrated_checklist(
                                      r = future.result()
                                      if r and r[0]:
                                          serp_data_map[r[0]] = r[1]
-                                 except Exception: pass
+                                 except (concurrent.futures.CancelledError, RuntimeError) as exc:
+                                     logging.warning(
+                                         "SERP future failed endpoint=%s project_id=%s provider=%s url=%s error=%s",
+                                         endpoint,
+                                         project_id,
+                                         "dataforseo",
+                                         url,
+                                         str(exc)
+                                     )
 
                         # Count API calls (keywords attempted)
                         api_cost += len(target_kws)
