@@ -209,7 +209,7 @@
             </div>
 
             <!-- Navigation -->
-            <div class="flex-1 overflow-y-auto custom-scrollbar p-3">
+            <div id="sidebarScrollContainer" class="flex-1 overflow-y-auto custom-scrollbar p-3">
                 <nav class="space-y-0.5">
                     <a href="/" class="nav-item-custom">
                         <span class="icon">🏠</span> <span>Inicio / Resumen</span>
@@ -320,7 +320,43 @@
 
     <!-- Global Monitoring Scripts -->
     <script>
+    const SIDEBAR_SCROLL_KEY = "seo_suite_sidebar_scroll_top";
+
+    function setupSidebarScrollPersistence() {
+        const sidebar = document.getElementById("sidebarScrollContainer");
+        if (!sidebar) return;
+
+        const savedScrollTop = Number(localStorage.getItem(SIDEBAR_SCROLL_KEY));
+        if (Number.isFinite(savedScrollTop) && savedScrollTop > 0) {
+            requestAnimationFrame(() => {
+                sidebar.scrollTop = savedScrollTop;
+            });
+        }
+
+        let saveTimer = null;
+        const saveScrollPosition = () => {
+            if (saveTimer) clearTimeout(saveTimer);
+            saveTimer = setTimeout(() => {
+                localStorage.setItem(SIDEBAR_SCROLL_KEY, String(sidebar.scrollTop));
+            }, 80);
+        };
+
+        sidebar.addEventListener("scroll", saveScrollPosition, { passive: true });
+
+        const navLinks = sidebar.querySelectorAll("a.nav-item-custom");
+        navLinks.forEach((link) => {
+            link.addEventListener("click", () => {
+                localStorage.setItem(SIDEBAR_SCROLL_KEY, String(sidebar.scrollTop));
+            });
+        });
+
+        window.addEventListener("beforeunload", () => {
+            localStorage.setItem(SIDEBAR_SCROLL_KEY, String(sidebar.scrollTop));
+        });
+    }
+
     document.addEventListener("DOMContentLoaded", function() {
+        setupSidebarScrollPersistence();
         updateApiStats();
         setInterval(updateApiStats, 30000); // API Counter every 30s
         setInterval(checkGlobalProgress, 1000); // Progress Bar every 1s
