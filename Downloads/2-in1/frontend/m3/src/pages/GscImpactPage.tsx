@@ -518,6 +518,10 @@ const GscImpactPage: React.FC = () => {
 
   useEffect(() => {
     const fetchImpact = async () => {
+      if (viewMode !== 'individual') {
+        setLoadingImpact(false);
+        return;
+      }
       if (!gscAccessToken || !selectedSite) return;
 
       if (periodRangeErrors.length > 0) {
@@ -697,10 +701,15 @@ const GscImpactPage: React.FC = () => {
     };
 
     void fetchImpact();
-  }, [dimensionFilterGroups, filters.searchType, gscAccessToken, selectedSite, ranges, refreshTick, periodRangeErrors]);
+  }, [dimensionFilterGroups, filters.searchType, gscAccessToken, selectedSite, ranges, refreshTick, periodRangeErrors, viewMode]);
 
   useEffect(() => {
     const fetchPortfolioImpact = async () => {
+      if (viewMode !== 'global') {
+        setLoadingPortfolio(false);
+        setPortfolioStatus(null);
+        return;
+      }
       if (!gscAccessToken || gscSites.length === 0) {
         setPortfolioRows([]);
         setPortfolioStatus(null);
@@ -831,6 +840,7 @@ const GscImpactPage: React.FC = () => {
     ranges.rollout.start,
     refreshTick,
     selectedPortfolioSites,
+    viewMode,
   ]);
 
   const windowDays = useMemo(
