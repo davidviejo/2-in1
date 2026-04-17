@@ -221,3 +221,25 @@ For each batch item, GSC queries are resolved in this order:
 2. `gscQueriesByUrl[item.url]` from the job payload / `analysisConfig` — legacy fallback.
 
 This keeps backward compatibility with legacy payloads while allowing per-item overrides.
+
+## 🧯 Error handling conventions (backend)
+
+Para los endpoints Flask bajo `apps/web/blueprints/*`, usar un contrato homogéneo:
+
+```json
+{
+  "error": {
+    "code": "machine_readable_code",
+    "message": "human_readable_message",
+    "detail": "optional_technical_detail"
+  }
+}
+```
+
+Convenciones recomendadas:
+
+1. **No usar `except Exception: pass`** en rutas críticas o módulos de alto tráfico.
+2. Capturar excepciones **concretas** (`ValueError`, `requests.exceptions.ReadTimeout`, etc.).
+3. Registrar logs con **contexto mínimo**: `endpoint`, `project_id` (si aplica), `provider` y `url`.
+4. Reservar `detail` para diagnóstico técnico (stack-trace o mensaje interno), manteniendo `message` apto para UI.
+5. Para errores de validación, usar `code=validation_error`; para credenciales faltantes, `code=missing_credentials`.

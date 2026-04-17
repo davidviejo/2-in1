@@ -1,5 +1,6 @@
 import os
 import json
+import logging
 from flask import jsonify, request, Blueprint
 from apps.tools.utils import safe_get_json
 from apps.core.database import (
@@ -7,6 +8,7 @@ from apps.core.database import (
     update_job_status, get_user_settings
 )
 from apps.job_runner import JobRunner
+from apps.web.blueprints.api_error_utils import api_error
 from . import api_engine_bp
 
 # Hard limits
@@ -72,10 +74,10 @@ def create_analysis_job():
         items = []
 
     if not items:
-        return jsonify({'error': 'No URLs provided'}), 400
+        return api_error('validation_error', 'No URLs provided', 400)
 
     if len(items) > MAX_URLS_PER_BATCH:
-        return jsonify({'error': f'Batch size exceeds limit of {MAX_URLS_PER_BATCH}'}), 400
+        return api_error('validation_error', f'Batch size exceeds limit of {MAX_URLS_PER_BATCH}', 400)
 
     # Store gscQueries in analysis_config so runner can access it
     analysis_config['gscQueriesByUrl'] = gsc_queries_map
@@ -167,7 +169,8 @@ def create_analysis_job():
             "advancedBlockedReason": advanced_blocked_reason
         }), 201
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logging.exception("Error creating /api/jobs batch size=%s", len(items))
+        return api_error('job_creation_error', 'Unexpected error creating job.', 500, detail=str(e))
 
 @api_engine_bp.route('/api/jobs/runner/health', methods=['GET'])
 def get_runner_health():
@@ -177,7 +180,7 @@ def get_runner_health():
 def get_job_status(job_id):
     job = get_job(job_id)
     if not job:
-        return jsonify({'error': 'Job not found'}), 404
+        return api_error('not_found', 'Job not found', 404)
 
     status = map_job_status_to_api(job['status'])
     completed_at = job['updated_at'] if status in ('done', 'error', 'cancelled') else None
@@ -227,7 +230,7 @@ def get_job_items_route(job_id):
 def get_item_result_route(job_id, item_id):
     res = get_job_item_result(job_id, item_id)
     if res is None:
-        return jsonify({'error': 'Result not available or item not found'}), 404
+        return api_error('not_found', 'Result not available or item not found', 404)
 
     # Keep passthrough for already-normalized responses while guaranteeing
     # AnalysisResponse shape for newly processed items.
@@ -252,33 +255,36 @@ def get_item_result_route(job_id, item_id):
 @api_engine_bp.route('/api/jobs/<job_id>/pause', methods=['POST'])
 def pause_job(job_id):
     job = get_job(job_id)
-    if not job: return jsonify({'error': 'Job not found'}), 404
+    if not job:
+        return api_error('not_found', 'Job not found', 404)
 
     if map_job_status_to_api(job['status']) in ['processing', 'pending']:
         update_job_status(job_id, 'paused')
         return jsonify({'status': 'paused'})
 
-    return jsonify({'error': f"Cannot pause job in '{job['status']}' state"}), 400
+    return api_error('invalid_state', f"Cannot pause job in '{job['status']}' state", 400)
 
 @api_engine_bp.route('/api/jobs/<job_id>/resume', methods=['POST'])
 def resume_job(job_id):
     job = get_job(job_id)
-    if not job: return jsonify({'error': 'Job not found'}), 404
+    if not job:
+        return api_error('not_found', 'Job not found', 404)
 
     if map_job_status_to_api(job['status']) == 'paused':
         update_job_status(job_id, 'queued')
         JobRunner.start_worker()
         return jsonify({'status': 'pending'})
 
-    return jsonify({'error': f"Cannot resume job in '{job['status']}' state"}), 400
+    return api_error('invalid_state', f"Cannot resume job in '{job['status']}' state", 400)
 
 @api_engine_bp.route('/api/jobs/<job_id>/cancel', methods=['POST'])
 def cancel_job(job_id):
     job = get_job(job_id)
-    if not job: return jsonify({'error': 'Job not found'}), 404
+    if not job:
+        return api_error('not_found', 'Job not found', 404)
 
     if map_job_status_to_api(job['status']) not in ['done', 'error', 'cancelled']:
         update_job_status(job_id, 'cancelled')
         return jsonify({'status': 'cancelled'})
 
-    return jsonify({'error': f"Cannot cancel job in '{job['status']}' state"}), 400
+    return api_error('invalid_state', f"Cannot cancel job in '{job['status']}' state", 400)

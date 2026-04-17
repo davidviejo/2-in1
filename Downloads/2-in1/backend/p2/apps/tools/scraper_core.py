@@ -402,8 +402,14 @@ def scrape_google_serp(
             0
         )
 
-    except Exception:
-        logging.error("Request failed during Google SERP scrape", exc_info=True)
+    except (requests.exceptions.RequestException, ValueError, TypeError) as exc:
+        logging.error(
+            "Google SERP scrape request failed keyword=%s mode=%s error=%s",
+            sanitize_log_message(keyword),
+            mode,
+            sanitize_log_message(str(exc)),
+            exc_info=True
+        )
 
     fallback = {
         "results": [],
@@ -1142,8 +1148,8 @@ def _fetch_with_requests(url: str) -> Dict[str, Any]:
         if response.status_code == 200 and len(response.content) > 500:
              return {'url': url, 'content': response.content, 'status': response.status_code, 'method': 'Requests', 'error': None}
         return {'url': url, 'content': None, 'status': response.status_code, 'method': 'Requests', 'error': None}
-    except Exception as e:
-        logging.error(f"Scraper Request Error for {url}: {e}")
+    except requests.exceptions.RequestException as e:
+        logging.error("Scraper Request Error endpoint=scraper_requests url=%s error=%s", url, sanitize_log_message(str(e)))
         return {'url': url, 'content': None, 'status': 0, 'method': 'Requests', 'error': 'Error de conexión'}
 
 def _fetch_with_playwright(url: str) -> Dict[str, Any]:
@@ -1160,8 +1166,8 @@ def _fetch_with_playwright(url: str) -> Dict[str, Any]:
     try:
         result['content'] = _run_async_playwright(url)
         result['status'] = 200
-    except Exception as e:
-        logging.error(f"Scraper Playwright Error for {url}: {e}")
+    except (RuntimeError, TimeoutError, asyncio.TimeoutError) as e:
+        logging.error("Scraper Playwright Error endpoint=scraper_playwright url=%s error=%s", url, sanitize_log_message(str(e)))
         result['error'] = 'Error de navegación'
     return result
 

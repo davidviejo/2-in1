@@ -1,9 +1,11 @@
 import json
 import os
+import logging
 from flask import jsonify, request, current_app
 from datetime import datetime
 from apps.tools.utils import safe_get_json, clean_url, is_safe_url
 from apps.core.database import get_user_settings
+from apps.web.blueprints.api_error_utils import api_error
 from . import api_engine_bp
 from .seo_checklist_orchestrator import run_orchestrated_checklist
 
@@ -146,10 +148,10 @@ def analyze():
     serp_provider = data.get('serpProvider')
 
     if not url:
-        return jsonify({'error': 'URL is required'}), 400
+        return api_error('validation_error', 'URL is required', 400)
 
     if not is_safe_url(url):
-        return jsonify({'error': 'Invalid or unsafe URL'}), 400
+        return api_error('validation_error', 'Invalid or unsafe URL', 400)
 
     # Execute analysis
     result = run_orchestrated_checklist(
@@ -158,7 +160,11 @@ def analyze():
         competitor_urls=competitor_urls,
         serp_api_confirmed=serp_api_confirmed,
         serp_provider=serp_provider,
-        analysis_config=analysis_config
+        analysis_config=analysis_config,
+        request_context={
+            "endpoint": "/api/analyze",
+            "project_id": page_id,
+        }
     )
 
     # Wrap with metadata
@@ -195,10 +201,10 @@ def checklist_evaluate():
     model = data.get('model')
 
     if not isinstance(checks, list) or not checks:
-        return jsonify({'error': 'Debes enviar una lista no vacía en "checks".'}), 400
+        return api_error('validation_error', 'Debes enviar una lista no vacía en "checks".', 400)
 
     if not api_key:
-        return jsonify({'error': 'No hay API key configurada para evaluar la checklist con IA.'}), 400
+        return api_error('missing_credentials', 'No hay API key configurada para evaluar la checklist con IA.', 400)
 
     prompt = (
         "Evalúa checks SEO y decide solo con evidencia.\n"
@@ -212,9 +218,13 @@ def checklist_evaluate():
         raw_response = _run_checklist_ai_evaluation(provider, api_key, model, prompt)
         parsed_response = _parse_checklist_ai_response(raw_response)
     except ValueError as exc:
-        return jsonify({'error': 'No se pudo validar la respuesta de IA.', 'message': str(exc)}), 422
-    except Exception:
-        return jsonify({'error': 'Error controlado al ejecutar la evaluación IA.'}), 502
+        return api_error('invalid_ai_json', 'No se pudo validar la respuesta de IA.', 422, detail=str(exc))
+    except RuntimeError as exc:
+        logging.exception("Runtime error in /api/ai/checklist-evaluate provider=%s", provider)
+        return api_error('provider_runtime_error', 'Error controlado al ejecutar la evaluación IA.', 502, detail=str(exc))
+    except Exception as exc:
+        logging.exception("Unhandled error in /api/ai/checklist-evaluate provider=%s", provider)
+        return api_error('provider_unhandled_error', 'Error controlado al ejecutar la evaluación IA.', 502, detail=str(exc))
 
     return jsonify(parsed_response)
 
