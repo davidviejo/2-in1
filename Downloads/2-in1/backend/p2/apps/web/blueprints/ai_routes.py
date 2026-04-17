@@ -724,6 +724,12 @@ def ai_task_enhance_endpoint():
     }
     vertical_name = vertical_map.get(vertical, vertical)
 
+    context_line = (
+        f'Contexto adicional/Instrucciones del usuario: "{user_context}"'
+        if user_context
+        else ''
+    )
+
     prompt = f"""Actúa como un Consultor SEO Senior especializado en {vertical_name}.
 
 Tu objetivo es "vitaminizar" (dar superpoderes) a la siguiente tarea para que el usuario sepa exactamente cómo ejecutarla con excelencia.
@@ -732,7 +738,7 @@ Tarea: "{title}"
 Descripción original: "{description}"
 Categoría: {task.get('category') or 'General'}
 Impacto: {task.get('impact') or 'N/A'}
-{f'Contexto adicional/Instrucciones del usuario: \"{user_context}\"' if user_context else ''}
+{context_line}
 
 Instrucciones:
 1. Explica BREVEMENTE (1 frase) por qué esta tarea es crítica para un sitio de tipo {vertical}.
