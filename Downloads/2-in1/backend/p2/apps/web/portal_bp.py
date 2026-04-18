@@ -3,6 +3,7 @@ from flask import Blueprint, request, jsonify, make_response, session, redirect,
 from apps.web.clients_store import get_safe_clients
 from apps.web.template_catalog import get_template_catalog
 from apps.web.tools_catalog import get_tools_catalog
+from apps.web.app_runtime_manager import list_managed_apps, start_managed_app, stop_managed_app
 from functools import wraps
 from collections import deque
 from apps.web.authz import extract_bearer_token_from_header, get_payload_from_token, require_role
@@ -133,6 +134,34 @@ def tools_catalog():
     response = make_response(jsonify({'tools': get_tools_catalog()}))
     response.headers['Cache-Control'] = 'public, max-age=60, stale-while-revalidate=300'
     return response
+
+
+@portal_bp.route('/api/apps/runtime', methods=['GET'])
+@require_role(['operator'])
+def apps_runtime_catalog():
+    return jsonify(list_managed_apps())
+
+
+@portal_bp.route('/api/apps/runtime/<app_id>/start', methods=['POST'])
+@require_role(['operator'])
+def apps_runtime_start(app_id):
+    try:
+        payload = start_managed_app(app_id)
+    except KeyError:
+        return jsonify({'error': f'App desconocida: {app_id}'}), 404
+    status_code = 500 if payload.get('status') == 'error' else 200
+    return jsonify(payload), status_code
+
+
+@portal_bp.route('/api/apps/runtime/<app_id>/stop', methods=['POST'])
+@require_role(['operator'])
+def apps_runtime_stop(app_id):
+    try:
+        payload = stop_managed_app(app_id)
+    except KeyError:
+        return jsonify({'error': f'App desconocida: {app_id}'}), 404
+    status_code = 500 if payload.get('status') == 'error' else 200
+    return jsonify(payload), status_code
 
 
 @portal_bp.route('/tools/hub', methods=['GET'])

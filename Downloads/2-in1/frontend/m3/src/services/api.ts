@@ -26,6 +26,27 @@ interface ToolsCatalogResponse {
   tools: ToolCatalogItem[];
 }
 
+export interface RuntimeAppItem {
+  id: string;
+  name: string;
+  command: string[];
+  cwd: string;
+  running: boolean;
+  pid: number | null;
+  started_at: string | null;
+  last_error: string | null;
+}
+
+interface RuntimeAppsResponse {
+  apps: RuntimeAppItem[];
+}
+
+interface RuntimeActionResponse {
+  status: 'started' | 'stopped' | 'already_running' | 'already_stopped' | 'error';
+  app: RuntimeAppItem;
+  message?: string;
+}
+
 interface OperatorExecutionTrace {
   tool: string;
   mode: string;
@@ -99,4 +120,10 @@ export const api = {
 
   getToolsCatalog: async () =>
     httpClient.get<ToolsCatalogResponse>(endpoints.tools.catalog(), { includeAuth: false }),
+  getRuntimeApps: async () =>
+    httpClient.get<RuntimeAppsResponse>(endpoints.apps.runtime()),
+  startRuntimeApp: async (appId: string) =>
+    httpClient.post<RuntimeActionResponse>(endpoints.apps.start(appId), undefined),
+  stopRuntimeApp: async (appId: string) =>
+    httpClient.post<RuntimeActionResponse>(endpoints.apps.stop(appId), undefined),
 };

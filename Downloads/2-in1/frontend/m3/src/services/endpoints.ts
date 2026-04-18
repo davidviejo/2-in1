@@ -19,6 +19,11 @@ export const endpoints = {
     executions: () => 'api/tools/executions',
     catalog: () => 'api/tools/catalog',
   },
+  apps: {
+    runtime: () => 'api/apps/runtime',
+    start: (appId: string) => `api/apps/runtime/${encodePathParam(appId)}/start`,
+    stop: (appId: string) => `api/apps/runtime/${encodePathParam(appId)}/stop`,
+  },
   ai: {
     seoAnalysis: () => 'api/ai/seo-analysis',
     taskEnhance: () => 'api/ai/task-enhance',
