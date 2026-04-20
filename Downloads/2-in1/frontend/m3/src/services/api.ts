@@ -63,6 +63,21 @@ interface LauncherCatalogResponse {
   };
 }
 
+export interface LauncherRuntimeResponse {
+  app_id: string;
+  status?: 'running' | 'stopped';
+  pid?: number | null;
+  started_at?: string;
+  stopped_at?: string;
+  action?: 'install' | 'start' | 'stop';
+  exit_code?: number;
+}
+
+export interface LauncherLogsResponse {
+  app_id: string;
+  lines: string[];
+}
+
 interface OperatorExecutionTrace {
   tool: string;
   mode: string;
@@ -139,4 +154,21 @@ export const api = {
 
   getLauncherCatalog: async () =>
     httpClient.get<LauncherCatalogResponse>(endpoints.launcher.catalog(), { includeAuth: false }),
+
+  launcherInstall: async (appId: string) =>
+    httpClient.post<LauncherRuntimeResponse>(endpoints.launcher.appAction(appId, 'install'), undefined),
+
+  launcherStart: async (appId: string) =>
+    httpClient.post<LauncherRuntimeResponse>(endpoints.launcher.appAction(appId, 'start'), undefined),
+
+  launcherStop: async (appId: string) =>
+    httpClient.post<LauncherRuntimeResponse>(endpoints.launcher.appAction(appId, 'stop'), undefined),
+
+  launcherStatus: async (appId: string) =>
+    httpClient.get<LauncherRuntimeResponse>(endpoints.launcher.appAction(appId, 'status')),
+
+  launcherLogs: async (appId: string, tail?: number) => {
+    const query = tail ? new URLSearchParams({ tail: String(tail) }) : undefined;
+    return httpClient.get<LauncherLogsResponse>(endpoints.launcher.appLogs(appId, query));
+  },
 };
