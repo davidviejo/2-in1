@@ -15,6 +15,7 @@ MANIFEST_FILENAME = 'app.manifest.json'
 VALID_SECTIONS: set[LauncherSection] = {'apps-integradas', 'frontend', 'backend'}
 DEFAULT_STATUS = 'beta'
 DEFAULT_ALLOWED_MANIFEST_ENV_VARS: set[str] = set()
+LAUNCHER_IGNORE_FILENAME = '.launcherignore'
 
 
 def _slugify(value: str) -> str:
@@ -190,13 +191,30 @@ def _fallback_app(app_dir: Path, reason: str | None = None) -> dict[str, Any]:
     return app
 
 
+def _read_ignored_apps(base_dir: Path) -> set[str]:
+    ignore_file = base_dir / LAUNCHER_IGNORE_FILENAME
+    if not ignore_file.exists():
+        return set()
+
+    ignored: set[str] = set()
+    for raw_line in ignore_file.read_text(encoding='utf-8').splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith('#'):
+            continue
+        ignored.add(line)
+    return ignored
+
+
 def _load_integrated_apps(base_dir: Path, allowed_env_vars: set[str]) -> list[dict[str, Any]]:
     apps: list[dict[str, Any]] = []
     if not base_dir.exists() or not base_dir.is_dir():
         return apps
 
     repo_root = _repo_root()
+    ignored_apps = _read_ignored_apps(base_dir)
     for app_dir in sorted((item for item in base_dir.iterdir() if item.is_dir()), key=lambda item: item.name.lower()):
+        if app_dir.name in ignored_apps:
+            continue
         manifest_path = app_dir / MANIFEST_FILENAME
         if not manifest_path.exists():
             apps.append(_fallback_app(app_dir))

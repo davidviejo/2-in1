@@ -175,6 +175,8 @@ Ejemplo de manifest mínimo:
 
 Si una carpeta no tiene manifest válido, Tools Hub la mostrará como detectada pero deshabilitada hasta completar configuración.
 
+Si necesitas ocultar carpetas legacy/snapshot que no deben aparecer en el panel, crea `apps-independientes/.launcherignore` y añade un nombre de carpeta por línea (admite comentarios con `#`).
+
 ---
 
 ---
@@ -329,4 +331,3 @@ pytest
 ```
 
 Si usas CI/CD, estos comandos deben quedar como checks mínimos para cambios en runtime o integración de apps del Tools Hub.
-

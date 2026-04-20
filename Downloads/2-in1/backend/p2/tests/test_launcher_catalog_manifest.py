@@ -128,3 +128,29 @@ def test_launcher_catalog_static_main_apps_include_launcher():
 
     assert apps_by_id['backend-main']['launcher']['workdir'] == 'backend/p2'
     assert apps_by_id['backend-main']['launcher']['start_cmd'] == 'python run.py'
+
+
+def test_load_integrated_apps_skips_directories_listed_in_launcherignore(tmp_path, monkeypatch):
+    repo_root = tmp_path / 'repo'
+    base_dir = repo_root / 'apps-independientes'
+    skipped_dir = base_dir / 'tendencias-medios-main'
+    app_dir = base_dir / 'demo-app'
+    skipped_dir.mkdir(parents=True)
+    app_dir.mkdir(parents=True)
+
+    (base_dir / '.launcherignore').write_text('tendencias-medios-main\n', encoding='utf-8')
+    _write_manifest(
+        app_dir,
+        {
+            'id': 'demo-app',
+            'workdir': 'apps-independientes/demo-app',
+            'install_cmd': 'npm ci',
+            'start_cmd': 'npm run dev',
+        },
+    )
+
+    monkeypatch.setattr('apps.web.launcher_catalog._repo_root', lambda: repo_root)
+
+    apps = _load_integrated_apps(base_dir, allowed_env_vars=set())
+    assert len(apps) == 1
+    assert apps[0]['id'] == 'demo-app'
