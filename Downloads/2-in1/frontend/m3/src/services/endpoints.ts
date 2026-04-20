@@ -21,6 +21,13 @@ export const endpoints = {
   },
   launcher: {
     catalog: () => 'api/launcher/catalog',
+    appAction: (appId: string, action: 'install' | 'start' | 'stop' | 'status') =>
+      `api/launcher/apps/${encodePathParam(appId)}/${encodePathParam(action)}`,
+    appLogs: (appId: string, query?: URLSearchParams | string) => {
+      const queryString = typeof query === 'string' ? query : query?.toString();
+      const basePath = `api/launcher/apps/${encodePathParam(appId)}/logs`;
+      return queryString ? `${basePath}?${queryString}` : basePath;
+    },
   },
   ai: {
     seoAnalysis: () => 'api/ai/seo-analysis',
