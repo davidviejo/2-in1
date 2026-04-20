@@ -13,6 +13,25 @@ $FRONTEND_PORT = 5173
 $backendProcess = $null
 $frontendProcess = $null
 
+function Test-PortInUse {
+    param([int]$Port)
+
+    $listeners = [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners()
+    return ($listeners.Port -contains $Port)
+}
+
+function Get-FreePortSuggestion {
+    param([int]$StartPort)
+
+    for ($port = $StartPort; $port -le ($StartPort + 20); $port++) {
+        if (-not (Test-PortInUse -Port $port)) {
+            return $port
+        }
+    }
+
+    return $null
+}
+
 function Write-Log {
     param([string]$Message)
 
@@ -83,6 +102,17 @@ function Start-Backend {
         return
     }
 
+    if (Test-PortInUse -Port $BACKEND_PORT) {
+        $suggestedPort = Get-FreePortSuggestion -StartPort ($BACKEND_PORT + 1)
+        if ($suggestedPort) {
+            Write-Log "No se pudo iniciar backend: puerto $BACKEND_PORT ocupado. Sugerencia: liberar $BACKEND_PORT o usar $suggestedPort."
+        }
+        else {
+            Write-Log "No se pudo iniciar backend: puerto $BACKEND_PORT ocupado."
+        }
+        return
+    }
+
     Ensure-BackendSetup
 
     Write-Log "Iniciando backend en http://localhost:$BACKEND_PORT ..."
@@ -106,6 +136,17 @@ function Start-Backend {
 function Start-Frontend {
     if ($frontendProcess -and -not $frontendProcess.HasExited) {
         Write-Log "Frontend ya está en ejecución."
+        return
+    }
+
+    if (Test-PortInUse -Port $FRONTEND_PORT) {
+        $suggestedPort = Get-FreePortSuggestion -StartPort ($FRONTEND_PORT + 1)
+        if ($suggestedPort) {
+            Write-Log "No se pudo iniciar frontend: puerto $FRONTEND_PORT ocupado. Sugerencia: liberar $FRONTEND_PORT o usar $suggestedPort."
+        }
+        else {
+            Write-Log "No se pudo iniciar frontend: puerto $FRONTEND_PORT ocupado."
+        }
         return
     }
 
