@@ -146,3 +146,34 @@ No se deben reintroducir endpoints legacy de ejecución/descarga paralelos para 
 
 Contrato técnico batch jobs (estado/campos canónicos):
 - `docs/ENGINE_BATCH_API_CONTRACT.md`
+
+
+
+## 6. Apps integradas en carpeta raíz (Tools Hub)
+
+El panel **Tools Hub** ahora detecta apps adicionales desde:
+
+- `apps-independientes/<nombre-app>/app.manifest.json`
+
+Ejemplo de manifest mínimo:
+
+```json
+{
+  "id": "integrada-mi-app",
+  "name": "Mi App",
+  "description": "Descripción corta",
+  "section": "apps-integradas",
+  "path": "http://localhost:3000",
+  "status": "beta",
+  "runtime": {
+    "enabled": true,
+    "requires_credentials": false,
+    "degraded": false
+  }
+}
+```
+
+Si una carpeta no tiene manifest válido, Tools Hub la mostrará como detectada pero deshabilitada hasta completar configuración.
+
+---
+

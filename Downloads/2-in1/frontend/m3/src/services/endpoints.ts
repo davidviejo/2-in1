@@ -19,6 +19,9 @@ export const endpoints = {
     executions: () => 'api/tools/executions',
     catalog: () => 'api/tools/catalog',
   },
+  launcher: {
+    catalog: () => 'api/launcher/catalog',
+  },
   ai: {
     seoAnalysis: () => 'api/ai/seo-analysis',
     taskEnhance: () => 'api/ai/task-enhance',

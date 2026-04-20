@@ -26,6 +26,43 @@ interface ToolsCatalogResponse {
   tools: ToolCatalogItem[];
 }
 
+
+export type LauncherSection = 'apps-integradas' | 'frontend' | 'backend';
+
+export interface LauncherAppItem {
+  id: string;
+  name: string;
+  description: string;
+  path: string;
+  section: LauncherSection;
+  status: 'legacy' | 'migrada' | 'beta';
+  runtime: {
+    enabled: boolean;
+    requires_credentials: boolean;
+    degraded: boolean;
+  };
+  source?: {
+    kind: string;
+    directory?: string;
+    manifest_path?: string;
+  };
+}
+
+export interface LauncherSectionItem {
+  id: LauncherSection;
+  title: string;
+  description: string;
+}
+
+interface LauncherCatalogResponse {
+  sections: LauncherSectionItem[];
+  apps: LauncherAppItem[];
+  meta?: {
+    integrated_apps_root?: string;
+    environment?: string;
+  };
+}
+
 interface OperatorExecutionTrace {
   tool: string;
   mode: string;
@@ -99,4 +136,7 @@ export const api = {
 
   getToolsCatalog: async () =>
     httpClient.get<ToolsCatalogResponse>(endpoints.tools.catalog(), { includeAuth: false }),
+
+  getLauncherCatalog: async () =>
+    httpClient.get<LauncherCatalogResponse>(endpoints.launcher.catalog(), { includeAuth: false }),
 };
