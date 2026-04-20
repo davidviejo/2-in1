@@ -39,9 +39,9 @@ describe('ToolsHub launcher panel', () => {
       sections: [{ id: 'frontend', title: 'Frontend', description: 'Apps frontend' }],
       apps: [appFixture],
     });
-    vi.mocked(api.launcherStatus).mockResolvedValue({ app_id: 'app-1', status: 'stopped' });
+    vi.mocked(api.launcherStatus).mockResolvedValue({ app_id: 'app-1', status: 'stopped', pid: null });
     vi.mocked(api.launcherInstall).mockResolvedValue({ app_id: 'app-1', status: 'stopped', action: 'install' });
-    vi.mocked(api.launcherStart).mockResolvedValue({ app_id: 'app-1', status: 'running', action: 'start' });
+    vi.mocked(api.launcherStart).mockResolvedValue({ app_id: 'app-1', status: 'running', action: 'start', pid: 4555 });
     vi.mocked(api.launcherStop).mockResolvedValue({ app_id: 'app-1', status: 'stopped', action: 'stop' });
     vi.mocked(api.launcherLogs).mockResolvedValue({ app_id: 'app-1', lines: ['linea-1', 'linea-2'] });
   });
@@ -58,7 +58,7 @@ describe('ToolsHub launcher panel', () => {
 
     expect(await screen.findByText(/estado: stopped/i)).toBeTruthy();
 
-    vi.mocked(api.launcherStatus).mockResolvedValueOnce({ app_id: 'app-1', status: 'running' });
+    vi.mocked(api.launcherStatus).mockResolvedValueOnce({ app_id: 'app-1', status: 'running', pid: 3333 });
     await act(async () => {
       await pollingCallback?.();
     });
@@ -66,6 +66,7 @@ describe('ToolsHub launcher panel', () => {
     await waitFor(() => {
       expect(screen.getByText(/estado: running/i)).toBeTruthy();
     });
+    expect(screen.getByText(/PID: 3333/i)).toBeTruthy();
 
     expect(api.launcherStatus).toHaveBeenCalledTimes(2);
   });
@@ -84,6 +85,7 @@ describe('ToolsHub launcher panel', () => {
     await waitFor(() => {
       expect(screen.getByText(/estado: running/i)).toBeTruthy();
     });
+    expect(screen.getByText(/PID: 4555/i)).toBeTruthy();
 
     expect(screen.getByRole('button', { name: /^Iniciar$/i }).hasAttribute('disabled')).toBe(true);
     expect(screen.getByRole('button', { name: /^Parar$/i }).hasAttribute('disabled')).toBe(false);
@@ -107,5 +109,27 @@ describe('ToolsHub launcher panel', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Parar$/i }));
 
     expect(await screen.findByText(/No se pudo ejecutar la acción stop para la app./i)).toBeTruthy();
+  });
+
+  it('prevents start/install when app runtime is degraded', async () => {
+    vi.mocked(api.getLauncherCatalog).mockResolvedValueOnce({
+      sections: [{ id: 'frontend', title: 'Frontend', description: 'Apps frontend' }],
+      apps: [
+        {
+          ...appFixture,
+          runtime: {
+            enabled: false,
+            requires_credentials: false,
+            degraded: true,
+          },
+        },
+      ],
+    });
+
+    render(<ToolsHub />);
+
+    await screen.findByText(/Runtime degradado/i);
+    expect(screen.getByRole('button', { name: /^Iniciar$/i }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('button', { name: /^Instalar$/i }).hasAttribute('disabled')).toBe(true);
   });
 });

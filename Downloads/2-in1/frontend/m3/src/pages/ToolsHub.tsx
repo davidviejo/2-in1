@@ -28,6 +28,10 @@ const availabilityBadge = (tool: Pick<ToolCatalogItem, 'runtime' | 'available'>)
 
 type LauncherSection = LauncherAppItem['section'] | 'apps-independientes';
 type AppRuntimeStatus = 'installing' | 'starting' | 'running' | 'stopped' | 'error';
+interface AppRuntimeInfo {
+  status: AppRuntimeStatus;
+  pid: number | null;
+}
 
 interface LauncherApp {
   id: string;
@@ -61,7 +65,7 @@ const ToolsHub: React.FC = () => {
   const [launcherSections, setLauncherSections] = useState<LauncherSectionItem[]>([]);
   const [launcherApps, setLauncherApps] = useState<LauncherAppItem[]>([]);
   const [enabledApps, setEnabledApps] = useState<Record<string, boolean>>({});
-  const [appRuntimeStatus, setAppRuntimeStatus] = useState<Record<string, AppRuntimeStatus>>({});
+  const [appRuntimeStatus, setAppRuntimeStatus] = useState<Record<string, AppRuntimeInfo>>({});
   const [appErrors, setAppErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -190,8 +194,11 @@ const ToolsHub: React.FC = () => {
           const appId = pollableApps[index].id;
           if (result.status === 'fulfilled') {
             const currentStatus = prev[appId];
-            if (currentStatus !== 'installing' && currentStatus !== 'starting') {
-              next[appId] = toRuntimeStatus(result.value.data.status);
+            if (currentStatus?.status !== 'installing' && currentStatus?.status !== 'starting') {
+              next[appId] = {
+                status: toRuntimeStatus(result.value.data.status),
+                pid: result.value.data.pid ?? null,
+              };
             }
           }
         });
@@ -208,31 +215,27 @@ const ToolsHub: React.FC = () => {
     };
   }, [pollableApps]);
 
-  const setAppStateFromAction = (appId: string, action: 'install' | 'start' | 'stop', status?: 'running' | 'stopped') => {
-    const fallbackByAction: Record<'install' | 'start' | 'stop', AppRuntimeStatus> = {
-      install: 'stopped',
-      start: 'running',
-      stop: 'stopped',
-    };
-
-    setAppRuntimeStatus((prev) => ({
-      ...prev,
-      [appId]: status ? toRuntimeStatus(status) : fallbackByAction[action],
-    }));
-  };
-
   const executeAction = async (appId: string, action: 'install' | 'start' | 'stop') => {
     setAppErrors((prev) => ({ ...prev, [appId]: '' }));
     setAppRuntimeStatus((prev) => ({
       ...prev,
-      [appId]: action === 'install' ? 'installing' : action === 'start' ? 'starting' : prev[appId] ?? 'stopped',
+      [appId]: {
+        status: action === 'install' ? 'installing' : action === 'start' ? 'starting' : prev[appId]?.status ?? 'stopped',
+        pid: prev[appId]?.pid ?? null,
+      },
     }));
 
     try {
       const response = action === 'install' ? await api.launcherInstall(appId) : action === 'start' ? await api.launcherStart(appId) : await api.launcherStop(appId);
-      setAppStateFromAction(appId, action, response.status);
+      setAppRuntimeStatus((prev) => ({
+        ...prev,
+        [appId]: {
+          status: response.status ? toRuntimeStatus(response.status) : action === 'start' ? 'running' : 'stopped',
+          pid: response.pid ?? null,
+        },
+      }));
     } catch {
-      setAppRuntimeStatus((prev) => ({ ...prev, [appId]: 'error' }));
+      setAppRuntimeStatus((prev) => ({ ...prev, [appId]: { status: 'error', pid: prev[appId]?.pid ?? null } }));
       setAppErrors((prev) => ({
         ...prev,
         [appId]: `No se pudo ejecutar la acción ${action} para la app.`,
@@ -261,7 +264,7 @@ const ToolsHub: React.FC = () => {
   };
 
   const openApp = (tool: LauncherApp) => {
-    const runtimeStatus = appRuntimeStatus[tool.id] ?? 'stopped';
+    const runtimeStatus = appRuntimeStatus[tool.id]?.status ?? 'stopped';
     const healthcheckOk = tool.runtime.enabled && tool.available;
     if (!isEnabledInPanel(tool.id) || !tool.path || (!healthcheckOk && runtimeStatus !== 'running')) {
       return;
@@ -354,7 +357,9 @@ const ToolsHub: React.FC = () => {
                 {sectionApps.map((tool) => {
                   const runtimeBadge = availabilityBadge(tool);
                   const visibleInPanel = isEnabledInPanel(tool.id);
-                  const runtimeStatus = appRuntimeStatus[tool.id] ?? 'stopped';
+                  const runtimeStatus = appRuntimeStatus[tool.id]?.status ?? 'stopped';
+                  const runtimePid = appRuntimeStatus[tool.id]?.pid ?? null;
+                  const runtimeBlocked = !tool.runtime.enabled || tool.runtime.degraded;
                   const canOpen = visibleInPanel && Boolean(tool.path) && (runtimeStatus === 'running' || (tool.runtime.enabled && tool.available));
 
                   return (
@@ -368,6 +373,7 @@ const ToolsHub: React.FC = () => {
                           <Badge variant={statusVariant[tool.status]}>{tool.status}</Badge>
                           <Badge variant={runtimeBadge.variant}>{runtimeBadge.label}</Badge>
                           <Badge variant={runtimeStatusBadgeVariant[runtimeStatus]}>estado: {runtimeStatus}</Badge>
+                          <Badge variant="neutral">PID: {runtimePid ?? '—'}</Badge>
                         </div>
                       </div>
 
@@ -386,7 +392,7 @@ const ToolsHub: React.FC = () => {
                           variant="secondary"
                           size="sm"
                           onClick={() => executeAction(tool.id, 'install')}
-                          disabled={!visibleInPanel || runtimeStatus === 'installing' || runtimeStatus === 'starting'}
+                          disabled={!visibleInPanel || runtimeBlocked || runtimeStatus === 'installing' || runtimeStatus === 'starting'}
                         >
                           Instalar
                         </Button>
@@ -394,7 +400,7 @@ const ToolsHub: React.FC = () => {
                           variant="secondary"
                           size="sm"
                           onClick={() => executeAction(tool.id, 'start')}
-                          disabled={!visibleInPanel || runtimeStatus === 'running' || runtimeStatus === 'starting' || runtimeStatus === 'installing'}
+                          disabled={!visibleInPanel || runtimeBlocked || runtimeStatus === 'running' || runtimeStatus === 'starting' || runtimeStatus === 'installing'}
                         >
                           Iniciar
                         </Button>
@@ -416,6 +422,11 @@ const ToolsHub: React.FC = () => {
                       </div>
 
                       {appErrors[tool.id] && <p className="mt-3 text-xs text-danger">{appErrors[tool.id]}</p>}
+                      {tool.runtime.degraded && (
+                        <p className="mt-2 text-xs text-warning">
+                          Runtime degradado: esta app no puede iniciarse desde ToolsHub.
+                        </p>
+                      )}
 
                       <code className="mt-3 block rounded bg-surface px-2 py-1 text-xs text-muted">
                         {tool.path || 'Sin ruta pública (requiere manifest/configuración)'}

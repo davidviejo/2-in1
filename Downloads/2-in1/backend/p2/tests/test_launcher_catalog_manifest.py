@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from apps.web.launcher_catalog import _load_integrated_apps
+from apps.web.launcher_catalog import _load_integrated_apps, get_launcher_catalog
 
 
 def _write_manifest(app_dir: Path, manifest: dict) -> None:
@@ -114,3 +114,17 @@ def test_load_integrated_apps_degrades_when_env_contains_disallowed_key(tmp_path
     apps = _load_integrated_apps(base_dir, allowed_env_vars={'SAFE_TOKEN'})
     assert apps[0]['runtime']['degraded'] is True
     assert 'no permitida' in apps[0]['runtime']['degraded_reason']
+
+
+def test_launcher_catalog_static_main_apps_include_launcher():
+    class _FakeApp:
+        config = {}
+
+    catalog = get_launcher_catalog(app=_FakeApp())
+    apps_by_id = {app['id']: app for app in catalog['apps']}
+
+    assert apps_by_id['frontend-dashboard']['launcher']['workdir'] == 'frontend/m3'
+    assert apps_by_id['frontend-dashboard']['launcher']['start_cmd'] == 'npm run dev -- --host 0.0.0.0 --port 5173'
+
+    assert apps_by_id['backend-main']['launcher']['workdir'] == 'backend/p2'
+    assert apps_by_id['backend-main']['launcher']['start_cmd'] == 'python run.py'

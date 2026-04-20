@@ -29,6 +29,12 @@ class LauncherRuntimeNotFoundError(LauncherRuntimeError):
     status_code = 404
 
 
+class LauncherRuntimeUnavailableError(LauncherRuntimeError):
+    """Raised when app runtime is degraded/disabled and cannot be launched."""
+
+    status_code = 409
+
+
 class LauncherRuntimeManager:
     ALLOWED_COMMANDS: set[str] = {
         'npm', 'npx', 'pnpm', 'yarn', 'python', 'python3', 'pip', 'flask', 'uvicorn', 'node',
@@ -187,6 +193,13 @@ class LauncherRuntimeManager:
         catalog = self.catalog_provider()
         for app in catalog.get('apps', []):
             if app.get('id') == app_id:
+                runtime = app.get('runtime') or {}
+                if not runtime.get('enabled', False):
+                    reason = runtime.get('degraded_reason') or 'Runtime deshabilitado'
+                    raise LauncherRuntimeUnavailableError(f'App {app_id} no disponible: {reason}')
+                if runtime.get('degraded', False):
+                    reason = runtime.get('degraded_reason') or 'Runtime degradado'
+                    raise LauncherRuntimeUnavailableError(f'App {app_id} no disponible: {reason}')
                 launcher = app.get('launcher')
                 if not launcher:
                     raise LauncherRuntimeError(f'App {app_id} no tiene launcher configurado')
