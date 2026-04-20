@@ -177,3 +177,156 @@ Si una carpeta no tiene manifest válido, Tools Hub la mostrará como detectada 
 
 ---
 
+---
+
+## 7. Tools Hub Launcher Runtime
+
+La sección **Tools Hub Launcher Runtime** define cómo el panel orquesta apps locales (instalación, arranque, parada y lectura de logs) usando metadata en `app.manifest.json`.
+
+### 7.1 Estructura de `app.manifest.json` (ejemplo completo)
+
+Cada app integrada debe incluir un archivo `app.manifest.json` en su carpeta raíz.
+
+```json
+{
+  "id": "integrada-seo-auditor",
+  "name": "SEO Auditor",
+  "description": "Suite interna para auditorías SEO técnicas y de contenido.",
+  "section": "apps-integradas",
+  "path": "http://localhost:4173",
+  "status": "stable",
+  "icon": "search",
+  "tags": ["seo", "crawler", "reporting"],
+  "owner": "growth-team",
+  "version": "1.4.0",
+  "runtime": {
+    "enabled": true,
+    "requires_credentials": false,
+    "degraded": false,
+    "install": {
+      "cwd": "apps-independientes/seo-auditor",
+      "command": "npm install"
+    },
+    "start": {
+      "cwd": "apps-independientes/seo-auditor",
+      "command": "npm run dev",
+      "port": 4173,
+      "healthcheck": "http://localhost:4173"
+    },
+    "stop": {
+      "strategy": "pidfile",
+      "pidfile": "apps-independientes/seo-auditor/.toolshub.pid"
+    },
+    "logs": {
+      "stdout": "apps-independientes/seo-auditor/.toolshub/logs/out.log",
+      "stderr": "apps-independientes/seo-auditor/.toolshub/logs/error.log"
+    }
+  }
+}
+```
+
+Campos recomendados:
+- `id`: identificador único y estable.
+- `name` / `description`: metadatos visibles en el hub.
+- `path`: URL esperada cuando la app está levantada.
+- `runtime.enabled`: habilita operaciones del launcher.
+- `runtime.install/start/stop/logs`: comandos y rutas operativas para Tools Hub.
+
+### 7.2 Cómo registrar una nueva app
+
+1. Crear carpeta de app: `apps-independientes/<nombre-app>/`.
+2. Añadir `app.manifest.json` con `id` único, `section`, `path` y bloque `runtime` completo.
+3. Verificar que los comandos en `runtime.install.command` y `runtime.start.command` funcionan manualmente desde su `cwd`.
+4. Confirmar que el puerto definido en `runtime.start.port` está libre.
+5. Reiniciar o recargar Tools Hub para forzar nueva detección.
+6. Validar en UI que la app aparece en estado `enabled` y permite acciones de runtime.
+
+### 7.3 Uso desde Tools Hub (instalar / iniciar / parar / logs)
+
+Flujo sugerido dentro de Tools Hub:
+
+1. **Instalar**
+   - Acción: `Instalar`.
+   - Ejecuta: `runtime.install.command` en `runtime.install.cwd`.
+   - Úsalo para dependencias (`npm install`, `pip install -r requirements.txt`, etc.).
+
+2. **Iniciar**
+   - Acción: `Iniciar`.
+   - Ejecuta: `runtime.start.command` en `runtime.start.cwd`.
+   - Verifica disponibilidad por `runtime.start.port` o `runtime.start.healthcheck`.
+
+3. **Parar**
+   - Acción: `Parar`.
+   - Usa `runtime.stop.strategy` para finalizar proceso (por ejemplo, PID file).
+   - Debe dejar el puerto liberado y reflejar estado detenido en la UI.
+
+4. **Logs**
+   - Acción: `Logs`.
+   - Lee rutas `runtime.logs.stdout` y `runtime.logs.stderr`.
+   - Revisar `stderr` primero cuando el estado sea `error` o `degraded`.
+
+### 7.4 Troubleshooting
+
+#### A) Puerto ocupado
+Síntomas:
+- La app no inicia o entra en estado `error` inmediatamente.
+- Mensajes tipo `EADDRINUSE`, `Address already in use`.
+
+Pasos:
+1. Identificar proceso en el puerto configurado (`runtime.start.port`).
+2. Detener ese proceso o cambiar puerto en `app.manifest.json` y en la app.
+3. Reiniciar desde Tools Hub y validar healthcheck.
+
+Comandos útiles:
+```bash
+# Linux/macOS
+lsof -i :4173
+kill -9 <PID>
+```
+
+```powershell
+# Windows PowerShell
+Get-NetTCPConnection -LocalPort 4173
+Stop-Process -Id <PID> -Force
+```
+
+#### B) Dependencias faltantes
+Síntomas:
+- Fallo en `Instalar` o `Iniciar` con mensajes `command not found`, módulos faltantes, binarios ausentes.
+
+Pasos:
+1. Ejecutar `Instalar` desde Tools Hub.
+2. Si persiste, ejecutar comando manual en `runtime.install.cwd` para obtener error completo.
+3. Corregir lockfile/requirements y repetir instalación.
+4. Verificar versiones mínimas (Node/Python) requeridas por la app.
+
+#### C) App en estado `error`
+Síntomas:
+- Estado final `error` en tarjeta de app.
+- Healthcheck fallido o proceso que termina al poco tiempo.
+
+Pasos:
+1. Abrir `Logs` en Tools Hub y revisar primero `stderr`.
+2. Confirmar variables de entorno requeridas por la app.
+3. Verificar que `runtime.start.command` arranca correctamente fuera del hub.
+4. Corregir `app.manifest.json` (`cwd`, `command`, `port`, `healthcheck`, `pidfile`) y reintentar.
+
+### 7.5 Comandos de verificación final
+
+Ejecutar desde `Downloads/2-in1`:
+
+```bash
+# Frontend
+cd frontend/m3
+npm run build
+npm run test
+npm run lint
+npx tsc --noEmit
+
+# Backend
+cd ../../backend/p2
+pytest
+```
+
+Si usas CI/CD, estos comandos deben quedar como checks mínimos para cambios en runtime o integración de apps del Tools Hub.
+
