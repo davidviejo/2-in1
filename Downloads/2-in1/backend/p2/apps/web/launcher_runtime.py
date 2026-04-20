@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import signal
 import subprocess
@@ -22,14 +23,30 @@ class LauncherRuntimeConflictError(LauncherRuntimeError):
     status_code = 409
 
 
+class LauncherRuntimeNotFoundError(LauncherRuntimeError):
+    """Raised when app_id is not registered in launcher catalog."""
+
+    status_code = 404
+
+
 class LauncherRuntimeManager:
+    ALLOWED_COMMANDS: set[str] = {
+        'npm', 'npx', 'pnpm', 'yarn', 'python', 'python3', 'pip', 'flask', 'uvicorn', 'node',
+    }
+    DEFAULT_ALLOWED_ROOT = Path('/workspace/2-in1/Downloads/2-in1').resolve()
+    _SENSITIVE_LOG_PATTERN = re.compile(
+        r'(?i)\b([a-z0-9_.-]*(token|key|password|secret)[a-z0-9_.-]*)\b\s*([=:])\s*([^\s,;]+)'
+    )
+
     def __init__(
         self,
         repo_root: Path | None = None,
+        allowed_root: Path | None = None,
         catalog_provider: Callable[[], dict[str, Any]] | None = None,
         popen_factory: Callable[..., Any] | None = None,
     ) -> None:
         self.repo_root = repo_root or Path(__file__).resolve().parents[3]
+        self.allowed_root = (allowed_root or self.DEFAULT_ALLOWED_ROOT).resolve()
         self.var_dir = self.repo_root / 'var'
         self.logs_dir = self.var_dir / 'launcher_logs'
         self.state_file = self.var_dir / 'launcher_state.json'
@@ -59,7 +76,7 @@ class LauncherRuntimeManager:
             raise LauncherRuntimeConflictError(f'App {app_id} ya está en ejecución')
 
         command = self._to_command_args(launcher['start_cmd'])
-        workdir = str((self.repo_root / launcher['workdir']).resolve())
+        workdir = self._resolve_workdir(launcher['workdir'])
         env = self._build_env(launcher.get('env') or {})
         log_path = self._log_path(app_id)
 
@@ -134,7 +151,7 @@ class LauncherRuntimeManager:
 
         with log_path.open('r', encoding='utf-8', errors='replace') as fh:
             lines = fh.readlines()
-        return [line.rstrip('\n') for line in lines[-lines_limit:]]
+        return [self._redact_sensitive_log_text(line.rstrip('\n')) for line in lines[-lines_limit:]]
 
     def _run_blocking_command(
         self,
@@ -146,10 +163,11 @@ class LauncherRuntimeManager:
     ) -> dict[str, Any]:
         log_path = self._log_path(app_id)
         cmd = self._to_command_args(command)
+        resolved_workdir = self._resolve_workdir(workdir)
         with log_path.open('a', encoding='utf-8') as log_file:
             process = self.popen_factory(
                 cmd,
-                cwd=str((self.repo_root / workdir).resolve()),
+                cwd=resolved_workdir,
                 env=self._build_env(env),
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
@@ -173,7 +191,7 @@ class LauncherRuntimeManager:
                 if not launcher:
                     raise LauncherRuntimeError(f'App {app_id} no tiene launcher configurado')
                 return app
-        raise LauncherRuntimeError(f'App {app_id} no encontrada')
+        raise LauncherRuntimeNotFoundError(f'App {app_id} no encontrada')
 
     def _is_running(self, app_id: str) -> bool:
         state = self._state.setdefault('apps', {}).get(app_id)
@@ -208,7 +226,33 @@ class LauncherRuntimeManager:
         return self.logs_dir / f'{app_id}.log'
 
     def _to_command_args(self, command: str) -> list[str]:
-        return shlex.split(command)
+        args = shlex.split(command)
+        if not args:
+            raise LauncherRuntimeError('Comando vacío no permitido')
+        base_command = Path(args[0]).name.strip().lower()
+        if base_command not in self.ALLOWED_COMMANDS:
+            raise LauncherRuntimeError(f'Comando no permitido: {args[0]}')
+        return args
+
+    def _resolve_workdir(self, workdir: str) -> str:
+        resolved = (self.repo_root / workdir).resolve()
+        repo_root_resolved = self.repo_root.resolve()
+        if repo_root_resolved not in (resolved, *resolved.parents):
+            raise LauncherRuntimeError('Ruta de trabajo fuera de la raíz del repositorio')
+        if self.allowed_root not in (resolved, *resolved.parents):
+            raise LauncherRuntimeError('Ruta de trabajo fuera del root permitido')
+        return str(resolved)
+
+    def _redact_sensitive_log_text(self, line: str) -> str:
+        if not line:
+            return line
+
+        def _replace(match: re.Match[str]) -> str:
+            key = match.group(1)
+            operator = match.group(3)
+            return f'{key}{operator}[REDACTED]'
+
+        return self._SENSITIVE_LOG_PATTERN.sub(_replace, line)
 
     def _load_state(self) -> dict[str, Any]:
         if not self.state_file.exists():

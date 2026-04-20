@@ -1,9 +1,10 @@
 from datetime import datetime, timezone
-from flask import Blueprint, request, jsonify, make_response, session, redirect, url_for, render_template
+from flask import Blueprint, request, jsonify, make_response, session, redirect, url_for, render_template, current_app
 from apps.web.clients_store import get_safe_clients
 from apps.web.template_catalog import get_template_catalog
 from apps.web.tools_catalog import get_tools_catalog
 from apps.web.launcher_catalog import get_launcher_catalog
+from apps.web.launcher_runtime import LauncherRuntimeManager, LauncherRuntimeError
 from functools import wraps
 from collections import deque
 from apps.web.authz import extract_bearer_token_from_header, get_payload_from_token, require_role
@@ -14,6 +15,19 @@ WEB_AUTH_COOKIE = 'portal_auth_token'
 OPERATOR_EXECUTION_MODE = 'simulation'
 OPERATOR_AUDIT_LIMIT = 200
 OPERATOR_AUDIT_LOG = deque(maxlen=OPERATOR_AUDIT_LIMIT)
+
+
+def _get_runtime_manager() -> LauncherRuntimeManager:
+    manager = current_app.extensions.get('launcher_runtime_manager')
+    if manager is None:
+        manager = LauncherRuntimeManager()
+        current_app.extensions['launcher_runtime_manager'] = manager
+    return manager
+
+
+def _runtime_error_response(exc: LauncherRuntimeError):
+    status_code = getattr(exc, 'status_code', 400)
+    return jsonify({'error': str(exc)}), status_code
 
 
 def _get_web_payload():
@@ -135,6 +149,57 @@ def launcher_catalog():
     response = make_response(jsonify(get_launcher_catalog()))
     response.headers['Cache-Control'] = 'public, max-age=30, stale-while-revalidate=120'
     return response
+
+
+@portal_bp.route('/api/launcher/runtime/<app_id>/install', methods=['POST'])
+@require_role(['operator'])
+def launcher_runtime_install(app_id):
+    manager = _get_runtime_manager()
+    try:
+        return jsonify(manager.install(app_id))
+    except LauncherRuntimeError as exc:
+        return _runtime_error_response(exc)
+
+
+@portal_bp.route('/api/launcher/runtime/<app_id>/start', methods=['POST'])
+@require_role(['operator'])
+def launcher_runtime_start(app_id):
+    manager = _get_runtime_manager()
+    try:
+        return jsonify(manager.start(app_id))
+    except LauncherRuntimeError as exc:
+        return _runtime_error_response(exc)
+
+
+@portal_bp.route('/api/launcher/runtime/<app_id>/stop', methods=['POST'])
+@require_role(['operator'])
+def launcher_runtime_stop(app_id):
+    manager = _get_runtime_manager()
+    try:
+        return jsonify(manager.stop(app_id))
+    except LauncherRuntimeError as exc:
+        return _runtime_error_response(exc)
+
+
+@portal_bp.route('/api/launcher/runtime/<app_id>/status', methods=['GET'])
+@require_role(['operator'])
+def launcher_runtime_status(app_id):
+    manager = _get_runtime_manager()
+    try:
+        return jsonify(manager.status(app_id))
+    except LauncherRuntimeError as exc:
+        return _runtime_error_response(exc)
+
+
+@portal_bp.route('/api/launcher/runtime/<app_id>/logs', methods=['GET'])
+@require_role(['operator'])
+def launcher_runtime_logs(app_id):
+    manager = _get_runtime_manager()
+    tail = request.args.get('tail', default=200, type=int)
+    try:
+        return jsonify({'app_id': app_id, 'lines': manager.logs(app_id, tail=tail)})
+    except LauncherRuntimeError as exc:
+        return _runtime_error_response(exc)
 
 @portal_bp.route('/api/tools/catalog', methods=['GET'])
 def tools_catalog():
