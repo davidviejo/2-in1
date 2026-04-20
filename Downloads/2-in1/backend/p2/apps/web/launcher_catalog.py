@@ -237,6 +237,14 @@ def get_launcher_catalog(app=None) -> dict[str, Any]:
             'status': 'migrada',
             'runtime': _default_runtime(),
             'source': {'kind': 'static'},
+            'launcher': {
+                'workdir': 'frontend/m3',
+                'install_cmd': 'npm install',
+                'start_cmd': 'npm run dev -- --host 0.0.0.0 --port 5173',
+                'stop_cmd': None,
+                'healthcheck': {'type': 'http', 'target': 'http://localhost:5173'},
+                'env': None,
+            },
         },
         {
             'id': 'frontend-gsc-impact',
@@ -261,6 +269,24 @@ def get_launcher_catalog(app=None) -> dict[str, Any]:
     ]
 
     backend_apps = [
+        {
+            'id': 'backend-main',
+            'name': 'Backend · API Principal',
+            'description': 'Servicio Flask principal del workspace.',
+            'path': '/global-status',
+            'section': 'backend',
+            'status': 'migrada',
+            'runtime': _default_runtime(),
+            'source': {'kind': 'static'},
+            'launcher': {
+                'workdir': 'backend/p2',
+                'install_cmd': 'pip install -r requirements.txt',
+                'start_cmd': 'python run.py',
+                'stop_cmd': None,
+                'healthcheck': {'type': 'http', 'target': 'http://localhost:5000/global-status'},
+                'env': None,
+            },
+        },
         {
             'id': 'backend-operator',
             'name': 'Backend · Operator Console',

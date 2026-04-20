@@ -5,7 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from apps.web.launcher_runtime import LauncherRuntimeConflictError, LauncherRuntimeError, LauncherRuntimeManager
+from apps.web.launcher_runtime import (
+    LauncherRuntimeConflictError,
+    LauncherRuntimeError,
+    LauncherRuntimeManager,
+    LauncherRuntimeUnavailableError,
+)
 
 
 class FakeProcess:
@@ -221,3 +226,30 @@ def test_logs_redacts_sensitive_pairs(tmp_path):
     assert lines[1] == 'password:[REDACTED]'
     assert lines[2] == 'token=[REDACTED]'
     assert lines[3] == 'normal_line'
+
+
+def test_start_rejects_degraded_app(tmp_path):
+    repo_root = tmp_path / 'repo'
+    (repo_root / 'apps-independientes' / 'demo-app').mkdir(parents=True)
+    manager = LauncherRuntimeManager(
+        repo_root=repo_root,
+        allowed_root=repo_root,
+        catalog_provider=lambda: {
+            'apps': [
+                {
+                    'id': 'demo-app',
+                    'runtime': {'enabled': False, 'degraded': True, 'degraded_reason': 'Manifest inválido'},
+                    'launcher': {
+                        'workdir': 'apps-independientes/demo-app',
+                        'install_cmd': 'npm ci',
+                        'start_cmd': 'npm run dev',
+                        'env': {},
+                    },
+                }
+            ]
+        },
+        popen_factory=PopenSpy(),
+    )
+
+    with pytest.raises(LauncherRuntimeUnavailableError, match='Manifest inválido'):
+        manager.start('demo-app')

@@ -5,6 +5,13 @@
   "section": "apps-integradas",
   "path": "http://localhost:3000",
   "status": "beta",
+  "workdir": "apps-independientes/local-seo-audit-poc",
+  "install_cmd": "npm install",
+  "start_cmd": "npm run dev",
+  "healthcheck": {
+    "type": "http",
+    "target": "http://localhost:3000"
+  },
   "runtime": {
     "enabled": true,
     "requires_credentials": false,
