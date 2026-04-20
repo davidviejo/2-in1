@@ -21,7 +21,7 @@ def fetch_sitemap_urls(sitemap_url, max_urls=None):
     """
     Expande recursivamente un sitemap (index o urlset) y devuelve:
     - lista deduplicada de URLs finales
-    - mapa URL -> sitemap fuente del que se extrajo
+    - mapa URL -> lista de sitemaps fuente del que se extrajo
     """
     if not is_safe_url(sitemap_url):
         return [], {}
@@ -79,13 +79,22 @@ def fetch_sitemap_urls(sitemap_url, max_urls=None):
                 final_url = loc_node.text.strip()
                 if final_url:
                     final_urls.add(final_url)
-                    source_by_url.setdefault(final_url, current_sitemap)
+                    source_by_url.setdefault(final_url, [])
+                    if current_sitemap not in source_by_url[final_url]:
+                        source_by_url[final_url].append(current_sitemap)
                     if max_collected_urls and len(final_urls) >= max_collected_urls:
                         return list(final_urls), source_by_url
         elif current_sitemap == sitemap_url:
             return [], {}
 
     return list(final_urls), source_by_url
+
+
+def _format_sitemap_sources(source_by_url, target_url, fallback_url):
+    sources = source_by_url.get(target_url, [])
+    if isinstance(sources, list):
+        return " | ".join(sources) if sources else fallback_url
+    return sources or fallback_url
 
 def analyze_single_url_hybrid(url):
     """
@@ -185,7 +194,7 @@ def scan():
         urls, source_by_url = fetch_sitemap_urls(url_input)
     else:
         urls = [url_input]
-        source_by_url = {url_input: url_input}
+        source_by_url = {url_input: [url_input]}
 
     if not urls:
         if looks_like_sitemap:
@@ -196,7 +205,7 @@ def scan():
         inventory_data = [
             {
                 'url': url,
-                'sitemap_source': source_by_url.get(url, url_input),
+                'sitemap_source': _format_sitemap_sources(source_by_url, url, url_input),
                 'status': 'INVENTORY',
                 'method': 'Sitemap Parser',
                 'title': '',
@@ -219,7 +228,7 @@ def scan():
         future_to_url = {executor.submit(analyze_single_url_hybrid, url): url for url in urls}
         for future in concurrent.futures.as_completed(future_to_url):
             row = future.result()
-            row['sitemap_source'] = source_by_url.get(row['url'], url_input)
+            row['sitemap_source'] = _format_sitemap_sources(source_by_url, row['url'], url_input)
             results.append(row)
 
     return jsonify({'status': 'ok', 'mode': 'analyze', 'total': len(urls), 'data': results})
