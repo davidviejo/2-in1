@@ -120,7 +120,7 @@ def test_fetch_sitemap_urls_ssrf_direct():
         url = "http://127.0.0.1/sitemap.xml"
         result = fetch_sitemap_urls(url)
         mock_get.assert_not_called()
-        assert result == []
+        assert result == ([], {})
 
 def test_fetch_url_hybrid_ssrf_direct():
     from apps.tools.scraper_core import fetch_url_hybrid

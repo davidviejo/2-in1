@@ -24,9 +24,11 @@ def test_fetch_sitemap_urls_urlset_simple(monkeypatch):
     monkeypatch.setattr(audit_tool, "is_safe_url", lambda url: True)
     monkeypatch.setattr(audit_tool.requests, "get", lambda *args, **kwargs: _xml_response(xml))
 
-    urls = audit_tool.fetch_sitemap_urls(root)
+    urls, source_by_url = audit_tool.fetch_sitemap_urls(root)
 
     assert set(urls) == {"https://example.com/a", "https://example.com/b"}
+    assert source_by_url["https://example.com/a"] == [root]
+    assert source_by_url["https://example.com/b"] == [root]
 
 
 def test_fetch_sitemap_urls_sitemapindex_with_two_children(monkeypatch):
@@ -60,9 +62,11 @@ def test_fetch_sitemap_urls_sitemapindex_with_two_children(monkeypatch):
         lambda url, **kwargs: _xml_response(xml_map[url]),
     )
 
-    urls = audit_tool.fetch_sitemap_urls(root)
+    urls, source_by_url = audit_tool.fetch_sitemap_urls(root)
 
     assert set(urls) == {"https://example.com/a", "https://example.com/b"}
+    assert source_by_url["https://example.com/a"] == [child_1]
+    assert source_by_url["https://example.com/b"] == [child_2]
 
 
 def test_fetch_sitemap_urls_circular_sitemap_no_infinite_loop(monkeypatch):
@@ -91,7 +95,7 @@ def test_fetch_sitemap_urls_circular_sitemap_no_infinite_loop(monkeypatch):
 
     monkeypatch.setattr(audit_tool.requests, "get", fake_get)
 
-    urls = audit_tool.fetch_sitemap_urls(root)
+    urls, _ = audit_tool.fetch_sitemap_urls(root)
 
     assert urls == []
     assert calls.count(root) == 1
@@ -125,12 +129,16 @@ def test_fetch_sitemap_urls_deduplicates_between_children(monkeypatch):
     monkeypatch.setattr(audit_tool, "is_safe_url", lambda url: True)
     monkeypatch.setattr(audit_tool.requests, "get", lambda url, **kwargs: _xml_response(xml_map[url]))
 
-    urls = audit_tool.fetch_sitemap_urls(root)
+    urls, source_by_url = audit_tool.fetch_sitemap_urls(root)
 
     assert set(urls) == {
         "https://example.com/shared",
         "https://example.com/only-1",
         "https://example.com/only-2",
+    }
+    assert set(source_by_url["https://example.com/shared"]) == {
+        "https://example.com/sitemap-1.xml",
+        "https://example.com/sitemap-2.xml",
     }
 
 
@@ -164,7 +172,8 @@ def test_fetch_sitemap_urls_blocks_unsafe_child_sitemap(monkeypatch):
     monkeypatch.setattr(audit_tool, "is_safe_url", fake_is_safe)
     monkeypatch.setattr(audit_tool.requests, "get", fake_get)
 
-    urls = audit_tool.fetch_sitemap_urls(root)
+    urls, source_by_url = audit_tool.fetch_sitemap_urls(root)
 
     assert set(urls) == {"https://example.com/final"}
+    assert source_by_url["https://example.com/final"] == [safe_child]
     assert unsafe_child not in requested
