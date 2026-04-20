@@ -12,6 +12,8 @@ $FRONTEND_PORT = 5173
 
 $backendProcess = $null
 $frontendProcess = $null
+$backendRuntimePort = $BACKEND_PORT
+$frontendRuntimePort = $FRONTEND_PORT
 
 function Test-PortInUse {
     param([int]$Port)
@@ -78,7 +80,7 @@ function Ensure-FrontendSetup {
 
 function Update-Status {
     if ($backendProcess -and -not $backendProcess.HasExited) {
-        $backendStatusLabel.Text = "Backend: RUNNING (PID $($backendProcess.Id))"
+        $backendStatusLabel.Text = "Backend: RUNNING (PID $($backendProcess.Id), Port $backendRuntimePort)"
         $backendStatusLabel.ForeColor = [System.Drawing.Color]::ForestGreen
     }
     else {
@@ -87,7 +89,7 @@ function Update-Status {
     }
 
     if ($frontendProcess -and -not $frontendProcess.HasExited) {
-        $frontendStatusLabel.Text = "Frontend: RUNNING (PID $($frontendProcess.Id))"
+        $frontendStatusLabel.Text = "Frontend: RUNNING (PID $($frontendProcess.Id), Port $frontendRuntimePort)"
         $frontendStatusLabel.ForeColor = [System.Drawing.Color]::ForestGreen
     }
     else {
@@ -129,36 +131,47 @@ function Start-Backend {
         -WorkingDirectory $BACKEND_DIR `
         -PassThru
 
+    $script:backendRuntimePort = $BACKEND_PORT
     Write-Log "Backend iniciado (PID $($backendProcess.Id))."
     Update-Status
 }
 
 function Start-Frontend {
+    param([switch]$AutoResolvePort)
+
     if ($frontendProcess -and -not $frontendProcess.HasExited) {
         Write-Log "Frontend ya está en ejecución."
         return
     }
 
-    if (Test-PortInUse -Port $FRONTEND_PORT) {
-        $suggestedPort = Get-FreePortSuggestion -StartPort ($FRONTEND_PORT + 1)
-        if ($suggestedPort) {
-            Write-Log "No se pudo iniciar frontend: puerto $FRONTEND_PORT ocupado. Sugerencia: liberar $FRONTEND_PORT o usar $suggestedPort."
+    $launchPort = $FRONTEND_PORT
+    if (Test-PortInUse -Port $launchPort) {
+        $suggestedPort = Get-FreePortSuggestion -StartPort ($launchPort + 1)
+        if ($AutoResolvePort -and $suggestedPort) {
+            $launchPort = $suggestedPort
+            Write-Log "Puerto $FRONTEND_PORT ocupado. Iniciando frontend automáticamente en $launchPort."
         }
         else {
-            Write-Log "No se pudo iniciar frontend: puerto $FRONTEND_PORT ocupado."
+            if ($suggestedPort) {
+                Write-Log "No se pudo iniciar frontend: puerto $FRONTEND_PORT ocupado. Sugerencia: liberar $FRONTEND_PORT, usar $suggestedPort o pulsar 'Start Frontend (Auto)'."
+            }
+            else {
+                Write-Log "No se pudo iniciar frontend: puerto $FRONTEND_PORT ocupado."
+            }
+            return
         }
-        return
     }
 
     Ensure-FrontendSetup
 
-    Write-Log "Iniciando frontend en http://localhost:$FRONTEND_PORT ..."
+    Write-Log "Iniciando frontend en http://localhost:$launchPort ..."
 
     $frontendProcess = Start-Process -FilePath "powershell" `
-        -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "npm run dev" `
+        -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "npm run dev -- --port $launchPort" `
         -WorkingDirectory $FRONTEND_DIR `
         -PassThru
 
+    $script:frontendRuntimePort = $launchPort
     Write-Log "Frontend iniciado (PID $($frontendProcess.Id))."
     Update-Status
 }
@@ -173,6 +186,7 @@ function Stop-Backend {
     }
 
     $script:backendProcess = $null
+    $script:backendRuntimePort = $BACKEND_PORT
     Update-Status
 }
 
@@ -186,6 +200,7 @@ function Stop-Frontend {
     }
 
     $script:frontendProcess = $null
+    $script:frontendRuntimePort = $FRONTEND_PORT
     Update-Status
 }
 
@@ -219,7 +234,7 @@ $startAllButton.Size = New-Object System.Drawing.Size(120, 35)
 $startAllButton.Location = New-Object System.Drawing.Point(20, 120)
 $startAllButton.Add_Click({
     Start-Backend
-    Start-Frontend
+    Start-Frontend -AutoResolvePort
 })
 $form.Controls.Add($startAllButton)
 
@@ -261,18 +276,25 @@ $startFrontendButton.Location = New-Object System.Drawing.Point(20, 220)
 $startFrontendButton.Add_Click({ Start-Frontend })
 $form.Controls.Add($startFrontendButton)
 
+$startFrontendAutoButton = New-Object System.Windows.Forms.Button
+$startFrontendAutoButton.Text = "Start Frontend (Auto)"
+$startFrontendAutoButton.Size = New-Object System.Drawing.Size(150, 35)
+$startFrontendAutoButton.Location = New-Object System.Drawing.Point(150, 220)
+$startFrontendAutoButton.Add_Click({ Start-Frontend -AutoResolvePort })
+$form.Controls.Add($startFrontendAutoButton)
+
 $stopFrontendButton = New-Object System.Windows.Forms.Button
 $stopFrontendButton.Text = "Stop Frontend"
 $stopFrontendButton.Size = New-Object System.Drawing.Size(120, 35)
-$stopFrontendButton.Location = New-Object System.Drawing.Point(150, 220)
+$stopFrontendButton.Location = New-Object System.Drawing.Point(310, 220)
 $stopFrontendButton.Add_Click({ Stop-Frontend })
 $form.Controls.Add($stopFrontendButton)
 
 $openFrontendButton = New-Object System.Windows.Forms.Button
 $openFrontendButton.Text = "Open Frontend"
 $openFrontendButton.Size = New-Object System.Drawing.Size(120, 35)
-$openFrontendButton.Location = New-Object System.Drawing.Point(280, 220)
-$openFrontendButton.Add_Click({ Start-Process "http://localhost:$FRONTEND_PORT" })
+$openFrontendButton.Location = New-Object System.Drawing.Point(440, 220)
+$openFrontendButton.Add_Click({ Start-Process "http://localhost:$frontendRuntimePort" })
 $form.Controls.Add($openFrontendButton)
 
 $logBox = New-Object System.Windows.Forms.TextBox
