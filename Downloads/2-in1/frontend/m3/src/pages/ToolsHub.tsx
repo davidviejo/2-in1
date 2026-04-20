@@ -4,7 +4,7 @@ import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
-import { api, ToolCatalogItem } from '../services/api';
+import { api, LauncherAppItem, LauncherSectionItem, ToolCatalogItem } from '../services/api';
 
 const statusVariant: Record<ToolCatalogItem['status'], 'warning' | 'success' | 'primary'> = {
   legacy: 'warning',
@@ -12,7 +12,7 @@ const statusVariant: Record<ToolCatalogItem['status'], 'warning' | 'success' | '
   beta: 'primary',
 };
 
-const availabilityBadge = (tool: ToolCatalogItem): { label: string; variant: 'danger' | 'warning' | 'success' } => {
+const availabilityBadge = (tool: Pick<ToolCatalogItem, 'runtime' | 'available'>): { label: string; variant: 'danger' | 'warning' | 'success' } => {
   if (!tool.runtime.enabled || !tool.available) {
     return { label: 'Deshabilitada', variant: 'danger' };
   }
@@ -25,7 +25,7 @@ const availabilityBadge = (tool: ToolCatalogItem): { label: string; variant: 'da
   return { label: 'Disponible', variant: 'success' };
 };
 
-type LauncherSection = 'apps-independientes' | 'frontend' | 'backend';
+type LauncherSection = LauncherAppItem['section'] | 'apps-independientes';
 
 interface LauncherApp {
   id: string;
@@ -33,69 +33,17 @@ interface LauncherApp {
   description: string;
   path: string;
   section: LauncherSection;
-  status?: ToolCatalogItem['status'];
-  runtime: {
-    enabled: boolean;
-    degraded: boolean;
-    requires_credentials: boolean;
-  };
+  status: ToolCatalogItem['status'];
+  runtime: ToolCatalogItem['runtime'];
+  available: boolean;
 }
-
-const FRONTEND_APPS: LauncherApp[] = [
-  {
-    id: 'frontend-dashboard',
-    name: 'Frontend · Dashboard',
-    description: 'Entrada principal del panel de gestión SEO para clientes.',
-    path: '/app/',
-    section: 'frontend',
-    status: 'migrada',
-    runtime: { enabled: true, degraded: false, requires_credentials: false },
-  },
-  {
-    id: 'frontend-gsc-impact',
-    name: 'Frontend · Impacto GSC',
-    description: 'Vista de impacto por propiedad y portfolio en Search Console.',
-    path: '/app/gsc-impact?view=global',
-    section: 'frontend',
-    status: 'beta',
-    runtime: { enabled: true, degraded: false, requires_credentials: false },
-  },
-  {
-    id: 'frontend-roadmap',
-    name: 'Frontend · Roadmap',
-    description: 'Planificación táctica y priorización de acciones por cliente.',
-    path: '/app/client-roadmap',
-    section: 'frontend',
-    status: 'migrada',
-    runtime: { enabled: true, degraded: false, requires_credentials: false },
-  },
-];
-
-const BACKEND_APPS: LauncherApp[] = [
-  {
-    id: 'backend-operator',
-    name: 'Backend · Operator Console',
-    description: 'Consola para ejecución manual de operaciones internas.',
-    path: '/operator',
-    section: 'backend',
-    status: 'migrada',
-    runtime: { enabled: true, degraded: false, requires_credentials: true },
-  },
-  {
-    id: 'backend-tools-catalog',
-    name: 'Backend · API Tools Catalog',
-    description: 'Endpoint JSON del catálogo de herramientas y estado runtime.',
-    path: '/api/tools/catalog',
-    section: 'backend',
-    status: 'beta',
-    runtime: { enabled: true, degraded: false, requires_credentials: false },
-  },
-];
 
 const PANEL_STORAGE_KEY = 'tools_hub_enabled_apps';
 
 const ToolsHub: React.FC = () => {
   const [tools, setTools] = useState<ToolCatalogItem[]>([]);
+  const [launcherSections, setLauncherSections] = useState<LauncherSectionItem[]>([]);
+  const [launcherApps, setLauncherApps] = useState<LauncherAppItem[]>([]);
   const [enabledApps, setEnabledApps] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -115,15 +63,17 @@ const ToolsHub: React.FC = () => {
   useEffect(() => {
     let mounted = true;
 
-    const loadTools = async () => {
+    const loadData = async () => {
       try {
-        const res = await api.getToolsCatalog();
+        const [toolsRes, launcherRes] = await Promise.all([api.getToolsCatalog(), api.getLauncherCatalog()]);
         if (mounted) {
-          setTools(res.tools || []);
+          setTools(toolsRes.tools || []);
+          setLauncherSections(launcherRes.sections || []);
+          setLauncherApps(launcherRes.apps || []);
         }
       } catch {
         if (mounted) {
-          setError('No se pudo cargar el catálogo de herramientas.');
+          setError('No se pudo cargar el catálogo de herramientas/apps.');
         }
       } finally {
         if (mounted) {
@@ -132,7 +82,7 @@ const ToolsHub: React.FC = () => {
       }
     };
 
-    loadTools();
+    loadData();
     return () => {
       mounted = false;
     };
@@ -148,8 +98,8 @@ const ToolsHub: React.FC = () => {
     );
   }, [tools]);
 
-  const launcherApps = useMemo<LauncherApp[]>(() => {
-    const independentApps: LauncherApp[] = tools.map((tool) => ({
+  const unifiedApps = useMemo<LauncherApp[]>(() => {
+    const independentTools: LauncherApp[] = tools.map((tool) => ({
       id: tool.id,
       name: tool.name,
       description: tool.description,
@@ -157,29 +107,33 @@ const ToolsHub: React.FC = () => {
       section: 'apps-independientes',
       status: tool.status,
       runtime: tool.runtime,
+      available: tool.available,
     }));
-    return [...independentApps, ...FRONTEND_APPS, ...BACKEND_APPS];
-  }, [tools]);
+
+    const dynamicApps: LauncherApp[] = launcherApps.map((app) => ({
+      id: app.id,
+      name: app.name,
+      description: app.description,
+      path: app.path,
+      section: app.section,
+      status: app.status,
+      runtime: app.runtime,
+      available: true,
+    }));
+
+    return [...dynamicApps, ...independentTools];
+  }, [launcherApps, tools]);
 
   const sections = useMemo(
     () => [
+      ...launcherSections,
       {
         id: 'apps-independientes' as const,
         title: 'Apps independientes',
         description: 'Herramientas desacopladas y módulos legacy/migrados.',
       },
-      {
-        id: 'frontend' as const,
-        title: 'Frontend',
-        description: 'Entradas rápidas a vistas clave del SPA.',
-      },
-      {
-        id: 'backend' as const,
-        title: 'Backend',
-        description: 'Consolas y endpoints operativos del servidor.',
-      },
     ],
-    [],
+    [launcherSections],
   );
 
   const isEnabledInPanel = (appId: string) => enabledApps[appId] ?? true;
@@ -193,7 +147,7 @@ const ToolsHub: React.FC = () => {
   };
 
   const openApp = (tool: LauncherApp) => {
-    if (!tool.runtime.enabled || !isEnabledInPanel(tool.id)) {
+    if (!tool.runtime.enabled || !isEnabledInPanel(tool.id) || !tool.path) {
       return;
     }
     if (tool.status === 'legacy') {
@@ -213,11 +167,11 @@ const ToolsHub: React.FC = () => {
 
   const sectionSummary = useMemo(() => {
     return sections.map((section) => {
-      const apps = launcherApps.filter((app) => app.section === section.id);
+      const apps = unifiedApps.filter((app) => app.section === section.id);
       const enabled = apps.filter((app) => isEnabledInPanel(app.id)).length;
       return { section: section.id, total: apps.length, enabled };
     });
-  }, [launcherApps, sections, enabledApps]);
+  }, [unifiedApps, sections, enabledApps]);
 
   return (
     <div className="space-y-6">
@@ -227,11 +181,11 @@ const ToolsHub: React.FC = () => {
             <p className="text-xs uppercase tracking-widest text-muted">Tools Hub</p>
             <h1 className="mt-2 flex items-center gap-2 text-2xl font-bold text-foreground">
               <Wrench size={22} />
-              Panel de Apps (sin unificar)
+              Panel central de apps
             </h1>
             <p className="mt-2 max-w-3xl text-sm text-muted">
-              Controla qué apps mostrar/activar por sección. El panel no fusiona apps: solo centraliza accesos
-              para Apps independientes, Frontend y Backend.
+              Centraliza el acceso a frontend, backend y apps integradas en carpeta raíz, sin abrir una terminal por
+              cada app.
             </p>
           </div>
           <div className="flex flex-wrap gap-2 text-xs">
@@ -246,12 +200,8 @@ const ToolsHub: React.FC = () => {
         <div className="flex flex-wrap gap-3 text-xs text-muted">
           {sectionSummary.map((item) => (
             <div key={item.section} className="rounded-lg border border-border bg-surface-alt px-3 py-2">
-              {item.section === 'apps-independientes'
-                ? 'Apps independientes'
-                : item.section === 'frontend'
-                  ? 'Frontend'
-                  : 'Backend'}
-              : {item.enabled}/{item.total} activas
+              {sections.find((section) => section.id === item.section)?.title ?? item.section}: {item.enabled}/{item.total}{' '}
+              activas
             </div>
           ))}
         </div>
@@ -273,7 +223,7 @@ const ToolsHub: React.FC = () => {
       {!loading &&
         !error &&
         sections.map((section) => {
-          const sectionApps = launcherApps.filter((app) => app.section === section.id);
+          const sectionApps = unifiedApps.filter((app) => app.section === section.id);
           if (sectionApps.length === 0) return null;
 
           return (
@@ -285,22 +235,7 @@ const ToolsHub: React.FC = () => {
 
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 {sectionApps.map((tool) => {
-                  const runtimeBadge =
-                    section.id === 'apps-independientes'
-                      ? availabilityBadge({
-                          id: tool.id,
-                          name: tool.name,
-                          path: tool.path,
-                          status: tool.status ?? 'migrada',
-                          description: tool.description,
-                          available: true,
-                          runtime: tool.runtime,
-                        })
-                      : !tool.runtime.enabled
-                        ? { label: 'Deshabilitada', variant: 'danger' as const }
-                        : tool.runtime.requires_credentials
-                          ? { label: 'Requiere credenciales', variant: 'warning' as const }
-                          : { label: 'Disponible', variant: 'success' as const };
+                  const runtimeBadge = availabilityBadge(tool);
                   const visibleInPanel = isEnabledInPanel(tool.id);
 
                   return (
@@ -311,7 +246,7 @@ const ToolsHub: React.FC = () => {
                           <p className="mt-1 text-sm text-muted">{tool.description}</p>
                         </div>
                         <div className="flex flex-col items-end gap-2">
-                          {tool.status && <Badge variant={statusVariant[tool.status]}>{tool.status}</Badge>}
+                          <Badge variant={statusVariant[tool.status]}>{tool.status}</Badge>
                           <Badge variant={runtimeBadge.variant}>{runtimeBadge.label}</Badge>
                         </div>
                       </div>
@@ -329,13 +264,15 @@ const ToolsHub: React.FC = () => {
                         <Button
                           variant="secondary"
                           onClick={() => openApp(tool)}
-                          disabled={!tool.runtime.enabled || !visibleInPanel}
+                          disabled={!tool.runtime.enabled || !visibleInPanel || !tool.path}
                         >
                           Abrir
                           <ArrowUpRight size={16} />
                         </Button>
                       </div>
-                      <code className="mt-3 block rounded bg-surface px-2 py-1 text-xs text-muted">{tool.path}</code>
+                      <code className="mt-3 block rounded bg-surface px-2 py-1 text-xs text-muted">
+                        {tool.path || 'Sin ruta pública (requiere manifest/configuración)'}
+                      </code>
                     </Card>
                   );
                 })}

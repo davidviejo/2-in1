@@ -3,6 +3,7 @@ from flask import Blueprint, request, jsonify, make_response, session, redirect,
 from apps.web.clients_store import get_safe_clients
 from apps.web.template_catalog import get_template_catalog
 from apps.web.tools_catalog import get_tools_catalog
+from apps.web.launcher_catalog import get_launcher_catalog
 from functools import wraps
 from collections import deque
 from apps.web.authz import extract_bearer_token_from_header, get_payload_from_token, require_role
@@ -126,6 +127,13 @@ def list_tool_executions():
 def templates_catalog():
     response = make_response(jsonify(get_template_catalog()))
     response.headers['Cache-Control'] = 'public, max-age=60, stale-while-revalidate=300'
+    return response
+
+
+@portal_bp.route('/api/launcher/catalog', methods=['GET'])
+def launcher_catalog():
+    response = make_response(jsonify(get_launcher_catalog()))
+    response.headers['Cache-Control'] = 'public, max-age=30, stale-while-revalidate=120'
     return response
 
 @portal_bp.route('/api/tools/catalog', methods=['GET'])

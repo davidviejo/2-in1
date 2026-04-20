@@ -1,0 +1,13 @@
+{
+  "id": "integrada-local-seo-audit-poc",
+  "name": "Local SEO Audit PoC",
+  "description": "PoC independiente de auditoría SEO local (Next.js).",
+  "section": "apps-integradas",
+  "path": "http://localhost:3000",
+  "status": "beta",
+  "runtime": {
+    "enabled": true,
+    "requires_credentials": false,
+    "degraded": false
+  }
+}
