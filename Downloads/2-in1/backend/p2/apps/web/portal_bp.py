@@ -4,6 +4,7 @@ from apps.web.clients_store import get_safe_clients
 from apps.web.template_catalog import get_template_catalog
 from apps.web.tools_catalog import get_tools_catalog
 from apps.web.launcher_catalog import get_launcher_catalog
+from apps.web.launcher_runtime import launcher_runtime_service, LauncherRuntimeError, serialize_runtime_response
 from functools import wraps
 from collections import deque
 from apps.web.authz import extract_bearer_token_from_header, get_payload_from_token, require_role
@@ -135,6 +136,162 @@ def launcher_catalog():
     response = make_response(jsonify(get_launcher_catalog()))
     response.headers['Cache-Control'] = 'public, max-age=30, stale-while-revalidate=120'
     return response
+
+
+
+def _launcher_catalog_index() -> dict[str, dict]:
+    catalog = get_launcher_catalog()
+    return {item.get('id'): item for item in catalog.get('apps', []) if item.get('id')}
+
+
+def _resolve_launcher_app_or_404(app_id: str):
+    app_entry = _launcher_catalog_index().get(app_id)
+    if not app_entry:
+        return None, (jsonify({
+            'ok': False,
+            'app_id': app_id,
+            'state': 'error',
+            'pid': None,
+            'port': None,
+            'message': 'App no encontrada en el catálogo del launcher.',
+            'error': 'app_not_found',
+        }), 404)
+    return app_entry, None
+
+
+def _handle_launcher_runtime_error(app_id: str, exc: LauncherRuntimeError):
+    record = launcher_runtime_service.status(app_id)
+    return jsonify(serialize_runtime_response(
+        record,
+        ok=False,
+        message=str(exc),
+        error=exc.error or 'runtime_error',
+        state=exc.state or record.state,
+    )), exc.status_code
+
+
+@portal_bp.route('/api/launcher/apps/<app_id>/install', methods=['POST'])
+def launcher_install(app_id):
+    _, not_found = _resolve_launcher_app_or_404(app_id)
+    if not_found:
+        return not_found
+
+    try:
+        record = launcher_runtime_service.install(app_id)
+        return jsonify(serialize_runtime_response(record))
+    except LauncherRuntimeError as exc:
+        return _handle_launcher_runtime_error(app_id, exc)
+    except Exception as exc:
+        record = launcher_runtime_service.status(app_id)
+        return jsonify(serialize_runtime_response(
+            record,
+            ok=False,
+            message='Error interno al instalar app.',
+            error=str(exc),
+            state='error',
+        )), 500
+
+
+@portal_bp.route('/api/launcher/apps/<app_id>/start', methods=['POST'])
+def launcher_start(app_id):
+    _, not_found = _resolve_launcher_app_or_404(app_id)
+    if not_found:
+        return not_found
+
+    try:
+        record = launcher_runtime_service.start(app_id)
+        return jsonify(serialize_runtime_response(record))
+    except LauncherRuntimeError as exc:
+        return _handle_launcher_runtime_error(app_id, exc)
+    except Exception as exc:
+        record = launcher_runtime_service.status(app_id)
+        return jsonify(serialize_runtime_response(
+            record,
+            ok=False,
+            message='Error interno al arrancar app.',
+            error=str(exc),
+            state='error',
+        )), 500
+
+
+@portal_bp.route('/api/launcher/apps/<app_id>/stop', methods=['POST'])
+def launcher_stop(app_id):
+    _, not_found = _resolve_launcher_app_or_404(app_id)
+    if not_found:
+        return not_found
+
+    try:
+        record = launcher_runtime_service.stop(app_id)
+        return jsonify(serialize_runtime_response(record))
+    except LauncherRuntimeError as exc:
+        return _handle_launcher_runtime_error(app_id, exc)
+    except Exception as exc:
+        record = launcher_runtime_service.status(app_id)
+        return jsonify(serialize_runtime_response(
+            record,
+            ok=False,
+            message='Error interno al detener app.',
+            error=str(exc),
+            state='error',
+        )), 500
+
+
+@portal_bp.route('/api/launcher/apps/<app_id>/status', methods=['GET'])
+def launcher_status(app_id):
+    _, not_found = _resolve_launcher_app_or_404(app_id)
+    if not_found:
+        return not_found
+
+    try:
+        record = launcher_runtime_service.status(app_id)
+        return jsonify(serialize_runtime_response(record))
+    except Exception as exc:
+        record = launcher_runtime_service.status(app_id)
+        return jsonify(serialize_runtime_response(
+            record,
+            ok=False,
+            message='Error interno al consultar estado.',
+            error=str(exc),
+            state='error',
+        )), 500
+
+
+@portal_bp.route('/api/launcher/apps/<app_id>/logs', methods=['GET'])
+def launcher_logs(app_id):
+    _, not_found = _resolve_launcher_app_or_404(app_id)
+    if not_found:
+        return not_found
+
+    raw_tail = request.args.get('tail', default='200')
+    try:
+        tail = int(raw_tail)
+    except (TypeError, ValueError):
+        record = launcher_runtime_service.status(app_id)
+        return jsonify(serialize_runtime_response(
+            record,
+            ok=False,
+            message='Parámetro tail inválido.',
+            error='invalid_tail',
+            state=record.state,
+        )), 400
+
+    try:
+        record, logs = launcher_runtime_service.logs(app_id, tail=tail)
+        return jsonify(serialize_runtime_response(
+            record,
+            extra={'logs': logs, 'tail': tail},
+        ))
+    except LauncherRuntimeError as exc:
+        return _handle_launcher_runtime_error(app_id, exc)
+    except Exception as exc:
+        record = launcher_runtime_service.status(app_id)
+        return jsonify(serialize_runtime_response(
+            record,
+            ok=False,
+            message='Error interno al consultar logs.',
+            error=str(exc),
+            state='error',
+        )), 500
 
 @portal_bp.route('/api/tools/catalog', methods=['GET'])
 def tools_catalog():
