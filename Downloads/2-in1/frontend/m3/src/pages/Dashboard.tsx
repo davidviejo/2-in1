@@ -46,9 +46,16 @@ import { useGSCAuth } from '../hooks/useGSCAuth';
 import { GSCComparisonMode, useGSCData } from '../hooks/useGSCData';
 import { GSCDateRangeControl } from '../components/GSCDateRangeControl';
 import { InsightDetailModal } from '../components/InsightDetailModal';
-import { SeoInsight, SeoInsightCategory } from '../types/seoInsights';
+import {
+  SeoInsight,
+  SeoInsightBrandType,
+  SeoInsightCategory,
+  SeoInsightLifecycleStatus,
+} from '../types/seoInsights';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { buildIgnoredEntryKey, useSeoIgnoredItems } from '../hooks/useSeoIgnoredItems';
+import { useSeoInsightState } from '../hooks/useSeoInsightState';
+import { useProject } from '../context/ProjectContext';
 import * as XLSX from 'xlsx';
 
 const GSC_COMPARISON_MODE_LABELS: Record<GSCComparisonMode, string> = {
@@ -210,7 +217,14 @@ const buildInsightExportRows = (insight: SeoInsight) => {
         facilidad: insight.ease,
         valorNegocio: insight.businessValue,
         facilidadImplementacion: insight.implementationEase,
-        accionSugerida: insight.action,
+        accionSugerida: insight.suggestedAction,
+        regla: insight.ruleKey,
+        modulo: insight.moduleId || '',
+        brandType: insight.brandType,
+        estado: insight.status,
+        propiedad: insight.propertyId,
+        periodoActual: insight.periodCurrent ? `${insight.periodCurrent.startDate}..${insight.periodCurrent.endDate}` : '',
+        periodoAnterior: insight.periodPrevious ? `${insight.periodPrevious.startDate}..${insight.periodPrevious.endDate}` : '',
         resumen: insight.summary,
         motivo: insight.reason,
         query: '',
@@ -237,7 +251,14 @@ const buildInsightExportRows = (insight: SeoInsight) => {
     facilidad: insight.ease,
     valorNegocio: insight.businessValue,
     facilidadImplementacion: insight.implementationEase,
-    accionSugerida: insight.action,
+    accionSugerida: insight.suggestedAction,
+    regla: insight.ruleKey,
+    modulo: insight.moduleId || '',
+    brandType: insight.brandType,
+    estado: insight.status,
+    propiedad: insight.propertyId,
+    periodoActual: insight.periodCurrent ? `${insight.periodCurrent.startDate}..${insight.periodCurrent.endDate}` : '',
+    periodoAnterior: insight.periodPrevious ? `${insight.periodPrevious.startDate}..${insight.periodPrevious.endDate}` : '',
     resumen: insight.summary,
     motivo: insight.reason,
     ...mapInsightRowForExport(row),
@@ -255,6 +276,7 @@ const HeroMetric: React.FC<HeroMetricProps> = ({ title, value, description, tone
 const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   const navigate = useNavigate();
   const { success: showSuccess } = useToast();
+  const { currentClient } = useProject();
   const [quickTask, setQuickTask] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [selectedInsight, setSelectedInsight] = useState<SeoInsight | null>(null);
@@ -262,6 +284,9 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   const [selectedPriority, setSelectedPriority] = useState<'all' | 'high' | 'medium' | 'low'>(
     'all',
   );
+  const [selectedModule, setSelectedModule] = useState<'all' | string>('all');
+  const [selectedBrandType, setSelectedBrandType] = useState<'all' | SeoInsightBrandType>('all');
+  const [selectedStatus, setSelectedStatus] = useState<'all' | SeoInsightLifecycleStatus>('all');
   const [gscSiteQuery, setGscSiteQuery] = useState('');
   const [comparisonMode, setComparisonMode] = useState<GSCComparisonMode>('previous_period');
   const [showInsightsHelp, setShowInsightsHelp] = useState(false);
@@ -295,7 +320,13 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     comparisonPeriod,
     isLoadingGsc,
     insights: { insights, groupedInsights, topQueries },
-  } = useGSCData(gscAccessToken, startDate, endDate, comparisonMode);
+  } = useGSCData(gscAccessToken, startDate, endDate, comparisonMode, {
+    propertyId: currentClient?.id,
+    brandTerms: currentClient?.brandTerms || [],
+    projectType: currentClient?.projectType,
+    sector: currentClient?.sector || 'Generico',
+    geoScope: currentClient?.geoScope || 'global',
+  });
 
   const {
     entries: ignoredEntries,
@@ -304,6 +335,10 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     unignoreKey,
     importEntries,
   } = useSeoIgnoredItems();
+
+  const { getInsightStatus, setInsightStatus } = useSeoInsightState(
+    `${currentClient?.id || 'global'}:${selectedSite || 'no-site'}`,
+  );
 
   const filteredGscSites = useMemo(() => {
     const normalizedQuery = gscSiteQuery.trim().toLowerCase();
@@ -384,12 +419,13 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
           const visibleRows = insight.relatedRows.filter((row) => !isIgnored(row));
           return {
             ...insight,
+            status: getInsightStatus(insight),
             relatedRows: visibleRows,
             affectedCount: visibleRows.length,
           };
         })
         .filter((insight) => insight.relatedRows.length > 0),
-    [insights, isIgnored],
+    [insights, isIgnored, getInsightStatus],
   );
 
   const actionableGroupedInsights = useMemo(
@@ -440,9 +476,12 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       actionableInsights.filter((insight) => {
         const categoryMatch = selectedCategory === 'all' || insight.category === selectedCategory;
         const priorityMatch = selectedPriority === 'all' || insight.priority === selectedPriority;
-        return categoryMatch && priorityMatch;
+        const moduleMatch = selectedModule === 'all' || String(insight.moduleId || '') === selectedModule;
+        const brandMatch = selectedBrandType === 'all' || insight.brandType === selectedBrandType;
+        const statusMatch = selectedStatus === 'all' || insight.status === selectedStatus;
+        return categoryMatch && priorityMatch && moduleMatch && brandMatch && statusMatch;
       }),
-    [actionableInsights, selectedCategory, selectedPriority],
+    [actionableInsights, selectedCategory, selectedPriority, selectedModule, selectedBrandType, selectedStatus],
   );
 
   const categoryOptions = useMemo(
@@ -489,7 +528,14 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       facilidad: insight.ease,
       valorNegocio: insight.businessValue,
       facilidadImplementacion: insight.implementationEase,
-      accionSugerida: insight.action,
+      accionSugerida: insight.suggestedAction,
+      regla: insight.ruleKey,
+      modulo: insight.moduleId || '',
+      brandType: insight.brandType,
+      estado: insight.status,
+      propiedad: insight.propertyId,
+      periodoActual: insight.periodCurrent ? `${insight.periodCurrent.startDate}..${insight.periodCurrent.endDate}` : '',
+      periodoAnterior: insight.periodPrevious ? `${insight.periodPrevious.startDate}..${insight.periodPrevious.endDate}` : '',
       resumen: insight.summary,
       motivo: insight.reason,
       filasRelacionadas: insight.relatedRows.length,
@@ -502,7 +548,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
 
     actionableInsights
       .reduce((acc, insight) => {
-        const key = insight.action?.trim() || 'Sin acción sugerida';
+        const key = insight.suggestedAction?.trim() || 'Sin acción sugerida';
         if (!acc.has(key)) {
           acc.set(key, []);
         }
@@ -527,7 +573,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
 
     XLSX.writeFile(workbook, `SEO_Insights_Detallados_${new Date().toISOString().slice(0, 10)}.xlsx`);
     showSuccess(
-      `Excel exportado con ${actionableInsights.length} insights y ${Math.max(1, new Set(actionableInsights.map((item) => item.action?.trim() || 'Sin acción sugerida')).size)} pestañas de acción.`,
+      `Excel exportado con ${actionableInsights.length} insights y ${Math.max(1, new Set(actionableInsights.map((item) => item.suggestedAction?.trim() || 'Sin acción sugerida')).size)} pestañas de acción.`,
     );
   };
 
@@ -601,6 +647,9 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
             <Badge variant={severityVariant[insight.severity]} className="text-[10px]">
               {insight.severity}
             </Badge>
+            <Badge variant="neutral" className="text-[10px]">
+              {insight.status}
+            </Badge>
           </div>
           <h3 className="text-base font-bold text-foreground">{insight.title}</h3>
           <p className="mt-2 line-clamp-3 text-sm text-muted">
@@ -627,6 +676,49 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
         </div>
       </div>
       <div className="mt-4 line-clamp-2 text-xs text-muted">{insight.reason}</div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            setInsightStatus(insight.id, 'ignored');
+          }}
+          className="rounded-md border border-border px-2 py-1 text-[11px] text-muted hover:border-danger/40"
+        >
+          Ignorar
+        </button>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            setInsightStatus(insight.id, 'postponed');
+          }}
+          className="rounded-md border border-border px-2 py-1 text-[11px] text-muted"
+        >
+          Posponer
+        </button>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            setInsightStatus(insight.id, 'planned');
+            setSelectedInsight(insight);
+          }}
+          className="rounded-md border border-primary/40 px-2 py-1 text-[11px] text-primary"
+        >
+          Convertir en tarea
+        </button>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            setInsightStatus(insight.id, 'done');
+          }}
+          className="rounded-md border border-success/40 px-2 py-1 text-[11px] text-success"
+        >
+          Resuelto
+        </button>
+      </div>
     </button>
   );
 
@@ -901,6 +993,40 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
               <option value="high">Alta</option>
               <option value="medium">Media</option>
               <option value="low">Baja</option>
+            </select>
+            <select
+              className="px-3 py-2 rounded-lg border border-border bg-surface-alt text-sm"
+              value={selectedModule}
+              onChange={(e) => setSelectedModule(e.target.value)}
+            >
+              <option value="all">Todos los módulos</option>
+              {Array.from(new Set(actionableInsights.map((insight) => String(insight.moduleId || '')).filter(Boolean))).map((moduleValue) => (
+                <option key={moduleValue} value={moduleValue}>Módulo {moduleValue}</option>
+              ))}
+            </select>
+            <select
+              className="px-3 py-2 rounded-lg border border-border bg-surface-alt text-sm"
+              value={selectedBrandType}
+              onChange={(e) => setSelectedBrandType(e.target.value as 'all' | SeoInsightBrandType)}
+            >
+              <option value="all">Brand + Non-brand</option>
+              <option value="brand">Brand</option>
+              <option value="non-brand">Non-brand</option>
+              <option value="mixed">Mixed</option>
+            </select>
+            <select
+              className="px-3 py-2 rounded-lg border border-border bg-surface-alt text-sm"
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value as 'all' | SeoInsightLifecycleStatus)}
+            >
+              <option value="all">Todos los estados</option>
+              <option value="new">new</option>
+              <option value="triaged">triaged</option>
+              <option value="planned">planned</option>
+              <option value="in_progress">in_progress</option>
+              <option value="done">done</option>
+              <option value="ignored">ignored</option>
+              <option value="postponed">postponed</option>
             </select>
           </div>
         </div>

@@ -84,6 +84,28 @@ vi.mock('../hooks/useSeoIgnoredItems', () => ({
   }),
 }));
 
+
+vi.mock('../context/ProjectContext', () => ({
+  useProject: () => ({
+    currentClient: {
+      id: 'c1',
+      brandTerms: [],
+      projectType: 'MEDIA',
+      sector: 'Otro',
+      geoScope: 'global',
+    },
+  }),
+}));
+
+
+vi.mock('../hooks/useSeoInsightState', () => ({
+  useSeoInsightState: () => ({
+    entries: [],
+    getInsightStatus: () => 'new',
+    setInsightStatus: vi.fn(),
+  }),
+}));
+
 describe('Dashboard', () => {
   it('renders top queries without crashing when topQueries data is available', () => {
     render(
