@@ -177,10 +177,10 @@ function Start-Frontend {
 
     Ensure-FrontendSetup
 
-    Write-Log "Iniciando frontend en http://localhost:$launchPort ..."
+    Write-Log "Iniciando frontend en http://localhost:$launchPort (host 0.0.0.0) ..."
 
     $frontendProcess = Start-Process -FilePath "powershell" `
-        -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "npm run dev -- --port $launchPort" `
+        -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "npm run dev -- --host 0.0.0.0 --port $launchPort" `
         -WorkingDirectory $FRONTEND_DIR `
         -PassThru
 
