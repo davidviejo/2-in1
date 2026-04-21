@@ -14,6 +14,8 @@ $backendProcess = $null
 $frontendProcess = $null
 $backendRuntimePort = $BACKEND_PORT
 $frontendRuntimePort = $FRONTEND_PORT
+$backendLastSeenRunning = $false
+$frontendLastSeenRunning = $false
 
 function Test-PortInUse {
     param([int]$Port)
@@ -32,6 +34,23 @@ function Get-FreePortSuggestion {
     }
 
     return $null
+}
+
+function Wait-ForPortOpen {
+    param(
+        [int]$Port,
+        [int]$TimeoutSeconds = 20
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        if (Test-PortInUse -Port $Port) {
+            return $true
+        }
+        Start-Sleep -Milliseconds 300
+    }
+
+    return $false
 }
 
 function Write-Log {
@@ -79,7 +98,8 @@ function Ensure-FrontendSetup {
 }
 
 function Update-Status {
-    if ($backendProcess -and -not $backendProcess.HasExited) {
+    $backendRunning = $backendProcess -and -not $backendProcess.HasExited
+    if ($backendRunning) {
         $backendStatusLabel.Text = "Backend: RUNNING (PID $($backendProcess.Id), Port $backendRuntimePort)"
         $backendStatusLabel.ForeColor = [System.Drawing.Color]::ForestGreen
     }
@@ -88,7 +108,13 @@ function Update-Status {
         $backendStatusLabel.ForeColor = [System.Drawing.Color]::Firebrick
     }
 
-    if ($frontendProcess -and -not $frontendProcess.HasExited) {
+    if ($backendLastSeenRunning -and -not $backendRunning -and $backendProcess) {
+        Write-Log "Backend finalizó. ExitCode: $($backendProcess.ExitCode). Revisa posibles errores de arranque/dependencias."
+    }
+    $script:backendLastSeenRunning = $backendRunning
+
+    $frontendRunning = $frontendProcess -and -not $frontendProcess.HasExited
+    if ($frontendRunning) {
         $frontendStatusLabel.Text = "Frontend: RUNNING (PID $($frontendProcess.Id), Port $frontendRuntimePort)"
         $frontendStatusLabel.ForeColor = [System.Drawing.Color]::ForestGreen
     }
@@ -96,6 +122,11 @@ function Update-Status {
         $frontendStatusLabel.Text = "Frontend: STOPPED"
         $frontendStatusLabel.ForeColor = [System.Drawing.Color]::Firebrick
     }
+
+    if ($frontendLastSeenRunning -and -not $frontendRunning -and $frontendProcess) {
+        Write-Log "Frontend finalizó. ExitCode: $($frontendProcess.ExitCode). Revisa posibles errores de arranque/dependencias."
+    }
+    $script:frontendLastSeenRunning = $frontendRunning
 }
 
 function Start-Backend {
@@ -146,6 +177,16 @@ function Start-Backend {
 
     $script:backendRuntimePort = $BACKEND_PORT
     Write-Log "Backend iniciado (PID $($backendProcess.Id))."
+    Write-Log "Validando arranque del backend (puerto $BACKEND_PORT)..."
+    if (Wait-ForPortOpen -Port $BACKEND_PORT -TimeoutSeconds 20) {
+        Write-Log "Backend respondió en el puerto $BACKEND_PORT."
+    }
+    elseif ($backendProcess.HasExited) {
+        Write-Log "Backend no llegó a abrir el puerto y terminó con ExitCode $($backendProcess.ExitCode)."
+    }
+    else {
+        Write-Log "Backend sigue ejecutándose, pero todavía no respondió en puerto $BACKEND_PORT (puede estar cargando)."
+    }
     Update-Status
 }
 
@@ -186,6 +227,16 @@ function Start-Frontend {
 
     $script:frontendRuntimePort = $launchPort
     Write-Log "Frontend iniciado (PID $($frontendProcess.Id))."
+    Write-Log "Validando arranque del frontend (puerto $launchPort)..."
+    if (Wait-ForPortOpen -Port $launchPort -TimeoutSeconds 25) {
+        Write-Log "Frontend respondió en el puerto $launchPort."
+    }
+    elseif ($frontendProcess.HasExited) {
+        Write-Log "Frontend no llegó a abrir el puerto y terminó con ExitCode $($frontendProcess.ExitCode)."
+    }
+    else {
+        Write-Log "Frontend sigue ejecutándose, pero todavía no respondió en puerto $launchPort (puede estar compilando)."
+    }
     Update-Status
 }
 
@@ -200,6 +251,7 @@ function Stop-Backend {
 
     $script:backendProcess = $null
     $script:backendRuntimePort = $BACKEND_PORT
+    $script:backendLastSeenRunning = $false
     Update-Status
 }
 
@@ -214,6 +266,7 @@ function Stop-Frontend {
 
     $script:frontendProcess = $null
     $script:frontendRuntimePort = $FRONTEND_PORT
+    $script:frontendLastSeenRunning = $false
     Update-Status
 }
 
