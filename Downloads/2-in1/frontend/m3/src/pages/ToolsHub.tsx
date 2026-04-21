@@ -42,7 +42,34 @@ interface LauncherApp {
   status: ToolCatalogItem['status'];
   runtime: ToolCatalogItem['runtime'];
   available: boolean;
+  healthcheckTarget?: string;
 }
+
+const ABSOLUTE_URL_PATTERN = /^https?:\/\//i;
+const HASH_ROUTE_PATTERN = /^\/#\//;
+
+const extractOriginFromHttpTarget = (target?: string): string | null => {
+  if (!target || !ABSOLUTE_URL_PATTERN.test(target)) return null;
+  try {
+    return new URL(target).origin;
+  } catch {
+    return null;
+  }
+};
+
+export const resolveAppUrl = (tool: Pick<LauncherApp, 'path' | 'healthcheckTarget'>): string => {
+  if (ABSOLUTE_URL_PATTERN.test(tool.path)) {
+    return tool.path;
+  }
+
+  if (HASH_ROUTE_PATTERN.test(tool.path)) {
+    return new URL(tool.path, window.location.origin).href;
+  }
+
+  const launcherOrigin = extractOriginFromHttpTarget(tool.healthcheckTarget);
+  const baseOrigin = launcherOrigin ?? window.location.origin;
+  return new URL(tool.path, `${baseOrigin}/`).href;
+};
 
 const PANEL_STORAGE_KEY = 'tools_hub_enabled_apps';
 const STATUS_POLLING_MS = 5000;
@@ -145,6 +172,7 @@ const ToolsHub: React.FC = () => {
       status: app.status,
       runtime: app.runtime,
       available: true,
+      healthcheckTarget: app.launcher?.healthcheck?.type === 'http' ? app.launcher?.healthcheck?.target : undefined,
     }));
 
     return [...dynamicApps, ...independentTools];
@@ -271,18 +299,19 @@ const ToolsHub: React.FC = () => {
     }
 
     if (tool.status === 'legacy') {
+      const legacyPath = resolveAppUrl(tool);
       setPendingLegacyTool({
         id: tool.id,
         name: tool.name,
         description: tool.description,
-        path: tool.path,
+        path: legacyPath,
         status: 'legacy',
         available: true,
         runtime: tool.runtime,
       });
       return;
     }
-    window.location.href = tool.path;
+    window.location.href = resolveAppUrl(tool);
   };
 
   const sectionSummary = useMemo(() => {
