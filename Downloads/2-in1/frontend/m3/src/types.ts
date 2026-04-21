@@ -83,6 +83,30 @@ export interface AppState {
 export type ClientVertical = 'media' | 'ecom' | 'local' | 'national' | 'international';
 export type ProjectType = 'MEDIA' | 'ECOM' | 'LOCAL' | 'NATIONAL' | 'INTERNATIONAL';
 export type GeoScope = 'local' | 'national' | 'international' | 'global';
+export type ProjectPriority = 'growth' | 'traffic' | 'conversions' | 'authority' | 'local-presence';
+export type InsightRuleKey =
+  | 'brand-protection'
+  | 'content-gap'
+  | 'category-opportunity'
+  | 'local-pack'
+  | 'seasonality-watch'
+  | 'international-expansion';
+
+export interface ProjectScoreWeights {
+  visibility: number;
+  technical: number;
+  content: number;
+  authority: number;
+  conversion: number;
+}
+
+export interface ProjectInitialConfigPreset {
+  useGenericConfig?: boolean;
+  suggestedModuleIds: number[];
+  priorities: ProjectPriority[];
+  insightRules: InsightRuleKey[];
+  scoreWeights: ProjectScoreWeights;
+}
 
 export interface Note {
   id: string;
@@ -148,6 +172,10 @@ export interface Client {
   projectType?: ProjectType;
   sector?: string;
   geoScope?: GeoScope;
+  country?: string;
+  primaryLanguage?: string;
+  brandTerms?: string[];
+  initialConfigPreset?: ProjectInitialConfigPreset;
   subSector?: string;
   modules: ModuleData[];
   createdAt: number;
@@ -167,6 +195,10 @@ export interface NewClientInput {
   subSector?: string;
   geoScope?: GeoScope;
   projectType?: ProjectType;
+  country?: string;
+  primaryLanguage?: string;
+  brandTerms?: string[];
+  initialConfigPreset?: ProjectInitialConfigPreset;
 }
 
 export interface GeminiResponse {

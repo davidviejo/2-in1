@@ -1,4 +1,10 @@
-import { ClientVertical, GeoScope, ProjectType } from '../types';
+import {
+  ClientVertical,
+  GeoScope,
+  ProjectInitialConfigPreset,
+  ProjectScoreWeights,
+  ProjectType,
+} from '../types';
 
 export const PROJECT_TYPE_BY_VERTICAL: Record<ClientVertical, ProjectType> = {
   media: 'MEDIA',
@@ -91,3 +97,177 @@ export const normalizeSubSector = (subSector: unknown): string | undefined => {
 };
 
 export const getProjectTypeLabel = (projectType: ProjectType): string => projectType;
+
+const DEFAULT_SCORE_WEIGHTS: ProjectScoreWeights = {
+  visibility: 25,
+  technical: 20,
+  content: 20,
+  authority: 20,
+  conversion: 15,
+};
+
+const PROJECT_PRESET_BY_TYPE: Record<ProjectType, Omit<ProjectInitialConfigPreset, 'useGenericConfig'>> = {
+  MEDIA: {
+    suggestedModuleIds: [1, 2, 4, 7, 9],
+    priorities: ['traffic', 'authority', 'growth'],
+    insightRules: ['brand-protection', 'content-gap', 'seasonality-watch'],
+    scoreWeights: {
+      visibility: 30,
+      technical: 20,
+      content: 30,
+      authority: 15,
+      conversion: 5,
+    },
+  },
+  ECOM: {
+    suggestedModuleIds: [1, 2, 3, 6, 8],
+    priorities: ['conversions', 'growth', 'traffic'],
+    insightRules: ['category-opportunity', 'brand-protection', 'content-gap'],
+    scoreWeights: {
+      visibility: 20,
+      technical: 15,
+      content: 20,
+      authority: 15,
+      conversion: 30,
+    },
+  },
+  LOCAL: {
+    suggestedModuleIds: [1, 3, 5, 7, 8],
+    priorities: ['local-presence', 'conversions', 'traffic'],
+    insightRules: ['local-pack', 'brand-protection', 'content-gap'],
+    scoreWeights: {
+      visibility: 20,
+      technical: 20,
+      content: 20,
+      authority: 10,
+      conversion: 30,
+    },
+  },
+  NATIONAL: {
+    suggestedModuleIds: [1, 2, 3, 4, 8],
+    priorities: ['growth', 'traffic', 'conversions'],
+    insightRules: ['brand-protection', 'content-gap', 'category-opportunity'],
+    scoreWeights: {
+      visibility: 25,
+      technical: 20,
+      content: 20,
+      authority: 15,
+      conversion: 20,
+    },
+  },
+  INTERNATIONAL: {
+    suggestedModuleIds: [1, 2, 4, 6, 9],
+    priorities: ['growth', 'authority', 'traffic'],
+    insightRules: ['international-expansion', 'brand-protection', 'content-gap'],
+    scoreWeights: {
+      visibility: 25,
+      technical: 20,
+      content: 20,
+      authority: 25,
+      conversion: 10,
+    },
+  },
+};
+
+export const DEFAULT_COUNTRY_OPTIONS = [
+  'España',
+  'México',
+  'Argentina',
+  'Colombia',
+  'Chile',
+  'Estados Unidos',
+  'Global',
+] as const;
+
+export const DEFAULT_LANGUAGE_OPTIONS = ['es', 'en', 'pt', 'fr', 'de', 'it'] as const;
+
+export const normalizeCountry = (country: unknown, geoScope: GeoScope): string => {
+  if (typeof country !== 'string') {
+    return geoScope === 'global' || geoScope === 'international' ? 'Global' : 'España';
+  }
+  const normalized = country.trim();
+  if (!normalized) {
+    return geoScope === 'global' || geoScope === 'international' ? 'Global' : 'España';
+  }
+  return normalized;
+};
+
+export const normalizePrimaryLanguage = (primaryLanguage: unknown): string => {
+  if (typeof primaryLanguage !== 'string') {
+    return 'es';
+  }
+  const normalized = primaryLanguage.trim().toLowerCase();
+  return normalized || 'es';
+};
+
+export const normalizeBrandTerms = (brandTerms: unknown): string[] => {
+  if (!Array.isArray(brandTerms)) {
+    return [];
+  }
+
+  const cleaned = brandTerms
+    .filter((term): term is string => typeof term === 'string')
+    .map((term) => term.trim())
+    .filter((term) => term.length > 0);
+
+  return Array.from(new Set(cleaned));
+};
+
+export const getDefaultInitialConfigPreset = (projectType: ProjectType): ProjectInitialConfigPreset => ({
+  ...PROJECT_PRESET_BY_TYPE[projectType],
+  useGenericConfig: false,
+});
+
+export const getGenericInitialConfigPreset = (): ProjectInitialConfigPreset => ({
+  suggestedModuleIds: [1, 2, 3, 4, 5],
+  priorities: ['growth', 'traffic'],
+  insightRules: ['brand-protection', 'content-gap'],
+  scoreWeights: DEFAULT_SCORE_WEIGHTS,
+  useGenericConfig: true,
+});
+
+export const normalizeInitialConfigPreset = (
+  preset: unknown,
+  projectType: ProjectType,
+): ProjectInitialConfigPreset => {
+  if (!preset || typeof preset !== 'object') {
+    return getDefaultInitialConfigPreset(projectType);
+  }
+
+  const raw = preset as Partial<ProjectInitialConfigPreset>;
+  const base = raw.useGenericConfig ? getGenericInitialConfigPreset() : getDefaultInitialConfigPreset(projectType);
+
+  return {
+    useGenericConfig: Boolean(raw.useGenericConfig),
+    suggestedModuleIds:
+      Array.isArray(raw.suggestedModuleIds) && raw.suggestedModuleIds.length > 0
+        ? raw.suggestedModuleIds.filter((id): id is number => typeof id === 'number')
+        : base.suggestedModuleIds,
+    priorities:
+      Array.isArray(raw.priorities) && raw.priorities.length > 0
+        ? raw.priorities.filter((priority): priority is ProjectInitialConfigPreset['priorities'][number] =>
+            ['growth', 'traffic', 'conversions', 'authority', 'local-presence'].includes(priority),
+          )
+        : base.priorities,
+    insightRules:
+      Array.isArray(raw.insightRules) && raw.insightRules.length > 0
+        ? raw.insightRules.filter((rule): rule is ProjectInitialConfigPreset['insightRules'][number] =>
+            [
+              'brand-protection',
+              'content-gap',
+              'category-opportunity',
+              'local-pack',
+              'seasonality-watch',
+              'international-expansion',
+            ].includes(rule),
+          )
+        : base.insightRules,
+    scoreWeights: {
+      visibility: raw.scoreWeights?.visibility ?? base.scoreWeights.visibility,
+      technical: raw.scoreWeights?.technical ?? base.scoreWeights.technical,
+      content: raw.scoreWeights?.content ?? base.scoreWeights.content,
+      authority: raw.scoreWeights?.authority ?? base.scoreWeights.authority,
+      conversion: raw.scoreWeights?.conversion ?? base.scoreWeights.conversion,
+    },
+  };
+};
