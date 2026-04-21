@@ -4,6 +4,7 @@ import {
   listSites,
   getSearchAnalytics,
   getGSCQueryPageData,
+  getGSCPageDateData,
 } from '../services/googleSearchConsole';
 import { runAnalysisInWorker } from '../utils/workerClient';
 import { useToast } from '../components/ui/ToastContext';
@@ -113,12 +114,13 @@ export const useGSCData = (
         finalEndDate,
       );
 
-      const [dateData, comparisonDateData, currentQueryPageData, previousQueryPageData] =
+      const [dateData, comparisonDateData, currentQueryPageData, previousQueryPageData, pageDateData] =
         await Promise.all([
           getSearchAnalytics(accessToken!, resolvedSelectedSite, finalStartDate, finalEndDate),
           getSearchAnalytics(accessToken!, resolvedSelectedSite, previousStartDate, previousEndDate),
           getGSCQueryPageData(accessToken!, resolvedSelectedSite, finalStartDate, finalEndDate),
           getGSCQueryPageData(accessToken!, resolvedSelectedSite, previousStartDate, previousEndDate),
+          getGSCPageDateData(accessToken!, resolvedSelectedSite, finalStartDate, finalEndDate),
         ]);
 
       const insights = await runAnalysisInWorker({
@@ -129,6 +131,7 @@ export const useGSCData = (
       return {
         gscData: dateData,
         comparisonGscData: comparisonDateData,
+        pageDateData: pageDateData.rows || [],
         insights,
         comparisonPeriod: {
           mode: comparisonMode,
@@ -160,6 +163,7 @@ export const useGSCData = (
     setSelectedSite,
     gscData: siteData?.gscData || [],
     comparisonGscData: siteData?.comparisonGscData || [],
+    pageDateData: siteData?.pageDateData || [],
     comparisonPeriod: siteData?.comparisonPeriod || null,
     isLoadingGsc: isLoadingSites || isLoadingData,
     insights:

@@ -453,6 +453,23 @@ export const getGSCPageWinnersLosersData = async (
     searchType,
   });
 
+export const getGSCPageDateData = async (
+  accessToken: string,
+  siteUrl: string,
+  startDate: string,
+  endDate: string,
+  rowLimit: number = 25000,
+  searchType: GSCSearchType = 'web',
+) =>
+  querySearchAnalyticsPaged(accessToken, {
+    siteUrl,
+    startDate,
+    endDate,
+    dimensions: ['page', 'date'],
+    rowLimit,
+    searchType,
+  });
+
 export const getGSCQueryWinnersLosersData = async (
   accessToken: string,
   siteUrl: string,

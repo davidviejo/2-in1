@@ -54,6 +54,7 @@ vi.mock('../hooks/useGSCData', () => ({
     setSelectedSite: vi.fn(),
     gscData: [],
     comparisonGscData: [],
+    pageDateData: [],
     comparisonPeriod: null,
     isLoadingGsc: false,
     insights: {
