@@ -23,13 +23,13 @@ describe('GSC Insights Engine', () => {
     expect(result.insights.length).toBeGreaterThan(0);
     expect(result.groupedInsights.length).toBeGreaterThan(0);
     expect(result.insights[0].score).toBeGreaterThanOrEqual(result.insights.at(-1)?.score || 0);
-    expect(result.insights.some((insight) => insight.id === 'decliningPages')).toBe(true);
-    expect(result.insights.some((insight) => insight.id === 'quickWins')).toBe(true);
+    expect(result.insights.some((insight) => insight.id.startsWith('decliningPages-'))).toBe(true);
+    expect(result.insights.some((insight) => insight.id.startsWith('quickWins-'))).toBe(true);
   });
 
   it('keeps legacy quick wins adapter working', () => {
     const result = analyzeQuickWins(currentRows);
-    expect(result.title).toContain('Quick wins');
+    expect(result.title).toContain('Posiciones 4–10');
     expect(result.items.map((i) => i.keys[0])).toContain('quick win');
   });
 

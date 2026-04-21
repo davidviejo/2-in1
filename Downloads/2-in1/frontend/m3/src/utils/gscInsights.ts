@@ -6,6 +6,10 @@ import {
   SEO_INSIGHT_THRESHOLDS,
 } from '../config/seoInsights';
 import {
+  expectedCtrForPosition,
+  resolveGscOpportunityThresholds,
+} from '../config/gscOpportunityRules';
+import {
   SeoInsight,
   SeoInsightBrandType,
   SeoInsightCategory,
@@ -62,6 +66,9 @@ interface InsightCandidate {
   affectedCount: number;
   potentialTraffic?: number;
   brandType: SeoInsightBrandType;
+  findingFamily?: 'quick_win' | 'anomaly' | 'insight';
+  traceQuery?: string;
+  traceUrl?: string;
 }
 
 const clamp = (value: number, min = 0, max = 100) => Math.max(min, Math.min(max, value));
@@ -176,6 +183,18 @@ const toInsight = (
     firstDetectedAt: now,
     updatedAt: now,
     createdAt: now,
+    findingFamily: candidate.findingFamily || 'insight',
+    trace: {
+      source: 'gsc',
+      family: candidate.findingFamily || 'insight',
+      propertyId: context.propertyId,
+      periodCurrent: context.periodCurrent,
+      periodPrevious: context.periodPrevious,
+      query: candidate.traceQuery,
+      url: candidate.traceUrl,
+      moduleId: candidate.moduleId,
+      timestamp: now,
+    },
 
     summary: candidate.summary,
     reason: candidate.reason,
@@ -220,6 +239,8 @@ export interface GSCInsightsEngineResult {
   groupedInsights: SeoInsightSummary[];
   topOpportunities: SeoInsight[];
   topRisks: SeoInsight[];
+  quickWinsLayer: SeoInsight[];
+  anomaliesLayer: SeoInsight[];
   quickWins: InsightResult;
   strikingDistance: InsightResult;
   lowCtr: InsightResult;
@@ -251,10 +272,11 @@ export const analyzeGSCInsights = ({
   const totalClicks = currentRows.reduce((sum, row) => sum + row.clicks, 0);
   const avgCtr = totalImpressions > 0 ? totalClicks / totalImpressions : 0;
   const thresholds = SEO_INSIGHT_THRESHOLDS;
+  const opportunityThresholds = resolveGscOpportunityThresholds(projectType, sector);
 
   const candidates: InsightCandidate[] = [];
 
-  const quickWins = comparableRows.filter(({ current }) => current.position >= 4 && current.position <= 10 && current.impressions >= thresholds.quickWins.minImpressions);
+  const quickWins = comparableRows.filter(({ current }) => current.position >= opportunityThresholds.quickWinPositionMin && current.position <= opportunityThresholds.quickWinPositionMax && current.impressions >= opportunityThresholds.quickWinMinImpressions);
   if (quickWins.length) {
     const potentialTraffic = quickWins.reduce((sum, row) => sum + Math.max(0, row.current.impressions * 0.1 - row.current.clicks), 0);
     candidates.push({
@@ -288,10 +310,13 @@ export const analyzeGSCInsights = ({
       affectedCount: quickWins.length,
       potentialTraffic: Math.round(potentialTraffic),
       brandType: getBrandType(quickWins[0].query, brandTerms),
+      findingFamily: 'quick_win',
+      traceQuery: quickWins[0].query,
+      traceUrl: quickWins[0].page,
     });
   }
 
-  const lowCtr = comparableRows.filter(({ current }) => current.position <= 8 && current.impressions >= thresholds.lowCtr.minImpressions && current.ctr < Math.min(avgCtr, thresholds.lowCtr.maxCtr));
+  const lowCtr = comparableRows.filter(({ current }) => current.position <= thresholds.lowCtr.maxPosition && current.impressions >= opportunityThresholds.lowCtrMinImpressions && current.ctr < expectedCtrForPosition(current.position) - opportunityThresholds.lowCtrDeltaFromExpected);
   if (lowCtr.length) {
     const potentialTraffic = lowCtr.reduce((sum, row) => sum + Math.max(0, row.current.impressions * Math.max(avgCtr, 0.04) - row.current.clicks), 0);
     candidates.push({
@@ -320,10 +345,13 @@ export const analyzeGSCInsights = ({
       affectedCount: lowCtr.length,
       potentialTraffic: Math.round(potentialTraffic),
       brandType: getBrandType(lowCtr[0].query, brandTerms),
+      findingFamily: 'quick_win',
+      traceQuery: lowCtr[0].query,
+      traceUrl: lowCtr[0].page,
     });
   }
 
-  const risingImpressionsFlatClicks = comparableRows.filter(({ current, previous, deltaImpressions, deltaClicks }) => !!previous && deltaImpressions > previous.impressions * 0.2 && deltaClicks <= 0 && current.impressions >= 100);
+  const risingImpressionsFlatClicks = comparableRows.filter(({ current, previous, deltaImpressions, deltaClicks }) => !!previous && deltaImpressions > previous.impressions * opportunityThresholds.impressionsGrowthNoClicksMinGrowthRatio && deltaClicks <= 0 && current.impressions >= opportunityThresholds.impressionsGrowthNoClicksMinImpressions);
   if (risingImpressionsFlatClicks.length) {
     candidates.push({
       id: 'stagnantTraffic',
@@ -350,6 +378,9 @@ export const analyzeGSCInsights = ({
       relatedRows: risingImpressionsFlatClicks.map((row) => row.current).slice(0, 50),
       affectedCount: risingImpressionsFlatClicks.length,
       brandType: getBrandType(risingImpressionsFlatClicks[0].query, brandTerms),
+      findingFamily: 'quick_win',
+      traceQuery: risingImpressionsFlatClicks[0].query,
+      traceUrl: risingImpressionsFlatClicks[0].page,
     });
   }
 
@@ -382,6 +413,7 @@ export const analyzeGSCInsights = ({
       affectedCount: declining.length,
       potentialTraffic: Math.round(lostClicks),
       brandType: 'mixed',
+      findingFamily: 'anomaly',
     });
   }
 
@@ -423,7 +455,7 @@ export const analyzeGSCInsights = ({
       impressions: rows.reduce((sum, row) => sum + row.impressions, 0),
       ctr: rows.reduce((sum, row) => sum + row.ctr, 0) / Math.max(rows.length, 1),
     }))
-    .filter((row) => row.queryCount >= 4 && row.impressions >= 300 && row.ctr <= 0.03);
+.filter((row) => row.queryCount >= opportunityThresholds.urlCoverageMinQueries && row.impressions >= opportunityThresholds.urlCoverageMinImpressions && row.ctr <= opportunityThresholds.urlCoverageMaxCtr);
   if (expansionUrls.length) {
     const supportingRows = expansionUrls.flatMap((item) => item.rows).slice(0, 50);
     candidates.push({
@@ -451,6 +483,8 @@ export const analyzeGSCInsights = ({
       relatedRows: supportingRows,
       affectedCount: expansionUrls.length,
       brandType: 'mixed',
+      findingFamily: 'quick_win',
+      traceUrl: expansionUrls[0].url,
     });
   }
 
@@ -487,6 +521,186 @@ export const analyzeGSCInsights = ({
       relatedRows: cannibalized.slice(0, 50),
       affectedCount: cannibalized.length,
       brandType: 'mixed',
+      findingFamily: 'anomaly',
+    });
+  }
+
+
+  const ctrDropRows = comparableRows.filter(({ previous, current }) =>
+    !!previous &&
+    previous.ctr > 0 &&
+    current.impressions >= opportunityThresholds.lowCtrMinImpressions &&
+    (previous.ctr - current.ctr) / previous.ctr >= opportunityThresholds.abruptCtrDropMinRatio,
+  );
+  if (ctrDropRows.length) {
+    candidates.push({
+      id: 'ctrDropAnomaly',
+      ruleKey: 'abrupt_ctr_drop_vs_previous_period',
+      sourceType: 'query',
+      sourceId: ctrDropRows[0].query || 'ctr-drop',
+      title: 'Caída brusca de CTR',
+      summary: `${ctrDropRows.length} combinaciones query/URL pierden CTR frente al periodo anterior.`,
+      reason: 'Cambios de snippet o nuevas SERP features están afectando la captación.',
+      recommendation: 'Revisar snippets, rich results y encaje de intención en URLs críticas.',
+      category: 'risk',
+      severity: 'high',
+      priority: 'high',
+      status: 'new',
+      opportunity: 84,
+      impact: normalize(ctrDropRows.reduce((sum, row) => sum + (row.previous?.impressions || 0), 0), totalImpressions || 1),
+      urgency: 92,
+      confidence: 86,
+      implementationEase: 60,
+      businessValue: 90,
+      moduleId: 3,
+      effort: 45,
+      evidence: ctrDropRows.slice(0, 3).map((row) => ({
+        label: row.query,
+        value: `${((row.previous?.ctr || 0) * 100).toFixed(1)}% → ${(row.current.ctr * 100).toFixed(1)}%`,
+        context: row.page,
+        metricKey: 'ctr',
+      })),
+      relatedRows: ctrDropRows.map((row) => row.current).slice(0, 50),
+      affectedCount: ctrDropRows.length,
+      brandType: 'mixed',
+      findingFamily: 'anomaly',
+      traceQuery: ctrDropRows[0].query,
+      traceUrl: ctrDropRows[0].page,
+    });
+  }
+
+  const topLossRows = comparableRows.filter(({ previous, current }) =>
+    !!previous &&
+    previous.position <= 10 &&
+    current.position - previous.position >= opportunityThresholds.topLossMinPositionShift &&
+    current.impressions >= opportunityThresholds.quickWinMinImpressions,
+  );
+  if (topLossRows.length) {
+    candidates.push({
+      id: 'topPositionLossAnomaly',
+      ruleKey: 'top3_top10_position_loss',
+      sourceType: 'query',
+      sourceId: topLossRows[0].query || 'top-loss',
+      title: 'Pérdida de posiciones Top 3 / Top 10',
+      summary: `${topLossRows.length} filas han perdido posiciones clave en rankings competitivos.`,
+      reason: 'La pérdida de estabilidad en top rankings reduce tráfico incremental de forma inmediata.',
+      recommendation: 'Priorizar recuperación de URLs afectadas con refuerzo interno y ajuste semántico.',
+      category: 'risk',
+      severity: 'critical',
+      priority: 'high',
+      status: 'new',
+      opportunity: 90,
+      impact: normalize(topLossRows.reduce((sum, row) => sum + row.current.impressions, 0), totalImpressions || 1),
+      urgency: 95,
+      confidence: 88,
+      implementationEase: 46,
+      businessValue: 94,
+      moduleId: 1,
+      effort: 70,
+      evidence: topLossRows.slice(0, 3).map((row) => ({
+        label: row.query,
+        value: `Pos ${row.previous?.position.toFixed(1)} → ${row.current.position.toFixed(1)}`,
+        context: row.page,
+        metricKey: 'position',
+      })),
+      relatedRows: topLossRows.map((row) => row.current).slice(0, 50),
+      affectedCount: topLossRows.length,
+      brandType: getBrandType(topLossRows[0].query, brandTerms),
+      findingFamily: 'anomaly',
+      traceQuery: topLossRows[0].query,
+      traceUrl: topLossRows[0].page,
+    });
+  }
+
+  const previousTotalClicks = previousRows.reduce((sum, row) => sum + row.clicks, 0);
+  const propertyDropRatio = previousTotalClicks > 0 ? (previousTotalClicks - totalClicks) / previousTotalClicks : 0;
+  if (previousTotalClicks > 0 && propertyDropRatio >= opportunityThresholds.propertyDropMinRatio) {
+    candidates.push({
+      id: 'propertyDropAnomaly',
+      ruleKey: 'property_significant_drop_vs_previous_period',
+      sourceType: 'property',
+      sourceId: propertyId,
+      title: 'Caída significativa de la propiedad',
+      summary: `La propiedad cae ${Math.round(propertyDropRatio * 100)}% en clics respecto al periodo anterior.`,
+      reason: 'El deterioro agregado requiere revisión transversal por propiedad y portfolio.',
+      recommendation: 'Abrir revisión prioritaria en roadmap: cobertura, snippets, clusters y cambios técnicos recientes.',
+      category: 'risk',
+      severity: 'critical',
+      priority: 'high',
+      status: 'new',
+      opportunity: clamp(Math.round(propertyDropRatio * 100)),
+      impact: normalize(previousTotalClicks - totalClicks, previousTotalClicks || 1),
+      urgency: 98,
+      confidence: 94,
+      implementationEase: 40,
+      businessValue: 97,
+      moduleId: 1,
+      effort: 80,
+      evidence: [{
+        label: propertyId,
+        value: `${previousTotalClicks.toLocaleString()} clics → ${totalClicks.toLocaleString()} clics`,
+        context: 'Comparativa de propiedad',
+        metricKey: 'clicks',
+      }],
+      relatedRows: currentRows.slice(0, 50),
+      affectedCount: currentRows.length,
+      brandType: 'mixed',
+      findingFamily: 'anomaly',
+    });
+  }
+
+  const previousByQuery = buildAggregateMaps(previousRows).byQuery;
+  const dominantUrlSwitchRows: GSCRow[] = [];
+  previousByQuery.forEach((previousQueryRows, query) => {
+    const currentQueryRows = byQuery.get(query);
+    if (!currentQueryRows || currentQueryRows.length < 2 || previousQueryRows.length < 2) return;
+
+    const prevSorted = [...previousQueryRows].sort((a, b) => b.clicks - a.clicks);
+    const currSorted = [...currentQueryRows].sort((a, b) => b.clicks - a.clicks);
+    const prevTop = prevSorted[0];
+    const currTop = currSorted[0];
+    if (!prevTop || !currTop || prevTop.keys?.[1] === currTop.keys?.[1]) return;
+    if (currTop.impressions < opportunityThresholds.dominantUrlSwitchMinImpressions) return;
+    const prevShare = prevTop.clicks / Math.max(1, previousQueryRows.reduce((s, row) => s + row.clicks, 0));
+    const currShare = currTop.clicks / Math.max(1, currentQueryRows.reduce((s, row) => s + row.clicks, 0));
+    if (currShare - prevShare < opportunityThresholds.dominantUrlSwitchMinShareChange) return;
+
+    dominantUrlSwitchRows.push({ ...currTop, keys: [query, `${prevTop.keys?.[1] || ''} → ${currTop.keys?.[1] || ''}`] });
+  });
+
+  if (dominantUrlSwitchRows.length) {
+    candidates.push({
+      id: 'dominantUrlSwitchAnomaly',
+      ruleKey: 'important_query_dominant_url_switch',
+      sourceType: 'query',
+      sourceId: dominantUrlSwitchRows[0].keys?.[0] || 'dominant-url-switch',
+      title: 'Query importante cambia de URL dominante',
+      summary: `${dominantUrlSwitchRows.length} queries han cambiado su URL dominante respecto al periodo previo.`,
+      reason: 'Puede indicar canibalización o desalineación de intención sobre la URL objetivo.',
+      recommendation: 'Validar URL objetivo por query y consolidar señales para estabilizar la página correcta.',
+      category: 'risk',
+      severity: 'high',
+      priority: 'high',
+      status: 'new',
+      opportunity: 82,
+      impact: normalize(dominantUrlSwitchRows.reduce((sum, row) => sum + row.impressions, 0), totalImpressions || 1),
+      urgency: 88,
+      confidence: 84,
+      implementationEase: 52,
+      businessValue: 89,
+      moduleId: 2,
+      effort: 60,
+      evidence: dominantUrlSwitchRows.slice(0, 3).map((row) => ({
+        label: row.keys?.[0] || '',
+        value: row.keys?.[1] || '',
+        context: `${row.impressions} impr.`,
+        metricKey: 'url',
+      })),
+      relatedRows: dominantUrlSwitchRows.slice(0, 50),
+      affectedCount: dominantUrlSwitchRows.length,
+      brandType: 'mixed',
+      findingFamily: 'anomaly',
+      traceQuery: dominantUrlSwitchRows[0].keys?.[0] || '',
     });
   }
 
@@ -505,6 +719,8 @@ export const analyzeGSCInsights = ({
     groupedInsights,
     topOpportunities: sortedInsights.filter((insight) => insight.category === 'opportunity').slice(0, 3),
     topRisks: sortedInsights.filter((insight) => insight.category === 'risk').slice(0, 3),
+    quickWinsLayer: sortedInsights.filter((insight) => insight.findingFamily === 'quick_win'),
+    anomaliesLayer: sortedInsights.filter((insight) => insight.findingFamily === 'anomaly'),
     quickWins: legacyCard(sortedInsights.find((insight) => insight.id.startsWith('quickWins')), 'Quick wins de primera página'),
     strikingDistance: legacyCard(sortedInsights.find((insight) => insight.id.startsWith('strikingDistance')), 'Consultas al borde de primera página'),
     lowCtr: legacyCard(sortedInsights.find((insight) => insight.id.startsWith('lowCtr')), 'CTR bajo para la posición actual'),

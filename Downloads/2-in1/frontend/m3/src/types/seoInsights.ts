@@ -49,6 +49,18 @@ export interface SeoInsightRowSupport {
   position: number;
 }
 
+export interface SeoInsightTrace {
+  source: 'gsc';
+  family?: 'quick_win' | 'anomaly' | 'insight';
+  propertyId?: string;
+  periodCurrent?: SeoInsightDateRange;
+  periodPrevious?: SeoInsightDateRange;
+  query?: string;
+  url?: string;
+  moduleId?: number;
+  timestamp: number;
+}
+
 export interface SeoInsight {
   id: string;
   sourceType?: SeoInsightSourceType;
@@ -67,6 +79,7 @@ export interface SeoInsight {
   moduleId?: number;
   suggestedAction?: string;
   status: SeoInsightLifecycleStatus;
+  findingFamily?: 'quick_win' | 'anomaly' | 'insight';
   periodCurrent?: SeoInsightDateRange;
   periodPrevious?: SeoInsightDateRange;
   evidence: SeoInsightMetricEvidence[];
@@ -78,6 +91,7 @@ export interface SeoInsight {
   firstDetectedAt?: number;
   updatedAt?: number;
   createdAt?: number;
+  trace?: SeoInsightTrace;
 
   // Backward compatibility for existing UI
   summary: string;
