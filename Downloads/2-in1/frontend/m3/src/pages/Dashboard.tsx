@@ -471,6 +471,17 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
 
   const trendingUrls = useMemo(() => detectTrendingUrls(pageDateData), [pageDateData]);
 
+
+  const prioritizedQuickWins = useMemo(
+    () => actionableInsights.filter((insight) => insight.findingFamily === 'quick_win').slice(0, 5),
+    [actionableInsights],
+  );
+
+  const prioritizedAnomalies = useMemo(
+    () => actionableInsights.filter((insight) => insight.findingFamily === 'anomaly').slice(0, 5),
+    [actionableInsights],
+  );
+
   const filteredInsights = useMemo(
     () =>
       actionableInsights.filter((insight) => {
@@ -945,6 +956,69 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
           description={comparisonSummary}
           tone="bg-gradient-to-br from-blue-500 to-indigo-600"
         />
+      </section>
+
+
+      <section className="bg-surface rounded-2xl border border-border p-6 shadow-sm space-y-5">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h3 className="font-bold text-lg">Quick wins y anomalías automáticas (GSC)</h3>
+            <p className="text-sm text-muted mt-1">
+              Hallazgos accionables adaptados a {currentClient?.projectType || 'MEDIA'} · {currentClient?.sector || 'Genérico'} · {currentClient?.geoScope || 'global'}.
+            </p>
+          </div>
+          <Badge variant="neutral" className="text-xs">
+            Umbrales centralizados por tipología/sector
+          </Badge>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="rounded-2xl border border-emerald-200/50 bg-emerald-50/40 p-4">
+            <div className="flex items-center justify-between">
+              <h4 className="font-semibold text-foreground">Quick wins</h4>
+              <Badge variant="success">{prioritizedQuickWins.length}</Badge>
+            </div>
+            <div className="mt-3 space-y-3">
+              {prioritizedQuickWins.length > 0 ? prioritizedQuickWins.map((insight) => (
+                <button
+                  key={insight.id}
+                  onClick={() => setSelectedInsight(insight)}
+                  className="w-full rounded-xl border border-border bg-surface p-3 text-left hover:border-primary/40"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-medium text-foreground line-clamp-2">{insight.title}</div>
+                    <Badge variant={priorityVariant[insight.priority]} className="text-[10px]">{priorityLabel[insight.priority]}</Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-muted line-clamp-2">{insight.summary}</p>
+                  <div className="mt-2 text-[11px] text-muted">Score {insight.score} · {insight.affectedCount} filas · regla {insight.ruleKey}</div>
+                </button>
+              )) : <div className="text-xs text-muted">Sin quick wins detectados en este periodo.</div>}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-rose-200/50 bg-rose-50/40 p-4">
+            <div className="flex items-center justify-between">
+              <h4 className="font-semibold text-foreground">Anomalías</h4>
+              <Badge variant="danger">{prioritizedAnomalies.length}</Badge>
+            </div>
+            <div className="mt-3 space-y-3">
+              {prioritizedAnomalies.length > 0 ? prioritizedAnomalies.map((insight) => (
+                <button
+                  key={insight.id}
+                  onClick={() => setSelectedInsight(insight)}
+                  className="w-full rounded-xl border border-border bg-surface p-3 text-left hover:border-danger/40"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-medium text-foreground line-clamp-2">{insight.title}</div>
+                    <Badge variant={severityVariant[insight.severity]} className="text-[10px]">{insight.severity}</Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-muted line-clamp-2">{insight.summary}</p>
+                  <div className="mt-2 text-[11px] text-muted">Score {insight.score} · {insight.affectedCount} filas · regla {insight.ruleKey}</div>
+                </button>
+              )) : <div className="text-xs text-muted">Sin anomalías críticas detectadas en este periodo.</div>}
+            </div>
+          </div>
+        </div>
       </section>
 
       <section className="bg-surface rounded-2xl border border-border p-6 shadow-sm space-y-5">

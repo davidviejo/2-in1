@@ -188,6 +188,8 @@ export const useGSCData = (
         groupedInsights: [],
         topOpportunities: [],
         topRisks: [],
+        quickWinsLayer: [],
+        anomaliesLayer: [],
         quickWins: null,
         strikingDistance: null,
         lowCtr: null,
