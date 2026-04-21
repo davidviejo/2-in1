@@ -10,7 +10,7 @@ import React, {
 } from 'react';
 import {
   Client,
-  ClientVertical,
+  NewClientInput,
   Note,
   ModuleData,
   CompletedTask,
@@ -25,6 +25,14 @@ import { ClientRepository } from '../services/clientRepository';
 import { ProjectRemoteRepository } from '../services/projectRemoteRepository';
 import { StrategyFactory } from '../strategies/StrategyFactory';
 import { DEFAULT_KANBAN_COLUMNS } from '../config/kanban';
+import {
+  getProjectTypeFromVertical,
+  getVerticalFromProjectType,
+  normalizeGeoScope,
+  normalizeProjectType,
+  normalizeSector,
+  normalizeSubSector,
+} from '../utils/projectMetadata';
 
 interface ProjectContextType {
   clients: Client[];
@@ -35,7 +43,7 @@ interface ProjectContextType {
   generalNotes: Note[];
 
   // Actions
-  addClient: (name: string, vertical: ClientVertical) => void;
+  addClient: (input: NewClientInput) => void;
   deleteClient: (id: string) => void;
   switchClient: (id: string) => void;
 
@@ -108,6 +116,21 @@ interface ProjectContextType {
 }
 
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
+
+const normalizeProjectClientProfile = (client: Client): Client => {
+  const projectType = normalizeProjectType(client.projectType, client.vertical);
+  const vertical = getVerticalFromProjectType(projectType);
+
+  return {
+    ...client,
+    vertical,
+    projectType,
+    sector: normalizeSector(client.sector),
+    geoScope: normalizeGeoScope(client.geoScope, projectType),
+    subSector: normalizeSubSector(client.subSector),
+    iaVisibility: client.iaVisibility || createDefaultIAVisibilityState(),
+  };
+};
 
 export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const SYNC_DEBOUNCE_MS = 900;
@@ -274,15 +297,21 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   // --- Actions ---
 
-  const addClient = useCallback((name: string, vertical: ClientVertical) => {
+  const addClient = useCallback((input: NewClientInput) => {
+    const vertical = input.vertical;
     const strategy = StrategyFactory.getStrategy(vertical);
     const initialModules = strategy.getModules();
     const templateVersion = strategy.getTemplateVersion();
+    const projectType = input.projectType || getProjectTypeFromVertical(vertical);
 
     const newClient: Client = {
       id: crypto.randomUUID(),
-      name,
+      name: input.name,
       vertical,
+      projectType,
+      sector: normalizeSector(input.sector),
+      geoScope: normalizeGeoScope(input.geoScope, projectType),
+      subSector: normalizeSubSector(input.subSector),
       modules: initialModules, // Deep copy handled in Strategy
       templateVersion,
       createdAt: Date.now(),
@@ -895,7 +924,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
     setClients((prev) => {
       const existingIds = new Set(prev.map((c) => c.id));
       const uniqueNewClients = newClients
-        .map((client) => ({ ...client, iaVisibility: client.iaVisibility || createDefaultIAVisibilityState() }))
+        .map((client) => normalizeProjectClientProfile(client))
         .filter((c) => !existingIds.has(c.id));
       return [...prev, ...uniqueNewClients];
     });
@@ -915,10 +944,9 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
         // Keep clients that are NOT in backup (preserves locally created clients not present in backup)
         const keptClients = prev.filter((c) => !backupIds.has(c.id));
         // Add all backup clients (overwriting matches)
-        const normalizedBackupClients = backupClients.map((client) => ({
-          ...client,
-          iaVisibility: client.iaVisibility || createDefaultIAVisibilityState(),
-        }));
+        const normalizedBackupClients = backupClients.map((client) =>
+          normalizeProjectClientProfile(client),
+        );
         return [...keptClients, ...normalizedBackupClients];
       });
 

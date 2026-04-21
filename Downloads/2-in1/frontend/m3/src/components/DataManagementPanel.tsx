@@ -59,7 +59,7 @@ const DataManagementPanel: React.FC = () => {
   };
 
   const handleExportCSV = () => {
-    const headers = ['MES', 'TAREA', 'IMPLEMENTACIÓN', 'ÁREA', 'ESTADO', 'FECHA_COMPLETADO', 'COMENTARIOS'];
+    const headers = ['MES', 'TAREA', 'IMPLEMENTACIÓN', 'TIPOLOGÍA', 'SECTOR', 'SUBSECTOR', 'GEO_SCOPE', 'ÁREA', 'ESTADO', 'FECHA_COMPLETADO', 'COMENTARIOS'];
     const rows: string[][] = [];
 
     clients.forEach((client) => {
@@ -79,6 +79,10 @@ const DataManagementPanel: React.FC = () => {
             formatMesColumn(task.dueDate),
             task.title,
             client.name,
+            client.projectType,
+            client.sector,
+            client.subSector || '',
+            client.geoScope,
             task.category || module.title,
             task.status,
             formatCompletedAtColumn(completedAt),

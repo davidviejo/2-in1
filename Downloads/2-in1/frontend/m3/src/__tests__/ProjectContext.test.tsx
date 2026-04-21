@@ -50,7 +50,7 @@ describe('ProjectContext', () => {
     const { result } = renderHook(() => useProject(), { wrapper });
 
     act(() => {
-      result.current.addClient('New Project', 'ecom');
+      result.current.addClient({ name: 'New Project', vertical: 'ecom' });
     });
 
     expect(result.current.clients).toHaveLength(2);
@@ -63,7 +63,7 @@ describe('ProjectContext', () => {
     const { result } = renderHook(() => useProject(), { wrapper });
 
     act(() => {
-      result.current.addClient('Client 2', 'local');
+      result.current.addClient({ name: 'Client 2', vertical: 'local' });
     });
 
     const newClientId = result.current.clients[1].id;

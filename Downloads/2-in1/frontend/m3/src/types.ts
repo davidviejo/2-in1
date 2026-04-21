@@ -81,6 +81,8 @@ export interface AppState {
 }
 
 export type ClientVertical = 'media' | 'ecom' | 'local' | 'national' | 'international';
+export type ProjectType = 'MEDIA' | 'ECOM' | 'LOCAL' | 'NATIONAL' | 'INTERNATIONAL';
+export type GeoScope = 'local' | 'national' | 'international' | 'global';
 
 export interface Note {
   id: string;
@@ -143,6 +145,10 @@ export interface Client {
   id: string;
   name: string;
   vertical: ClientVertical;
+  projectType?: ProjectType;
+  sector?: string;
+  geoScope?: GeoScope;
+  subSector?: string;
   modules: ModuleData[];
   createdAt: number;
   notes?: Note[];
@@ -152,6 +158,15 @@ export interface Client {
   kanbanColumns?: KanbanColumn[];
   iaVisibility?: IAVisibilityState;
   templateVersion?: string;
+}
+
+export interface NewClientInput {
+  name: string;
+  vertical: ClientVertical;
+  sector?: string;
+  subSector?: string;
+  geoScope?: GeoScope;
+  projectType?: ProjectType;
 }
 
 export interface GeminiResponse {
