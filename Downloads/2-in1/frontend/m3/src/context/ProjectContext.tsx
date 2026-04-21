@@ -50,6 +50,9 @@ interface ProjectContextType {
   addClient: (input: NewClientInput) => void;
   deleteClient: (id: string) => void;
   switchClient: (id: string) => void;
+  updateCurrentClientProfile: (
+    updates: Pick<Client, 'projectType' | 'sector' | 'geoScope' | 'brandTerms'>,
+  ) => void;
 
   // Task Actions
   addTask: (
@@ -356,6 +359,31 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
   const switchClient = useCallback((id: string) => {
     setCurrentClientId(id);
   }, []);
+
+  const updateCurrentClientProfile = useCallback(
+    (updates: Pick<Client, 'projectType' | 'sector' | 'geoScope' | 'brandTerms'>) => {
+      setClients((prev) =>
+        prev.map((client) => {
+          if (client.id !== currentClientId) {
+            return client;
+          }
+
+          const projectType = normalizeProjectType(updates.projectType, client.vertical);
+          const geoScope = normalizeGeoScope(updates.geoScope, projectType);
+
+          return normalizeProjectClientProfile({
+            ...client,
+            projectType,
+            sector: normalizeSector(updates.sector),
+            geoScope,
+            brandTerms: normalizeBrandTerms(updates.brandTerms),
+          });
+        }),
+      );
+      flushSnapshotSyncNextTick(['clients']);
+    },
+    [currentClientId, flushSnapshotSyncNextTick],
+  );
 
   const updateCurrentClientModules = useCallback(
     (newModules: ModuleData[]) => {
@@ -1000,6 +1028,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       addClient,
       deleteClient,
       switchClient,
+      updateCurrentClientProfile,
       addTask,
       addTasksBulk,
       deleteTask,
@@ -1038,6 +1067,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       addClient,
       deleteClient,
       switchClient,
+      updateCurrentClientProfile,
       addTask,
       addTasksBulk,
       deleteTask,

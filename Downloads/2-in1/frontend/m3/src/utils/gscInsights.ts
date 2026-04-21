@@ -20,6 +20,7 @@ import {
   SeoInsightSeverity,
   SeoInsightSummary,
 } from '../types/seoInsights';
+import { classifyQueryBrandSegment } from './queryBrandSegment';
 
 export interface InsightResult {
   title: string;
@@ -127,10 +128,8 @@ const scoreInsight = (input: Pick<InsightCandidate, 'businessValue' | 'impact' |
 };
 
 const getBrandType = (query: string, brandTerms: string[] = []): SeoInsightBrandType => {
-  if (!query.trim()) return 'mixed';
-  const lower = query.toLowerCase();
-  if (brandTerms.length === 0) return 'mixed';
-  return brandTerms.some((term) => lower.includes(term.toLowerCase())) ? 'brand' : 'non-brand';
+  const classification = classifyQueryBrandSegment(query, brandTerms);
+  return classification.segment;
 };
 
 const toInsight = (
