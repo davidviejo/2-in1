@@ -1,7 +1,9 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import {
+  BACKUP_SCHEMA_VERSION,
   buildBackupPayload,
   getMediaFlowStorageSnapshot,
+  migrateBackupPayload,
   restoreMediaFlowStorageSnapshot,
 } from './backup';
 
@@ -28,7 +30,11 @@ describe('backup utilities', () => {
       storage: localStorage,
     });
 
-    expect(payload.version).toBe(2);
+    expect(payload.version).toBe(BACKUP_SCHEMA_VERSION);
+    expect(payload.schema).toEqual({
+      name: 'mediaflow_backup',
+      version: BACKUP_SCHEMA_VERSION,
+    });
     expect(payload.storage).toEqual({
       mediaflow_batch_jobs: '[{"id":"job-1"}]',
       mediaflow_clients: '[{"id":"1"}]',
@@ -55,5 +61,39 @@ describe('backup utilities', () => {
     });
     expect(localStorage.getItem('external_key')).toBe('keep-me');
     expect(localStorage.getItem('mediaflow_seo_checklist_old-project')).toBeNull();
+  });
+
+  it('migrates legacy backups without project metadata fields', () => {
+    const migrated = migrateBackupPayload({
+      version: 2,
+      exportedAt: Date.now(),
+      clients: [
+        {
+          id: 'project-1',
+          name: 'Proyecto Legacy',
+          vertical: 'local',
+          modules: [],
+          createdAt: Date.now(),
+        },
+      ],
+      generalNotes: [],
+      settings: {
+        openaiApiKey: '',
+        geminiApiKey: '',
+        mistralApiKey: '',
+      },
+      currentClientId: 'project-1',
+      storage: {},
+    });
+
+    expect(migrated.version).toBe(BACKUP_SCHEMA_VERSION);
+    expect(migrated.schema.version).toBe(BACKUP_SCHEMA_VERSION);
+    expect(migrated.clients[0]).toMatchObject({
+      projectType: 'LOCAL',
+      vertical: 'local',
+      sector: 'Otro',
+      geoScope: 'local',
+      brandTerms: [],
+    });
   });
 });

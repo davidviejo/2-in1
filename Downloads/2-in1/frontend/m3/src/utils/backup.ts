@@ -1,7 +1,19 @@
 import { Client, Note } from '../types';
 import { AppSettings } from '../services/settingsRepository';
+import {
+  getVerticalFromProjectType,
+  normalizeBrandTerms,
+  normalizeCountry,
+  normalizeGeoScope,
+  normalizeInitialConfigPreset,
+  normalizePrimaryLanguage,
+  normalizeProjectType,
+  normalizeSector,
+  normalizeSubSector,
+} from './projectMetadata';
 
 export const MEDIAFLOW_STORAGE_PREFIX = 'mediaflow_';
+export const BACKUP_SCHEMA_VERSION = 4;
 
 export interface BackupStorageSnapshot {
   [key: string]: string;
@@ -10,6 +22,10 @@ export interface BackupStorageSnapshot {
 export interface BackupPayload {
   version: number;
   exportedAt: number;
+  schema?: {
+    name: 'mediaflow_backup';
+    version: number;
+  };
   clients: Client[];
   generalNotes: Note[];
   settings: AppSettings;
@@ -47,8 +63,12 @@ export const buildBackupPayload = ({
   currentClientId,
   storage = window.localStorage,
 }: BuildBackupPayloadOptions): BackupPayload => ({
-  version: 3,
+  version: BACKUP_SCHEMA_VERSION,
   exportedAt: Date.now(),
+  schema: {
+    name: 'mediaflow_backup',
+    version: BACKUP_SCHEMA_VERSION,
+  },
   clients,
   generalNotes,
   settings,
@@ -59,8 +79,54 @@ export const buildBackupPayload = ({
 export const isBackupPayload = (value: unknown): value is BackupPayload => {
   if (!value || typeof value !== 'object') return false;
 
-  const payload = value as Partial<BackupPayload>;
-  return Array.isArray(payload.clients) && typeof payload.version === 'number';
+  const payload = value as Partial<BackupPayload> & { schema?: { version?: unknown } };
+  const hasValidVersion = typeof payload.version === 'number';
+  const hasValidSchemaVersion =
+    typeof payload.schema === 'object' &&
+    payload.schema !== null &&
+    typeof payload.schema.version === 'number';
+
+  return Array.isArray(payload.clients) && (hasValidVersion || hasValidSchemaVersion);
+};
+
+const normalizeBackupClient = (rawClient: Client): Client => {
+  const projectType = normalizeProjectType(rawClient.projectType, rawClient.vertical);
+  const geoScope = normalizeGeoScope(rawClient.geoScope, projectType);
+  const resolvedCountry = normalizeCountry(rawClient.country, geoScope);
+
+  return {
+    ...rawClient,
+    vertical: getVerticalFromProjectType(projectType),
+    projectType,
+    sector: normalizeSector(rawClient.sector),
+    subSector: normalizeSubSector(rawClient.subSector),
+    geoScope,
+    country: resolvedCountry,
+    primaryLanguage: normalizePrimaryLanguage(rawClient.primaryLanguage),
+    brandTerms: normalizeBrandTerms(rawClient.brandTerms),
+    initialConfigPreset: normalizeInitialConfigPreset(rawClient.initialConfigPreset, projectType),
+  };
+};
+
+export const migrateBackupPayload = (value: BackupPayload): BackupPayload => {
+  return {
+    ...value,
+    version: BACKUP_SCHEMA_VERSION,
+    schema: {
+      name: 'mediaflow_backup',
+      version: BACKUP_SCHEMA_VERSION,
+    },
+    exportedAt: typeof value.exportedAt === 'number' ? value.exportedAt : Date.now(),
+    clients: (value.clients || []).map((client) => normalizeBackupClient(client)),
+    generalNotes: Array.isArray(value.generalNotes) ? value.generalNotes : [],
+    currentClientId: typeof value.currentClientId === 'string' ? value.currentClientId : '',
+    storage: value.storage || {},
+    settings: value.settings || {
+      openaiApiKey: '',
+      geminiApiKey: '',
+      mistralApiKey: '',
+    },
+  };
 };
 
 export const restoreMediaFlowStorageSnapshot = (

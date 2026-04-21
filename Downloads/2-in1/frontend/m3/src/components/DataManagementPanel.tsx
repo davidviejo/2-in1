@@ -3,7 +3,13 @@ import { Download, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useProject } from '../context/ProjectContext';
 import { useSettings } from '../context/SettingsContext';
-import { buildBackupPayload, isBackupPayload, restoreMediaFlowStorageSnapshot } from '../utils/backup';
+import {
+  BACKUP_SCHEMA_VERSION,
+  buildBackupPayload,
+  isBackupPayload,
+  migrateBackupPayload,
+  restoreMediaFlowStorageSnapshot,
+} from '../utils/backup';
 import { useToast } from './ui/ToastContext';
 import ConfirmDialog from './ui/ConfirmDialog';
 import { useTranslation } from 'react-i18next';
@@ -14,7 +20,7 @@ const DataManagementPanel: React.FC = () => {
   const { clients, generalNotes, restoreProjectData, currentClientId } = useProject();
   const { settings, updateSettings } = useSettings();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [pendingBackup, setPendingBackup] = React.useState<any | null>(null);
+  const [pendingBackup, setPendingBackup] = React.useState<ReturnType<typeof migrateBackupPayload> | null>(null);
 
   const formatMesColumn = (dueDate?: string) => {
     if (!dueDate) return '';
@@ -59,7 +65,23 @@ const DataManagementPanel: React.FC = () => {
   };
 
   const handleExportCSV = () => {
-    const headers = ['MES', 'TAREA', 'IMPLEMENTACIÓN', 'TIPOLOGÍA', 'SECTOR', 'SUBSECTOR', 'GEO_SCOPE', 'ÁREA', 'ESTADO', 'FECHA_COMPLETADO', 'COMENTARIOS'];
+    const headers = [
+      'MES',
+      'TAREA',
+      'IMPLEMENTACIÓN',
+      'TIPOLOGÍA',
+      'SECTOR',
+      'SUBSECTOR',
+      'GEO_SCOPE',
+      'COUNTRY',
+      'PRIMARY_LANGUAGE',
+      'BRAND_TERMS',
+      'PROJECT_CONFIG',
+      'ÁREA',
+      'ESTADO',
+      'FECHA_COMPLETADO',
+      'COMENTARIOS',
+    ];
     const rows: string[][] = [];
 
     clients.forEach((client) => {
@@ -83,6 +105,10 @@ const DataManagementPanel: React.FC = () => {
             client.sector,
             client.subSector || '',
             client.geoScope,
+            client.country || '',
+            client.primaryLanguage || '',
+            (client.brandTerms || []).join(', '),
+            client.initialConfigPreset ? JSON.stringify(client.initialConfigPreset) : '',
             task.category || module.title,
             task.status,
             formatCompletedAtColumn(completedAt),
@@ -109,7 +135,7 @@ const DataManagementPanel: React.FC = () => {
         const data = JSON.parse(content);
 
         if (isBackupPayload(data)) {
-          setPendingBackup(data);
+          setPendingBackup(migrateBackupPayload(data));
         } else {
           errorAction(t('feedback.actions.import_backup'));
         }
@@ -193,6 +219,7 @@ const DataManagementPanel: React.FC = () => {
       </div>
       <p className="text-[10px] text-slate-400 mt-2 leading-tight">
         Guarda una copia completa con todos tus proyectos, checklists SEO, URLs, kanban, tareas, notas y ajustes.
+        {' '}Esquema actual: v{BACKUP_SCHEMA_VERSION}.
       </p>
     </div>
   );
