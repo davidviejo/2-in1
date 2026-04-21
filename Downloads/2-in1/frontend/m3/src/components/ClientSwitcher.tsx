@@ -14,6 +14,10 @@ import {
 import DataManagementPanel from './DataManagementPanel';
 import {
   DEFAULT_SECTOR_OPTIONS,
+  DEFAULT_COUNTRY_OPTIONS,
+  DEFAULT_LANGUAGE_OPTIONS,
+  getDefaultInitialConfigPreset,
+  getGenericInitialConfigPreset,
   getProjectTypeFromVertical,
   inferGeoScopeFromProjectType,
 } from '../utils/projectMetadata';
@@ -41,6 +45,10 @@ const ClientSwitcher: React.FC<ClientSwitcherProps> = ({
   const [newClientCustomSector, setNewClientCustomSector] = useState('');
   const [newClientSubSector, setNewClientSubSector] = useState('');
   const [newClientGeoScope, setNewClientGeoScope] = useState<GeoScope>('global');
+  const [newClientCountry, setNewClientCountry] = useState<string>('Global');
+  const [newClientLanguage, setNewClientLanguage] = useState<string>('es');
+  const [newClientBrandTermsText, setNewClientBrandTermsText] = useState('');
+  const [useGenericConfig, setUseGenericConfig] = useState(false);
 
   const currentClient = clients.find((c) => c.id === currentClientId);
 
@@ -51,9 +59,19 @@ const ClientSwitcher: React.FC<ClientSwitcherProps> = ({
     onAddClient({
       name: newClientName.trim(),
       vertical: newClientVertical,
+      projectType: getProjectTypeFromVertical(newClientVertical),
       sector,
       subSector: newClientSubSector.trim() || undefined,
       geoScope: newClientGeoScope,
+      country: newClientCountry,
+      primaryLanguage: newClientLanguage,
+      brandTerms: newClientBrandTermsText
+        .split(',')
+        .map((term) => term.trim())
+        .filter(Boolean),
+      initialConfigPreset: useGenericConfig
+        ? getGenericInitialConfigPreset()
+        : getDefaultInitialConfigPreset(getProjectTypeFromVertical(newClientVertical)),
     });
     setNewClientName('');
     setNewClientVertical('media');
@@ -61,6 +79,10 @@ const ClientSwitcher: React.FC<ClientSwitcherProps> = ({
     setNewClientCustomSector('');
     setNewClientSubSector('');
     setNewClientGeoScope('global');
+    setNewClientCountry('Global');
+    setNewClientLanguage('es');
+    setNewClientBrandTermsText('');
+    setUseGenericConfig(false);
     setShowAddForm(false);
     setIsOpen(false);
   };
@@ -95,6 +117,9 @@ const ClientSwitcher: React.FC<ClientSwitcherProps> = ({
     }
   };
 
+  const getDefaultCountryByScope = (scope: GeoScope) =>
+    scope === 'global' || scope === 'international' ? 'Global' : 'España';
+
   return (
     <div className="relative">
       <button
@@ -112,7 +137,7 @@ const ClientSwitcher: React.FC<ClientSwitcherProps> = ({
             <div className="text-[10px] text-slate-500 flex items-center gap-1 uppercase tracking-wider">
               {currentClient && getVerticalIcon(currentClient.vertical)}
               {currentClient
-                ? `${currentClient.projectType || 'MEDIA'} · ${currentClient.geoScope || 'global'}`
+                ? `${currentClient.projectType || 'MEDIA'} · ${currentClient.sector || 'Otro'} · ${currentClient.geoScope || 'global'}`
                 : ''}
             </div>
           </div>
@@ -156,7 +181,7 @@ const ClientSwitcher: React.FC<ClientSwitcherProps> = ({
                             {client.name}
                           </div>
                           <div className="text-[10px] text-slate-400 flex items-center gap-1">
-                            {getVerticalIcon(client.vertical)} {getVerticalLabel(client.vertical)} · {client.sector || 'Otro'}
+                            {getVerticalIcon(client.vertical)} {client.projectType || getProjectTypeFromVertical(client.vertical)} · {client.sector || 'Otro'} · {client.geoScope || 'global'}
                           </div>
                         </div>
                       </div>
@@ -243,6 +268,8 @@ const ClientSwitcher: React.FC<ClientSwitcherProps> = ({
                           getProjectTypeFromVertical(v),
                         );
                         setNewClientGeoScope(defaultScope);
+                        setNewClientCountry(getDefaultCountryByScope(defaultScope));
+                        setUseGenericConfig(false);
                       }}
                       className={`p-2 rounded-lg border flex flex-col items-center justify-center gap-1 transition-all ${newClientVertical === v ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-500 text-blue-600' : 'border-slate-200 dark:border-slate-700 text-slate-400 hover:bg-slate-50'}`}
                     >
@@ -256,13 +283,49 @@ const ClientSwitcher: React.FC<ClientSwitcherProps> = ({
                   <select
                     className="w-full p-2 text-sm border rounded-lg bg-slate-50 dark:bg-slate-800 dark:border-slate-600 outline-none focus:ring-2 focus:ring-blue-500"
                     value={newClientGeoScope}
-                    onChange={(e) => setNewClientGeoScope(e.target.value as GeoScope)}
+                    onChange={(e) => {
+                      const scope = e.target.value as GeoScope;
+                      setNewClientGeoScope(scope);
+                      if (!newClientCountry || newClientCountry === 'Global' || newClientCountry === 'España') {
+                        setNewClientCountry(getDefaultCountryByScope(scope));
+                      }
+                    }}
                   >
                     <option value="local">Local</option>
                     <option value="national">Nacional</option>
                     <option value="international">Internacional</option>
                     <option value="global">Global</option>
                   </select>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div className="space-y-1">
+                    <label className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">País principal</label>
+                    <select
+                      className="w-full p-2 text-sm border rounded-lg bg-slate-50 dark:bg-slate-800 dark:border-slate-600 outline-none focus:ring-2 focus:ring-blue-500"
+                      value={newClientCountry}
+                      onChange={(e) => setNewClientCountry(e.target.value)}
+                    >
+                      {DEFAULT_COUNTRY_OPTIONS.map((country) => (
+                        <option key={country} value={country}>
+                          {country}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">Idioma principal</label>
+                    <select
+                      className="w-full p-2 text-sm border rounded-lg bg-slate-50 dark:bg-slate-800 dark:border-slate-600 outline-none focus:ring-2 focus:ring-blue-500"
+                      value={newClientLanguage}
+                      onChange={(e) => setNewClientLanguage(e.target.value)}
+                    >
+                      {DEFAULT_LANGUAGE_OPTIONS.map((language) => (
+                        <option key={language} value={language}>
+                          {language.toUpperCase()}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
                 <input
                   type="text"
@@ -271,6 +334,25 @@ const ClientSwitcher: React.FC<ClientSwitcherProps> = ({
                   value={newClientSubSector}
                   onChange={(e) => setNewClientSubSector(e.target.value)}
                 />
+                <textarea
+                  placeholder="Términos de marca (opcional, separados por coma)"
+                  className="w-full p-2 text-sm border rounded-lg bg-slate-50 dark:bg-slate-800 dark:border-slate-600 mb-3 outline-none focus:ring-2 focus:ring-blue-500 min-h-[72px]"
+                  value={newClientBrandTermsText}
+                  onChange={(e) => setNewClientBrandTermsText(e.target.value)}
+                />
+                <label className="flex items-center gap-2 mb-3 p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60">
+                  <input
+                    type="checkbox"
+                    checked={useGenericConfig}
+                    onChange={(e) => setUseGenericConfig(e.target.checked)}
+                  />
+                  <span className="text-xs text-slate-600 dark:text-slate-300">Usar configuración genérica</span>
+                </label>
+                <div className="text-[11px] text-slate-500 mb-3 rounded-lg border border-slate-200 dark:border-slate-700 p-2 bg-slate-50 dark:bg-slate-800">
+                  {useGenericConfig
+                    ? 'Preset genérico: módulos y reglas base para cualquier proyecto.'
+                    : `Preset ${getProjectTypeFromVertical(newClientVertical)}: módulos sugeridos, prioridades, reglas de insights y pesos de score adaptados.`}
+                </div>
                 <button
                   onClick={handleAdd}
                   disabled={!newClientName.trim()}
