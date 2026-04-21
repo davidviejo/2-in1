@@ -16,7 +16,7 @@ import {
   AreaChart,
   Area,
 } from 'recharts';
-import { ModuleData } from '../types';
+import { GSCRow, ModuleData } from '../types';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
@@ -69,6 +69,15 @@ interface HeroMetricProps {
   tone: 'primary' | 'success' | 'warning';
 }
 
+interface UrlTrendSignal {
+  url: string;
+  peakDate: string;
+  peakClicks: number;
+  baselineClicks: number;
+  surgeRatio: number;
+  clickIncrease: number;
+}
+
 export const getVisibleSelectedGscSite = (
   selectedSite: string,
   filteredGscSites: Array<{ siteUrl: string }>,
@@ -78,6 +87,66 @@ export const getVisibleSelectedGscSite = (
   }
 
   return filteredGscSites.some((site) => site.siteUrl === selectedSite) ? selectedSite : '';
+};
+
+export const detectTrendingUrls = (rows: GSCRow[]): UrlTrendSignal[] => {
+  const groupedByUrl = new Map<string, Array<{ date: string; clicks: number }>>();
+
+  rows.forEach((row) => {
+    const url = row.keys?.[0];
+    const date = row.keys?.[1];
+    if (!url || !date) return;
+
+    const bucket = groupedByUrl.get(url) || [];
+    bucket.push({ date, clicks: Number(row.clicks) || 0 });
+    groupedByUrl.set(url, bucket);
+  });
+
+  const result: UrlTrendSignal[] = [];
+
+  groupedByUrl.forEach((entries, url) => {
+    if (entries.length < 5) return;
+
+    const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+    let best: UrlTrendSignal | null = null;
+
+    for (let i = 4; i < sorted.length; i += 1) {
+      const baselineSlice = sorted.slice(Math.max(0, i - 4), i);
+      if (baselineSlice.length === 0) continue;
+
+      const baselineRaw = baselineSlice.reduce((sum, item) => sum + item.clicks, 0) / baselineSlice.length;
+      const baseline = Math.max(3, baselineRaw);
+      const peakClicks = sorted[i].clicks;
+      const clickIncrease = peakClicks - baseline;
+      const surgeRatio = peakClicks / baseline;
+
+      const isSignificant =
+        peakClicks >= 25 &&
+        clickIncrease >= 20 &&
+        surgeRatio >= 2.5;
+
+      if (!isSignificant) continue;
+
+      const candidate: UrlTrendSignal = {
+        url,
+        peakDate: sorted[i].date,
+        peakClicks,
+        baselineClicks: baselineRaw,
+        surgeRatio,
+        clickIncrease,
+      };
+
+      if (!best || candidate.clickIncrease * candidate.surgeRatio > best.clickIncrease * best.surgeRatio) {
+        best = candidate;
+      }
+    }
+
+    if (best) {
+      result.push(best);
+    }
+  });
+
+  return result.sort((a, b) => b.clickIncrease * b.surgeRatio - a.clickIncrease * a.surgeRatio).slice(0, 5);
 };
 
 const heroToneStyles: Record<HeroMetricProps['tone'], string> = {
@@ -222,6 +291,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     setSelectedSite,
     gscData,
     comparisonGscData,
+    pageDateData,
     comparisonPeriod,
     isLoadingGsc,
     insights: { insights, groupedInsights, topQueries },
@@ -362,6 +432,8 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       })) ?? [],
     [topQueries],
   );
+
+  const trendingUrls = useMemo(() => detectTrendingUrls(pageDateData), [pageDateData]);
 
   const filteredInsights = useMemo(
     () =>
@@ -1236,6 +1308,40 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
               </h3>
               <div className="text-sm text-muted text-center py-4">
                 Sin datos de consultas recientes.
+              </div>
+            </div>
+          )}
+
+          {trendingUrls.length > 0 ? (
+            <div className="bg-surface p-5 rounded-2xl shadow-sm border border-border">
+              <h3 className="font-bold mb-4 flex items-center gap-2">
+                <TrendingUp className="text-primary" size={20} /> URLs en tendencia
+                <span className="text-[10px] bg-primary-soft text-primary px-1.5 py-0.5 rounded font-bold uppercase">
+                  Pico detectado
+                </span>
+              </h3>
+              <div className="space-y-3">
+                {trendingUrls.map((trend, i) => (
+                  <div key={`${trend.url}-${i}`} className="rounded-lg border border-border p-3 bg-surface-alt/40">
+                    <div className="text-sm font-semibold text-foreground line-clamp-1">{trend.url}</div>
+                    <div className="mt-1 text-xs text-muted">
+                      Pico el <strong>{trend.peakDate}</strong> · +{Math.round(trend.clickIncrease).toLocaleString()} clics
+                      vs base ({Math.max(0, Math.round(trend.baselineClicks)).toLocaleString()}).
+                    </div>
+                    <div className="mt-1 text-xs font-medium text-primary">
+                      Multiplicó x{trend.surgeRatio.toFixed(1)} en pocos días.
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="bg-surface p-5 rounded-2xl shadow-sm border border-border opacity-60">
+              <h3 className="font-bold mb-4 flex items-center gap-2">
+                <TrendingUp className="text-muted" size={20} /> URLs en tendencia
+              </h3>
+              <div className="text-sm text-muted text-center py-4">
+                No se detectaron picos considerables con el periodo actual.
               </div>
             </div>
           )}
