@@ -25,6 +25,10 @@ import { ClientRepository } from '../services/clientRepository';
 import { ProjectRemoteRepository } from '../services/projectRemoteRepository';
 import { StrategyFactory } from '../strategies/StrategyFactory';
 import { DEFAULT_KANBAN_COLUMNS } from '../config/kanban';
+import {
+  buildClientProfileFromCreation,
+  ClientCreationOptions,
+} from '../utils/projectProfile';
 
 interface ProjectContextType {
   clients: Client[];
@@ -35,7 +39,7 @@ interface ProjectContextType {
   generalNotes: Note[];
 
   // Actions
-  addClient: (name: string, vertical: ClientVertical) => void;
+  addClient: (name: string, vertical: ClientVertical, options?: ClientCreationOptions) => void;
   deleteClient: (id: string) => void;
   switchClient: (id: string) => void;
 
@@ -274,12 +278,12 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   // --- Actions ---
 
-  const addClient = useCallback((name: string, vertical: ClientVertical) => {
+  const addClient = useCallback((name: string, vertical: ClientVertical, options?: ClientCreationOptions) => {
     const strategy = StrategyFactory.getStrategy(vertical);
     const initialModules = strategy.getModules();
     const templateVersion = strategy.getTemplateVersion();
 
-    const newClient: Client = {
+    const newClient: Client = buildClientProfileFromCreation({
       id: crypto.randomUUID(),
       name,
       vertical,
@@ -290,7 +294,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       completedTasksLog: [],
       customRoadmapOrder: [],
       iaVisibility: createDefaultIAVisibilityState(),
-    };
+    }, options);
     setClients((prev) => [...prev, newClient]);
     setCurrentClientId(newClient.id);
     flushSnapshotSyncNextTick(['clients', 'currentClientId']);

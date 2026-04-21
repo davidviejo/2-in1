@@ -81,6 +81,17 @@ export interface AppState {
 }
 
 export type ClientVertical = 'media' | 'ecom' | 'local' | 'national' | 'international';
+export type ProjectType = 'MEDIA' | 'ECOM' | 'LOCAL' | 'NATIONAL' | 'INTERNATIONAL';
+export type ProjectGeoScope = 'local' | 'national' | 'international' | 'generic';
+
+export interface ProjectInitialConfiguration {
+  presetKey: string;
+  suggestedModules: string[];
+  priorities: string[];
+  activeInsightRules: string[];
+  scoreWeights: Record<string, number>;
+  useGeneric: boolean;
+}
 
 export interface Note {
   id: string;
@@ -143,6 +154,14 @@ export interface Client {
   id: string;
   name: string;
   vertical: ClientVertical;
+  projectType?: ProjectType;
+  sector?: string;
+  geoScope?: ProjectGeoScope;
+  primaryCountry?: string;
+  primaryLanguage?: string;
+  brandTerms?: string[];
+  initialConfiguration?: ProjectInitialConfiguration;
+  profileUpdatedAt?: number;
   modules: ModuleData[];
   createdAt: number;
   notes?: Note[];

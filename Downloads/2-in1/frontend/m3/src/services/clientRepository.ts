@@ -8,6 +8,7 @@ import {
   createDefaultIAVisibilityState,
 } from '../types';
 import { StrategyFactory } from '../strategies/StrategyFactory';
+import { normalizeClientProfile } from '../utils/projectProfile';
 
 const CLIENTS_KEY = 'mediaflow_clients_cache_v2';
 const LEGACY_CLIENTS_KEY = 'mediaflow_clients';
@@ -175,7 +176,7 @@ const normalizeClient = (client: Client, options?: { validateDuplicateTaskIds?: 
     warnDuplicateTaskIdsAcrossModules(client);
   }
 
-  return {
+  return normalizeClientProfile({
     ...client,
     vertical: normalizeClientVertical(client.vertical),
     modules: normalizeModules(client.modules || []),
@@ -183,7 +184,7 @@ const normalizeClient = (client: Client, options?: { validateDuplicateTaskIds?: 
     completedTasksLog: client.completedTasksLog || [],
     customRoadmapOrder: dedupeStable(client.customRoadmapOrder || []),
     iaVisibility: normalizeIAVisibilityState(client.iaVisibility),
-  };
+  });
 };
 
 const mergeWithTemplateModules = (currentModules: ModuleData[], templateModules: ModuleData[]): ModuleData[] => {
@@ -220,7 +221,7 @@ const mergeWithTemplateModules = (currentModules: ModuleData[], templateModules:
 
 const createFallbackClient = (): Client => {
   const mediaStrategy = StrategyFactory.getStrategy('media');
-  return {
+  return normalizeClientProfile({
     id: crypto.randomUUID(),
     name: 'Proyecto Demo',
     vertical: 'media',
@@ -231,7 +232,7 @@ const createFallbackClient = (): Client => {
     completedTasksLog: [],
     customRoadmapOrder: [],
     iaVisibility: createDefaultIAVisibilityState(),
-  };
+  });
 };
 
 export class ClientRepository {

@@ -32,6 +32,7 @@ import {
   Eye,
 } from 'lucide-react';
 import { ModuleData, Client, ClientVertical, Note } from '../types';
+import { ClientCreationOptions } from '../utils/projectProfile';
 import ClientSwitcher from './ClientSwitcher';
 import NotesPanel from './NotesPanel';
 import { useTranslation } from 'react-i18next';
@@ -93,7 +94,7 @@ interface LayoutProps {
   clients?: Client[];
   currentClientId?: string;
   onSwitchClient?: (id: string) => void;
-  onAddClient?: (name: string, vertical: ClientVertical) => void;
+  onAddClient?: (name: string, vertical: ClientVertical, options?: ClientCreationOptions) => void;
   onDeleteClient?: (id: string) => void;
   // Notes Props
   generalNotes?: Note[];
