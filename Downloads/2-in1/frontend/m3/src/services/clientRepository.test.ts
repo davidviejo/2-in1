@@ -51,6 +51,30 @@ describe('ClientRepository', () => {
     const saved = JSON.parse(localStorage.getItem('mediaflow_clients_cache_v2') || '[]');
 
     expect(saved[0].vertical).toBe('media');
+    expect(saved[0].projectType).toBe('MEDIA');
+    expect(saved[0].sector).toBe('Otro');
+    expect(saved[0].geoScope).toBe('global');
+  });
+
+  it('migrates legacy project profile fields from vertical defaults', () => {
+    localStorage.setItem(
+      'mediaflow_clients_cache_v2',
+      JSON.stringify([
+        {
+          id: 'legacy-local',
+          name: 'Legacy Local',
+          vertical: 'local',
+          modules: [],
+          createdAt: Date.now(),
+        },
+      ]),
+    );
+
+    const clients = ClientRepository.getClients();
+
+    expect(clients[0].projectType).toBe('LOCAL');
+    expect(clients[0].geoScope).toBe('local');
+    expect(clients[0].sector).toBe('Otro');
   });
 
   it('creates and persists a fallback client when v2 cache is an empty array', () => {

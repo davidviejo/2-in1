@@ -3,7 +3,7 @@ import { act, render } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProjectProvider, useProject } from './ProjectContext';
 
-const saveSnapshotMock = vi.fn();
+const { saveSnapshotMock } = vi.hoisted(() => ({ saveSnapshotMock: vi.fn() }));
 
 vi.mock('../services/projectRemoteRepository', () => ({
   ProjectRemoteRepository: {
@@ -96,7 +96,7 @@ describe('ProjectContext sync behavior', () => {
     expect(saveSnapshotMock).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      contextValue?.addClient('Cliente crítico', 'media');
+      contextValue?.addClient({ name: 'Cliente crítico', vertical: 'media' });
       await vi.runOnlyPendingTimersAsync();
     });
     expect(saveSnapshotMock).toHaveBeenCalledTimes(2);

@@ -8,6 +8,14 @@ import {
   createDefaultIAVisibilityState,
 } from '../types';
 import { StrategyFactory } from '../strategies/StrategyFactory';
+import {
+  getProjectTypeFromVertical,
+  getVerticalFromProjectType,
+  normalizeGeoScope,
+  normalizeProjectType,
+  normalizeSector,
+  normalizeSubSector,
+} from '../utils/projectMetadata';
 
 const CLIENTS_KEY = 'mediaflow_clients_cache_v2';
 const LEGACY_CLIENTS_KEY = 'mediaflow_clients';
@@ -87,7 +95,7 @@ const normalizeIAVisibilityState = (iaVisibility: unknown): IAVisibilityState =>
   }
 
   const raw = iaVisibility as Partial<IAVisibilityState> & { config?: Record<string, unknown> };
-  const rawConfig = raw.config || {};
+  const rawConfig: Record<string, unknown> = raw.config || {};
 
   return {
     config: {
@@ -171,13 +179,21 @@ const warnDuplicateTaskIdsAcrossModules = (client: Client): void => {
 };
 
 const normalizeClient = (client: Client, options?: { validateDuplicateTaskIds?: boolean }): Client => {
+  const legacyVertical = normalizeClientVertical(client.vertical);
+  const projectType = normalizeProjectType((client as Partial<Client>).projectType, legacyVertical);
+  const vertical = getVerticalFromProjectType(projectType);
+
   if (options?.validateDuplicateTaskIds) {
-    warnDuplicateTaskIdsAcrossModules(client);
+    warnDuplicateTaskIdsAcrossModules({ ...client, vertical });
   }
 
   return {
     ...client,
-    vertical: normalizeClientVertical(client.vertical),
+    vertical,
+    projectType,
+    sector: normalizeSector((client as Partial<Client>).sector),
+    geoScope: normalizeGeoScope((client as Partial<Client>).geoScope, projectType),
+    subSector: normalizeSubSector((client as Partial<Client>).subSector),
     modules: normalizeModules(client.modules || []),
     notes: client.notes || [],
     completedTasksLog: client.completedTasksLog || [],
@@ -224,6 +240,9 @@ const createFallbackClient = (): Client => {
     id: crypto.randomUUID(),
     name: 'Proyecto Demo',
     vertical: 'media',
+    projectType: getProjectTypeFromVertical('media'),
+    sector: 'Otro',
+    geoScope: 'global',
     modules: mediaStrategy.getModules(),
     templateVersion: mediaStrategy.getTemplateVersion(),
     createdAt: Date.now(),
@@ -285,6 +304,9 @@ export class ClientRepository {
           id: 'legacy-project',
           name: 'Mi Primer Proyecto',
           vertical: 'media',
+          projectType: getProjectTypeFromVertical('media'),
+          sector: 'Otro',
+          geoScope: 'global',
           modules: mergeWithTemplateModules(legacyModules, strategy.getModules()),
           templateVersion: strategy.getTemplateVersion(),
           createdAt: Date.now(),
@@ -303,7 +325,7 @@ export class ClientRepository {
   }
 
   static saveClients(clients: Client[]): void {
-    localStorage.setItem(CLIENTS_KEY, JSON.stringify(clients.map(normalizeClient)));
+    localStorage.setItem(CLIENTS_KEY, JSON.stringify(clients.map((client) => normalizeClient(client))));
   }
 
   static getCurrentClientId(): string {

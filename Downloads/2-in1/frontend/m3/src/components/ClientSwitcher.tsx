@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
-import { Client, ClientVertical } from '../types';
+import { Client, ClientVertical, GeoScope, NewClientInput } from '../types';
 import {
   Plus,
-  Check,
-  Briefcase,
   Trash2,
   X,
   ChevronDown,
@@ -13,14 +11,18 @@ import {
   Flag,
   Globe,
 } from 'lucide-react';
-import { INITIAL_MODULES } from '../constants';
 import DataManagementPanel from './DataManagementPanel';
+import {
+  DEFAULT_SECTOR_OPTIONS,
+  getProjectTypeFromVertical,
+  inferGeoScopeFromProjectType,
+} from '../utils/projectMetadata';
 
 interface ClientSwitcherProps {
   clients: Client[];
   currentClientId: string;
   onSwitchClient: (id: string) => void;
-  onAddClient: (name: string, vertical: ClientVertical) => void;
+  onAddClient: (input: NewClientInput) => void;
   onDeleteClient: (id: string) => void;
 }
 
@@ -35,14 +37,30 @@ const ClientSwitcher: React.FC<ClientSwitcherProps> = ({
   const [showAddForm, setShowAddForm] = useState(false);
   const [newClientName, setNewClientName] = useState('');
   const [newClientVertical, setNewClientVertical] = useState<ClientVertical>('media');
+  const [newClientSector, setNewClientSector] = useState<string>('Otro');
+  const [newClientCustomSector, setNewClientCustomSector] = useState('');
+  const [newClientSubSector, setNewClientSubSector] = useState('');
+  const [newClientGeoScope, setNewClientGeoScope] = useState<GeoScope>('global');
 
   const currentClient = clients.find((c) => c.id === currentClientId);
 
   const handleAdd = () => {
     if (!newClientName.trim()) return;
-    onAddClient(newClientName, newClientVertical);
+    const sector =
+      newClientSector === 'Otro' ? newClientCustomSector.trim() || 'Otro' : newClientSector;
+    onAddClient({
+      name: newClientName.trim(),
+      vertical: newClientVertical,
+      sector,
+      subSector: newClientSubSector.trim() || undefined,
+      geoScope: newClientGeoScope,
+    });
     setNewClientName('');
     setNewClientVertical('media');
+    setNewClientSector('Otro');
+    setNewClientCustomSector('');
+    setNewClientSubSector('');
+    setNewClientGeoScope('global');
     setShowAddForm(false);
     setIsOpen(false);
   };
@@ -93,7 +111,9 @@ const ClientSwitcher: React.FC<ClientSwitcherProps> = ({
             </div>
             <div className="text-[10px] text-slate-500 flex items-center gap-1 uppercase tracking-wider">
               {currentClient && getVerticalIcon(currentClient.vertical)}
-              {currentClient ? currentClient.vertical : ''}
+              {currentClient
+                ? `${currentClient.projectType || 'MEDIA'} · ${currentClient.geoScope || 'global'}`
+                : ''}
             </div>
           </div>
         </div>
@@ -136,7 +156,7 @@ const ClientSwitcher: React.FC<ClientSwitcherProps> = ({
                             {client.name}
                           </div>
                           <div className="text-[10px] text-slate-400 flex items-center gap-1">
-                            {getVerticalIcon(client.vertical)} {getVerticalLabel(client.vertical)}
+                            {getVerticalIcon(client.vertical)} {getVerticalLabel(client.vertical)} · {client.sector || 'Otro'}
                           </div>
                         </div>
                       </div>
@@ -188,13 +208,42 @@ const ClientSwitcher: React.FC<ClientSwitcherProps> = ({
                   value={newClientName}
                   onChange={(e) => setNewClientName(e.target.value)}
                 />
+                <div className="space-y-1 mb-3">
+                  <label className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">Sector</label>
+                  <select
+                    className="w-full p-2 text-sm border rounded-lg bg-slate-50 dark:bg-slate-800 dark:border-slate-600 outline-none focus:ring-2 focus:ring-blue-500"
+                    value={newClientSector}
+                    onChange={(e) => setNewClientSector(e.target.value)}
+                  >
+                    {DEFAULT_SECTOR_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                  {newClientSector === 'Otro' && (
+                    <input
+                      type="text"
+                      placeholder="Especifica el sector"
+                      className="w-full p-2 text-sm border rounded-lg bg-slate-50 dark:bg-slate-800 dark:border-slate-600 outline-none focus:ring-2 focus:ring-blue-500"
+                      value={newClientCustomSector}
+                      onChange={(e) => setNewClientCustomSector(e.target.value)}
+                    />
+                  )}
+                </div>
                 <div className="grid grid-cols-3 gap-1 mb-3">
                   {(
                     ['media', 'ecom', 'local', 'national', 'international'] as ClientVertical[]
                   ).map((v) => (
                     <button
                       key={v}
-                      onClick={() => setNewClientVertical(v)}
+                      onClick={() => {
+                        setNewClientVertical(v);
+                        const defaultScope = inferGeoScopeFromProjectType(
+                          getProjectTypeFromVertical(v),
+                        );
+                        setNewClientGeoScope(defaultScope);
+                      }}
                       className={`p-2 rounded-lg border flex flex-col items-center justify-center gap-1 transition-all ${newClientVertical === v ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-500 text-blue-600' : 'border-slate-200 dark:border-slate-700 text-slate-400 hover:bg-slate-50'}`}
                     >
                       {getVerticalIcon(v)}
@@ -202,6 +251,26 @@ const ClientSwitcher: React.FC<ClientSwitcherProps> = ({
                     </button>
                   ))}
                 </div>
+                <div className="space-y-1 mb-3">
+                  <label className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">Alcance geográfico</label>
+                  <select
+                    className="w-full p-2 text-sm border rounded-lg bg-slate-50 dark:bg-slate-800 dark:border-slate-600 outline-none focus:ring-2 focus:ring-blue-500"
+                    value={newClientGeoScope}
+                    onChange={(e) => setNewClientGeoScope(e.target.value as GeoScope)}
+                  >
+                    <option value="local">Local</option>
+                    <option value="national">Nacional</option>
+                    <option value="international">Internacional</option>
+                    <option value="global">Global</option>
+                  </select>
+                </div>
+                <input
+                  type="text"
+                  placeholder="Subsector (opcional)"
+                  className="w-full p-2 text-sm border rounded-lg bg-slate-50 dark:bg-slate-800 dark:border-slate-600 mb-3 outline-none focus:ring-2 focus:ring-blue-500"
+                  value={newClientSubSector}
+                  onChange={(e) => setNewClientSubSector(e.target.value)}
+                />
                 <button
                   onClick={handleAdd}
                   disabled={!newClientName.trim()}

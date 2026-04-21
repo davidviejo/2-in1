@@ -90,7 +90,7 @@ const LandingPage: React.FC = () => {
         slug: project.id,
         name: project.name,
         status: 'active',
-        description: `Proyecto (${project.vertical}) - Creado el ${new Date(project.createdAt).toLocaleDateString()}`,
+        description: `Proyecto (${project.projectType || 'MEDIA'} · ${project.sector || 'Otro'} · ${project.geoScope || 'global'}) - Creado el ${new Date(project.createdAt).toLocaleDateString()}`,
         isLocal: true,
       })),
     [localProjects],

@@ -47,7 +47,7 @@ export const buildBackupPayload = ({
   currentClientId,
   storage = window.localStorage,
 }: BuildBackupPayloadOptions): BackupPayload => ({
-  version: 2,
+  version: 3,
   exportedAt: Date.now(),
   clients,
   generalNotes,
