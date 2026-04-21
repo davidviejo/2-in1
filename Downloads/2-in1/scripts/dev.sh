@@ -1,11 +1,22 @@
 #!/bin/bash
 
 # Configuration
-# Detect root directory of the repo
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+# Resolve paths relative to this script location
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BACKEND_DIR="$REPO_ROOT/backend/p2"
 FRONTEND_DIR="$REPO_ROOT/frontend/m3"
 VENV_DIR="$BACKEND_DIR/venv"
+
+if [ ! -f "$BACKEND_DIR/requirements.txt" ]; then
+    echo "Error: Backend requirements file not found at $BACKEND_DIR/requirements.txt"
+    exit 1
+fi
+
+if [ ! -f "$FRONTEND_DIR/package.json" ]; then
+    echo "Error: Frontend package file not found at $FRONTEND_DIR/package.json"
+    exit 1
+fi
 
 echo "-----------------------------------"
 echo "Starting Local Development Environment"
