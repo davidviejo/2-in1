@@ -57,6 +57,12 @@ import { buildIgnoredEntryKey, useSeoIgnoredItems } from '../hooks/useSeoIgnored
 import { useSeoInsightState } from '../hooks/useSeoInsightState';
 import { useProject } from '../context/ProjectContext';
 import * as XLSX from 'xlsx';
+import {
+  classifyQueryBrandSegment,
+  matchBrandFilter,
+  QueryBrandFilter,
+} from '../utils/queryBrandSegment';
+import { parseBrandTerms } from '../utils/brandTerms';
 
 const GSC_COMPARISON_MODE_LABELS: Record<GSCComparisonMode, string> = {
   previous_period: 'Periodo anterior',
@@ -276,7 +282,7 @@ const HeroMetric: React.FC<HeroMetricProps> = ({ title, value, description, tone
 const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   const navigate = useNavigate();
   const { success: showSuccess } = useToast();
-  const { currentClient } = useProject();
+  const { currentClient, updateCurrentClientProfile } = useProject();
   const [quickTask, setQuickTask] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [selectedInsight, setSelectedInsight] = useState<SeoInsight | null>(null);
@@ -286,10 +292,14 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   );
   const [selectedModule, setSelectedModule] = useState<'all' | string>('all');
   const [selectedBrandType, setSelectedBrandType] = useState<'all' | SeoInsightBrandType>('all');
+  const [trafficSegmentFilter, setTrafficSegmentFilter] = useState<QueryBrandFilter>('all');
   const [selectedStatus, setSelectedStatus] = useState<'all' | SeoInsightLifecycleStatus>('all');
   const [gscSiteQuery, setGscSiteQuery] = useState('');
   const [comparisonMode, setComparisonMode] = useState<GSCComparisonMode>('previous_period');
   const [showInsightsHelp, setShowInsightsHelp] = useState(false);
+  const [showBrandConfigModal, setShowBrandConfigModal] = useState(false);
+  const [projectSectorDraft, setProjectSectorDraft] = useState('');
+  const [brandTermsDraft, setBrandTermsDraft] = useState('');
 
   const [startDate, setStartDate] = useState<string>(() => {
     const d = new Date();
@@ -428,6 +438,12 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     [insights, isIgnored, getInsightStatus],
   );
 
+  const segmentFilteredInsights = useMemo(
+    () =>
+      actionableInsights.filter((insight) => matchBrandFilter(insight.brandType, trafficSegmentFilter)),
+    [actionableInsights, trafficSegmentFilter],
+  );
+
   const actionableGroupedInsights = useMemo(
     () =>
       groupedInsights
@@ -449,42 +465,52 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   );
 
   const actionableTopOpportunities = useMemo(
-    () => actionableInsights.filter((insight) => insight.category === 'opportunity').slice(0, 3),
-    [actionableInsights],
+    () => segmentFilteredInsights.filter((insight) => insight.category === 'opportunity').slice(0, 3),
+    [segmentFilteredInsights],
   );
 
   const actionableTopRisks = useMemo(
-    () => actionableInsights.filter((insight) => insight.category === 'risk').slice(0, 3),
-    [actionableInsights],
+    () => segmentFilteredInsights.filter((insight) => insight.category === 'risk').slice(0, 3),
+    [segmentFilteredInsights],
   );
 
   const topQueriesNormalized = useMemo(
     () =>
-      topQueries?.items.slice(0, 5).map((item) => ({
-        ...item,
-        position: Number(item.position),
-        clicks: Number(item.clicks),
-        impressions: Number(item.impressions),
-      })) ?? [],
-    [topQueries],
+      topQueries?.items
+        .map((item) => {
+          const query = item.keys?.[0] || '';
+          const classification = classifyQueryBrandSegment(query, currentClient?.brandTerms || []);
+          return {
+            ...item,
+            query,
+            position: Number(item.position),
+            clicks: Number(item.clicks),
+            impressions: Number(item.impressions),
+            brandSegment: classification.segment,
+            needsReview: classification.needsReview,
+          };
+        })
+        .filter((item) => matchBrandFilter(item.brandSegment, trafficSegmentFilter))
+        .slice(0, 5) ?? [],
+    [currentClient?.brandTerms, topQueries, trafficSegmentFilter],
   );
 
   const trendingUrls = useMemo(() => detectTrendingUrls(pageDateData), [pageDateData]);
 
 
   const prioritizedQuickWins = useMemo(
-    () => actionableInsights.filter((insight) => insight.findingFamily === 'quick_win').slice(0, 5),
-    [actionableInsights],
+    () => segmentFilteredInsights.filter((insight) => insight.findingFamily === 'quick_win').slice(0, 5),
+    [segmentFilteredInsights],
   );
 
   const prioritizedAnomalies = useMemo(
-    () => actionableInsights.filter((insight) => insight.findingFamily === 'anomaly').slice(0, 5),
-    [actionableInsights],
+    () => segmentFilteredInsights.filter((insight) => insight.findingFamily === 'anomaly').slice(0, 5),
+    [segmentFilteredInsights],
   );
 
   const filteredInsights = useMemo(
     () =>
-      actionableInsights.filter((insight) => {
+      segmentFilteredInsights.filter((insight) => {
         const categoryMatch = selectedCategory === 'all' || insight.category === selectedCategory;
         const priorityMatch = selectedPriority === 'all' || insight.priority === selectedPriority;
         const moduleMatch = selectedModule === 'all' || String(insight.moduleId || '') === selectedModule;
@@ -492,7 +518,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
         const statusMatch = selectedStatus === 'all' || insight.status === selectedStatus;
         return categoryMatch && priorityMatch && moduleMatch && brandMatch && statusMatch;
       }),
-    [actionableInsights, selectedCategory, selectedPriority, selectedModule, selectedBrandType, selectedStatus],
+    [segmentFilteredInsights, selectedCategory, selectedPriority, selectedModule, selectedBrandType, selectedStatus],
   );
 
   const categoryOptions = useMemo(
@@ -502,6 +528,47 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     ],
     [actionableGroupedInsights],
   );
+
+  const topQuerySummary = useMemo(() => {
+    const rows = topQueries?.items || [];
+    return rows.reduce(
+      (acc, row) => {
+        const query = row.keys?.[0] || '';
+        const classification = classifyQueryBrandSegment(query, currentClient?.brandTerms || []);
+        acc.total.clicks += Number(row.clicks || 0);
+        acc.total.impressions += Number(row.impressions || 0);
+        if (classification.segment === 'brand') {
+          acc.brand.clicks += Number(row.clicks || 0);
+          acc.brand.impressions += Number(row.impressions || 0);
+        } else if (classification.segment === 'non-brand') {
+          acc.nonBrand.clicks += Number(row.clicks || 0);
+          acc.nonBrand.impressions += Number(row.impressions || 0);
+        }
+        if (classification.segment === 'mixed') {
+          acc.reviewCount += 1;
+        }
+        return acc;
+      },
+      {
+        total: { clicks: 0, impressions: 0 },
+        brand: { clicks: 0, impressions: 0 },
+        nonBrand: { clicks: 0, impressions: 0 },
+        reviewCount: 0,
+      },
+    );
+  }, [currentClient?.brandTerms, topQueries?.items]);
+
+  const saveBrandConfig = () => {
+    if (!currentClient) return;
+    updateCurrentClientProfile({
+      projectType: currentClient.projectType || 'MEDIA',
+      sector: projectSectorDraft || currentClient.sector || 'Otro',
+      geoScope: currentClient.geoScope || 'global',
+      brandTerms: parseBrandTerms(brandTermsDraft),
+    });
+    setShowBrandConfigModal(false);
+    showSuccess('Configuración de sector y términos de marca actualizada.');
+  };
 
   const handleExport = () => {
     const date = new Date().toLocaleDateString();
@@ -824,6 +891,53 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
             <p className="mt-2">
               Exclusiones guardadas actualmente: <strong>{ignoredEntries.length}</strong>.
             </p>
+          </div>
+        </Modal>
+      )}
+
+      {showBrandConfigModal && (
+        <Modal
+          isOpen={showBrandConfigModal}
+          onClose={() => setShowBrandConfigModal(false)}
+          title="Configurar segmentación Brand / Non-brand"
+          className="max-w-2xl"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-muted">
+              Esta configuración se guarda en el proyecto actual y se reutiliza en insights, top
+              consultas e impacto GSC.
+            </p>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-wide text-muted">
+                Sector del proyecto
+              </label>
+              <Input
+                value={projectSectorDraft}
+                onChange={(event) => setProjectSectorDraft(event.target.value)}
+                placeholder="Ej. Salud, Legal, SaaS..."
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-wide text-muted">
+                Términos de marca (coma, salto de línea o punto y coma)
+              </label>
+              <textarea
+                value={brandTermsDraft}
+                onChange={(event) => setBrandTermsDraft(event.target.value)}
+                className="min-h-[120px] w-full rounded-lg border border-border bg-surface-alt p-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/40"
+                placeholder="acme, acme corp, producto x"
+              />
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-border bg-surface-alt p-3 text-xs text-muted">
+              <span>Proyecto actual: {currentClient?.name || 'Sin proyecto'}</span>
+              <span>Tipo: {currentClient?.projectType || 'MEDIA'}</span>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setShowBrandConfigModal(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={saveBrandConfig}>Guardar configuración</Button>
+            </div>
           </div>
         </Modal>
       )}
@@ -1188,6 +1302,29 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
+                  <select
+                    className="rounded-lg border border-border bg-surface-alt px-3 py-2 text-xs font-medium text-foreground"
+                    value={trafficSegmentFilter}
+                    onChange={(event) =>
+                      setTrafficSegmentFilter(event.target.value as QueryBrandFilter)
+                    }
+                  >
+                    <option value="all">Tráfico total</option>
+                    <option value="brand">Solo brand</option>
+                    <option value="non-brand">Solo non-brand</option>
+                  </select>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setProjectSectorDraft(currentClient?.sector || 'Otro');
+                      setBrandTermsDraft((currentClient?.brandTerms || []).join('\n'));
+                      setShowBrandConfigModal(true);
+                    }}
+                  >
+                    <Settings size={14} />
+                    Configurar brand
+                  </Button>
                   <GSCDateRangeControl
                     startDate={startDate}
                     endDate={endDate}
@@ -1258,6 +1395,30 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                     <strong>{comparisonPeriod.previous.endDate}</strong>
                   </>
                 )}
+              </div>
+
+              <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+                <div className="rounded-xl border border-border bg-surface-alt p-3">
+                  <div className="text-[11px] uppercase tracking-wide text-muted">Total</div>
+                  <div className="mt-1 text-lg font-bold text-foreground">
+                    {formatNumberSafe(topQuerySummary.total.clicks, '0')} clics
+                  </div>
+                </div>
+                <div className="rounded-xl border border-border bg-surface-alt p-3">
+                  <div className="text-[11px] uppercase tracking-wide text-muted">Brand</div>
+                  <div className="mt-1 text-lg font-bold text-foreground">
+                    {formatNumberSafe(topQuerySummary.brand.clicks, '0')} clics
+                  </div>
+                </div>
+                <div className="rounded-xl border border-border bg-surface-alt p-3">
+                  <div className="text-[11px] uppercase tracking-wide text-muted">Non-brand</div>
+                  <div className="mt-1 text-lg font-bold text-foreground">
+                    {formatNumberSafe(topQuerySummary.nonBrand.clicks, '0')} clics
+                  </div>
+                  <div className="text-[11px] text-muted">
+                    {topQuerySummary.reviewCount} queries en revisión (mixed)
+                  </div>
+                </div>
               </div>
 
               <div className="h-72 w-full">
@@ -1489,8 +1650,24 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                         <div className="text-sm font-semibold group-hover:text-primary line-clamp-1">
                           {queryLabel}
                         </div>
-                        <div className="text-xs text-muted">
+                        <div className="mt-1 flex items-center gap-2 text-xs text-muted">
                           Posición: {formatPositionSafe(t.position)}
+                          <Badge
+                            variant={
+                              t.brandSegment === 'brand'
+                                ? 'success'
+                                : t.brandSegment === 'non-brand'
+                                  ? 'primary'
+                                  : 'warning'
+                            }
+                            className="text-[10px]"
+                          >
+                            {t.brandSegment === 'brand'
+                              ? 'Brand'
+                              : t.brandSegment === 'non-brand'
+                                ? 'Non-brand'
+                                : 'Mixed / revisar'}
+                          </Badge>
                         </div>
                       </div>
                       <div className="text-xs font-bold text-foreground">
