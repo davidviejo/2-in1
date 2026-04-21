@@ -1,9 +1,17 @@
 import { analyzeGSCInsights } from '../utils/gscInsights';
-import { GSCRow } from '../types';
+import { GSCRow, ProjectType } from '../types';
+import { SeoInsightDateRange } from '../types/seoInsights';
 
 interface GSCWorkerPayload {
   currentRows: GSCRow[];
   previousRows?: GSCRow[];
+  propertyId?: string;
+  periodCurrent?: SeoInsightDateRange;
+  periodPrevious?: SeoInsightDateRange;
+  brandTerms?: string[];
+  projectType?: ProjectType;
+  sector?: string;
+  geoScope?: string;
 }
 
 addEventListener('message', (e: MessageEvent<GSCWorkerPayload>) => {
@@ -18,6 +26,13 @@ addEventListener('message', (e: MessageEvent<GSCWorkerPayload>) => {
     const insights = analyzeGSCInsights({
       currentRows: payload.currentRows,
       previousRows: Array.isArray(payload.previousRows) ? payload.previousRows : [],
+      propertyId: payload.propertyId,
+      periodCurrent: payload.periodCurrent,
+      periodPrevious: payload.periodPrevious,
+      brandTerms: payload.brandTerms,
+      projectType: payload.projectType,
+      sector: payload.sector,
+      geoScope: payload.geoScope,
     });
 
     postMessage({ type: 'SUCCESS', payload: insights });

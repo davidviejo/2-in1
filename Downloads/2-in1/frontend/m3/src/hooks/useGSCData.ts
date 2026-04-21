@@ -7,6 +7,7 @@ import {
   getGSCPageDateData,
 } from '../services/googleSearchConsole';
 import { runAnalysisInWorker } from '../utils/workerClient';
+import { ProjectType } from '../types';
 import { useToast } from '../components/ui/ToastContext';
 
 export type GSCComparisonMode = 'previous_period' | 'previous_year';
@@ -60,6 +61,13 @@ export const useGSCData = (
   startDate?: string,
   endDate?: string,
   comparisonMode: GSCComparisonMode = 'previous_period',
+  context?: {
+    propertyId?: string;
+    brandTerms?: string[];
+    projectType?: ProjectType;
+    sector?: string;
+    geoScope?: string;
+  },
 ) => {
   const { error: showError } = useToast();
   const queryClient = useQueryClient();
@@ -103,7 +111,7 @@ export const useGSCData = (
     isLoading: isLoadingData,
     error: dataError,
   } = useQuery({
-    queryKey: ['gscData', accessToken, resolvedSelectedSite, startDate, endDate, comparisonMode],
+    queryKey: ['gscData', accessToken, resolvedSelectedSite, startDate, endDate, comparisonMode, context?.propertyId, context?.projectType, context?.sector, context?.geoScope, (context?.brandTerms || []).join('|')],
     queryFn: async () => {
       const finalEndDate = endDate || new Date().toISOString().split('T')[0];
       const finalStartDate =
@@ -126,6 +134,13 @@ export const useGSCData = (
       const insights = await runAnalysisInWorker({
         currentRows: currentQueryPageData,
         previousRows: previousQueryPageData,
+        propertyId: context?.propertyId || resolvedSelectedSite,
+        periodCurrent: { startDate: finalStartDate, endDate: finalEndDate },
+        periodPrevious: { startDate: previousStartDate, endDate: previousEndDate },
+        brandTerms: context?.brandTerms || [],
+        projectType: context?.projectType,
+        sector: context?.sector,
+        geoScope: context?.geoScope,
       });
 
       return {

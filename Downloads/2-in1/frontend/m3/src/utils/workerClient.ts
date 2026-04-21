@@ -1,9 +1,17 @@
-import { GSCRow } from '../types';
+import { GSCRow, ProjectType } from '../types';
+import { SeoInsightDateRange } from '../types/seoInsights';
 import { GSCInsightsEngineResult } from './gscInsights';
 
 export interface GSCWorkerPayload {
   currentRows: GSCRow[];
   previousRows?: GSCRow[];
+  propertyId?: string;
+  periodCurrent?: SeoInsightDateRange;
+  periodPrevious?: SeoInsightDateRange;
+  brandTerms?: string[];
+  projectType?: ProjectType;
+  sector?: string;
+  geoScope?: string;
 }
 
 export type GSCInsights = GSCInsightsEngineResult;
