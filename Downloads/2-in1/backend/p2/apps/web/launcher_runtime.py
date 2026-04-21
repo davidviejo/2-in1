@@ -51,7 +51,7 @@ class LauncherRuntimeManager:
         catalog_provider: Callable[[], dict[str, Any]] | None = None,
         popen_factory: Callable[..., Any] | None = None,
     ) -> None:
-        self.repo_root = repo_root or Path(__file__).resolve().parents[3]
+        self.repo_root = repo_root or Path(__file__).resolve().parents[4]
         self.allowed_root = (allowed_root or self.DEFAULT_ALLOWED_ROOT).resolve()
         self.var_dir = self.repo_root / 'var'
         self.logs_dir = self.var_dir / 'launcher_logs'
