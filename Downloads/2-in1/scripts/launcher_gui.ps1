@@ -119,17 +119,30 @@ function Start-Backend {
 
     Write-Log "Iniciando backend en http://localhost:$BACKEND_PORT ..."
 
-    $envVars = @(
-        '$env:FLASK_DEBUG="true"',
-        '$env:PORT="5000"',
-        '$env:SETTINGS_ENCRYPTION_KEY="test_settings_encryption_key"',
-        'python run.py'
-    ) -join '; '
+    $env:FLASK_DEBUG = "true"
+    $env:PORT = "5000"
+    $env:SETTINGS_ENCRYPTION_KEY = "test_settings_encryption_key"
 
-    $backendProcess = Start-Process -FilePath "powershell" `
-        -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $envVars `
+    $backendProcess = Start-Process -FilePath $script:PYTHON `
+        -ArgumentList "run.py" `
         -WorkingDirectory $BACKEND_DIR `
         -PassThru
+
+    $resolvedPythonPath = [System.IO.Path]::GetFullPath($script:PYTHON)
+    $startedProcessPath = $null
+    try {
+        $startedProcessPath = [System.IO.Path]::GetFullPath($backendProcess.Path)
+    }
+    catch {
+        $startedProcessPath = $null
+    }
+
+    if ($startedProcessPath -and ($startedProcessPath -ieq $resolvedPythonPath)) {
+        Write-Log "Backend ejecutándose con Python del venv: $startedProcessPath"
+    }
+    else {
+        Write-Log "Advertencia: PID $($backendProcess.Id) no pudo validarse contra $resolvedPythonPath."
+    }
 
     $script:backendRuntimePort = $BACKEND_PORT
     Write-Log "Backend iniciado (PID $($backendProcess.Id))."
