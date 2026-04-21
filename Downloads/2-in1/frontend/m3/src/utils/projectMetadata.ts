@@ -67,6 +67,27 @@ export const normalizeProjectType = (projectType: unknown, vertical?: ClientVert
   return getProjectTypeFromVertical(vertical || 'media');
 };
 
+export const normalizeAnalysisProjectTypes = (
+  value: unknown,
+  fallbackProjectType: ProjectType,
+): ProjectType[] => {
+  if (!Array.isArray(value)) {
+    return [fallbackProjectType];
+  }
+
+  const normalized = value
+    .map((item) => normalizeProjectType(item, getVerticalFromProjectType(fallbackProjectType)))
+    .filter((projectType, index, array) => array.indexOf(projectType) === index);
+
+  if (normalized.length === 0) {
+    return [fallbackProjectType];
+  }
+
+  return normalized.includes(fallbackProjectType)
+    ? normalized
+    : [fallbackProjectType, ...normalized];
+};
+
 export const normalizeGeoScope = (geoScope: unknown, projectType: ProjectType): GeoScope => {
   if (typeof geoScope === 'string') {
     const normalized = geoScope.trim().toLowerCase();

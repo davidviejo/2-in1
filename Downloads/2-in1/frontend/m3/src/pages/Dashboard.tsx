@@ -52,6 +52,7 @@ import {
   SeoInsightCategory,
   SeoInsightLifecycleStatus,
 } from '../types/seoInsights';
+import { ProjectType } from '../types';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { buildIgnoredEntryKey, useSeoIgnoredItems } from '../hooks/useSeoIgnoredItems';
 import { useSeoInsightState } from '../hooks/useSeoInsightState';
@@ -225,6 +226,8 @@ const buildInsightExportRows = (insight: SeoInsight) => {
         facilidadImplementacion: insight.implementationEase,
         accionSugerida: insight.suggestedAction,
         regla: insight.ruleKey,
+        alcanceRegla: insight.ruleScope,
+        explicacionAplicabilidad: insight.appliesBecause,
         modulo: insight.moduleId || '',
         brandType: insight.brandType,
         estado: insight.status,
@@ -259,6 +262,8 @@ const buildInsightExportRows = (insight: SeoInsight) => {
     facilidadImplementacion: insight.implementationEase,
     accionSugerida: insight.suggestedAction,
     regla: insight.ruleKey,
+    alcanceRegla: insight.ruleScope,
+    explicacionAplicabilidad: insight.appliesBecause,
     modulo: insight.moduleId || '',
     brandType: insight.brandType,
     estado: insight.status,
@@ -294,12 +299,14 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   const [selectedBrandType, setSelectedBrandType] = useState<'all' | SeoInsightBrandType>('all');
   const [trafficSegmentFilter, setTrafficSegmentFilter] = useState<QueryBrandFilter>('all');
   const [selectedStatus, setSelectedStatus] = useState<'all' | SeoInsightLifecycleStatus>('all');
+  const [selectedRuleScope, setSelectedRuleScope] = useState<'all' | 'generic' | 'project_type' | 'sector'>('all');
   const [gscSiteQuery, setGscSiteQuery] = useState('');
   const [comparisonMode, setComparisonMode] = useState<GSCComparisonMode>('previous_period');
   const [showInsightsHelp, setShowInsightsHelp] = useState(false);
   const [showBrandConfigModal, setShowBrandConfigModal] = useState(false);
   const [projectSectorDraft, setProjectSectorDraft] = useState('');
   const [brandTermsDraft, setBrandTermsDraft] = useState('');
+  const [analysisProjectTypesDraft, setAnalysisProjectTypesDraft] = useState<ProjectType[]>([]);
 
   const [startDate, setStartDate] = useState<string>(() => {
     const d = new Date();
@@ -334,6 +341,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     propertyId: currentClient?.id,
     brandTerms: currentClient?.brandTerms || [],
     projectType: currentClient?.projectType,
+    analysisProjectTypes: currentClient?.analysisProjectTypes || (currentClient?.projectType ? [currentClient.projectType] : ['MEDIA']),
     sector: currentClient?.sector || 'Generico',
     geoScope: currentClient?.geoScope || 'global',
   });
@@ -516,9 +524,10 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
         const moduleMatch = selectedModule === 'all' || String(insight.moduleId || '') === selectedModule;
         const brandMatch = selectedBrandType === 'all' || insight.brandType === selectedBrandType;
         const statusMatch = selectedStatus === 'all' || insight.status === selectedStatus;
-        return categoryMatch && priorityMatch && moduleMatch && brandMatch && statusMatch;
+        const scopeMatch = selectedRuleScope === 'all' || insight.ruleScope === selectedRuleScope;
+        return categoryMatch && priorityMatch && moduleMatch && brandMatch && statusMatch && scopeMatch;
       }),
-    [segmentFilteredInsights, selectedCategory, selectedPriority, selectedModule, selectedBrandType, selectedStatus],
+    [segmentFilteredInsights, selectedCategory, selectedPriority, selectedModule, selectedBrandType, selectedStatus, selectedRuleScope],
   );
 
   const categoryOptions = useMemo(
@@ -565,6 +574,9 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       sector: projectSectorDraft || currentClient.sector || 'Otro',
       geoScope: currentClient.geoScope || 'global',
       brandTerms: parseBrandTerms(brandTermsDraft),
+      analysisProjectTypes: analysisProjectTypesDraft.length > 0
+        ? analysisProjectTypesDraft
+        : [currentClient.projectType || 'MEDIA'],
     });
     setShowBrandConfigModal(false);
     showSuccess('Configuración de sector y términos de marca actualizada.');
@@ -608,6 +620,8 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       facilidadImplementacion: insight.implementationEase,
       accionSugerida: insight.suggestedAction,
       regla: insight.ruleKey,
+      alcanceRegla: insight.ruleScope,
+      explicacionAplicabilidad: insight.appliesBecause,
       modulo: insight.moduleId || '',
       brandType: insight.brandType,
       estado: insight.status,
@@ -928,6 +942,30 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                 placeholder="acme, acme corp, producto x"
               />
             </div>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-wide text-muted">
+                Tipologías extra para ampliar análisis
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {(['MEDIA', 'ECOM', 'LOCAL', 'NATIONAL', 'INTERNATIONAL'] as ProjectType[]).map((type) => (
+                  <label key={type} className="flex items-center gap-2 rounded-md border border-border bg-surface-alt px-2 py-1 text-xs text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={analysisProjectTypesDraft.includes(type)}
+                      onChange={(event) => {
+                        setAnalysisProjectTypesDraft((prev) => {
+                          if (event.target.checked) {
+                            return Array.from(new Set([...prev, type]));
+                          }
+                          return prev.filter((item) => item !== type);
+                        });
+                      }}
+                    />
+                    {type}
+                  </label>
+                ))}
+              </div>
+            </div>
             <div className="flex items-center justify-between rounded-lg border border-border bg-surface-alt p-3 text-xs text-muted">
               <span>Proyecto actual: {currentClient?.name || 'Sin proyecto'}</span>
               <span>Tipo: {currentClient?.projectType || 'MEDIA'}</span>
@@ -1104,6 +1142,7 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                     <Badge variant={priorityVariant[insight.priority]} className="text-[10px]">{priorityLabel[insight.priority]}</Badge>
                   </div>
                   <p className="mt-1 text-xs text-muted line-clamp-2">{insight.summary}</p>
+                  <div className="mt-1 text-[11px] text-muted">{insight.appliesBecause}</div>
                   <div className="mt-2 text-[11px] text-muted">Score {insight.score} · {insight.affectedCount} filas · regla {insight.ruleKey}</div>
                 </button>
               )) : <div className="text-xs text-muted">Sin quick wins detectados en este periodo.</div>}
@@ -1127,6 +1166,7 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                     <Badge variant={severityVariant[insight.severity]} className="text-[10px]">{insight.severity}</Badge>
                   </div>
                   <p className="mt-1 text-xs text-muted line-clamp-2">{insight.summary}</p>
+                  <div className="mt-1 text-[11px] text-muted">{insight.appliesBecause}</div>
                   <div className="mt-2 text-[11px] text-muted">Score {insight.score} · {insight.affectedCount} filas · regla {insight.ruleKey}</div>
                 </button>
               )) : <div className="text-xs text-muted">Sin anomalías críticas detectadas en este periodo.</div>}
@@ -1216,6 +1256,16 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
               <option value="ignored">ignored</option>
               <option value="postponed">postponed</option>
             </select>
+            <select
+              className="px-3 py-2 rounded-lg border border-border bg-surface-alt text-sm"
+              value={selectedRuleScope}
+              onChange={(e) => setSelectedRuleScope(e.target.value as 'all' | 'generic' | 'project_type' | 'sector')}
+            >
+              <option value="all">Todas las reglas</option>
+              <option value="generic">Genéricas</option>
+              <option value="project_type">Específicas tipología</option>
+              <option value="sector">Específicas sector</option>
+            </select>
           </div>
         </div>
 
@@ -1256,6 +1306,9 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                         </div>
                         <div className="text-xs text-muted mt-1 line-clamp-2">
                           {insight.summary}
+                        </div>
+                        <div className="mt-1 text-[11px] text-muted line-clamp-2">
+                          {insight.appliesBecause}
                         </div>
                       </div>
                       <div className="text-right">
@@ -1319,6 +1372,9 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                     onClick={() => {
                       setProjectSectorDraft(currentClient?.sector || 'Otro');
                       setBrandTermsDraft((currentClient?.brandTerms || []).join('\n'));
+                      setAnalysisProjectTypesDraft(
+                        currentClient?.analysisProjectTypes || (currentClient?.projectType ? [currentClient.projectType] : ['MEDIA']),
+                      );
                       setShowBrandConfigModal(true);
                     }}
                   >

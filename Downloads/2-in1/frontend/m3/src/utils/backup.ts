@@ -8,6 +8,7 @@ import {
   normalizeInitialConfigPreset,
   normalizePrimaryLanguage,
   normalizeProjectType,
+  normalizeAnalysisProjectTypes,
   normalizeSector,
   normalizeSubSector,
 } from './projectMetadata';
@@ -98,6 +99,7 @@ const normalizeBackupClient = (rawClient: Client): Client => {
     ...rawClient,
     vertical: getVerticalFromProjectType(projectType),
     projectType,
+    analysisProjectTypes: normalizeAnalysisProjectTypes(rawClient.analysisProjectTypes, projectType),
     sector: normalizeSector(rawClient.sector),
     subSector: normalizeSubSector(rawClient.subSector),
     geoScope,

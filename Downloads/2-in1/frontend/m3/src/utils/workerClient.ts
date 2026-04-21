@@ -10,6 +10,7 @@ export interface GSCWorkerPayload {
   periodPrevious?: SeoInsightDateRange;
   brandTerms?: string[];
   projectType?: ProjectType;
+  analysisProjectTypes?: ProjectType[];
   sector?: string;
   geoScope?: string;
 }

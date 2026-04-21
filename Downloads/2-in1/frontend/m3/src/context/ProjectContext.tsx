@@ -31,6 +31,7 @@ import {
   normalizeGeoScope,
   normalizeInitialConfigPreset,
   normalizeBrandTerms,
+  normalizeAnalysisProjectTypes,
   normalizeCountry,
   normalizePrimaryLanguage,
   normalizeProjectType,
@@ -51,7 +52,7 @@ interface ProjectContextType {
   deleteClient: (id: string) => void;
   switchClient: (id: string) => void;
   updateCurrentClientProfile: (
-    updates: Pick<Client, 'projectType' | 'sector' | 'geoScope' | 'brandTerms'>,
+    updates: Pick<Client, 'projectType' | 'sector' | 'geoScope' | 'brandTerms' | 'analysisProjectTypes'>,
   ) => void;
 
   // Task Actions
@@ -132,6 +133,7 @@ const normalizeProjectClientProfile = (client: Client): Client => {
     ...client,
     vertical,
     projectType,
+    analysisProjectTypes: normalizeAnalysisProjectTypes(client.analysisProjectTypes, projectType),
     sector: normalizeSector(client.sector),
     geoScope: normalizeGeoScope(client.geoScope, projectType),
     country: normalizeCountry(client.country, normalizeGeoScope(client.geoScope, projectType)),
@@ -320,6 +322,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       name: input.name,
       vertical,
       projectType,
+      analysisProjectTypes: normalizeAnalysisProjectTypes(input.analysisProjectTypes, projectType),
       sector: normalizeSector(input.sector),
       geoScope: normalizeGeoScope(input.geoScope, projectType),
       country: normalizeCountry(input.country, normalizeGeoScope(input.geoScope, projectType)),
@@ -361,7 +364,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, []);
 
   const updateCurrentClientProfile = useCallback(
-    (updates: Pick<Client, 'projectType' | 'sector' | 'geoScope' | 'brandTerms'>) => {
+    (updates: Pick<Client, 'projectType' | 'sector' | 'geoScope' | 'brandTerms' | 'analysisProjectTypes'>) => {
       setClients((prev) =>
         prev.map((client) => {
           if (client.id !== currentClientId) {
@@ -374,6 +377,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
           return normalizeProjectClientProfile({
             ...client,
             projectType,
+            analysisProjectTypes: normalizeAnalysisProjectTypes(updates.analysisProjectTypes, projectType),
             sector: normalizeSector(updates.sector),
             geoScope,
             brandTerms: normalizeBrandTerms(updates.brandTerms),

@@ -18,13 +18,22 @@ describe('GSC Insights Engine', () => {
   ];
 
   it('builds prioritized insights with grouped summaries', () => {
-    const result = analyzeGSCInsights({ currentRows, previousRows });
+    const result = analyzeGSCInsights({
+      currentRows,
+      previousRows,
+      projectType: 'ECOM',
+      analysisProjectTypes: ['ECOM', 'LOCAL'],
+      sector: 'Legal',
+    });
 
     expect(result.insights.length).toBeGreaterThan(0);
     expect(result.groupedInsights.length).toBeGreaterThan(0);
     expect(result.insights[0].score).toBeGreaterThanOrEqual(result.insights.at(-1)?.score || 0);
     expect(result.insights.some((insight) => insight.id.startsWith('decliningPages-'))).toBe(true);
     expect(result.insights.some((insight) => insight.id.startsWith('quickWins-'))).toBe(true);
+    expect(result.insights.some((insight) => insight.ruleScope === 'generic')).toBe(true);
+    expect(result.insights.some((insight) => insight.ruleScope === 'project_type')).toBe(true);
+    expect(result.insights.some((insight) => insight.ruleScope === 'sector')).toBe(true);
   });
 
   it('keeps legacy quick wins adapter working', () => {

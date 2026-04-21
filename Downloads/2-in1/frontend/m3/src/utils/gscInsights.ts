@@ -17,6 +17,7 @@ import {
   SeoInsightEngineInput,
   SeoInsightMetricEvidence,
   SeoInsightPriority,
+  SeoInsightRuleScope,
   SeoInsightSeverity,
   SeoInsightSummary,
 } from '../types/seoInsights';
@@ -70,6 +71,9 @@ interface InsightCandidate {
   findingFamily?: 'quick_win' | 'anomaly' | 'insight';
   traceQuery?: string;
   traceUrl?: string;
+  ruleScope?: SeoInsightRuleScope;
+  appliesBecause?: string;
+  applicableProjectTypes?: ProjectType[];
 }
 
 const clamp = (value: number, min = 0, max = 100) => Math.max(min, Math.min(max, value));
@@ -132,6 +136,18 @@ const getBrandType = (query: string, brandTerms: string[] = []): SeoInsightBrand
   return classification.segment;
 };
 
+const normalizeSectorLabel = (sector: string) => sector.trim().toLowerCase();
+
+const getContextReason = (scope: SeoInsightRuleScope, projectType: ProjectType, sector: string): string => {
+  if (scope === 'sector') {
+    return `Regla sectorial aplicada para ${sector}: prioriza patrones de demanda y conversión propios de este sector.`;
+  }
+  if (scope === 'project_type') {
+    return `Regla específica para ${projectType}: se adapta a la tipología operativa del proyecto activo.`;
+  }
+  return `Regla genérica GSC: aplicable a cualquier proyecto y usada como baseline común del motor.`;
+};
+
 const toInsight = (
   candidate: InsightCandidate,
   context: {
@@ -179,6 +195,9 @@ const toInsight = (
     projectType: context.projectType,
     sector: context.sector,
     geoScope: context.geoScope,
+    ruleScope: candidate.ruleScope || 'generic',
+    appliesBecause: candidate.appliesBecause || getContextReason(candidate.ruleScope || 'generic', context.projectType, context.sector),
+    applicableProjectTypes: candidate.applicableProjectTypes || [context.projectType],
     firstDetectedAt: now,
     updatedAt: now,
     createdAt: now,
@@ -263,7 +282,9 @@ export const analyzeGSCInsights = ({
   projectType = 'MEDIA',
   sector = 'Generico',
   geoScope = 'global',
+  analysisProjectTypes = [],
 }: SeoInsightEngineInput): GSCInsightsEngineResult => {
+  const activeProjectTypes = Array.from(new Set([projectType, ...analysisProjectTypes]));
   const comparableRows = buildComparableRows(currentRows, previousRows).filter((row) => row.current.impressions > 0);
   const { byQuery, byPage } = buildAggregateMaps(currentRows);
 
@@ -312,6 +333,9 @@ export const analyzeGSCInsights = ({
       findingFamily: 'quick_win',
       traceQuery: quickWins[0].query,
       traceUrl: quickWins[0].page,
+      ruleScope: 'generic',
+      appliesBecause: getContextReason('generic', projectType, sector),
+      applicableProjectTypes: activeProjectTypes,
     });
   }
 
@@ -347,6 +371,9 @@ export const analyzeGSCInsights = ({
       findingFamily: 'quick_win',
       traceQuery: lowCtr[0].query,
       traceUrl: lowCtr[0].page,
+      ruleScope: 'generic',
+      appliesBecause: getContextReason('generic', projectType, sector),
+      applicableProjectTypes: activeProjectTypes,
     });
   }
 
@@ -380,6 +407,9 @@ export const analyzeGSCInsights = ({
       findingFamily: 'quick_win',
       traceQuery: risingImpressionsFlatClicks[0].query,
       traceUrl: risingImpressionsFlatClicks[0].page,
+      ruleScope: 'generic',
+      appliesBecause: getContextReason('generic', projectType, sector),
+      applicableProjectTypes: activeProjectTypes,
     });
   }
 
@@ -413,6 +443,9 @@ export const analyzeGSCInsights = ({
       potentialTraffic: Math.round(lostClicks),
       brandType: 'mixed',
       findingFamily: 'anomaly',
+      ruleScope: 'generic',
+      appliesBecause: getContextReason('generic', projectType, sector),
+      applicableProjectTypes: activeProjectTypes,
     });
   }
 
@@ -443,6 +476,9 @@ export const analyzeGSCInsights = ({
       relatedRows: emergingQueries.map((row) => row.current).slice(0, 50),
       affectedCount: emergingQueries.length,
       brandType: getBrandType(emergingQueries[0].query, brandTerms),
+      ruleScope: 'generic',
+      appliesBecause: getContextReason('generic', projectType, sector),
+      applicableProjectTypes: activeProjectTypes,
     });
   }
 
@@ -484,6 +520,9 @@ export const analyzeGSCInsights = ({
       brandType: 'mixed',
       findingFamily: 'quick_win',
       traceUrl: expansionUrls[0].url,
+      ruleScope: 'generic',
+      appliesBecause: getContextReason('generic', projectType, sector),
+      applicableProjectTypes: activeProjectTypes,
     });
   }
 
@@ -521,6 +560,9 @@ export const analyzeGSCInsights = ({
       affectedCount: cannibalized.length,
       brandType: 'mixed',
       findingFamily: 'anomaly',
+      ruleScope: 'generic',
+      appliesBecause: getContextReason('generic', projectType, sector),
+      applicableProjectTypes: activeProjectTypes,
     });
   }
 
@@ -565,6 +607,9 @@ export const analyzeGSCInsights = ({
       findingFamily: 'anomaly',
       traceQuery: ctrDropRows[0].query,
       traceUrl: ctrDropRows[0].page,
+      ruleScope: 'generic',
+      appliesBecause: getContextReason('generic', projectType, sector),
+      applicableProjectTypes: activeProjectTypes,
     });
   }
 
@@ -608,6 +653,9 @@ export const analyzeGSCInsights = ({
       findingFamily: 'anomaly',
       traceQuery: topLossRows[0].query,
       traceUrl: topLossRows[0].page,
+      ruleScope: 'generic',
+      appliesBecause: getContextReason('generic', projectType, sector),
+      applicableProjectTypes: activeProjectTypes,
     });
   }
 
@@ -645,6 +693,9 @@ export const analyzeGSCInsights = ({
       affectedCount: currentRows.length,
       brandType: 'mixed',
       findingFamily: 'anomaly',
+      ruleScope: 'project_type',
+      appliesBecause: getContextReason('project_type', projectType, sector),
+      applicableProjectTypes: activeProjectTypes,
     });
   }
 
@@ -700,7 +751,250 @@ export const analyzeGSCInsights = ({
       brandType: 'mixed',
       findingFamily: 'anomaly',
       traceQuery: dominantUrlSwitchRows[0].keys?.[0] || '',
+      ruleScope: 'project_type',
+      appliesBecause: getContextReason('project_type', projectType, sector),
+      applicableProjectTypes: activeProjectTypes,
     });
+  }
+
+  const normalizedSector = normalizeSectorLabel(sector);
+  const sectorSensitive = ['salud', 'estética', 'legal', 'turismo', 'inmobiliaria', 'saas', 'medios'];
+  if (sectorSensitive.some((sectorName) => normalizedSector.includes(sectorName))) {
+    const sectorRows = comparableRows.filter((row) => row.current.position <= 12 && row.current.impressions >= 100);
+    if (sectorRows.length) {
+      candidates.push({
+        id: 'sectorIntentOpportunity',
+        ruleKey: 'sector_specific_intent_opportunity',
+        sourceType: 'query',
+        sourceId: sectorRows[0].query || 'sector-intent',
+        title: `Oportunidad de intención para sector ${sector}`,
+        summary: `${sectorRows.length} filas muestran demanda cualificada para el sector y necesitan priorización editorial/comercial.`,
+        reason: `El patrón detectado coincide con oportunidades típicas de ${sector} (intención con visibilidad y captura parcial).`,
+        recommendation: 'Priorizar páginas/piezas con intención transaccional o informativa crítica del sector y conectar con tareas del roadmap.',
+        category: 'opportunity',
+        severity: 'medium',
+        priority: 'medium',
+        status: 'new',
+        opportunity: 73,
+        impact: normalize(sectorRows.reduce((sum, row) => sum + row.current.impressions, 0), totalImpressions || 1),
+        urgency: 68,
+        confidence: 80,
+        implementationEase: 72,
+        businessValue: 83,
+        moduleId: 6,
+        effort: 40,
+        evidence: sectorRows.slice(0, 3).map((row) => ({
+          label: row.query,
+          value: `${row.current.impressions} impr. · Pos ${row.current.position.toFixed(1)}`,
+          context: row.page,
+          metricKey: 'query',
+        })),
+        relatedRows: sectorRows.map((row) => row.current).slice(0, 50),
+        affectedCount: sectorRows.length,
+        brandType: getBrandType(sectorRows[0].query, brandTerms),
+        findingFamily: 'insight',
+        traceQuery: sectorRows[0].query,
+        traceUrl: sectorRows[0].page,
+        ruleScope: 'sector',
+        appliesBecause: getContextReason('sector', projectType, sector),
+        applicableProjectTypes: activeProjectTypes,
+      });
+    }
+  }
+
+  if (activeProjectTypes.includes('MEDIA')) {
+    const mediaRows = comparableRows.filter((row) => row.current.impressions >= 140 && row.current.ctr <= 0.03);
+    if (mediaRows.length) {
+      candidates.push({
+        id: 'mediaLowCtrCoverage',
+        ruleKey: 'media_articles_high_coverage_low_ctr',
+        sourceType: 'url',
+        sourceId: mediaRows[0].page || 'media-coverage',
+        title: 'MEDIA: cobertura alta con CTR desaprovechado',
+        summary: `${mediaRows.length} filas editoriales tienen alcance pero bajo clic relativo.`,
+        reason: 'En proyectos MEDIA, mejorar snippet/headline impacta de forma directa en distribución de tráfico.',
+        recommendation: 'Actualizar titulares SEO, entradillas y enlazado de clúster para capturar más clics.',
+        category: 'ctr',
+        severity: 'medium',
+        priority: 'medium',
+        status: 'new',
+        opportunity: 75,
+        impact: normalize(mediaRows.reduce((sum, row) => sum + row.current.impressions, 0), totalImpressions || 1),
+        urgency: 72,
+        confidence: 85,
+        implementationEase: 78,
+        businessValue: 86,
+        moduleId: 4,
+        effort: 30,
+        evidence: mediaRows.slice(0, 3).map((row) => ({
+          label: row.query,
+          value: `${(row.current.ctr * 100).toFixed(1)}% CTR`,
+          context: row.page,
+          metricKey: 'ctr',
+        })),
+        relatedRows: mediaRows.map((row) => row.current).slice(0, 50),
+        affectedCount: mediaRows.length,
+        brandType: getBrandType(mediaRows[0].query, brandTerms),
+        findingFamily: 'quick_win',
+        traceQuery: mediaRows[0].query,
+        traceUrl: mediaRows[0].page,
+        ruleScope: 'project_type',
+        appliesBecause: getContextReason('project_type', 'MEDIA', sector),
+        applicableProjectTypes: ['MEDIA'],
+      });
+    }
+  }
+
+  if (activeProjectTypes.includes('ECOM')) {
+    const ecommerceRows = comparableRows.filter((row) => row.current.impressions >= 120 && row.current.position <= 15);
+    if (ecommerceRows.length) {
+      candidates.push({
+        id: 'ecomCategoryOpportunity',
+        ruleKey: 'ecom_categories_commercial_queries',
+        sourceType: 'url',
+        sourceId: ecommerceRows[0].page || 'ecom-category',
+        title: 'ECOM: categorías/PLP con potencial comercial',
+        summary: `${ecommerceRows.length} señales con intención comercial y margen de mejora en CTR/ranking.`,
+        reason: 'Para ECOM, el rendimiento de PLP/PDP afecta directamente a ingresos y conversión orgánica.',
+        recommendation: 'Optimizar copy comercial, filtros indexables y enlazado entre categoría y ficha.',
+        category: 'opportunity',
+        severity: 'high',
+        priority: 'high',
+        status: 'new',
+        opportunity: 82,
+        impact: normalize(ecommerceRows.reduce((sum, row) => sum + row.current.impressions, 0), totalImpressions || 1),
+        urgency: 84,
+        confidence: 81,
+        implementationEase: 62,
+        businessValue: 92,
+        moduleId: 3,
+        effort: 50,
+        evidence: ecommerceRows.slice(0, 3).map((row) => ({ label: row.query, value: `Pos ${row.current.position.toFixed(1)}`, context: row.page })),
+        relatedRows: ecommerceRows.map((row) => row.current).slice(0, 50),
+        affectedCount: ecommerceRows.length,
+        brandType: getBrandType(ecommerceRows[0].query, brandTerms),
+        findingFamily: 'insight',
+        traceQuery: ecommerceRows[0].query,
+        traceUrl: ecommerceRows[0].page,
+        ruleScope: 'project_type',
+        appliesBecause: getContextReason('project_type', 'ECOM', sector),
+        applicableProjectTypes: ['ECOM'],
+      });
+    }
+  }
+
+  if (activeProjectTypes.includes('LOCAL')) {
+    const localRows = comparableRows.filter((row) => row.current.impressions >= 80 && /\b(cerca|city|madrid|barcelona|valencia)\b/i.test(row.query));
+    if (localRows.length) {
+      candidates.push({
+        id: 'localServiceCityIntent',
+        ruleKey: 'local_service_city_intent',
+        sourceType: 'query',
+        sourceId: localRows[0].query || 'local-intent',
+        title: 'LOCAL: intención servicio + ciudad con potencial',
+        summary: `${localRows.length} consultas locales con potencial de mejora en páginas de ubicación/servicio.`,
+        reason: 'En LOCAL, la cobertura por zona es crítica para captar demanda cercana de alta intención.',
+        recommendation: 'Refuerza landings por ubicación y señales locales (NAP, schema, enlazado geográfico).',
+        category: 'content',
+        severity: 'medium',
+        priority: 'high',
+        status: 'new',
+        opportunity: 79,
+        impact: normalize(localRows.reduce((sum, row) => sum + row.current.impressions, 0), totalImpressions || 1),
+        urgency: 83,
+        confidence: 76,
+        implementationEase: 70,
+        businessValue: 88,
+        moduleId: 5,
+        effort: 45,
+        evidence: localRows.slice(0, 3).map((row) => ({ label: row.query, value: `${row.current.impressions} impr.`, context: row.page })),
+        relatedRows: localRows.map((row) => row.current).slice(0, 50),
+        affectedCount: localRows.length,
+        brandType: getBrandType(localRows[0].query, brandTerms),
+        findingFamily: 'insight',
+        traceQuery: localRows[0].query,
+        traceUrl: localRows[0].page,
+        ruleScope: 'project_type',
+        appliesBecause: getContextReason('project_type', 'LOCAL', sector),
+        applicableProjectTypes: ['LOCAL'],
+      });
+    }
+  }
+
+  if (activeProjectTypes.includes('NATIONAL')) {
+    const nationalRows = comparableRows.filter((row) => row.current.impressions >= 160 && row.current.position <= 20);
+    if (nationalRows.length) {
+      candidates.push({
+        id: 'nationalDemandHub',
+        ruleKey: 'national_services_demand_hubs',
+        sourceType: 'cluster',
+        sourceId: nationalRows[0].query || 'national-hub',
+        title: 'NATIONAL: hubs temáticos por demanda',
+        summary: `${nationalRows.length} señales sugieren consolidar hubs para servicios nacionales clave.`,
+        reason: 'Los proyectos NATIONAL escalan mejor con arquitectura temática robusta y cobertura transversal.',
+        recommendation: 'Crear o reforzar hubs con páginas satélite y enlazado interno por intención.',
+        category: 'content',
+        severity: 'medium',
+        priority: 'medium',
+        status: 'new',
+        opportunity: 74,
+        impact: normalize(nationalRows.reduce((sum, row) => sum + row.current.impressions, 0), totalImpressions || 1),
+        urgency: 69,
+        confidence: 79,
+        implementationEase: 64,
+        businessValue: 84,
+        moduleId: 4,
+        effort: 55,
+        evidence: nationalRows.slice(0, 3).map((row) => ({ label: row.query, value: `${row.current.impressions} impr.`, context: row.page })),
+        relatedRows: nationalRows.map((row) => row.current).slice(0, 50),
+        affectedCount: nationalRows.length,
+        brandType: getBrandType(nationalRows[0].query, brandTerms),
+        findingFamily: 'insight',
+        traceQuery: nationalRows[0].query,
+        traceUrl: nationalRows[0].page,
+        ruleScope: 'project_type',
+        appliesBecause: getContextReason('project_type', 'NATIONAL', sector),
+        applicableProjectTypes: ['NATIONAL'],
+      });
+    }
+  }
+
+  if (activeProjectTypes.includes('INTERNATIONAL')) {
+    const internationalRows = comparableRows.filter((row) => row.previous && row.deltaClicks < 0 && row.current.impressions >= 120);
+    if (internationalRows.length) {
+      candidates.push({
+        id: 'internationalMarketDrop',
+        ruleKey: 'international_property_market_drop',
+        sourceType: 'property',
+        sourceId: propertyId,
+        title: 'INTERNATIONAL: mercado/propiedad con caída',
+        summary: `${internationalRows.length} señales de caída en combinaciones query/URL de alcance internacional.`,
+        reason: 'En INTERNATIONAL, las caídas por mercado o idioma requieren respuesta coordinada entre propiedades.',
+        recommendation: 'Prioriza revisión por mercado/idioma y valida consistencia de rollout entre propiedades.',
+        category: 'risk',
+        severity: 'high',
+        priority: 'high',
+        status: 'new',
+        opportunity: 77,
+        impact: normalize(internationalRows.reduce((sum, row) => sum + Math.max(0, -row.deltaClicks), 0), totalClicks || 1),
+        urgency: 88,
+        confidence: 82,
+        implementationEase: 52,
+        businessValue: 91,
+        moduleId: 1,
+        effort: 65,
+        evidence: internationalRows.slice(0, 3).map((row) => ({ label: row.query, value: `${Math.round(row.deltaClicks)} clics`, context: row.page })),
+        relatedRows: internationalRows.map((row) => row.current).slice(0, 50),
+        affectedCount: internationalRows.length,
+        brandType: getBrandType(internationalRows[0].query, brandTerms),
+        findingFamily: 'anomaly',
+        traceQuery: internationalRows[0].query,
+        traceUrl: internationalRows[0].page,
+        ruleScope: 'project_type',
+        appliesBecause: getContextReason('project_type', 'INTERNATIONAL', sector),
+        applicableProjectTypes: ['INTERNATIONAL'],
+      });
+    }
   }
 
   const sortedInsights = candidates

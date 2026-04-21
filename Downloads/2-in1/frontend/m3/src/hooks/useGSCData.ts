@@ -65,6 +65,7 @@ export const useGSCData = (
     propertyId?: string;
     brandTerms?: string[];
     projectType?: ProjectType;
+    analysisProjectTypes?: ProjectType[];
     sector?: string;
     geoScope?: string;
   },
@@ -111,7 +112,7 @@ export const useGSCData = (
     isLoading: isLoadingData,
     error: dataError,
   } = useQuery({
-    queryKey: ['gscData', accessToken, resolvedSelectedSite, startDate, endDate, comparisonMode, context?.propertyId, context?.projectType, context?.sector, context?.geoScope, (context?.brandTerms || []).join('|')],
+    queryKey: ['gscData', accessToken, resolvedSelectedSite, startDate, endDate, comparisonMode, context?.propertyId, context?.projectType, (context?.analysisProjectTypes || []).join('|'), context?.sector, context?.geoScope, (context?.brandTerms || []).join('|')],
     queryFn: async () => {
       const finalEndDate = endDate || new Date().toISOString().split('T')[0];
       const finalStartDate =
@@ -139,6 +140,7 @@ export const useGSCData = (
         periodPrevious: { startDate: previousStartDate, endDate: previousEndDate },
         brandTerms: context?.brandTerms || [],
         projectType: context?.projectType,
+        analysisProjectTypes: context?.analysisProjectTypes || [],
         sector: context?.sector,
         geoScope: context?.geoScope,
       });
