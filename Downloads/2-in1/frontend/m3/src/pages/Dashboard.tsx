@@ -80,7 +80,9 @@ interface HeroMetricProps {
   title: string;
   value: string | number;
   description: string;
-  tone: 'primary' | 'success' | 'warning';
+  tone: string;
+  onClick?: () => void;
+  ctaLabel?: string;
 }
 
 interface UrlTrendSignal {
@@ -161,12 +163,6 @@ export const detectTrendingUrls = (rows: GSCRow[]): UrlTrendSignal[] => {
   });
 
   return result.sort((a, b) => b.clickIncrease * b.surgeRatio - a.clickIncrease * a.surgeRatio).slice(0, 5);
-};
-
-const heroToneStyles: Record<HeroMetricProps['tone'], string> = {
-  primary: 'bg-primary text-on-primary',
-  success: 'bg-success text-on-primary',
-  warning: 'bg-warning text-on-primary',
 };
 
 const formatNumberSafe = (value: unknown, fallback = '—') => {
@@ -276,13 +272,28 @@ const buildInsightExportRows = (insight: SeoInsight) => {
   }));
 };
 
-const HeroMetric: React.FC<HeroMetricProps> = ({ title, value, description, tone }) => (
-  <Card className={`rounded-2xl p-5 shadow-brand ${heroToneStyles[tone]}`}>
-    <div className="text-xs font-bold uppercase tracking-[0.2em] opacity-80">{title}</div>
-    <div className="mt-3 text-3xl font-bold">{value}</div>
-    <div className="mt-2 line-clamp-3 text-xs opacity-80">{description}</div>
-  </Card>
-);
+const HeroMetric: React.FC<HeroMetricProps> = ({ title, value, description, tone, onClick, ctaLabel }) => {
+  if (onClick) {
+    return (
+      <button type="button" className="text-left" onClick={onClick}>
+        <Card className={`rounded-2xl p-5 shadow-brand transition-transform hover:-translate-y-0.5 ${tone}`}>
+          <div className="text-xs font-bold uppercase tracking-[0.2em] opacity-80">{title}</div>
+          <div className="mt-3 text-3xl font-bold">{value}</div>
+          <div className="mt-2 line-clamp-3 text-xs opacity-80">{description}</div>
+          <div className="mt-3 text-[11px] font-semibold opacity-90">{ctaLabel || 'Ver detalle'}</div>
+        </Card>
+      </button>
+    );
+  }
+
+  return (
+    <Card className={`rounded-2xl p-5 shadow-brand ${tone}`}>
+      <div className="text-xs font-bold uppercase tracking-[0.2em] opacity-80">{title}</div>
+      <div className="mt-3 text-3xl font-bold">{value}</div>
+      <div className="mt-2 line-clamp-3 text-xs opacity-80">{description}</div>
+    </Card>
+  );
+};
 
 const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   const navigate = useNavigate();
@@ -566,6 +577,129 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       },
     );
   }, [currentClient?.brandTerms, topQueries?.items]);
+
+  const performanceSummary = useMemo(() => {
+    const current = gscData.reduce(
+      (acc, row) => {
+        const clicks = Number(row.clicks || 0);
+        const impressions = Number(row.impressions || 0);
+        const position = Number(row.position || 0);
+        acc.clicks += clicks;
+        acc.impressions += impressions;
+        acc.positionWeighted += position * impressions;
+        return acc;
+      },
+      { clicks: 0, impressions: 0, positionWeighted: 0 },
+    );
+
+    const previous = comparisonGscData.reduce(
+      (acc, row) => {
+        const clicks = Number(row.clicks || 0);
+        const impressions = Number(row.impressions || 0);
+        const position = Number(row.position || 0);
+        acc.clicks += clicks;
+        acc.impressions += impressions;
+        acc.positionWeighted += position * impressions;
+        return acc;
+      },
+      { clicks: 0, impressions: 0, positionWeighted: 0 },
+    );
+
+    const toCtr = (clicks: number, impressions: number) => (impressions > 0 ? (clicks / impressions) * 100 : 0);
+    const toPosition = (weighted: number, impressions: number) => (impressions > 0 ? weighted / impressions : 0);
+    const deltaPct = (curr: number, prev: number) => (prev > 0 ? ((curr - prev) / prev) * 100 : 0);
+
+    return {
+      current: {
+        clicks: current.clicks,
+        impressions: current.impressions,
+        ctr: toCtr(current.clicks, current.impressions),
+        position: toPosition(current.positionWeighted, current.impressions),
+      },
+      previous: {
+        clicks: previous.clicks,
+        impressions: previous.impressions,
+        ctr: toCtr(previous.clicks, previous.impressions),
+        position: toPosition(previous.positionWeighted, previous.impressions),
+      },
+      delta: {
+        clicks: deltaPct(current.clicks, previous.clicks),
+        impressions: deltaPct(current.impressions, previous.impressions),
+        ctr: toCtr(current.clicks, current.impressions) - toCtr(previous.clicks, previous.impressions),
+        position: toPosition(current.positionWeighted, current.impressions) - toPosition(previous.positionWeighted, previous.impressions),
+      },
+    };
+  }, [comparisonGscData, gscData]);
+
+  const brandDeltaSummary = useMemo(() => {
+    const previousRows = comparisonGscData || [];
+    const previous = previousRows.reduce(
+      (acc, row) => {
+        const query = row.keys?.[0] || '';
+        const classification = classifyQueryBrandSegment(query, currentClient?.brandTerms || []);
+        const clicks = Number(row.clicks || 0);
+        if (classification.segment === 'brand') {
+          acc.brand += clicks;
+        } else if (classification.segment === 'non-brand') {
+          acc.nonBrand += clicks;
+        }
+        return acc;
+      },
+      { brand: 0, nonBrand: 0 },
+    );
+
+    return {
+      current: {
+        brand: topQuerySummary.brand.clicks,
+        nonBrand: topQuerySummary.nonBrand.clicks,
+      },
+      delta: {
+        brand: topQuerySummary.brand.clicks - previous.brand,
+        nonBrand: topQuerySummary.nonBrand.clicks - previous.nonBrand,
+      },
+    };
+  }, [comparisonGscData, currentClient?.brandTerms, topQuerySummary.brand.clicks, topQuerySummary.nonBrand.clicks]);
+
+  const newInsightsCount = useMemo(
+    () => actionableInsights.filter((insight) => insight.status === 'new').length,
+    [actionableInsights],
+  );
+
+  const recommendedAction = useMemo(() => {
+    const candidate = filteredInsights[0] || actionableInsights[0];
+    if (!candidate) {
+      return null;
+    }
+
+    return {
+      title: candidate.title,
+      action: candidate.suggestedAction || 'Revisar el insight y convertirlo en tarea del roadmap.',
+      reason: candidate.reason,
+      trace: {
+        source: candidate.trace?.source || 'gsc',
+        query: candidate.trace?.query || candidate.relatedRows[0]?.query || candidate.relatedRows[0]?.keys?.[0] || 'N/A',
+        url: candidate.trace?.url || candidate.relatedRows[0]?.url || candidate.relatedRows[0]?.page || candidate.relatedRows[0]?.keys?.[1] || 'N/A',
+        property: candidate.trace?.propertyId || candidate.propertyId || selectedSite || 'Sin propiedad',
+        module: candidate.trace?.moduleId ? `M${candidate.trace.moduleId}` : candidate.moduleId ? `M${candidate.moduleId}` : 'Sin módulo',
+        timestamp: candidate.trace?.timestamp || candidate.createdAt || Date.now(),
+      },
+      insight: candidate,
+    };
+  }, [actionableInsights, filteredInsights, selectedSite]);
+
+  const reviewNowActions = useMemo(() => {
+    if (actionableInsights.length === 0) {
+      return [];
+    }
+
+    return actionableInsights.slice(0, 3).map((insight) => ({
+      id: insight.id,
+      title: insight.title,
+      action: insight.suggestedAction || 'Analizar insight y convertir en tarea.',
+      context: `${insight.propertyId || selectedSite || 'sin propiedad'} · ${insight.periodCurrent?.startDate || startDate} → ${insight.periodCurrent?.endDate || endDate}`,
+      insight,
+    }));
+  }, [actionableInsights, endDate, selectedSite, startDate]);
 
   const saveBrandConfig = () => {
     if (!currentClient) return;
@@ -1083,31 +1217,89 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
 
       <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <HeroMetric
-          title="Insights activos"
-          value={actionableInsights.length}
-          description="Señales priorizadas por impacto, urgencia, confianza y facilidad de implementación."
-          tone="bg-gradient-to-br from-slate-900 to-slate-700"
+          title="Score global"
+          value={`${Math.round(globalScore)}%`}
+          description={`Variación periodo: ${performanceSummary.delta.clicks >= 0 ? '+' : ''}${performanceSummary.delta.clicks.toFixed(1)}% en clics vs comparativa.`}
+          tone="bg-gradient-to-br from-slate-900 to-slate-700 text-on-primary"
+          onClick={() => navigate('/app/roadmap')}
+          ctaLabel="Abrir roadmap"
         />
         <HeroMetric
-          title="Oportunidades top"
-          value={actionableTopOpportunities.length}
-          description={
-            actionableTopOpportunities[0]?.title || 'Sin oportunidades destacadas en este periodo.'
-          }
-          tone="bg-gradient-to-br from-emerald-500 to-teal-600"
+          title="Rendimiento GSC"
+          value={`${formatNumberSafe(performanceSummary.current.clicks, '0')} clics`}
+          description={`Impresiones ${formatNumberSafe(performanceSummary.current.impressions, '0')} · CTR ${performanceSummary.current.ctr.toFixed(2)}% · Posición ${performanceSummary.current.position.toFixed(1) || 'N/A'}.`}
+          tone="bg-gradient-to-br from-blue-500 to-indigo-600 text-on-primary"
+          onClick={() => setSelectedCategory('opportunity')}
+          ctaLabel="Ver oportunidades"
         />
         <HeroMetric
-          title="Riesgos top"
-          value={actionableTopRisks.length}
-          description={actionableTopRisks[0]?.title || 'No se detectan riesgos de alta prioridad.'}
-          tone="bg-gradient-to-br from-rose-500 to-red-700"
+          title="Brand vs Non-brand"
+          value={`${brandDeltaSummary.current.brand.toLocaleString()} / ${brandDeltaSummary.current.nonBrand.toLocaleString()}`}
+          description={`Δ Brand ${brandDeltaSummary.delta.brand >= 0 ? '+' : ''}${brandDeltaSummary.delta.brand.toLocaleString()} · Δ Non-brand ${brandDeltaSummary.delta.nonBrand >= 0 ? '+' : ''}${brandDeltaSummary.delta.nonBrand.toLocaleString()} clics.`}
+          tone="bg-gradient-to-br from-emerald-500 to-teal-600 text-on-primary"
+          onClick={() => setTrafficSegmentFilter('non-brand')}
+          ctaLabel="Filtrar non-brand"
         />
         <HeroMetric
-          title="Comparativa"
-          value={comparisonPeriod ? GSC_COMPARISON_MODE_LABELS[comparisonPeriod.mode] : 'N/A'}
-          description={comparisonSummary}
-          tone="bg-gradient-to-br from-blue-500 to-indigo-600"
+          title="Cobertura de análisis"
+          value={`${visibleSelectedGscSite ? 1 : 0}/${Math.max(1, filteredGscSites.length)}`}
+          description={`${newInsightsCount} insights nuevos · ${comparisonPeriod ? GSC_COMPARISON_MODE_LABELS[comparisonPeriod.mode] : 'sin comparativa'} · ${comparisonSummary}`}
+          tone="bg-gradient-to-br from-rose-500 to-red-700 text-on-primary"
+          onClick={() => setSelectedStatus('new')}
+          ctaLabel="Ver insights nuevos"
         />
+      </section>
+
+      <section className="bg-surface rounded-2xl border border-border p-6 shadow-sm space-y-5">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h3 className="font-bold text-lg">Centro de decisión SEO</h3>
+            <p className="text-sm text-muted mt-1">
+              Lectura ejecutiva con trazabilidad completa: dato GSC → insight → siguiente acción.
+            </p>
+          </div>
+          <Badge variant="neutral" className="text-xs">
+            Propiedad: {visibleSelectedGscSite || 'sin seleccionar'}
+          </Badge>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+          <div className="rounded-xl border border-border bg-surface-alt p-4">
+            <div className="text-[11px] uppercase tracking-wide text-muted">Oportunidades</div>
+            <div className="mt-1 text-2xl font-bold text-foreground">{actionableTopOpportunities.length}</div>
+            <div className="mt-1 text-xs text-muted line-clamp-2">{actionableTopOpportunities[0]?.title || 'No hay oportunidades priorizadas todavía.'}</div>
+          </div>
+          <div className="rounded-xl border border-border bg-surface-alt p-4">
+            <div className="text-[11px] uppercase tracking-wide text-muted">Riesgos</div>
+            <div className="mt-1 text-2xl font-bold text-foreground">{actionableTopRisks.length}</div>
+            <div className="mt-1 text-xs text-muted line-clamp-2">{actionableTopRisks[0]?.title || 'Sin riesgos críticos en esta lectura.'}</div>
+          </div>
+          <div className="rounded-xl border border-border bg-surface-alt p-4">
+            <div className="text-[11px] uppercase tracking-wide text-muted">Quick wins</div>
+            <div className="mt-1 text-2xl font-bold text-foreground">{prioritizedQuickWins.length}</div>
+            <div className="mt-1 text-xs text-muted">Impacto rápido con baja fricción de ejecución.</div>
+          </div>
+          <div className="rounded-xl border border-border bg-surface-alt p-4">
+            <div className="text-[11px] uppercase tracking-wide text-muted">Anomalías</div>
+            <div className="mt-1 text-2xl font-bold text-foreground">{prioritizedAnomalies.length}</div>
+            <div className="mt-1 text-xs text-muted">Detectadas desde señales de variación abrupta.</div>
+          </div>
+          <div className="rounded-xl border border-primary/20 bg-primary-soft p-4">
+            <div className="text-[11px] uppercase tracking-wide text-primary">Siguiente acción recomendada</div>
+            <div className="mt-1 text-sm font-semibold text-foreground line-clamp-2">{recommendedAction?.title || 'Configura propiedad y periodo para generar acción recomendada.'}</div>
+            <div className="mt-1 text-xs text-muted line-clamp-3">{recommendedAction?.action || 'Sin datos suficientes todavía para sugerir la siguiente acción.'}</div>
+            {recommendedAction && (
+              <div className="mt-2 space-y-1 text-[10px] text-muted">
+                <div>Origen: {recommendedAction.trace.source}</div>
+                <div>Propiedad: {recommendedAction.trace.property}</div>
+                <div>Query: {recommendedAction.trace.query}</div>
+                <div>URL: {recommendedAction.trace.url}</div>
+                <div>Módulo: {recommendedAction.trace.module}</div>
+                <div>Timestamp: {new Date(recommendedAction.trace.timestamp).toLocaleString()}</div>
+              </div>
+            )}
+          </div>
+        </div>
       </section>
 
 
@@ -1453,6 +1645,38 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                 )}
               </div>
 
+              <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-4">
+                <div className="rounded-xl border border-border bg-surface-alt p-3">
+                  <div className="text-[11px] uppercase tracking-wide text-muted">Δ Clics</div>
+                  <div className="mt-1 text-lg font-bold text-foreground">
+                    {performanceSummary.delta.clicks >= 0 ? '+' : ''}
+                    {performanceSummary.delta.clicks.toFixed(1)}%
+                  </div>
+                </div>
+                <div className="rounded-xl border border-border bg-surface-alt p-3">
+                  <div className="text-[11px] uppercase tracking-wide text-muted">Δ Impresiones</div>
+                  <div className="mt-1 text-lg font-bold text-foreground">
+                    {performanceSummary.delta.impressions >= 0 ? '+' : ''}
+                    {performanceSummary.delta.impressions.toFixed(1)}%
+                  </div>
+                </div>
+                <div className="rounded-xl border border-border bg-surface-alt p-3">
+                  <div className="text-[11px] uppercase tracking-wide text-muted">Δ CTR</div>
+                  <div className="mt-1 text-lg font-bold text-foreground">
+                    {performanceSummary.delta.ctr >= 0 ? '+' : ''}
+                    {performanceSummary.delta.ctr.toFixed(2)} pp
+                  </div>
+                </div>
+                <div className="rounded-xl border border-border bg-surface-alt p-3">
+                  <div className="text-[11px] uppercase tracking-wide text-muted">Δ Posición</div>
+                  <div className="mt-1 text-lg font-bold text-foreground">
+                    {performanceSummary.delta.position >= 0 ? '+' : ''}
+                    {performanceSummary.delta.position.toFixed(2)}
+                  </div>
+                  <div className="text-[10px] text-muted">Negativo es mejora (menos posición media).</div>
+                </div>
+              </div>
+
               <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
                 <div className="rounded-xl border border-border bg-surface-alt p-3">
                   <div className="text-[11px] uppercase tracking-wide text-muted">Total</div>
@@ -1475,6 +1699,16 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                     {topQuerySummary.reviewCount} queries en revisión (mixed)
                   </div>
                 </div>
+              </div>
+
+              <div className="mb-3 rounded-xl border border-border bg-surface-alt p-3 text-xs text-muted">
+                <strong className="text-foreground">Lectura ejecutiva:</strong>{' '}
+                {performanceSummary.delta.clicks >= 0
+                  ? 'el tráfico orgánico crece'
+                  : 'el tráfico orgánico cae'}{' '}
+                {Math.abs(performanceSummary.delta.clicks).toFixed(1)}% mientras que las impresiones{' '}
+                {performanceSummary.delta.impressions >= 0 ? 'suben' : 'bajan'}{' '}
+                {Math.abs(performanceSummary.delta.impressions).toFixed(1)}%. Revisa la relación CTR/posición para priorizar snippet, intención y enlazado interno.
               </div>
 
               <div className="h-72 w-full">
@@ -1682,6 +1916,31 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
         </div>
 
         <div className="space-y-6">
+          <div className="bg-surface p-5 rounded-2xl shadow-sm border border-border">
+            <h3 className="font-bold mb-4">Qué revisar ahora</h3>
+            <div className="space-y-3">
+              {reviewNowActions.length > 0 ? (
+                reviewNowActions.map((item, index) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setSelectedInsight(item.insight)}
+                    className="w-full rounded-lg border border-border bg-surface-alt/40 p-3 text-left hover:border-primary/40"
+                  >
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-primary">Acción {index + 1}</div>
+                    <div className="mt-1 text-sm font-semibold text-foreground line-clamp-2">{item.action}</div>
+                    <div className="mt-1 text-xs text-muted line-clamp-2">{item.title}</div>
+                    <div className="mt-1 text-[11px] text-muted">{item.context}</div>
+                  </button>
+                ))
+              ) : (
+                <div className="rounded-lg border border-dashed border-border bg-surface-alt/20 p-3 text-xs text-muted">
+                  No hay insights suficientes para sugerir 3 acciones. Conecta una propiedad GSC y amplía el rango de fechas para generar recomendaciones accionables.
+                </div>
+              )}
+            </div>
+          </div>
+
           {topQueriesNormalized.length > 0 ? (
             <div className="bg-surface p-5 rounded-2xl shadow-sm border border-border">
               <h3 className="font-bold mb-4 flex items-center gap-2">
