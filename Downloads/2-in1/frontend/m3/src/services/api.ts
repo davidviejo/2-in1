@@ -46,6 +46,12 @@ export interface LauncherAppItem {
     directory?: string;
     manifest_path?: string;
   };
+  launcher?: {
+    healthcheck?: {
+      type?: 'http' | 'tcp';
+      target?: string;
+    } | null;
+  } | null;
 }
 
 export interface LauncherSectionItem {

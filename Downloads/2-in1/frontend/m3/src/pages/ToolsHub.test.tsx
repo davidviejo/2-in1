@@ -1,7 +1,7 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import ToolsHub from './ToolsHub';
+import ToolsHub, { resolveAppUrl } from './ToolsHub';
 import { api } from '../services/api';
 
 vi.mock('../services/api', () => ({
@@ -131,5 +131,25 @@ describe('ToolsHub launcher panel', () => {
     await screen.findByText(/Runtime degradado/i);
     expect(screen.getByRole('button', { name: /^Iniciar$/i }).hasAttribute('disabled')).toBe(true);
     expect(screen.getByRole('button', { name: /^Instalar$/i }).hasAttribute('disabled')).toBe(true);
+  });
+});
+
+describe('resolveAppUrl', () => {
+  it('resolves SPA hash paths against frontend origin', () => {
+    expect(resolveAppUrl({ path: '/#/app/gsc-impact', healthcheckTarget: 'http://localhost:6000/health' })).toBe(
+      'http://localhost:3000/#/app/gsc-impact',
+    );
+  });
+
+  it('keeps absolute URLs untouched', () => {
+    expect(resolveAppUrl({ path: 'https://tools.example.com/app', healthcheckTarget: 'http://localhost:5000/health' })).toBe(
+      'https://tools.example.com/app',
+    );
+  });
+
+  it('uses launcher healthcheck origin for relative paths', () => {
+    expect(resolveAppUrl({ path: '/global-status', healthcheckTarget: 'http://localhost:5000/health' })).toBe(
+      'http://localhost:5000/global-status',
+    );
   });
 });
