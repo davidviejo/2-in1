@@ -27,6 +27,7 @@ export type SeoInsightLifecycleStatus =
 
 export type SeoInsightSourceType = 'query' | 'url' | 'property' | 'cluster';
 export type SeoInsightBrandType = 'brand' | 'non-brand' | 'mixed';
+export type SeoInsightRuleScope = 'generic' | 'project_type' | 'sector';
 
 export interface SeoInsightMetricEvidence {
   label: string;
@@ -88,6 +89,9 @@ export interface SeoInsight {
   projectType?: ProjectType;
   sector?: string;
   geoScope?: string;
+  ruleScope?: SeoInsightRuleScope;
+  appliesBecause?: string;
+  applicableProjectTypes?: ProjectType[];
   firstDetectedAt?: number;
   updatedAt?: number;
   createdAt?: number;
@@ -154,4 +158,5 @@ export interface SeoInsightEngineInput {
   projectType?: ProjectType;
   sector?: string;
   geoScope?: string;
+  analysisProjectTypes?: ProjectType[];
 }

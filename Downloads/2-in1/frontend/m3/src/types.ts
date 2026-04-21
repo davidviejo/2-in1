@@ -170,6 +170,7 @@ export interface Client {
   name: string;
   vertical: ClientVertical;
   projectType?: ProjectType;
+  analysisProjectTypes?: ProjectType[];
   sector?: string;
   geoScope?: GeoScope;
   country?: string;
@@ -195,6 +196,7 @@ export interface NewClientInput {
   subSector?: string;
   geoScope?: GeoScope;
   projectType?: ProjectType;
+  analysisProjectTypes?: ProjectType[];
   country?: string;
   primaryLanguage?: string;
   brandTerms?: string[];

@@ -10,6 +10,7 @@ interface GSCWorkerPayload {
   periodPrevious?: SeoInsightDateRange;
   brandTerms?: string[];
   projectType?: ProjectType;
+  analysisProjectTypes?: ProjectType[];
   sector?: string;
   geoScope?: string;
 }
@@ -31,6 +32,7 @@ addEventListener('message', (e: MessageEvent<GSCWorkerPayload>) => {
       periodPrevious: payload.periodPrevious,
       brandTerms: payload.brandTerms,
       projectType: payload.projectType,
+      analysisProjectTypes: payload.analysisProjectTypes,
       sector: payload.sector,
       geoScope: payload.geoScope,
     });

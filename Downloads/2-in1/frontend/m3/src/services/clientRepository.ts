@@ -17,6 +17,7 @@ import {
   normalizeCountry,
   normalizePrimaryLanguage,
   normalizeProjectType,
+  normalizeAnalysisProjectTypes,
   normalizeSector,
   normalizeSubSector,
 } from '../utils/projectMetadata';
@@ -195,6 +196,7 @@ const normalizeClient = (client: Client, options?: { validateDuplicateTaskIds?: 
     ...client,
     vertical,
     projectType,
+    analysisProjectTypes: normalizeAnalysisProjectTypes((client as Partial<Client>).analysisProjectTypes, projectType),
     sector: normalizeSector((client as Partial<Client>).sector),
     geoScope: normalizeGeoScope((client as Partial<Client>).geoScope, projectType),
     country: normalizeCountry(
@@ -255,6 +257,7 @@ const createFallbackClient = (): Client => {
     name: 'Proyecto Demo',
     vertical: 'media',
     projectType: getProjectTypeFromVertical('media'),
+    analysisProjectTypes: [getProjectTypeFromVertical('media')],
     sector: 'Otro',
     geoScope: 'global',
     country: 'Global',
