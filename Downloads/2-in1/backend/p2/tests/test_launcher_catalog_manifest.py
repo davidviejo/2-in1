@@ -130,6 +130,18 @@ def test_launcher_catalog_static_main_apps_include_launcher():
     assert apps_by_id['backend-main']['launcher']['start_cmd'] == 'python run.py'
 
 
+def test_launcher_catalog_frontend_paths_use_hash_prefix():
+    class _FakeApp:
+        config = {}
+
+    catalog = get_launcher_catalog(app=_FakeApp())
+    apps_by_id = {app['id']: app for app in catalog['apps']}
+
+    assert apps_by_id['frontend-dashboard']['path'] == '/#/app/'
+    assert apps_by_id['frontend-gsc-impact']['path'] == '/#/app/gsc-impact?view=global'
+    assert apps_by_id['frontend-roadmap']['path'] == '/#/app/client-roadmap'
+
+
 def test_load_integrated_apps_skips_directories_listed_in_launcherignore(tmp_path, monkeypatch):
     repo_root = tmp_path / 'repo'
     base_dir = repo_root / 'apps-independientes'
