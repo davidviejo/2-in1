@@ -468,6 +468,7 @@ const HeroMetric: React.FC<HeroMetricProps> = ({ title, value, description, tone
 };
 
 const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
+  const GSC_DATA_DELAY_DAYS = 2;
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { success: showSuccess } = useToast();
@@ -501,10 +502,14 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
 
   const [startDate, setStartDate] = useState<string>(() => {
     const d = new Date();
-    d.setDate(d.getDate() - 28);
+    d.setDate(d.getDate() - GSC_DATA_DELAY_DAYS - 28);
     return d.toISOString().split('T')[0];
   });
-  const [endDate, setEndDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - GSC_DATA_DELAY_DAYS);
+    return d.toISOString().split('T')[0];
+  });
 
   const {
     gscAccessToken,

@@ -13,6 +13,7 @@ export const GSCDateRangeControl: React.FC<GSCDateRangeControlProps> = ({
   onRangeChange,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const GSC_DATA_DELAY_DAYS = 2;
 
   const ranges = [
     { label: 'Últimos 7 días', days: 7 },
@@ -25,6 +26,7 @@ export const GSCDateRangeControl: React.FC<GSCDateRangeControlProps> = ({
 
   const handleSelect = (days: number) => {
     const end = new Date();
+    end.setDate(end.getDate() - GSC_DATA_DELAY_DAYS);
     const start = new Date();
     start.setDate(end.getDate() - days);
 
