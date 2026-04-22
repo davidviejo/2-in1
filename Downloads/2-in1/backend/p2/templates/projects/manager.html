@@ -119,15 +119,35 @@
                     <div class="tab-pane fade" id="tabBulk">
                         <div class="alert alert-info">
                             <h6 class="fw-bold"><i class="fas fa-file-excel"></i> Subir Excel / CSV</h6>
-                            <p class="small mb-0">El archivo debe tener columnas: <b>Nombre, URL, Keyword</b>.</p>
+                            <p class="small mb-0">Acepta columnas flexibles. Recomendado: <b>URL | Kw objetivo</b> (o también <b>Nombre, URL, Keyword</b>).</p>
                         </div>
-                        <form action="/projects/upload_clusters" method="POST" enctype="multipart/form-data" class="text-center p-4 border rounded bg-light">
+                        <form action="/projects/upload_clusters" method="POST" enctype="multipart/form-data" class="text-center p-4 border rounded bg-light mb-3">
                             <input type="hidden" name="id" id="p_id_upload">
                             <input type="file" name="file" class="form-control mb-3" accept=".csv, .xlsx" required>
                             <button type="submit" class="btn btn-primary fw-bold w-100">
                                 <i class="fas fa-cloud-upload-alt"></i> PROCESAR ARCHIVO Y GUARDAR
                             </button>
                         </form>
+
+                        <div class="border rounded bg-light p-3">
+                            <h6 class="fw-bold mb-2"><i class="fas fa-bolt"></i> Autoasignar KW por URL</h6>
+                            <p class="small text-muted mb-3">Genera KW objetivo automáticamente desde el slug de cada URL (ideal para miles de páginas).</p>
+                            <form action="/projects/auto_assign_keywords" method="POST" class="row g-2 align-items-end">
+                                <input type="hidden" name="id" id="p_id_auto">
+                                <div class="col-md-8">
+                                    <label class="small fw-bold">Aplicar sobre</label>
+                                    <select class="form-select" name="apply_on">
+                                        <option value="missing">Solo URLs sin KW objetivo</option>
+                                        <option value="all">Todas las URLs (sobrescribir)</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4 d-grid">
+                                    <button type="submit" class="btn btn-outline-primary fw-bold">
+                                        <i class="fas fa-magic"></i> AUTOASIGNAR
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -144,6 +164,7 @@
     function openNewModal() {
         document.getElementById('p_id').value = '';
         document.getElementById('p_id_upload').value = '';
+        document.getElementById('p_id_auto').value = '';
         document.getElementById('mainForm').reset();
         document.getElementById('p_geo').value = 'ES';
         document.getElementById('clusterTableBody').innerHTML = '';
@@ -153,6 +174,7 @@
     function editProject(data) {
         document.getElementById('p_id').value = data.id;
         document.getElementById('p_id_upload').value = data.id;
+        document.getElementById('p_id_auto').value = data.id;
         document.getElementById('p_name').value = data.name;
         document.getElementById('p_domain').value = data.domain;
         document.getElementById('p_geo').value = data.geo;
