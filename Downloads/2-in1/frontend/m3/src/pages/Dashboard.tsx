@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   ResponsiveContainer,
   BarChart,
@@ -17,7 +17,7 @@ import {
   Area,
 } from 'recharts';
 import { GSCRow, ModuleData } from '../types';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowRight,
   CheckCircle2,
@@ -302,6 +302,7 @@ const HeroMetric: React.FC<HeroMetricProps> = ({ title, value, description, tone
 
 const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { success: showSuccess } = useToast();
   const { currentClient, updateCurrentClientProfile } = useProject();
   const [quickTask, setQuickTask] = useState('');
@@ -476,6 +477,17 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
         .filter((insight) => insight.relatedRows.length > 0),
     [insights, isIgnored, getInsightStatus],
   );
+
+  useEffect(() => {
+    const insightId = searchParams.get('insightId');
+    if (!insightId || actionableInsights.length === 0) return;
+    const matched = actionableInsights.find((insight) => insight.id === insightId);
+    if (!matched) return;
+    setSelectedInsight(matched);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('insightId');
+    setSearchParams(nextParams, { replace: true });
+  }, [actionableInsights, searchParams, setSearchParams]);
 
   const segmentFilteredInsights = useMemo(
     () =>

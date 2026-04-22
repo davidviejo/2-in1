@@ -21,6 +21,23 @@ export interface Task {
   assignee?: string;
   dueDate?: string;
   flow?: InsightFlowTrace;
+  insightSourceMeta?: InsightSourceMeta;
+}
+
+export interface InsightSourceMeta {
+  insightId: string;
+  sourceType: string;
+  sourceLabel: string;
+  moduleId?: number;
+  metricsSnapshot: Record<string, number | string | undefined>;
+  periodContext?: {
+    current?: string;
+    previous?: string;
+  };
+  property?: string;
+  query?: string;
+  url?: string;
+  timestamp: number;
 }
 
 export interface InsightFlowEvidence {

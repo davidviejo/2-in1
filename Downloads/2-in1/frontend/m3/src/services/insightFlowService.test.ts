@@ -20,6 +20,9 @@ const mockInsight: SeoInsight = {
   affectedCount: 14,
   confidence: 88,
   businessValue: 79,
+  impact: 85,
+  urgency: 70,
+  ease: 66,
   implementationEase: 60,
   relatedRows: [],
   metrics: {},
@@ -51,5 +54,7 @@ describe('insightFlowService', () => {
     expect(task.isInCustomRoadmap).toBe(true);
     expect(task.flow?.impact.score).toBe(91);
     expect(task.flow?.opportunityOrRisk).toBe('opportunity');
+    expect(task.insightSourceMeta?.insightId).toBe('quickWins');
+    expect(task.insightSourceMeta?.query).toBe('seo tecnico medios');
   });
 });

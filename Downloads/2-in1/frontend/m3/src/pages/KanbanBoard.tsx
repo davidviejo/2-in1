@@ -333,6 +333,16 @@ const KanbanBoard: React.FC = () => {
                               <h4 className="mb-3 text-sm font-medium leading-snug text-foreground">
                                 {item.task.title}
                               </h4>
+                              {item.task.insightSourceMeta && (
+                                <Link
+                                  to={`/app/dashboard?insightId=${encodeURIComponent(item.task.insightSourceMeta.insightId)}`}
+                                  onClick={(event) => event.stopPropagation()}
+                                  className="mb-3 inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] text-indigo-700"
+                                >
+                                  Creado desde insight {item.task.insightSourceMeta.insightId}
+                                  <ExternalLink size={10} />
+                                </Link>
+                              )}
 
                               {item.task.status === 'completed' && (
                                 <div className="flex justify-end mb-2 opacity-0 group-hover:opacity-100 transition-opacity">

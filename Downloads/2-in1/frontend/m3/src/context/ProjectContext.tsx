@@ -20,6 +20,7 @@ import {
   IAVisibilityRunResult,
   createDefaultIAVisibilityState,
   InsightFlowTrace,
+  InsightSourceMeta,
 } from '../types';
 import { ClientRepository } from '../services/clientRepository';
 import { ProjectRemoteRepository } from '../services/projectRemoteRepository';
@@ -65,6 +66,9 @@ interface ProjectContextType {
     options?: {
       isInCustomRoadmap?: boolean;
       flow?: InsightFlowTrace;
+      status?: TaskStatus;
+      assignee?: string;
+      insightSourceMeta?: InsightSourceMeta;
     },
   ) => void;
   addTasksBulk: (
@@ -427,6 +431,9 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       options?: {
         isInCustomRoadmap?: boolean;
         flow?: InsightFlowTrace;
+        status?: TaskStatus;
+        assignee?: string;
+        insightSourceMeta?: InsightSourceMeta;
       },
     ) => {
       const newModules = modules.map((m) => {
@@ -436,11 +443,13 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
           title,
           description,
           impact,
-          status: 'pending',
           category,
           isCustom: true,
           isInCustomRoadmap: options?.isInCustomRoadmap || false,
           flow: options?.flow,
+          status: options?.status || 'pending',
+          assignee: options?.assignee,
+          insightSourceMeta: options?.insightSourceMeta,
         };
         return {
           ...m,

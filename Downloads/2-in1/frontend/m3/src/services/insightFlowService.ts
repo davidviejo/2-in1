@@ -1,4 +1,4 @@
-import { GSCRow, InsightFlowTrace, Task } from '../types';
+import { GSCRow, InsightFlowTrace, InsightSourceMeta, Task } from '../types';
 import { SeoInsight } from '../types/seoInsights';
 
 const normalizeCategory = (category: SeoInsight['category']): 'opportunity' | 'risk' =>
@@ -45,6 +45,34 @@ export const buildInsightFlowTrace = (insight: SeoInsight, row: GSCRow): Insight
   phase: 'phase1',
 });
 
+export const buildInsightSourceMeta = (insight: SeoInsight, row: GSCRow): InsightSourceMeta => ({
+  insightId: insight.id,
+  sourceType: insight.sourceType || 'query',
+  sourceLabel: insight.title,
+  moduleId: insight.moduleId,
+  metricsSnapshot: {
+    score: insight.score,
+    confidence: insight.confidence,
+    opportunity: insight.opportunity,
+    impressions: row.impressions,
+    clicks: row.clicks,
+    ctr: row.ctr,
+    position: row.position,
+  },
+  periodContext: {
+    current: insight.periodCurrent
+      ? `${insight.periodCurrent.startDate}..${insight.periodCurrent.endDate}`
+      : undefined,
+    previous: insight.periodPrevious
+      ? `${insight.periodPrevious.startDate}..${insight.periodPrevious.endDate}`
+      : undefined,
+  },
+  property: insight.propertyId,
+  query: row.keys?.[0],
+  url: row.keys?.[1],
+  timestamp: Date.now(),
+});
+
 export const buildTaskFromInsight = (insight: SeoInsight, row: GSCRow): Partial<Task> => {
   const query = row.keys?.[0] || 'consulta';
   return {
@@ -65,5 +93,6 @@ export const buildTaskFromInsight = (insight: SeoInsight, row: GSCRow): Partial<
     isCustom: true,
     isInCustomRoadmap: true,
     flow: buildInsightFlowTrace(insight, row),
+    insightSourceMeta: buildInsightSourceMeta(insight, row),
   };
 };
