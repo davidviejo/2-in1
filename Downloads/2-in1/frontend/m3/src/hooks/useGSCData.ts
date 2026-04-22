@@ -148,6 +148,8 @@ export const useGSCData = (
       return {
         gscData: dateData,
         comparisonGscData: comparisonDateData,
+        queryPageData: currentQueryPageData || [],
+        comparisonQueryPageData: previousQueryPageData || [],
         pageDateData: pageDateData.rows || [],
         insights,
         comparisonPeriod: {
@@ -180,6 +182,8 @@ export const useGSCData = (
     setSelectedSite,
     gscData: siteData?.gscData || [],
     comparisonGscData: siteData?.comparisonGscData || [],
+    queryPageData: siteData?.queryPageData || [],
+    comparisonQueryPageData: siteData?.comparisonQueryPageData || [],
     pageDateData: siteData?.pageDateData || [],
     comparisonPeriod: siteData?.comparisonPeriod || null,
     isLoadingGsc: isLoadingSites || isLoadingData,

@@ -23,6 +23,8 @@ vi.mock('recharts', () => {
     Radar: () => <div />,
     AreaChart: MockChart,
     Area: () => <div />,
+    ReferenceLine: () => <div />,
+    Legend: () => <div />,
   };
 });
 
@@ -54,6 +56,16 @@ vi.mock('../hooks/useGSCData', () => ({
     setSelectedSite: vi.fn(),
     gscData: [],
     comparisonGscData: [],
+    queryPageData: [
+      {
+        keys: ['seo test', 'https://example.com/seo-test'],
+        position: 3.2,
+        clicks: 42,
+        impressions: 180,
+        ctr: 0.23,
+      },
+    ],
+    comparisonQueryPageData: [],
     pageDateData: [],
     comparisonPeriod: null,
     isLoadingGsc: false,
@@ -94,6 +106,8 @@ vi.mock('../context/ProjectContext', () => ({
       sector: 'Otro',
       geoScope: 'global',
     },
+    updateCurrentClientProfile: vi.fn(),
+    addTask: vi.fn(),
   }),
 }));
 

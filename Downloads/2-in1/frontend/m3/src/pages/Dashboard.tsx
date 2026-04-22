@@ -15,6 +15,8 @@ import {
   Radar,
   AreaChart,
   Area,
+  ReferenceLine,
+  Legend,
 } from 'recharts';
 import { GSCRow, ModuleData } from '../types';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -33,6 +35,7 @@ import {
   Globe,
   HelpCircle,
   Upload,
+  ExternalLink,
 } from 'lucide-react';
 import { useToast } from '../components/ui/ToastContext';
 import { Skeleton } from '../components/ui/Skeleton';
@@ -97,6 +100,26 @@ interface UrlTrendSignal {
   baselineClicks: number;
   surgeRatio: number;
   clickIncrease: number;
+}
+
+type PerformanceMetric = 'clicks' | 'impressions' | 'ctr' | 'position';
+type QueryCategoryFilter = 'all' | 'informational' | 'commercial' | 'navigational' | 'local' | 'other';
+
+interface NormalizedQueryRow {
+  query: string;
+  dominantUrl: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+  brandSegment: 'brand' | 'non-brand' | 'mixed';
+  needsReview: boolean;
+  category: QueryCategoryFilter;
+  previousClicks: number;
+  previousImpressions: number;
+  previousCtr: number;
+  previousPosition: number;
+  deltaClicksPct: number;
 }
 
 export const getVisibleSelectedGscSite = (
@@ -178,6 +201,23 @@ const formatNumberSafe = (value: unknown, fallback = '—') => {
 const formatPositionSafe = (value: unknown, fallback = '—') => {
   const numericValue = Number(value);
   return Number.isFinite(numericValue) ? numericValue.toFixed(1) : fallback;
+};
+
+const PERFORMANCE_METRIC_LABELS: Record<PerformanceMetric, string> = {
+  clicks: 'Clics',
+  impressions: 'Impresiones',
+  ctr: 'CTR',
+  position: 'Posición media',
+};
+
+const classifyQueryCategory = (query: string): QueryCategoryFilter => {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return 'other';
+  if (/^(como|cómo|que|qué|cuando|cuándo|where|what|how|why)\b/.test(normalized)) return 'informational';
+  if (/(precio|comprar|oferta|presupuesto|tarifa|cotizacion|cotización|shop|buy)/.test(normalized)) return 'commercial';
+  if (/(cerca|near me|en |madrid|barcelona|valencia|sevilla|bilbao)/.test(normalized)) return 'local';
+  if (/(login|marca|oficial|site|sitio|web|home)/.test(normalized)) return 'navigational';
+  return 'other';
 };
 
 const sanitizeSheetName = (value: string, fallback: string) => {
@@ -304,7 +344,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { success: showSuccess } = useToast();
-  const { currentClient, updateCurrentClientProfile } = useProject();
+  const { currentClient, updateCurrentClientProfile, addTask } = useProject();
   const [quickTask, setQuickTask] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [selectedInsight, setSelectedInsight] = useState<SeoInsight | null>(null);
@@ -315,6 +355,9 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   const [selectedModule, setSelectedModule] = useState<'all' | string>('all');
   const [selectedBrandType, setSelectedBrandType] = useState<'all' | SeoInsightBrandType>('all');
   const [trafficSegmentFilter, setTrafficSegmentFilter] = useState<QueryBrandFilter>('all');
+  const [queryCategoryFilter, setQueryCategoryFilter] = useState<QueryCategoryFilter>('all');
+  const [selectedPerformanceMetric, setSelectedPerformanceMetric] = useState<PerformanceMetric>('clicks');
+  const [showRoadmapAnnotations, setShowRoadmapAnnotations] = useState(true);
   const [selectedStatus, setSelectedStatus] = useState<'all' | SeoInsightLifecycleStatus>('all');
   const [selectedRuleScope, setSelectedRuleScope] = useState<'all' | 'generic' | 'project_type' | 'sector'>('all');
   const [gscSiteQuery, setGscSiteQuery] = useState('');
@@ -350,10 +393,12 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     setSelectedSite,
     gscData,
     comparisonGscData,
+    queryPageData,
+    comparisonQueryPageData,
     pageDateData,
     comparisonPeriod,
     isLoadingGsc,
-    insights: { insights, groupedInsights, topQueries },
+    insights: { insights, groupedInsights },
   } = useGSCData(gscAccessToken, startDate, endDate, comparisonMode, {
     propertyId: currentClient?.id,
     brandTerms: currentClient?.brandTerms || [],
@@ -536,26 +581,73 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     [prioritizedContextInsights],
   );
 
-  const topQueriesNormalized = useMemo(
-    () =>
-      topQueries?.items
-        .map((item) => {
-          const query = item.keys?.[0] || '';
-          const classification = classifyQueryBrandSegment(query, currentClient?.brandTerms || []);
-          return {
-            ...item,
-            query,
-            position: Number(item.position),
-            clicks: Number(item.clicks),
-            impressions: Number(item.impressions),
-            brandSegment: classification.segment,
-            needsReview: classification.needsReview,
-          };
-        })
-        .filter((item) => matchBrandFilter(item.brandSegment, trafficSegmentFilter))
-        .slice(0, 5) ?? [],
-    [currentClient?.brandTerms, topQueries, trafficSegmentFilter],
-  );
+  const topQueriesNormalized = useMemo<NormalizedQueryRow[]>(() => {
+    const previousByQuery = ((comparisonQueryPageData as GSCRow[]) || []).reduce((acc, row) => {
+      const query = (row.keys?.[0] || '').trim();
+      if (!query) return acc;
+      const previous = acc.get(query) || { clicks: 0, impressions: 0, positionWeighted: 0 };
+      const impressions = Number(row.impressions || 0);
+      const clicks = Number(row.clicks || 0);
+      const position = Number(row.position || 0);
+      previous.clicks += clicks;
+      previous.impressions += impressions;
+      previous.positionWeighted += position * impressions;
+      acc.set(query, previous);
+      return acc;
+    }, new Map<string, { clicks: number; impressions: number; positionWeighted: number }>());
+
+    const currentByQuery = ((queryPageData as GSCRow[]) || []).reduce((acc, row) => {
+      const query = (row.keys?.[0] || '').trim();
+      if (!query) return acc;
+      const bucket =
+        acc.get(query) ||
+        { query, clicks: 0, impressions: 0, positionWeighted: 0, dominantUrl: '', dominantUrlClicks: 0 };
+      const impressions = Number(row.impressions || 0);
+      const clicks = Number(row.clicks || 0);
+      const position = Number(row.position || 0);
+      const url = row.keys?.[1] || '';
+      bucket.clicks += clicks;
+      bucket.impressions += impressions;
+      bucket.positionWeighted += position * impressions;
+      if (clicks > bucket.dominantUrlClicks && url) {
+        bucket.dominantUrl = url;
+        bucket.dominantUrlClicks = clicks;
+      }
+      acc.set(query, bucket);
+      return acc;
+    }, new Map<string, { query: string; clicks: number; impressions: number; positionWeighted: number; dominantUrl: string; dominantUrlClicks: number }>());
+
+    const rows = Array.from(currentByQuery.values()).map((item) => {
+      const prev = previousByQuery.get(item.query) || { clicks: 0, impressions: 0, positionWeighted: 0 };
+      const ctr = item.impressions > 0 ? (item.clicks / item.impressions) * 100 : 0;
+      const previousCtr = prev.impressions > 0 ? (prev.clicks / prev.impressions) * 100 : 0;
+      const classification = classifyQueryBrandSegment(item.query, currentClient?.brandTerms || []);
+      const category = classifyQueryCategory(item.query);
+
+      return {
+        query: item.query,
+        dominantUrl: item.dominantUrl || 'Sin URL dominante',
+        clicks: item.clicks,
+        impressions: item.impressions,
+        ctr,
+        position: item.impressions > 0 ? item.positionWeighted / item.impressions : 0,
+        brandSegment: classification.segment,
+        needsReview: classification.needsReview,
+        category,
+        previousClicks: prev.clicks,
+        previousImpressions: prev.impressions,
+        previousCtr,
+        previousPosition: prev.impressions > 0 ? prev.positionWeighted / prev.impressions : 0,
+        deltaClicksPct: prev.clicks > 0 ? ((item.clicks - prev.clicks) / prev.clicks) * 100 : 0,
+      };
+    });
+
+    return rows
+      .filter((item) => matchBrandFilter(item.brandSegment, trafficSegmentFilter))
+      .filter((item) => queryCategoryFilter === 'all' || item.category === queryCategoryFilter)
+      .sort((a, b) => b.clicks - a.clicks)
+      .slice(0, 20);
+  }, [comparisonQueryPageData, currentClient?.brandTerms, queryCategoryFilter, queryPageData, trafficSegmentFilter]);
 
   const trendingUrls = useMemo(() => detectTrendingUrls(pageDateData), [pageDateData]);
 
@@ -593,21 +685,19 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   );
 
   const topQuerySummary = useMemo(() => {
-    const rows = topQueries?.items || [];
+    const rows = topQueriesNormalized;
     return rows.reduce(
       (acc, row) => {
-        const query = row.keys?.[0] || '';
-        const classification = classifyQueryBrandSegment(query, currentClient?.brandTerms || []);
         acc.total.clicks += Number(row.clicks || 0);
         acc.total.impressions += Number(row.impressions || 0);
-        if (classification.segment === 'brand') {
+        if (row.brandSegment === 'brand') {
           acc.brand.clicks += Number(row.clicks || 0);
           acc.brand.impressions += Number(row.impressions || 0);
-        } else if (classification.segment === 'non-brand') {
+        } else if (row.brandSegment === 'non-brand') {
           acc.nonBrand.clicks += Number(row.clicks || 0);
           acc.nonBrand.impressions += Number(row.impressions || 0);
         }
-        if (classification.segment === 'mixed') {
+        if (row.brandSegment === 'mixed') {
           acc.reviewCount += 1;
         }
         return acc;
@@ -619,7 +709,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
         reviewCount: 0,
       },
     );
-  }, [currentClient?.brandTerms, topQueries?.items]);
+  }, [topQueriesNormalized]);
 
   const performanceSummary = useMemo(() => {
     const current = gscData.reduce(
@@ -675,7 +765,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   }, [comparisonGscData, gscData]);
 
   const brandDeltaSummary = useMemo(() => {
-    const previousRows = comparisonGscData || [];
+    const previousRows = comparisonQueryPageData || [];
     const previous = previousRows.reduce(
       (acc, row) => {
         const query = row.keys?.[0] || '';
@@ -701,7 +791,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
         nonBrand: topQuerySummary.nonBrand.clicks - previous.nonBrand,
       },
     };
-  }, [comparisonGscData, currentClient?.brandTerms, topQuerySummary.brand.clicks, topQuerySummary.nonBrand.clicks]);
+  }, [comparisonQueryPageData, currentClient?.brandTerms, topQuerySummary.brand.clicks, topQuerySummary.nonBrand.clicks]);
 
   const newInsightsCount = useMemo(
     () => actionableInsights.filter((insight) => insight.status === 'new').length,
@@ -858,6 +948,14 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   const gscChartData = useMemo(() => {
     const maxLength = Math.max(gscData.length, comparisonGscData.length);
 
+    const metricValue = (row: GSCRow | undefined, metric: PerformanceMetric) => {
+      if (!row) return null;
+      if (metric === 'ctr') return Number(row.ctr || 0) * 100;
+      if (metric === 'position') return Number(row.position || 0);
+      if (metric === 'impressions') return Number(row.impressions || 0);
+      return Number(row.clicks || 0);
+    };
+
     return Array.from({ length: maxLength }, (_, index) => {
       const currentRow = gscData[index];
       const comparisonRow = comparisonGscData[index];
@@ -868,9 +966,24 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
         currentImpressions: currentRow?.impressions ?? null,
         comparisonClicks: comparisonRow?.clicks ?? null,
         comparisonImpressions: comparisonRow?.impressions ?? null,
+        currentMetricValue: metricValue(currentRow, selectedPerformanceMetric),
+        comparisonMetricValue: metricValue(comparisonRow, selectedPerformanceMetric),
       };
     });
-  }, [gscData, comparisonGscData]);
+  }, [comparisonGscData, gscData, selectedPerformanceMetric]);
+
+  const roadmapAnnotations = useMemo(
+    () =>
+      (currentClient?.completedTasksLog || [])
+        .map((item) => ({
+          id: item.id,
+          label: `${item.title}${item.moduleId ? ` (M${item.moduleId})` : ''}`,
+          date: new Date(item.completedAt).toISOString().split('T')[0],
+        }))
+        .filter((item) => gscChartData.some((chartRow) => chartRow.label === item.date))
+        .slice(-8),
+    [currentClient?.completedTasksLog, gscChartData],
+  );
 
   const comparisonSummary = useMemo(() => {
     if (!comparisonPeriod) {
@@ -879,6 +992,54 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
 
     return `${GSC_COMPARISON_MODE_LABELS[comparisonPeriod.mode]}: ${comparisonPeriod.previous.startDate} a ${comparisonPeriod.previous.endDate}`;
   }, [comparisonPeriod]);
+
+  const openQueryInsight = (queryRow: NormalizedQueryRow) => {
+    const insightMatch = prioritizedContextInsights.find((insight) =>
+      insight.relatedRows.some((row) => (row.query || row.keys?.[0] || '').toLowerCase() === queryRow.query.toLowerCase()),
+    );
+
+    if (insightMatch) {
+      setSelectedInsight(insightMatch);
+      return;
+    }
+
+    showSuccess('No hay insight directo para esta query. Puedes crear una tarea igualmente.');
+  };
+
+  const createTaskFromQuery = (queryRow: NormalizedQueryRow) => {
+    addTask(
+      1,
+      `Optimizar query: ${queryRow.query}`,
+      `Revisar intención y snippet para ${queryRow.query}. URL dominante: ${queryRow.dominantUrl}.`,
+      'Medium',
+      'GSC',
+      {
+        isInCustomRoadmap: true,
+        insightSourceMeta: {
+          insightId: `query-${queryRow.query}`,
+          sourceType: 'gsc_query',
+          sourceLabel: 'Top Consultas',
+          moduleId: 1,
+          metricsSnapshot: {
+            clicks: queryRow.clicks,
+            impressions: queryRow.impressions,
+            ctr: Number(queryRow.ctr.toFixed(2)),
+            position: Number(queryRow.position.toFixed(2)),
+            deltaClicksPct: Number(queryRow.deltaClicksPct.toFixed(2)),
+          },
+          periodContext: {
+            current: `${startDate}..${endDate}`,
+            previous: comparisonPeriod ? `${comparisonPeriod.previous.startDate}..${comparisonPeriod.previous.endDate}` : undefined,
+          },
+          property: selectedSite || 'Sin propiedad',
+          query: queryRow.query,
+          url: queryRow.dominantUrl,
+          timestamp: Date.now(),
+        },
+      },
+    );
+    showSuccess('Tarea creada desde Top Consultas y añadida al roadmap.');
+  };
 
   const priorityLabel: Record<'high' | 'medium' | 'low', string> = {
     high: 'Alta',
@@ -1519,7 +1680,11 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
           {filteredInsights.length > 0 ? (
-            filteredInsights.map((insight) => <InsightCard key={insight.id} insight={insight} />)
+            filteredInsights.map((insight) => (
+              <div key={insight.id}>
+                <InsightCard insight={insight} />
+              </div>
+            ))
           ) : (
             <div className="md:col-span-2 xl:col-span-3 rounded-2xl border border-dashed border-border p-10 text-center text-muted">
               No hay insights que coincidan con los filtros seleccionados.
@@ -1605,6 +1770,18 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                 <div className="flex items-center gap-2 flex-wrap">
                   <select
                     className="rounded-lg border border-border bg-surface-alt px-3 py-2 text-xs font-medium text-foreground"
+                    value={selectedPerformanceMetric}
+                    onChange={(event) => setSelectedPerformanceMetric(event.target.value as PerformanceMetric)}
+                    aria-label="Métrica principal del gráfico"
+                  >
+                    {Object.entries(PERFORMANCE_METRIC_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    className="rounded-lg border border-border bg-surface-alt px-3 py-2 text-xs font-medium text-foreground"
                     value={trafficSegmentFilter}
                     onChange={(event) =>
                       setTrafficSegmentFilter(event.target.value as QueryBrandFilter)
@@ -1614,6 +1791,26 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                     <option value="brand">Solo brand</option>
                     <option value="non-brand">Solo non-brand</option>
                   </select>
+                  <select
+                    className="rounded-lg border border-border bg-surface-alt px-3 py-2 text-xs font-medium text-foreground"
+                    value={queryCategoryFilter}
+                    onChange={(event) => setQueryCategoryFilter(event.target.value as QueryCategoryFilter)}
+                  >
+                    <option value="all">Categoría: todas</option>
+                    <option value="informational">Informacional</option>
+                    <option value="commercial">Comercial</option>
+                    <option value="navigational">Navegacional</option>
+                    <option value="local">Local</option>
+                    <option value="other">Otras</option>
+                  </select>
+                  <label className="flex items-center gap-2 rounded-lg border border-border bg-surface-alt px-3 py-2 text-xs font-medium text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={showRoadmapAnnotations}
+                      onChange={(event) => setShowRoadmapAnnotations(event.target.checked)}
+                    />
+                    Hitos roadmap
+                  </label>
                   <Button
                     variant="secondary"
                     size="sm"
@@ -1699,6 +1896,7 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                     <strong>{comparisonPeriod.previous.endDate}</strong>
                   </>
                 )}
+                {' '}· Propiedad activa: <strong>{(selectedSite || '').replace('sc-domain:', '') || 'Sin propiedad'}</strong> · Segmento: <strong>{trafficSegmentFilter}</strong> · Categoría: <strong>{queryCategoryFilter}</strong>
               </div>
 
               <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-4">
@@ -1794,20 +1992,11 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                       />
                       <XAxis dataKey="label" hide axisLine={false} tickLine={false} />
                       <YAxis
-                        yAxisId="clicks"
-                        orientation="left"
+                        yAxisId="metric"
                         tick={{ fontSize: 10, fill: '#3b82f6' }}
                         axisLine={false}
                         tickLine={false}
-                        width={44}
-                      />
-                      <YAxis
-                        yAxisId="impressions"
-                        orientation="right"
-                        tick={{ fontSize: 10, fill: '#94a3b8' }}
-                        axisLine={false}
-                        tickLine={false}
-                        width={50}
+                        width={56}
                       />
                       <Tooltip
                         contentStyle={{
@@ -1819,41 +2008,42 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                         }}
                         labelStyle={{ color: '#64748b', fontSize: '12px', marginBottom: '4px' }}
                       />
+                      <Legend wrapperStyle={{ fontSize: '11px' }} />
                       <Area
                         type="monotone"
-                        dataKey="currentClicks"
-                        yAxisId="clicks"
+                        dataKey="currentMetricValue"
+                        yAxisId="metric"
                         stroke="#3b82f6"
                         strokeWidth={3}
                         fillOpacity={1}
                         fill="url(#colorClicks)"
-                        name="Clics actuales"
+                        name={`${PERFORMANCE_METRIC_LABELS[selectedPerformanceMetric]} actual`}
                         activeDot={{ r: 6, strokeWidth: 0 }}
                       />
                       <Area
                         type="monotone"
-                        dataKey="comparisonClicks"
-                        yAxisId="clicks"
+                        dataKey="comparisonMetricValue"
+                        yAxisId="metric"
                         stroke="#0f766e"
                         strokeWidth={2}
                         fillOpacity={0}
                         strokeDasharray="6 6"
                         name={
                           comparisonPeriod
-                            ? `Clics ${GSC_COMPARISON_MODE_LABELS[comparisonPeriod.mode]}`
-                            : 'Clics comparados'
+                            ? `${PERFORMANCE_METRIC_LABELS[selectedPerformanceMetric]} ${GSC_COMPARISON_MODE_LABELS[comparisonPeriod.mode]}`
+                            : 'Serie comparada'
                         }
                       />
-                      <Area
-                        type="monotone"
-                        dataKey="currentImpressions"
-                        yAxisId="impressions"
-                        stroke="#94a3b8"
-                        strokeWidth={2}
-                        fillOpacity={0}
-                        strokeDasharray="5 5"
-                        name="Impresiones actuales"
-                      />
+                      {showRoadmapAnnotations &&
+                        roadmapAnnotations.map((annotation) => (
+                          <ReferenceLine
+                            key={annotation.id}
+                            x={annotation.date}
+                            stroke="#f59e0b"
+                            strokeDasharray="3 3"
+                            label={{ value: 'Hito', position: 'insideTopRight', fill: '#f59e0b', fontSize: 10 }}
+                          />
+                        ))}
                     </AreaChart>
                   </ResponsiveContainer>
                 ) : (
@@ -2005,48 +2195,79 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                   GSC Data
                 </span>
               </h3>
-              <div className="space-y-3">
-                {topQueriesNormalized.map((t, i) => {
-                  const queryLabel =
-                    typeof t.keys?.[0] === 'string' && t.keys[0].trim().length > 0
-                      ? t.keys[0]
-                      : 'Consulta sin término';
-
-                  return (
-                    <div
-                      key={i}
-                      className="flex items-center justify-between p-2 rounded hover:bg-surface-alt transition-colors cursor-pointer group"
-                    >
-                      <div>
-                        <div className="text-sm font-semibold group-hover:text-primary line-clamp-1">
-                          {queryLabel}
-                        </div>
-                        <div className="mt-1 flex items-center gap-2 text-xs text-muted">
-                          Posición: {formatPositionSafe(t.position)}
+              <div className="mb-3 text-xs text-muted">
+                Tabla contextualizada por propiedad, periodo y filtros activos (brand/categoría). Desde cada query puedes abrir insight o convertir en tarea.
+              </div>
+              <div className="max-h-[420px] overflow-auto rounded-xl border border-border">
+                <table className="w-full text-xs">
+                  <thead className="bg-surface-alt sticky top-0">
+                    <tr className="text-left text-muted">
+                      <th className="px-3 py-2">Query</th>
+                      <th className="px-3 py-2">URL dominante</th>
+                      <th className="px-3 py-2">Clicks</th>
+                      <th className="px-3 py-2">Impr.</th>
+                      <th className="px-3 py-2">CTR</th>
+                      <th className="px-3 py-2">Pos.</th>
+                      <th className="px-3 py-2">Δ vs prev.</th>
+                      <th className="px-3 py-2">Tag</th>
+                      <th className="px-3 py-2">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topQueriesNormalized.map((row) => (
+                      <tr key={`${row.query}-${row.dominantUrl}`} className="border-t border-border hover:bg-surface-alt/50">
+                        <td className="px-3 py-2 font-semibold text-foreground">{row.query}</td>
+                        <td className="px-3 py-2 max-w-[210px]">
+                          <a
+                            href={row.dominantUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="line-clamp-1 text-primary hover:underline inline-flex items-center gap-1"
+                          >
+                            {row.dominantUrl}
+                            <ExternalLink size={12} />
+                          </a>
+                        </td>
+                        <td className="px-3 py-2">{formatNumberSafe(row.clicks, '0')}</td>
+                        <td className="px-3 py-2">{formatNumberSafe(row.impressions, '0')}</td>
+                        <td className="px-3 py-2">{row.ctr.toFixed(2)}%</td>
+                        <td className="px-3 py-2">{formatPositionSafe(row.position)}</td>
+                        <td className="px-3 py-2 font-semibold">
+                          {row.deltaClicksPct >= 0 ? '+' : ''}
+                          {row.deltaClicksPct.toFixed(1)}%
+                        </td>
+                        <td className="px-3 py-2">
                           <Badge
                             variant={
-                              t.brandSegment === 'brand'
+                              row.brandSegment === 'brand'
                                 ? 'success'
-                                : t.brandSegment === 'non-brand'
+                                : row.brandSegment === 'non-brand'
                                   ? 'primary'
                                   : 'warning'
                             }
                             className="text-[10px]"
                           >
-                            {t.brandSegment === 'brand'
+                            {row.brandSegment === 'brand'
                               ? 'Brand'
-                              : t.brandSegment === 'non-brand'
+                              : row.brandSegment === 'non-brand'
                                 ? 'Non-brand'
-                                : 'Mixed / revisar'}
+                                : 'Mixed'}
                           </Badge>
-                        </div>
-                      </div>
-                      <div className="text-xs font-bold text-foreground">
-                        {formatNumberSafe(t.clicks, '0')} clics
-                      </div>
-                    </div>
-                  );
-                })}
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            <Button size="sm" variant="ghost" onClick={() => openQueryInsight(row)}>
+                              Insight
+                            </Button>
+                            <Button size="sm" variant="secondary" onClick={() => createTaskFromQuery(row)}>
+                              Tarea
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           ) : (
