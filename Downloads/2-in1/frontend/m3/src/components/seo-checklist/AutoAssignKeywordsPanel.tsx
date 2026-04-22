@@ -219,7 +219,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
       try {
         const [pageMetricsRow, pageQueries] = await Promise.all([
           getPageMetrics(token, site, page.url, start, end),
-          getPageQueries(token, site, page.url, start, end, 50),
+          getPageQueries(token, site, page.url, start, end),
         ]);
         const normalizedQueries = Array.isArray(pageQueries)
           ? pageQueries.map(normalizeQueryRow).filter((query) => isUsableKeyword(query.query))
