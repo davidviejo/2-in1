@@ -362,7 +362,31 @@ const mapInsightRowForExport = (row: SeoInsight['relatedRows'][number]) => {
   };
 };
 
+const formatInsightEvidence = (insight: SeoInsight) =>
+  insight.evidence
+    .map((item) => `${item.label}: ${item.value}${item.context ? ` (${item.context})` : ''}`)
+    .join(' || ');
+
+const formatInsightTrace = (insight: SeoInsight) =>
+  JSON.stringify({
+    source: insight.trace?.source || '',
+    query: insight.trace?.query || '',
+    url: insight.trace?.url || '',
+    propertyId: insight.trace?.propertyId || '',
+    moduleId: insight.trace?.moduleId ?? '',
+  });
+
 const buildInsightExportRows = (insight: SeoInsight) => {
+  const evidenceDetalle = formatInsightEvidence(insight);
+  const traceDetalle = formatInsightTrace(insight);
+  const metadataDetalle = JSON.stringify({
+    sourceType: insight.sourceType,
+    sourceId: insight.sourceId,
+    affectedCount: insight.affectedCount,
+    potentialTraffic: insight.potentialTraffic ?? '',
+    findingFamily: insight.findingFamily || '',
+  });
+
   if (insight.relatedRows.length === 0) {
     return [
       {
@@ -391,6 +415,14 @@ const buildInsightExportRows = (insight: SeoInsight) => {
         periodoAnterior: insight.periodPrevious ? `${insight.periodPrevious.startDate}..${insight.periodPrevious.endDate}` : '',
         resumen: insight.summary,
         motivo: insight.reason,
+        affectedCount: insight.affectedCount,
+        potentialTraffic: insight.potentialTraffic ?? '',
+        sourceType: insight.sourceType,
+        sourceId: insight.sourceId,
+        findingFamily: insight.findingFamily || '',
+        evidenciaDetalle: evidenceDetalle,
+        traceDetalle,
+        metadataDetalle,
         query: '',
         url: '',
         clicks: '',
@@ -427,6 +459,14 @@ const buildInsightExportRows = (insight: SeoInsight) => {
     periodoAnterior: insight.periodPrevious ? `${insight.periodPrevious.startDate}..${insight.periodPrevious.endDate}` : '',
     resumen: insight.summary,
     motivo: insight.reason,
+    affectedCount: insight.affectedCount,
+    potentialTraffic: insight.potentialTraffic ?? '',
+    sourceType: insight.sourceType,
+    sourceId: insight.sourceId,
+    findingFamily: insight.findingFamily || '',
+    evidenciaDetalle: evidenceDetalle,
+    traceDetalle,
+    metadataDetalle,
     ...mapInsightRowForExport(row),
   }));
 };
