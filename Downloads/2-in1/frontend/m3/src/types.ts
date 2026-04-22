@@ -131,6 +131,24 @@ export interface ProjectScoreWeights {
   conversion: number;
 }
 
+export interface AppliedModuleScoreWeight {
+  moduleId: number;
+  weight: number;
+  source: 'base' | 'projectType' | 'sector' | 'geoScope';
+}
+
+export interface ProjectScoreContext {
+  projectType: ProjectType;
+  sector: string;
+  geoScope: GeoScope;
+  timestamp: number;
+  score: number;
+  fallbackUsed: boolean;
+  appliedWeights: AppliedModuleScoreWeight[];
+  criticalModuleIds: number[];
+  moduleMaturity: Record<number, number>;
+}
+
 export interface ProjectInitialConfigPreset {
   useGenericConfig?: boolean;
   suggestedModuleIds: number[];
