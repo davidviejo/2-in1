@@ -56,6 +56,16 @@ const normalizeModule = (module: TemplateModuleDTO): ModuleData => ({
   tasks: module.tasks.map((task) => ({ ...task, status: task.status || 'pending' })),
 });
 
+const mergeWithLocalFallback = (vertical: ClientVertical, remoteModules: ModuleData[]): ModuleData[] => {
+  const localModules = localModulesByVertical[vertical] || localModulesByVertical.media;
+  const remoteById = new Map(remoteModules.map((module) => [module.id, module]));
+  const mergedModules = localModules.map((localModule) => remoteById.get(localModule.id) || localModule);
+  const localModuleIds = new Set(localModules.map((module) => module.id));
+  const remoteOnlyModules = remoteModules.filter((module) => !localModuleIds.has(module.id));
+
+  return [...mergedModules, ...remoteOnlyModules];
+};
+
 const getLocalTemplate = (vertical: ClientVertical): ResolvedTemplate => ({
   vertical,
   version: LOCAL_TEMPLATE_VERSION,
@@ -96,11 +106,14 @@ export class TemplateService {
       return getLocalTemplate(vertical);
     }
 
+    const normalizedRemoteModules = remoteTemplate.modules.map(normalizeModule);
+    const completeModules = mergeWithLocalFallback(vertical, normalizedRemoteModules);
+
     return {
       vertical,
       version: remoteTemplate.version || remoteCatalog?.version || LOCAL_TEMPLATE_VERSION,
       source: 'remote',
-      modules: clone(remoteTemplate.modules.map(normalizeModule)),
+      modules: clone(completeModules),
     };
   }
 }
