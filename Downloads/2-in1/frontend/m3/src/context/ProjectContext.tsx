@@ -18,6 +18,7 @@ import {
   TaskStatus,
   IAVisibilityPromptConfig,
   IAVisibilityRunResult,
+  SeoPerformanceSnapshot,
   createDefaultIAVisibilityState,
   InsightFlowTrace,
   InsightSourceMeta,
@@ -59,6 +60,7 @@ interface ProjectContextType {
   updateCurrentClientProfile: (
     updates: Pick<Client, 'projectType' | 'sector' | 'geoScope' | 'brandTerms' | 'analysisProjectTypes'>,
   ) => void;
+  saveClientSnapshot: (snapshot: Omit<SeoPerformanceSnapshot, 'id' | 'timestamp'>) => void;
 
   // Task Actions
   addTask: (
@@ -432,6 +434,43 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
             geoScope,
             brandTerms: normalizeBrandTerms(updates.brandTerms),
           });
+        }),
+      );
+      flushSnapshotSyncNextTick(['clients']);
+    },
+    [currentClientId, flushSnapshotSyncNextTick],
+  );
+
+  const saveClientSnapshot = useCallback(
+    (snapshot: Omit<SeoPerformanceSnapshot, 'id' | 'timestamp'>) => {
+      if (!currentClientId) {
+        return;
+      }
+
+      setClients((prev) =>
+        prev.map((client) => {
+          if (client.id !== currentClientId) {
+            return client;
+          }
+
+          const existing = client.seoSnapshots || [];
+          const dedupeKey = `${snapshot.scope}:${snapshot.scopeId}:${snapshot.period.currentStart}:${snapshot.period.currentEnd}:${snapshot.property}:${snapshot.captureType}`;
+          const filtered = existing.filter((item) => {
+            const itemKey = `${item.scope}:${item.scopeId}:${item.period.currentStart}:${item.period.currentEnd}:${item.property}:${item.captureType}`;
+            return itemKey !== dedupeKey;
+          });
+
+          return {
+            ...client,
+            seoSnapshots: [
+              {
+                ...snapshot,
+                id: crypto.randomUUID(),
+                timestamp: Date.now(),
+              },
+              ...filtered,
+            ].sort((a, b) => b.timestamp - a.timestamp).slice(0, 500),
+          };
         }),
       );
       flushSnapshotSyncNextTick(['clients']);
@@ -1196,6 +1235,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       deleteClient,
       switchClient,
       updateCurrentClientProfile,
+      saveClientSnapshot,
       addTask,
       addTasksBulk,
       deleteTask,
@@ -1237,6 +1277,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       deleteClient,
       switchClient,
       updateCurrentClientProfile,
+      saveClientSnapshot,
       addTask,
       addTasksBulk,
       deleteTask,

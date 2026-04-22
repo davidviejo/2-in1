@@ -5,6 +5,7 @@ import {
   ClientVertical,
   IAVisibilityState,
   IAVisibilityRunResult,
+  SeoPerformanceSnapshot,
   createDefaultIAVisibilityState,
 } from '../types';
 import { StrategyFactory } from '../strategies/StrategyFactory';
@@ -127,6 +128,36 @@ const normalizeIAVisibilityState = (iaVisibility: unknown): IAVisibilityState =>
   };
 };
 
+const normalizeSeoSnapshot = (rawSnapshot: unknown): SeoPerformanceSnapshot | null => {
+  if (!rawSnapshot || typeof rawSnapshot !== 'object') {
+    return null;
+  }
+
+  const snapshot = rawSnapshot as Partial<SeoPerformanceSnapshot>;
+  if (!snapshot.scope || !snapshot.scopeId || !snapshot.scopeLabel || !snapshot.period || !snapshot.metrics || !snapshot.trace) {
+    return null;
+  }
+
+  return {
+    id: typeof snapshot.id === 'string' && snapshot.id.length > 0 ? snapshot.id : crypto.randomUUID(),
+    scope: snapshot.scope,
+    scopeId: snapshot.scopeId,
+    scopeLabel: snapshot.scopeLabel,
+    moduleId: typeof snapshot.moduleId === 'number' ? snapshot.moduleId : undefined,
+    property: typeof snapshot.property === 'string' ? snapshot.property : 'Sin propiedad',
+    period: snapshot.period,
+    metrics: snapshot.metrics,
+    brandMetrics: snapshot.brandMetrics,
+    globalScore: typeof snapshot.globalScore === 'number' ? snapshot.globalScore : 0,
+    moduleScores: snapshot.moduleScores || {},
+    openInsights: typeof snapshot.openInsights === 'number' ? snapshot.openInsights : 0,
+    openTasks: typeof snapshot.openTasks === 'number' ? snapshot.openTasks : 0,
+    captureType: snapshot.captureType === 'manual' ? 'manual' : 'auto',
+    trace: snapshot.trace,
+    timestamp: typeof snapshot.timestamp === 'number' ? snapshot.timestamp : Date.now(),
+  };
+};
+
 const dedupeStable = (items: string[]): string[] => {
   const seen = new Set<string>();
   return items.filter((item) => {
@@ -241,6 +272,13 @@ const normalizeClient = (client: Client, options?: { validateDuplicateTaskIds?: 
     })),
     customRoadmapOrder: dedupeStable(client.customRoadmapOrder || []),
     iaVisibility: normalizeIAVisibilityState(client.iaVisibility),
+    seoSnapshots: Array.isArray(client.seoSnapshots)
+      ? client.seoSnapshots
+          .map((snapshot) => normalizeSeoSnapshot(snapshot))
+          .filter((snapshot): snapshot is SeoPerformanceSnapshot => snapshot !== null)
+          .sort((a, b) => b.timestamp - a.timestamp)
+          .slice(0, 500)
+      : [],
     roadmapTemplateMode:
       client.roadmapTemplateMode ||
       ((client.initialConfigPreset?.useGenericConfig ? 'generic' : 'contextual') as
