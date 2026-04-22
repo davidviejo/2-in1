@@ -175,4 +175,48 @@ describe('ImportUrlsModal', () => {
     });
     expect(onImport.mock.calls[0][0]).toHaveLength(10000);
   });
+
+  it('distingue duplicadas ya existentes de duplicadas dentro del propio import', async () => {
+    const onImport = vi.fn();
+
+    render(
+      <ImportUrlsModal
+        isOpen
+        onClose={vi.fn()}
+        onImport={onImport}
+        existingPages={[
+          {
+            id: 'existing-1',
+            url: 'https://example.com/existing',
+            kwPrincipal: '',
+            pageType: 'Article',
+            geoTarget: '',
+            cluster: '',
+            checklist: {} as any,
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(/https:\/\/example.com\/page1/i), {
+      target: {
+        value: [
+          'https://example.com/existing',
+          'https://example.com/new-one',
+          'https://example.com/new-one',
+        ].join('\n'),
+      },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Importar URLs' }));
+
+    await waitFor(() => {
+      expect(onImport).toHaveBeenCalledTimes(1);
+    });
+
+    expect(onImport.mock.calls[0][0]).toHaveLength(1);
+    expect(onImport.mock.calls[0][0][0].url).toBe('https://example.com/new-one');
+    expect(screen.getByText(/URL ya existente en checklist: 1/i)).toBeTruthy();
+    expect(screen.getByText(/URL duplicada dentro de este mismo import: 1/i)).toBeTruthy();
+  });
 });
