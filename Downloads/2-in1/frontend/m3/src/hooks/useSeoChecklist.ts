@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useProject } from '../context/ProjectContext';
 import {
   SeoPage,
@@ -208,9 +208,9 @@ export const useSeoChecklist = () => {
   const { currentClientId } = useProject();
   const { settings } = useSeoChecklistSettings();
   const activeBrandTerms = useMemo(() => settings.brandTerms || [], [settings.brandTerms]);
-  const storageKey = `mediaflow_seo_checklist_${currentClientId}`;
+  const storageKey = currentClientId ? `mediaflow_seo_checklist_${currentClientId}` : null;
   const [pages, setPages] = useState<SeoPage[]>(() => {
-    if (!currentClientId) return [];
+    if (!storageKey) return [];
     try {
       const saved = localStorage.getItem(storageKey);
       if (!saved) return [];
@@ -228,8 +228,34 @@ export const useSeoChecklist = () => {
     }
   });
 
+  useEffect(() => {
+    if (!storageKey) {
+      setPages([]);
+      return;
+    }
+
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (!saved) {
+        setPages([]);
+        return;
+      }
+
+      const parsed = JSON.parse(saved) as SeoPage[];
+      const normalized = normalizeSeoPages(parsed);
+      if (JSON.stringify(parsed) !== JSON.stringify(normalized)) {
+        persistSeoPages(storageKey, normalized);
+      }
+      setPages(normalized);
+    } catch (e) {
+      console.error('Failed to parse SEO Checklist data', e);
+      setPages([]);
+    }
+  }, [storageKey]);
+
   const addPages = useCallback(
     (newPages: SeoPage[]) => {
+      if (!storageKey) return;
       setPages((prev) => {
         const updated = enforceUniquePrimaryKeywords(
           normalizeSeoPages([...prev, ...newPages]),
@@ -244,6 +270,7 @@ export const useSeoChecklist = () => {
 
   const updatePage = useCallback(
     (id: string, updates: Partial<SeoPage>) => {
+      if (!storageKey) return;
       setPages((prev) => {
         const updated = enforceUniquePrimaryKeywords(
           normalizeSeoPages(prev.map((p) => (p.id === id ? { ...p, ...updates } : p))),
@@ -258,6 +285,7 @@ export const useSeoChecklist = () => {
 
   const bulkUpdatePages = useCallback(
     (updates: { id: string; changes: Partial<SeoPage> }[]) => {
+      if (!storageKey) return;
       setPages((prev) => {
         const updated = enforceUniquePrimaryKeywords(
           normalizeSeoPages(
@@ -281,6 +309,7 @@ export const useSeoChecklist = () => {
 
   const updateChecklistItem = useCallback(
     (pageId: string, key: ChecklistKey, updates: Partial<ChecklistItem>) => {
+      if (!storageKey) return;
       setPages((prev) => {
         const updated = prev.map((p) => {
           if (p.id !== pageId) return p;
@@ -305,6 +334,7 @@ export const useSeoChecklist = () => {
 
   const deletePage = useCallback(
     (id: string) => {
+      if (!storageKey) return;
       setPages((prev) => {
         const updated = prev.filter((p) => p.id !== id);
         persistSeoPages(storageKey, updated);
@@ -316,6 +346,7 @@ export const useSeoChecklist = () => {
 
   const bulkDeletePages = useCallback(
     (ids: string[]) => {
+      if (!storageKey) return;
       setPages((prev) => {
         const updated = prev.filter((p) => !ids.includes(p.id));
         persistSeoPages(storageKey, updated);
