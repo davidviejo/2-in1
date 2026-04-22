@@ -304,7 +304,7 @@ export const runPageAnalysis = async (
         const start = new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
         const [pageMetricsRow, pageQueries] = await Promise.all([
           getPageMetrics(token, site, normalizedPage.url, start, end),
-          getPageQueries(token, site, normalizedPage.url, start, end, 50),
+          getPageQueries(token, site, normalizedPage.url, start, end),
         ]);
 
         gscQueries = pageQueries.map(normalizeGscQueryRow);

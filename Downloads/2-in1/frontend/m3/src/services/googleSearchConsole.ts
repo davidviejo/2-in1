@@ -320,7 +320,7 @@ export const getGSCQueryPageData = async (
  * @param {string} pageUrl - La URL de la página a filtrar.
  * @param {string} startDate - Fecha de inicio.
  * @param {string} endDate - Fecha de fin.
- * @param {number} rowLimit - Límite de filas (default 50).
+ * @param {number} rowLimit - Tamaño de página por petición (default 25000).
  * @returns {Promise<Array<{keys: string[], clicks: number, impressions: number, ctr: number, position: number}>>}
  */
 export const getPageQueries = async (
@@ -329,14 +329,19 @@ export const getPageQueries = async (
   pageUrl: string,
   startDate: string,
   endDate: string,
-  rowLimit: number = 50,
+  rowLimit: number = DEFAULT_PAGED_ROW_LIMIT,
+  options?: {
+    searchType?: GSCSearchType;
+    maxPages?: number;
+    maxRows?: number;
+  },
 ) => {
   try {
     for (const variant of buildPageUrlVariants(pageUrl)) {
-      const data = await queryPageAnalytics(
+      const data = await querySearchAnalyticsPaged(
         accessToken,
-        siteUrl,
         {
+          siteUrl,
           startDate,
           endDate,
           dimensions: ['query'],
@@ -353,11 +358,13 @@ export const getPageQueries = async (
             },
           ],
           rowLimit,
+          searchType: options?.searchType,
+          maxPages: options?.maxPages,
+          maxRows: options?.maxRows,
         },
-        'Error fetching page queries',
       );
 
-      if (data.rows?.length) {
+      if (data.rows.length) {
         return data.rows;
       }
     }
