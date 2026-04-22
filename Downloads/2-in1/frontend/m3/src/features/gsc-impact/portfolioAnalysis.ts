@@ -30,9 +30,17 @@ export type PortfolioPropertyRow = {
   qualityReason: string;
   volumeAffected: number;
   consistencyScore: number;
+  urgencyScore: number;
 };
 
-export type PortfolioSortKey = 'risk' | 'delta_clicks_day' | 'delta_non_brand' | 'delta_ctr' | 'volume_affected';
+export type PortfolioSortKey =
+  | 'risk'
+  | 'urgency'
+  | 'delta_clicks_day'
+  | 'delta_non_brand'
+  | 'delta_ctr'
+  | 'delta_position'
+  | 'volume_affected';
 
 export const PORTFOLIO_THRESHOLDS = {
   minimumReliableBaseClicksPerDay: 3,
@@ -47,6 +55,13 @@ export const PORTFOLIO_THRESHOLDS = {
 };
 
 const clamp = (value: number, min = 0, max = 100) => Math.min(max, Math.max(min, value));
+const getUrgencyBaseByStatus = (status: PortfolioStatus): number => {
+  if (status === 'urgente') return 100;
+  if (status === 'riesgo') return 74;
+  if (status === 'atención') return 48;
+  if (status === 'estable') return 18;
+  return 10;
+};
 
 export const buildRiskScore = (input: {
   summary: NormalizedComparison;
@@ -185,6 +200,15 @@ export const buildPortfolioPropertyRow = (input: {
     total.postVsPre.position.absolute > 0,
     nonBrand.postVsPre.clicksPerDay.absolute < 0,
   ].filter(Boolean).length;
+  const urgencyScore = Number(
+    clamp(
+      getUrgencyBaseByStatus(status) +
+        riskScore * 0.3 +
+        (quality.quality !== 'ok' ? 8 : 0) +
+        Math.max(0, -total.postVsPre.clicksPerDay.absolute) * 1.8 +
+        Math.max(0, -nonBrand.postVsPre.clicksPerDay.absolute) * 2.1,
+    ).toFixed(2),
+  );
 
   return {
     property,
@@ -213,13 +237,14 @@ export const buildPortfolioPropertyRow = (input: {
     qualityReason: quality.qualityReason,
     volumeAffected: Math.abs(total.postVsPre.clicksPerDay.absolute) * Math.max(1, total.pre.days),
     consistencyScore,
+    urgencyScore,
   };
 };
 
 export const sortPortfolioRows = (rows: PortfolioPropertyRow[], sortBy: PortfolioSortKey) => {
   const copy = [...rows];
   if (sortBy === 'delta_clicks_day') {
-    return copy.sort((a, b) => a.postClicksPerDay - b.postClicksPerDay);
+    return copy.sort((a, b) => a.postClicksPerDay - a.preClicksPerDay - (b.postClicksPerDay - b.preClicksPerDay));
   }
   if (sortBy === 'delta_non_brand') {
     return copy.sort((a, b) => a.nonBrandDeltaClicksPerDay - b.nonBrandDeltaClicksPerDay);
@@ -227,10 +252,50 @@ export const sortPortfolioRows = (rows: PortfolioPropertyRow[], sortBy: Portfoli
   if (sortBy === 'delta_ctr') {
     return copy.sort((a, b) => a.deltaCtr - b.deltaCtr);
   }
+  if (sortBy === 'delta_position') {
+    return copy.sort((a, b) => b.deltaPosition - a.deltaPosition);
+  }
   if (sortBy === 'volume_affected') {
     return copy.sort((a, b) => b.volumeAffected - a.volumeAffected);
   }
+  if (sortBy === 'urgency') {
+    return copy.sort((a, b) => b.urgencyScore - a.urgencyScore);
+  }
   return copy.sort((a, b) => b.riskScore - a.riskScore);
+};
+
+export type PortfolioExecutiveSummary = {
+  improving: number;
+  worsening: number;
+  urgent: number;
+  anomalies: number;
+  lowConfidence: number;
+  bestImprovement: PortfolioPropertyRow | null;
+  worstDecline: PortfolioPropertyRow | null;
+};
+
+export const buildPortfolioExecutiveSummary = (rows: PortfolioPropertyRow[]): PortfolioExecutiveSummary => {
+  const improvingRows = rows.filter((row) => row.postClicksPerDay - row.preClicksPerDay > 0);
+  const worseningRows = rows.filter((row) => row.postClicksPerDay - row.preClicksPerDay < 0);
+  const urgentRows = rows.filter((row) => row.status === 'urgente');
+  const anomalyRows = rows.filter((row) => row.consistencyScore >= 4 || row.riskScore >= 70);
+  const lowConfidenceRows = rows.filter((row) => row.quality !== 'ok');
+  const bestImprovement =
+    [...rows].sort((a, b) => b.postClicksPerDay - b.preClicksPerDay - (a.postClicksPerDay - a.preClicksPerDay))[0] ||
+    null;
+  const worstDecline =
+    [...rows].sort((a, b) => a.postClicksPerDay - a.preClicksPerDay - (b.postClicksPerDay - b.preClicksPerDay))[0] ||
+    null;
+
+  return {
+    improving: improvingRows.length,
+    worsening: worseningRows.length,
+    urgent: urgentRows.length,
+    anomalies: anomalyRows.length,
+    lowConfidence: lowConfidenceRows.length,
+    bestImprovement,
+    worstDecline,
+  };
 };
 
 export const buildPortfolioExecutiveSummaryText = (rows: PortfolioPropertyRow[]) => {

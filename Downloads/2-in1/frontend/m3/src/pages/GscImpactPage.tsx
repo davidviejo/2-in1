@@ -48,6 +48,7 @@ import {
   summarizeRows,
 } from '@/features/gsc-impact/impactAnalysis';
 import {
+  buildPortfolioExecutiveSummary,
   buildPortfolioExecutiveSummaryText,
   buildPortfolioPropertyRow,
   detectPortfolioPatterns,
@@ -309,7 +310,7 @@ const buildFilterState = (
 
 const GscImpactPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { currentClientId } = useProject();
+  const { currentClientId, currentClient, addTask } = useProject();
   const useSharedRuleParams = searchParams.get(SHARED_RULES_PARAM) === '1';
   const persistedConfig = useMemo(
     () => GscImpactSegmentationRepository.getConfigByClientId(currentClientId),
@@ -405,6 +406,10 @@ const GscImpactPage: React.FC = () => {
 
   const ranges = periodRanges;
   const periodRangeErrors = useMemo(() => validatePeriodRanges(periodRanges), [periodRanges]);
+  const hasRangeOverlapError = useMemo(
+    () => periodRangeErrors.some((error) => error.toLowerCase().includes('solap')),
+    [periodRangeErrors],
+  );
   const brandTerms = useMemo(() => parseBrandTermsInput(filters.brandTermsText), [filters.brandTermsText]);
   const templateRules = useMemo(() => parseTemplateRules(filters.templateRulesText), [filters.templateRulesText]);
   const templateManualMap = useMemo(
@@ -1066,6 +1071,10 @@ const GscImpactPage: React.FC = () => {
     () => buildPortfolioExecutiveSummaryText(filteredPortfolioRows),
     [filteredPortfolioRows],
   );
+  const portfolioExecutiveSummary = useMemo(
+    () => buildPortfolioExecutiveSummary(filteredPortfolioRows),
+    [filteredPortfolioRows],
+  );
   const portfolioRowsForExport = useMemo(() => {
     if (selectedPortfolioSites.length === 0) return sortedPortfolioRows;
     const selectedSet = new Set(selectedPortfolioSites);
@@ -1094,6 +1103,47 @@ const GscImpactPage: React.FC = () => {
         .slice(0, 5),
     [sortedPortfolioRows],
   );
+  const prioritizedPortfolioRows = useMemo(() => sortedPortfolioRows.slice(0, 8), [sortedPortfolioRows]);
+
+  const createPortfolioTask = (row: PortfolioPropertyRow) => {
+    const deltaClicksDay = row.postClicksPerDay - row.preClicksPerDay;
+    const sector = currentClient?.sector?.trim() || 'Genérico';
+    const projectType = currentClient?.projectType || 'MEDIA';
+    const urgencyTag = row.status === 'urgente' ? 'Urgente' : row.status === 'riesgo' ? 'Riesgo' : 'Atención';
+
+    addTask(
+      1,
+      `[Portfolio GSC][${urgencyTag}] Revisar ${row.property}`,
+      `Prioridad portfolio (${projectType} · ${sector}): validar caída ${deltaClicksDay.toFixed(2)} clicks/día, non-brand ${row.nonBrandDeltaClicksPerDay.toFixed(2)} y ΔCTR ${(row.deltaCtr * 100).toFixed(2)}pp en ${row.property}.`,
+      row.status === 'urgente' || row.status === 'riesgo' ? 'High' : 'Medium',
+      'GSC',
+      {
+        isInCustomRoadmap: true,
+        insightSourceMeta: {
+          insightId: `gsc-portfolio-${row.property}`,
+          sourceType: 'gsc_portfolio_property',
+          sourceLabel: 'Impacto GSC Portfolio',
+          moduleId: 1,
+          metricsSnapshot: {
+            deltaClicksPerDay: Number(deltaClicksDay.toFixed(2)),
+            deltaCtrPp: Number((row.deltaCtr * 100).toFixed(2)),
+            deltaPosition: Number(row.deltaPosition.toFixed(2)),
+            nonBrandDeltaClicksPerDay: Number(row.nonBrandDeltaClicksPerDay.toFixed(2)),
+            urgencyScore: Number(row.urgencyScore.toFixed(2)),
+            riskScore: Number(row.riskScore.toFixed(2)),
+          },
+          periodContext: {
+            current: `${ranges.post.start}..${ranges.post.end}`,
+            previous: `${ranges.pre.start}..${ranges.pre.end}`,
+          },
+          property: row.property,
+          url: row.property,
+          timestamp: Date.now(),
+        },
+      },
+    );
+    setPortfolioStatus(`Tarea creada para ${row.property} y añadida al roadmap.`);
+  };
 
   useEffect(() => {
     GscImpactSegmentationRepository.saveUseCustomRulesByClientId(currentClientId, useCustomRules);
@@ -1458,7 +1508,9 @@ const GscImpactPage: React.FC = () => {
                       }
                     >
                       <option value="risk">Riesgo/prioridad</option>
+                      <option value="urgency">Urgencia</option>
                       <option value="delta_clicks_day">Delta clicks/day</option>
+                      <option value="delta_position">Delta posición</option>
                       <option value="delta_non_brand">Delta non-brand</option>
                       <option value="delta_ctr">Delta CTR</option>
                       <option value="volume_affected">Volumen afectado</option>
@@ -1710,6 +1762,18 @@ const GscImpactPage: React.FC = () => {
                     />
                   </div>
                 </div>
+                {periodRangeErrors.length > 0 && (
+                  <div className="mt-3 rounded-md border border-danger/40 bg-danger/5 p-3 text-sm">
+                    <p className="font-semibold">
+                      Validación de ventanas: {hasRangeOverlapError ? 'hay solapes detectados' : 'rangos inválidos'}
+                    </p>
+                    <ul className="mt-1 list-disc space-y-1 pl-5">
+                      {periodRangeErrors.map((error) => (
+                        <li key={error}>{error}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </>
             )}
           </section>
@@ -1721,17 +1785,29 @@ const GscImpactPage: React.FC = () => {
                 <p className="section-subtitle">Radar portfolio multi-site para priorizar análisis por propiedad.</p>
                 <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-6">
                   <div className="metric-chip"><p className="metric-label">Total</p><p className="text-2xl font-bold">{portfolioCounts.total}</p></div>
-                  <div className="metric-chip"><p className="metric-label">Mejora</p><p className="text-2xl font-bold">{portfolioCounts.mejora}</p></div>
-                  <div className="metric-chip"><p className="metric-label">Estable</p><p className="text-2xl font-bold">{portfolioCounts.estable}</p></div>
-                  <div className="metric-chip"><p className="metric-label">Atención</p><p className="text-2xl font-bold">{portfolioCounts.atención}</p></div>
-                  <div className="metric-chip"><p className="metric-label">Riesgo</p><p className="text-2xl font-bold">{portfolioCounts.riesgo}</p></div>
-                  <div className="metric-chip"><p className="metric-label">Urgente</p><p className="text-2xl font-bold">{portfolioCounts.urgente}</p></div>
+                  <div className="metric-chip"><p className="metric-label">Mejoran</p><p className="text-2xl font-bold">{portfolioExecutiveSummary.improving}</p></div>
+                  <div className="metric-chip"><p className="metric-label">Empeoran</p><p className="text-2xl font-bold">{portfolioExecutiveSummary.worsening}</p></div>
+                  <div className="metric-chip"><p className="metric-label">Urgentes</p><p className="text-2xl font-bold">{portfolioExecutiveSummary.urgent}</p></div>
+                  <div className="metric-chip"><p className="metric-label">Anomalías</p><p className="text-2xl font-bold">{portfolioExecutiveSummary.anomalies}</p></div>
+                  <div className="metric-chip"><p className="metric-label">Baja confianza</p><p className="text-2xl font-bold">{portfolioExecutiveSummary.lowConfidence}</p></div>
                 </div>
                 <div className="mt-3 surface-subtle p-3 text-sm">
                   <ul className="list-disc space-y-1 pl-5">
                     {portfolioSummaryText.map((line) => (
                       <li key={line}>{line}</li>
                     ))}
+                    {portfolioExecutiveSummary.bestImprovement && (
+                      <li>
+                        Mejor mejora: {portfolioExecutiveSummary.bestImprovement.property} (Δ/day{' '}
+                        {(portfolioExecutiveSummary.bestImprovement.postClicksPerDay - portfolioExecutiveSummary.bestImprovement.preClicksPerDay).toFixed(2)}).
+                      </li>
+                    )}
+                    {portfolioExecutiveSummary.worstDecline && (
+                      <li>
+                        Peor caída: {portfolioExecutiveSummary.worstDecline.property} (Δ/day{' '}
+                        {(portfolioExecutiveSummary.worstDecline.postClicksPerDay - portfolioExecutiveSummary.worstDecline.preClicksPerDay).toFixed(2)}).
+                      </li>
+                    )}
                   </ul>
                 </div>
                 {(loadingPortfolio || isLoadingGsc) && <div className="mt-3"><Spinner size={18} /></div>}
@@ -1754,11 +1830,33 @@ const GscImpactPage: React.FC = () => {
 
               <section className="surface-panel p-6">
                 <h3 className="text-lg font-semibold">Propiedades prioritarias</h3>
+                <p className="section-subtitle">Bloque accionable para pasar de análisis a decisión y ejecución en roadmap.</p>
                 <div className="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-4">
                   <Card className="p-3"><p className="font-semibold">Top mejora</p>{topPortfolioImprovers.map((row) => <p key={`imp-${row.property}`} className="mt-2 text-sm">{row.property} · Δ/day {(row.postClicksPerDay - row.preClicksPerDay).toFixed(2)}</p>)}</Card>
                   <Card className="p-3"><p className="font-semibold">Top caída</p>{topPortfolioDeclines.map((row) => <p key={`dec-${row.property}`} className="mt-2 text-sm">{row.property} · Δ/day {(row.postClicksPerDay - row.preClicksPerDay).toFixed(2)}</p>)}</Card>
                   <Card className="p-3"><p className="font-semibold">Urgentes</p>{urgentPortfolioRows.map((row) => <p key={`urg-${row.property}`} className="mt-2 text-sm">{row.property} · score {row.riskScore.toFixed(1)}</p>)}{urgentPortfolioRows.length === 0 && <p className="mt-2 text-sm text-muted">Sin urgentes.</p>}</Card>
                   <Card className="p-3"><p className="font-semibold">Anomalías / baja confianza</p>{anomalousPortfolioRows.map((row) => <p key={`ano-${row.property}`} className="mt-2 text-sm">{row.property} · {row.qualityReason}</p>)}{anomalousPortfolioRows.length === 0 && <p className="mt-2 text-sm text-muted">Sin anomalías relevantes.</p>}</Card>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {prioritizedPortfolioRows.map((row) => (
+                    <div key={`priority-${row.property}`} className="surface-subtle flex flex-wrap items-center justify-between gap-3 p-3 text-sm">
+                      <div>
+                        <p className="font-semibold">{row.property}</p>
+                        <p className="text-muted">
+                          Urgencia {row.urgencyScore.toFixed(1)} · Δ/day {(row.postClicksPerDay - row.preClicksPerDay).toFixed(2)} · Non-brand Δ/day {row.nonBrandDeltaClicksPerDay.toFixed(2)}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="secondary" onClick={() => createPortfolioTask(row)}>
+                          Crear tarea roadmap
+                        </Button>
+                        <Button variant="ghost" onClick={() => { setSelectedSite(row.property); setViewMode('individual'); }}>
+                          Abrir propiedad
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  {prioritizedPortfolioRows.length === 0 && <p className="text-sm text-muted">Sin propiedades prioritarias con los filtros actuales.</p>}
                 </div>
               </section>
 
@@ -1782,16 +1880,16 @@ const GscImpactPage: React.FC = () => {
                   <table className="min-w-full text-sm">
                     <thead>
                       <tr className="text-left text-muted">
-                        <th className="px-2 py-2">Propiedad</th><th className="px-2 py-2">Clicks pre</th><th className="px-2 py-2">Rollout</th><th className="px-2 py-2">Clicks post</th><th className="px-2 py-2">Clicks/day pre</th><th className="px-2 py-2">Clicks/day post</th><th className="px-2 py-2">Δ clicks</th><th className="px-2 py-2">Δ clicks %</th><th className="px-2 py-2">Imp pre</th><th className="px-2 py-2">Imp post</th><th className="px-2 py-2">Imp/day pre</th><th className="px-2 py-2">Imp/day post</th><th className="px-2 py-2">CTR pre</th><th className="px-2 py-2">CTR post</th><th className="px-2 py-2">Δ CTR</th><th className="px-2 py-2">Pos pre</th><th className="px-2 py-2">Pos post</th><th className="px-2 py-2">Δ pos</th><th className="px-2 py-2">Brand Δ/day</th><th className="px-2 py-2">Non-brand Δ/day</th><th className="px-2 py-2">Riesgo</th><th className="px-2 py-2">Estado</th><th className="px-2 py-2">Calidad</th><th className="px-2 py-2">Drill-down</th>
+                        <th className="px-2 py-2">Propiedad</th><th className="px-2 py-2">Clicks pre</th><th className="px-2 py-2">Rollout</th><th className="px-2 py-2">Clicks post</th><th className="px-2 py-2">Clicks/day pre</th><th className="px-2 py-2">Clicks/day post</th><th className="px-2 py-2">Δ clicks</th><th className="px-2 py-2">Δ clicks %</th><th className="px-2 py-2">Imp pre</th><th className="px-2 py-2">Imp post</th><th className="px-2 py-2">Imp/day pre</th><th className="px-2 py-2">Imp/day post</th><th className="px-2 py-2">CTR pre</th><th className="px-2 py-2">CTR post</th><th className="px-2 py-2">Δ CTR</th><th className="px-2 py-2">Pos pre</th><th className="px-2 py-2">Pos post</th><th className="px-2 py-2">Δ pos</th><th className="px-2 py-2">Brand Δ/day</th><th className="px-2 py-2">Non-brand Δ/day</th><th className="px-2 py-2">Riesgo</th><th className="px-2 py-2">Urgencia</th><th className="px-2 py-2">Estado</th><th className="px-2 py-2">Calidad</th><th className="px-2 py-2">Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
                       {pagedPortfolioRows.map((row) => (
                         <tr key={row.property} className="border-t border-border/50">
-                          <td className="px-2 py-2">{row.property}</td><td className="px-2 py-2">{row.preClicks.toFixed(0)}</td><td className="px-2 py-2">{row.rolloutClicks.toFixed(0)}</td><td className="px-2 py-2">{row.postClicks.toFixed(0)}</td><td className="px-2 py-2">{row.preClicksPerDay.toFixed(2)}</td><td className="px-2 py-2">{row.postClicksPerDay.toFixed(2)}</td><td className="px-2 py-2">{row.deltaClicks.toFixed(0)}</td><td className="px-2 py-2">{row.deltaClicksPct === null ? 'n/a' : `${(row.deltaClicksPct * 100).toFixed(1)}%`}</td><td className="px-2 py-2">{row.preImpressions.toFixed(0)}</td><td className="px-2 py-2">{row.postImpressions.toFixed(0)}</td><td className="px-2 py-2">{row.preImpressionsPerDay.toFixed(2)}</td><td className="px-2 py-2">{row.postImpressionsPerDay.toFixed(2)}</td><td className="px-2 py-2">{(row.preCtr * 100).toFixed(2)}%</td><td className="px-2 py-2">{(row.postCtr * 100).toFixed(2)}%</td><td className="px-2 py-2">{(row.deltaCtr * 100).toFixed(2)}pp</td><td className="px-2 py-2">{row.prePosition.toFixed(2)}</td><td className="px-2 py-2">{row.postPosition.toFixed(2)}</td><td className="px-2 py-2">{row.deltaPosition.toFixed(2)}</td><td className="px-2 py-2">{row.brandDeltaClicksPerDay.toFixed(2)}</td><td className="px-2 py-2">{row.nonBrandDeltaClicksPerDay.toFixed(2)}</td><td className="px-2 py-2">{row.riskScore.toFixed(1)}</td>
+                          <td className="px-2 py-2">{row.property}</td><td className="px-2 py-2">{row.preClicks.toFixed(0)}</td><td className="px-2 py-2">{row.rolloutClicks.toFixed(0)}</td><td className="px-2 py-2">{row.postClicks.toFixed(0)}</td><td className="px-2 py-2">{row.preClicksPerDay.toFixed(2)}</td><td className="px-2 py-2">{row.postClicksPerDay.toFixed(2)}</td><td className="px-2 py-2">{row.deltaClicks.toFixed(0)}</td><td className="px-2 py-2">{row.deltaClicksPct === null ? 'n/a' : `${(row.deltaClicksPct * 100).toFixed(1)}%`}</td><td className="px-2 py-2">{row.preImpressions.toFixed(0)}</td><td className="px-2 py-2">{row.postImpressions.toFixed(0)}</td><td className="px-2 py-2">{row.preImpressionsPerDay.toFixed(2)}</td><td className="px-2 py-2">{row.postImpressionsPerDay.toFixed(2)}</td><td className="px-2 py-2">{(row.preCtr * 100).toFixed(2)}%</td><td className="px-2 py-2">{(row.postCtr * 100).toFixed(2)}%</td><td className="px-2 py-2">{(row.deltaCtr * 100).toFixed(2)}pp</td><td className="px-2 py-2">{row.prePosition.toFixed(2)}</td><td className="px-2 py-2">{row.postPosition.toFixed(2)}</td><td className="px-2 py-2">{row.deltaPosition.toFixed(2)}</td><td className="px-2 py-2">{row.brandDeltaClicksPerDay.toFixed(2)}</td><td className="px-2 py-2">{row.nonBrandDeltaClicksPerDay.toFixed(2)}</td><td className="px-2 py-2">{row.riskScore.toFixed(1)}</td><td className="px-2 py-2">{row.urgencyScore.toFixed(1)}</td>
                           <td className="px-2 py-2"><Badge variant={getPortfolioStatusBadgeVariant(row.status)}>{row.status}</Badge></td>
                           <td className="px-2 py-2"><Badge variant={row.quality === 'ok' ? 'success' : 'warning'}>{row.quality}</Badge></td>
-                          <td className="px-2 py-2"><Button variant="secondary" onClick={() => { setSelectedSite(row.property); setViewMode('individual'); }}>Abrir</Button></td>
+                          <td className="px-2 py-2"><div className="flex gap-2"><Button variant="secondary" onClick={() => { setSelectedSite(row.property); setViewMode('individual'); }}>Abrir</Button><Button variant="ghost" onClick={() => createPortfolioTask(row)}>Tarea</Button></div></td>
                         </tr>
                       ))}
                     </tbody>
