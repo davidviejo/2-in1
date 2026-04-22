@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { buildPortfolioPropertyRow, detectPortfolioPatterns, summarizePortfolioStatusCounts } from './portfolioAnalysis';
+import {
+  buildPortfolioExecutiveSummary,
+  buildPortfolioPropertyRow,
+  detectPortfolioPatterns,
+  sortPortfolioRows,
+  summarizePortfolioStatusCounts,
+} from './portfolioAnalysis';
 import { NormalizedComparison } from './impactAnalysis';
 
 const buildSummary = (overrides?: Partial<NormalizedComparison>): NormalizedComparison => ({
@@ -25,6 +31,7 @@ describe('portfolioAnalysis', () => {
 
     expect(['atención', 'riesgo', 'urgente']).toContain(row.status);
     expect(row.riskScore).toBeGreaterThan(30);
+    expect(row.urgencyScore).toBeGreaterThan(35);
   });
 
   it('builds aggregate signals and status counts', () => {
@@ -51,5 +58,30 @@ describe('portfolioAnalysis', () => {
 
     expect(counts.total).toBe(2);
     expect(patterns.length).toBeGreaterThan(0);
+  });
+
+  it('builds decision summary and supports urgency sorting', () => {
+    const deteriorated = buildPortfolioPropertyRow({ property: 'https://drop.com', total: buildSummary(), brand: buildSummary(), nonBrand: buildSummary() });
+    const improved = buildPortfolioPropertyRow({
+      property: 'https://grow.com',
+      total: buildSummary({
+        post: { ...buildSummary().pre, clicks: 1300, clicksPerDay: 92.8, ctr: 0.13, position: 5 },
+        postVsPre: {
+          clicksPerDay: { absolute: 21.4, pct: 0.3 },
+          impressionsPerDay: { absolute: 110, pct: 0.15 },
+          ctr: { absolute: 0.03, pct: 0.3 },
+          position: { absolute: -1.2, pct: -0.2 },
+        },
+      }),
+      brand: buildSummary(),
+      nonBrand: buildSummary(),
+    });
+
+    const summary = buildPortfolioExecutiveSummary([deteriorated, improved]);
+    const sortedByUrgency = sortPortfolioRows([deteriorated, improved], 'urgency');
+
+    expect(summary.bestImprovement?.property).toBe('https://grow.com');
+    expect(summary.worstDecline?.property).toBe('https://drop.com');
+    expect(sortedByUrgency[0].property).toBe('https://drop.com');
   });
 });
