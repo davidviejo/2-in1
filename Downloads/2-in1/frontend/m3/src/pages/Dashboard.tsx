@@ -344,7 +344,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { success: showSuccess } = useToast();
-  const { currentClient, updateCurrentClientProfile, addTask } = useProject();
+  const { currentClient, updateCurrentClientProfile, addTask, projectScoreContext } = useProject();
   const [quickTask, setQuickTask] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [selectedInsight, setSelectedInsight] = useState<SeoInsight | null>(null);
@@ -449,6 +449,30 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     () => formatProjectContextLabel(activeProjectType, activeSector, activeGeoScope),
     [activeGeoScope, activeProjectType, activeSector],
   );
+
+  const weightedCriticalModules = useMemo(() => {
+    if (!projectScoreContext) {
+      return [];
+    }
+
+    return projectScoreContext.criticalModuleIds
+      .map((moduleId) => {
+        const module = modules.find((item) => item.id === moduleId);
+        const weight = projectScoreContext.appliedWeights.find((item) => item.moduleId === moduleId)?.weight || 0;
+        const maturity = projectScoreContext.moduleMaturity[moduleId] || 0;
+        if (!module) {
+          return null;
+        }
+
+        return {
+          moduleId,
+          title: module.title,
+          weight,
+          maturity,
+        };
+      })
+      .filter((entry): entry is { moduleId: number; title: string; weight: number; maturity: number } => Boolean(entry));
+  }, [modules, projectScoreContext]);
 
   const badge = useMemo(() => {
     if (globalScore >= 95) return { title: 'Chief SEO Officer', variant: 'success' as const };
@@ -1478,6 +1502,37 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
             {contextProfile.focusAreas.join(' · ')}
           </div>
           <div className="mt-2">{contextProfile.sectorExamples}</div>
+        </div>
+
+        <div className="rounded-xl border border-border bg-surface-alt p-4 space-y-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="font-semibold text-foreground text-sm">Ponderación aplicada al score</div>
+            {projectScoreContext?.fallbackUsed ? <Badge variant="warning">Fallback genérico</Badge> : <Badge variant="success">Configuración contextual</Badge>}
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
+            {(projectScoreContext?.appliedWeights || []).slice(0, 5).map((entry) => (
+              <div key={entry.moduleId} className="rounded-lg border border-border bg-surface p-2">
+                <div className="text-muted">M{entry.moduleId}</div>
+                <div className="font-semibold text-foreground">{entry.weight}%</div>
+                <div className="text-[10px] text-muted">origen: {entry.source}</div>
+              </div>
+            ))}
+          </div>
+          <div className="text-xs text-muted">
+            Score actual ponderado: <strong className="text-foreground">{projectScoreContext?.score ?? globalScore}%</strong> · Contexto: {activeProjectType} / {activeSector} / {activeGeoScope}
+          </div>
+          <div className="space-y-1 text-xs text-muted">
+            <div className="font-medium text-foreground">Módulos críticos para este contexto</div>
+            {weightedCriticalModules.length === 0 ? (
+              <div>Sin módulos críticos calculados.</div>
+            ) : (
+              weightedCriticalModules.map((item) => (
+                <div key={item.moduleId}>
+                  M{item.moduleId} · {item.title} — peso {item.weight}% · madurez {item.maturity}%
+                </div>
+              ))
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">

@@ -21,6 +21,7 @@ import {
   createDefaultIAVisibilityState,
   InsightFlowTrace,
   InsightSourceMeta,
+  ProjectScoreContext,
 } from '../types';
 import { ClientRepository } from '../services/clientRepository';
 import { ProjectRemoteRepository } from '../services/projectRemoteRepository';
@@ -40,6 +41,7 @@ import {
   normalizeSubSector,
 } from '../utils/projectMetadata';
 import { buildContextualRoadmap } from '@/config/projectContextualRoadmap';
+import { computeProjectScoreContext } from '@/config/projectScoreWeights';
 
 interface ProjectContextType {
   clients: Client[];
@@ -47,6 +49,7 @@ interface ProjectContextType {
   currentClient: Client | null;
   modules: ModuleData[];
   globalScore: number;
+  projectScoreContext: ProjectScoreContext | null;
   generalNotes: Note[];
 
   // Actions
@@ -249,20 +252,25 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
   const modules = useMemo(() => (currentClient ? currentClient.modules : []), [currentClient]);
 
   // --- Derived State for Score ---
+  const projectScoreContext = useMemo(() => {
+    if (!currentClient) {
+      return null;
+    }
+
+    return computeProjectScoreContext({
+      modules,
+      projectType: currentClient.projectType || getProjectTypeFromVertical(currentClient.vertical),
+      sector: currentClient.sector,
+      geoScope: currentClient.geoScope || normalizeGeoScope(undefined, currentClient.projectType || getProjectTypeFromVertical(currentClient.vertical)),
+    });
+  }, [currentClient, modules]);
+
   const globalScore = useMemo(() => {
     if (!modules) {
       return 0;
     }
-    let totalTasks = 0;
-    let completedTasks = 0;
-
-    modules.forEach((m) => {
-      totalTasks += m.tasks.length;
-      completedTasks += m.tasks.filter((t) => t.status === 'completed').length;
-    });
-
-    return totalTasks === 0 ? 0 : Math.round((completedTasks / totalTasks) * 100);
-  }, [modules]);
+    return projectScoreContext?.score || 0;
+  }, [modules, projectScoreContext]);
 
   // --- Persistence Effects ---
   useEffect(() => {
@@ -1098,6 +1106,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       currentClient,
       modules,
       globalScore,
+      projectScoreContext,
       generalNotes,
       addClient,
       deleteClient,
@@ -1137,6 +1146,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       currentClient,
       modules,
       globalScore,
+      projectScoreContext,
       generalNotes,
       addClient,
       deleteClient,
