@@ -22,6 +22,20 @@ export interface Task {
   dueDate?: string;
   flow?: InsightFlowTrace;
   insightSourceMeta?: InsightSourceMeta;
+  templateMeta?: TaskTemplateMeta;
+}
+
+export type TaskTemplateOrigin = 'generic' | 'project_type' | 'sector' | 'client_custom';
+
+export interface TaskTemplateMeta {
+  templateId: string;
+  templateLabel: string;
+  origin: TaskTemplateOrigin;
+  projectType: ProjectType;
+  sector?: string;
+  moduleId: number;
+  priority: 'High' | 'Medium' | 'Low';
+  generatedAt: number;
 }
 
 export interface InsightSourceMeta {
@@ -204,6 +218,8 @@ export interface Client {
   kanbanColumns?: KanbanColumn[];
   iaVisibility?: IAVisibilityState;
   templateVersion?: string;
+  roadmapTemplateMode?: 'contextual' | 'generic';
+  moduleWeights?: Partial<Record<number, number>>;
 }
 
 export interface NewClientInput {

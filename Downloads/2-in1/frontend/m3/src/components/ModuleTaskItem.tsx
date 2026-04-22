@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Spinner } from './ui/Spinner';
+import { getTemplateBadgeText, getTemplateBadgeTone } from '@/utils/taskTemplateMeta';
 
 interface ModuleTaskItemProps {
   task: Task;
@@ -80,6 +81,7 @@ const ModuleTaskItem: React.FC<ModuleTaskItemProps> = memo(
     availableProviders,
     onVitaminAction,
   }) => {
+    const templateBadgeText = getTemplateBadgeText(task.templateMeta);
     return (
       <div
         className={`bg-white dark:bg-slate-800 rounded-xl border transition-all duration-200 ${
@@ -126,6 +128,13 @@ const ModuleTaskItem: React.FC<ModuleTaskItemProps> = memo(
               {task.isCustom && (
                 <span className="text-[10px] font-bold text-purple-600 bg-purple-50 dark:bg-purple-900/30 px-2 py-0.5 rounded-full border border-purple-100 dark:border-purple-800">
                   Personalizada
+                </span>
+              )}
+              {templateBadgeText && (
+                <span
+                  className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${getTemplateBadgeTone(task.templateMeta)}`}
+                >
+                  {templateBadgeText}
                 </span>
               )}
             </div>

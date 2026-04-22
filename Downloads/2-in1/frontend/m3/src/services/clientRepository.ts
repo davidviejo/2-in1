@@ -21,6 +21,7 @@ import {
   normalizeSector,
   normalizeSubSector,
 } from '../utils/projectMetadata';
+import { buildContextualRoadmap } from '@/config/projectContextualRoadmap';
 
 const CLIENTS_KEY = 'mediaflow_clients_cache_v2';
 const LEGACY_CLIENTS_KEY = 'mediaflow_clients';
@@ -215,6 +216,18 @@ const normalizeClient = (client: Client, options?: { validateDuplicateTaskIds?: 
     completedTasksLog: client.completedTasksLog || [],
     customRoadmapOrder: dedupeStable(client.customRoadmapOrder || []),
     iaVisibility: normalizeIAVisibilityState(client.iaVisibility),
+    roadmapTemplateMode:
+      client.roadmapTemplateMode ||
+      ((client.initialConfigPreset?.useGenericConfig ? 'generic' : 'contextual') as
+        | 'generic'
+        | 'contextual'),
+    moduleWeights:
+      client.moduleWeights ||
+      buildContextualRoadmap({
+        projectType,
+        sector: (client as Partial<Client>).sector,
+        useGenericConfig: client.initialConfigPreset?.useGenericConfig,
+      }).moduleWeights,
   };
 };
 
@@ -270,6 +283,11 @@ const createFallbackClient = (): Client => {
     notes: [],
     completedTasksLog: [],
     customRoadmapOrder: [],
+    roadmapTemplateMode: 'contextual',
+    moduleWeights: buildContextualRoadmap({
+      projectType: getProjectTypeFromVertical('media'),
+      sector: 'Otro',
+    }).moduleWeights,
     iaVisibility: createDefaultIAVisibilityState(),
   };
 };

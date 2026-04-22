@@ -18,6 +18,7 @@ import {
 import { Link } from 'react-router-dom';
 import { useToast } from '../components/ui/ToastContext';
 import { Spinner } from '../components/ui/Spinner';
+import { getTemplateBadgeText, getTemplateBadgeTone } from '@/utils/taskTemplateMeta';
 
 interface RoadmapTaskItemProps {
   item: { task: Task; moduleId: number };
@@ -64,7 +65,7 @@ const RoadmapTaskItem: React.FC<RoadmapTaskItemProps> = memo(
     const { success: showSuccess } = useToast();
     const [slackSent, setSlackSent] = useState(false);
 
-    const getImpactColor = (impact: string) => {
+  const getImpactColor = (impact: string) => {
       switch (impact) {
         case 'High':
           return 'text-rose-600 bg-rose-50 dark:bg-rose-900/30 border-rose-100 dark:border-rose-900/50';
@@ -75,7 +76,8 @@ const RoadmapTaskItem: React.FC<RoadmapTaskItemProps> = memo(
         default:
           return 'text-slate-500';
       }
-    };
+  };
+  const templateBadgeText = getTemplateBadgeText(item.task.templateMeta);
 
     const copyClientNotification = (task: Task) => {
       const template = `Hola ${clientName}, te comento que hemos avanzado con la tarea: *${task.title}*.\n\n${task.description}\n\nCualquier duda me dices.`;
@@ -153,6 +155,13 @@ const RoadmapTaskItem: React.FC<RoadmapTaskItemProps> = memo(
                       Personalizada
                     </span>
                   )}
+                  {templateBadgeText && (
+                    <span
+                      className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${getTemplateBadgeTone(item.task.templateMeta)}`}
+                    >
+                      {templateBadgeText}
+                    </span>
+                  )}
                 </div>
                 <h3
                   className={`font-semibold text-lg leading-tight mb-1 ${item.task.status === 'completed' ? 'text-slate-400 line-through' : 'text-slate-800 dark:text-slate-200'}`}
@@ -174,6 +183,19 @@ const RoadmapTaskItem: React.FC<RoadmapTaskItemProps> = memo(
                     Creado desde insight {item.task.insightSourceMeta.insightId}
                     <ExternalLink size={10} />
                   </Link>
+                )}
+                {item.task.templateMeta && (
+                  <div className="mb-4 rounded-lg border border-cyan-100 bg-cyan-50/60 p-3 text-xs text-cyan-900 dark:border-cyan-900 dark:bg-cyan-900/20 dark:text-cyan-100">
+                    <div className="font-semibold">{item.task.templateMeta.templateLabel}</div>
+                    <div className="mt-1">
+                      Origen: {item.task.templateMeta.origin} · Módulo {item.task.templateMeta.moduleId} · Prioridad{' '}
+                      {item.task.templateMeta.priority}
+                    </div>
+                    <div>
+                      Contexto: {item.task.templateMeta.projectType} · {item.task.templateMeta.sector || 'Genérico'} ·{' '}
+                      {new Date(item.task.templateMeta.generatedAt).toLocaleString()}
+                    </div>
+                  </div>
                 )}
               </div>
 
