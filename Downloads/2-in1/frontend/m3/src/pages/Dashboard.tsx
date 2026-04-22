@@ -96,11 +96,33 @@ interface HeroMetricProps {
 
 interface UrlTrendSignal {
   url: string;
-  peakDate: string;
-  peakClicks: number;
+  periodKey: UrlTrendWindowKey;
+  periodLabel: string;
+  peakRange: string;
+  currentClicks: number;
   baselineClicks: number;
-  surgeRatio: number;
   clickIncrease: number;
+  clickChangePct: number;
+  surgeRatio: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+  statusLabel: string;
+  score: number;
+}
+
+type UrlTrendWindowKey = '24h' | '7d' | '30d' | '3m' | '6m' | '12m';
+
+interface UrlTrendWindowReport {
+  key: UrlTrendWindowKey;
+  label: string;
+  statusLabel: string;
+  currentRange: string;
+  baselineRange: string;
+  days: number;
+  available: boolean;
+  availabilityMessage?: string;
+  rows: UrlTrendSignal[];
 }
 
 type PerformanceMetric = 'clicks' | 'impressions' | 'ctr' | 'position';
@@ -152,7 +174,18 @@ export const getVisibleSelectedGscSite = (
 };
 
 export const detectTrendingUrls = (rows: GSCRow[]): UrlTrendSignal[] => {
-  const groupedByUrl = new Map<string, Array<{ date: string; clicks: number }>>();
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const WINDOWS: Array<{ key: UrlTrendWindowKey; label: string; statusLabel: string; days: number }> = [
+    { key: '24h', label: 'Últimas 24 horas', statusLabel: 'pico puntual', days: 1 },
+    { key: '7d', label: 'Últimos 7 días', statusLabel: 'tendencia semanal', days: 7 },
+    { key: '30d', label: 'Últimos 30 días', statusLabel: 'tendencia mensual', days: 30 },
+    { key: '3m', label: 'Últimos 3 meses', statusLabel: 'tendencia trimestral', days: 90 },
+    { key: '6m', label: 'Últimos 6 meses', statusLabel: 'tendencia semestral', days: 180 },
+    { key: '12m', label: 'Últimos 12 meses', statusLabel: 'patrón anual', days: 365 },
+  ];
+
+  const groupedByUrl = new Map<string, Array<{ date: string; clicks: number; impressions: number; ctr: number; position: number }>>();
+  const allDates = new Set<string>();
 
   rows.forEach((row) => {
     const url = row.keys?.[0];
@@ -160,55 +193,89 @@ export const detectTrendingUrls = (rows: GSCRow[]): UrlTrendSignal[] => {
     if (!url || !date) return;
 
     const bucket = groupedByUrl.get(url) || [];
-    bucket.push({ date, clicks: Number(row.clicks) || 0 });
+    bucket.push({
+      date,
+      clicks: Number(row.clicks) || 0,
+      impressions: Number(row.impressions) || 0,
+      ctr: Number(row.ctr) || 0,
+      position: Number(row.position) || 0,
+    });
     groupedByUrl.set(url, bucket);
+    allDates.add(date);
   });
 
-  const result: UrlTrendSignal[] = [];
+  const sortedDates = Array.from(allDates).sort((a, b) => a.localeCompare(b));
+  const newestDate = sortedDates[sortedDates.length - 1];
+  if (!newestDate) return [];
 
-  groupedByUrl.forEach((entries, url) => {
-    if (entries.length < 5) return;
+  const newestDateMs = new Date(`${newestDate}T00:00:00Z`).getTime();
+  const getRangeDates = (days: number, offsetDays: number) => {
+    const endMs = newestDateMs - offsetDays * DAY_MS;
+    const startMs = endMs - (days - 1) * DAY_MS;
+    return {
+      start: new Date(startMs).toISOString().slice(0, 10),
+      end: new Date(endMs).toISOString().slice(0, 10),
+    };
+  };
 
-    const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
-    let best: UrlTrendSignal | null = null;
+  const formatRange = (start: string, end: string) => (start === end ? start : `${start} → ${end}`);
 
-    for (let i = 4; i < sorted.length; i += 1) {
-      const baselineSlice = sorted.slice(Math.max(0, i - 4), i);
-      if (baselineSlice.length === 0) continue;
+  const resultsByWindow = WINDOWS.flatMap((windowDef) => {
+    const requiredDays = windowDef.days * 2;
+    if (sortedDates.length < requiredDays) {
+      return [];
+    }
 
-      const baselineRaw = baselineSlice.reduce((sum, item) => sum + item.clicks, 0) / baselineSlice.length;
-      const baseline = Math.max(3, baselineRaw);
-      const peakClicks = sorted[i].clicks;
-      const clickIncrease = peakClicks - baseline;
-      const surgeRatio = peakClicks / baseline;
+    const current = getRangeDates(windowDef.days, 0);
+    const baseline = getRangeDates(windowDef.days, windowDef.days);
+    const trends: UrlTrendSignal[] = [];
 
-      const isSignificant =
-        peakClicks >= 25 &&
-        clickIncrease >= 20 &&
-        surgeRatio >= 2.5;
+    groupedByUrl.forEach((entries, url) => {
+      const currentRows = entries.filter((entry) => entry.date >= current.start && entry.date <= current.end);
+      const baselineRows = entries.filter((entry) => entry.date >= baseline.start && entry.date <= baseline.end);
+      if (currentRows.length === 0 || baselineRows.length === 0) return;
 
-      if (!isSignificant) continue;
+      const currentClicks = currentRows.reduce((sum, row) => sum + row.clicks, 0);
+      const baselineClicks = baselineRows.reduce((sum, row) => sum + row.clicks, 0);
+      const clickIncrease = currentClicks - baselineClicks;
+      const clickChangePct = baselineClicks > 0 ? (clickIncrease / baselineClicks) * 100 : currentClicks > 0 ? 999 : 0;
+      const surgeRatio = baselineClicks > 0 ? currentClicks / baselineClicks : currentClicks > 0 ? 99 : 0;
 
-      const candidate: UrlTrendSignal = {
+      const impressions = currentRows.reduce((sum, row) => sum + row.impressions, 0);
+      const ctr = impressions > 0 ? (currentClicks / impressions) * 100 : 0;
+      const position = impressions > 0
+        ? currentRows.reduce((sum, row) => sum + row.position * row.impressions, 0) / impressions
+        : 0;
+
+      const strongPct = clickChangePct >= 80 && clickIncrease >= (windowDef.days === 1 ? 10 : 20);
+      const strongMultiplier = surgeRatio >= 2 && clickIncrease >= (windowDef.days === 1 ? 8 : 15);
+      const strongAbsolute = clickIncrease >= Math.max(25, windowDef.days * 1.5);
+      const hasPeak = clickIncrease > 0 && (strongPct || strongMultiplier || strongAbsolute);
+      if (!hasPeak) return;
+
+      const score = clickIncrease * Math.max(1, surgeRatio) + Math.max(0, clickChangePct);
+      trends.push({
         url,
-        peakDate: sorted[i].date,
-        peakClicks,
-        baselineClicks: baselineRaw,
-        surgeRatio,
+        periodKey: windowDef.key,
+        periodLabel: windowDef.label,
+        peakRange: formatRange(current.start, current.end),
+        currentClicks,
+        baselineClicks,
         clickIncrease,
-      };
+        clickChangePct,
+        surgeRatio,
+        impressions,
+        ctr,
+        position,
+        statusLabel: windowDef.statusLabel,
+        score,
+      });
+    });
 
-      if (!best || candidate.clickIncrease * candidate.surgeRatio > best.clickIncrease * best.surgeRatio) {
-        best = candidate;
-      }
-    }
-
-    if (best) {
-      result.push(best);
-    }
+    return trends;
   });
 
-  return result.sort((a, b) => b.clickIncrease * b.surgeRatio - a.clickIncrease * a.surgeRatio).slice(0, 5);
+  return resultsByWindow.sort((a, b) => b.score - a.score);
 };
 
 const formatNumberSafe = (value: unknown, fallback = '—') => {
@@ -766,6 +833,73 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   }, [comparisonQueryPageData, currentClient?.brandTerms, queryCategoryFilter, queryPageData, trafficSegmentFilter]);
 
   const trendingUrls = useMemo(() => detectTrendingUrls(pageDateData), [pageDateData]);
+
+  const trendingWindows = useMemo<UrlTrendWindowReport[]>(() => {
+    const windowConfig: Array<{ key: UrlTrendWindowKey; label: string; statusLabel: string; days: number }> = [
+      { key: '24h', label: 'Últimas 24 horas', statusLabel: 'pico puntual', days: 1 },
+      { key: '7d', label: 'Últimos 7 días', statusLabel: 'tendencia semanal', days: 7 },
+      { key: '30d', label: 'Últimos 30 días', statusLabel: 'tendencia mensual', days: 30 },
+      { key: '3m', label: 'Últimos 3 meses', statusLabel: 'tendencia trimestral', days: 90 },
+      { key: '6m', label: 'Últimos 6 meses', statusLabel: 'tendencia semestral', days: 180 },
+      { key: '12m', label: 'Últimos 12 meses', statusLabel: 'patrón anual', days: 365 },
+    ];
+
+    const dates = Array.from(new Set((pageDateData || []).map((row) => row.keys?.[1]).filter(Boolean)));
+    const availableDays = dates.length;
+    const newestDate = dates.sort((a, b) => a!.localeCompare(b!))[dates.length - 1];
+    const latest = newestDate ? new Date(`${newestDate}T00:00:00Z`) : null;
+    const fmt = (date: Date) => date.toISOString().slice(0, 10);
+    const fmtRange = (start: Date, end: Date) => {
+      const startStr = fmt(start);
+      const endStr = fmt(end);
+      return startStr === endStr ? startStr : `${startStr} → ${endStr}`;
+    };
+
+    return windowConfig.map((windowDef) => {
+      const requiredDays = windowDef.days * 2;
+      const available = availableDays >= requiredDays && Boolean(latest);
+      const currentEnd = latest ? new Date(latest) : null;
+      const currentStart = currentEnd ? new Date(currentEnd.getTime() - (windowDef.days - 1) * 24 * 60 * 60 * 1000) : null;
+      const baselineEnd = currentStart ? new Date(currentStart.getTime() - 24 * 60 * 60 * 1000) : null;
+      const baselineStart = baselineEnd
+        ? new Date(baselineEnd.getTime() - (windowDef.days - 1) * 24 * 60 * 60 * 1000)
+        : null;
+
+      return {
+        key: windowDef.key,
+        label: windowDef.label,
+        statusLabel: windowDef.statusLabel,
+        currentRange: currentStart && currentEnd ? fmtRange(currentStart, currentEnd) : '—',
+        baselineRange: baselineStart && baselineEnd ? fmtRange(baselineStart, baselineEnd) : '—',
+        days: windowDef.days,
+        available,
+        availabilityMessage: available
+          ? undefined
+          : `Datos insuficientes para ${windowDef.label.toLowerCase()} (se requieren ~${requiredDays} días; disponibles: ${availableDays}).`,
+        rows: trendingUrls.filter((trend) => trend.periodKey === windowDef.key),
+      };
+    });
+  }, [pageDateData, trendingUrls]);
+
+  const trendingSummary = useMemo(() => {
+    const countsByWindow = trendingWindows.reduce<Record<string, number>>((acc, window) => {
+      acc[window.key] = window.rows.length;
+      return acc;
+    }, {});
+    const topRelevant = [...trendingUrls].slice(0, 10);
+    const sustainedMap = new Map<string, { count: number; totalIncrease: number }>();
+    trendingUrls.forEach((trend) => {
+      const current = sustainedMap.get(trend.url) || { count: 0, totalIncrease: 0 };
+      current.count += 1;
+      current.totalIncrease += trend.clickIncrease;
+      sustainedMap.set(trend.url, current);
+    });
+    const sustained = Array.from(sustainedMap.entries())
+      .filter(([, value]) => value.count >= 2)
+      .sort((a, b) => b[1].count - a[1].count || b[1].totalIncrease - a[1].totalIncrease)
+      .slice(0, 8);
+    return { countsByWindow, topRelevant, sustained };
+  }, [trendingUrls, trendingWindows]);
 
 
   const prioritizedQuickWins = useMemo(
@@ -2682,27 +2816,113 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
             </div>
           )}
 
-          {trendingUrls.length > 0 ? (
+          {trendingWindows.some((window) => window.rows.length > 0 || !window.available) ? (
             <div className="bg-surface p-5 rounded-2xl shadow-sm border border-border">
               <h3 className="font-bold mb-4 flex items-center gap-2">
                 <TrendingUp className="text-primary" size={20} /> URLs en tendencia
                 <span className="text-[10px] bg-primary-soft text-primary px-1.5 py-0.5 rounded font-bold uppercase">
-                  Pico detectado
+                  Informe completo
                 </span>
               </h3>
-              <div className="space-y-3">
-                {trendingUrls.map((trend, i) => (
-                  <div key={`${trend.url}-${i}`} className="rounded-lg border border-border p-3 bg-surface-alt/40">
-                    <div className="text-sm font-semibold text-foreground line-clamp-1">{trend.url}</div>
-                    <div className="mt-1 text-xs text-muted">
-                      Pico el <strong>{trend.peakDate}</strong> · +{Math.round(trend.clickIncrease).toLocaleString()} clics
-                      vs base ({Math.max(0, Math.round(trend.baselineClicks)).toLocaleString()}).
+              <div className="rounded-xl border border-border bg-surface-alt/30 p-3 text-xs">
+                <div className="font-semibold text-foreground">Resumen de detección</div>
+                <div className="mt-1 text-muted">
+                  URLs con pico por periodo: día {trendingSummary.countsByWindow['24h'] || 0} · semana {trendingSummary.countsByWindow['7d'] || 0} · mes {trendingSummary.countsByWindow['30d'] || 0} · 3m {trendingSummary.countsByWindow['3m'] || 0} · 6m {trendingSummary.countsByWindow['6m'] || 0} · 12m {trendingSummary.countsByWindow['12m'] || 0}
+                </div>
+                {trendingSummary.sustained.length > 0 ? (
+                  <div className="mt-2 text-muted">
+                    Tendencias sostenidas detectadas: {trendingSummary.sustained.map(([url, value]) => `${url} (${value.count} ventanas)`).join(' · ')}
+                  </div>
+                ) : (
+                  <div className="mt-2 text-muted">
+                    Sin tendencias sostenidas en múltiples ventanas con los datos actuales.
+                  </div>
+                )}
+              </div>
+              {trendingSummary.topRelevant.length > 0 && (
+                <div className="mt-3 rounded-xl border border-border bg-surface-alt/20 p-3">
+                  <div className="text-xs font-semibold text-foreground">Top URLs más relevantes</div>
+                  <ul className="mt-2 space-y-1 text-xs text-muted">
+                    {trendingSummary.topRelevant.map((trend, index) => (
+                      <li key={`${trend.url}-${trend.periodKey}-${index}`}>
+                        {index + 1}. {trend.url} · {trend.periodLabel} · +{Math.round(trend.clickIncrease).toLocaleString()} clics · x{trend.surgeRatio.toFixed(2)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <div className="mt-4 space-y-4">
+                {trendingWindows.map((window) => (
+                  <div key={window.key} className="rounded-xl border border-border">
+                    <div className="flex items-start justify-between gap-3 border-b border-border px-3 py-2 bg-surface-alt/40">
+                      <div>
+                        <div className="text-sm font-semibold text-foreground">{window.label}</div>
+                        <div className="text-[11px] text-muted">
+                          Actual: {window.currentRange} · Baseline: {window.baselineRange}
+                        </div>
+                      </div>
+                      <Badge variant={window.available ? 'primary' : 'warning'} className="text-[10px]">
+                        {window.available ? `${window.rows.length} URLs con pico` : 'No disponible'}
+                      </Badge>
                     </div>
-                    <div className="mt-1 text-xs font-medium text-primary">
-                      Multiplicó x{trend.surgeRatio.toFixed(1)} en pocos días.
-                    </div>
+                    {!window.available ? (
+                      <div className="px-3 py-3 text-xs text-muted">{window.availabilityMessage}</div>
+                    ) : window.rows.length === 0 ? (
+                      <div className="px-3 py-3 text-xs text-muted">Sin picos relevantes detectados en esta ventana.</div>
+                    ) : (
+                      <div className="max-h-[360px] overflow-auto">
+                        <table className="w-full text-xs">
+                          <thead className="sticky top-0 bg-surface">
+                            <tr className="text-left text-muted">
+                              <th className="px-3 py-2">URL</th>
+                              <th className="px-3 py-2">Periodo</th>
+                              <th className="px-3 py-2">Rango pico</th>
+                              <th className="px-3 py-2">Clics actual</th>
+                              <th className="px-3 py-2">Clics baseline</th>
+                              <th className="px-3 py-2">Δ abs</th>
+                              <th className="px-3 py-2">Δ %</th>
+                              <th className="px-3 py-2">Multiplicador</th>
+                              <th className="px-3 py-2">Impresiones</th>
+                              <th className="px-3 py-2">CTR</th>
+                              <th className="px-3 py-2">Posición</th>
+                              <th className="px-3 py-2">Estado</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {window.rows.map((trend, i) => (
+                              <tr key={`${trend.url}-${window.key}-${i}`} className="border-t border-border hover:bg-surface-alt/40">
+                                <td className="px-3 py-2 max-w-[260px]">
+                                  <a href={trend.url} target="_blank" rel="noreferrer" className="line-clamp-1 text-primary hover:underline">
+                                    {trend.url}
+                                  </a>
+                                </td>
+                                <td className="px-3 py-2">{trend.periodLabel}</td>
+                                <td className="px-3 py-2">{trend.peakRange}</td>
+                                <td className="px-3 py-2">{Math.round(trend.currentClicks).toLocaleString()}</td>
+                                <td className="px-3 py-2">{Math.round(Math.max(0, trend.baselineClicks)).toLocaleString()}</td>
+                                <td className="px-3 py-2 font-semibold text-primary">+{Math.round(trend.clickIncrease).toLocaleString()}</td>
+                                <td className="px-3 py-2">{trend.clickChangePct.toFixed(1)}%</td>
+                                <td className="px-3 py-2">x{trend.surgeRatio.toFixed(2)}</td>
+                                <td className="px-3 py-2">{Math.round(trend.impressions).toLocaleString()}</td>
+                                <td className="px-3 py-2">{trend.ctr.toFixed(2)}%</td>
+                                <td className="px-3 py-2">{formatPositionSafe(trend.position)}</td>
+                                <td className="px-3 py-2">
+                                  <Badge variant="secondary" className="text-[10px]">{trend.statusLabel}</Badge>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
                 ))}
+              </div>
+              <div className="mt-3 text-[11px] text-muted">
+                Orden de prioridad aplicado: 1) mayor crecimiento relativo y absoluto, 2) señales sostenidas en múltiples ventanas, 3) picos recientes de alto impacto.
+              </div>
+              <div className="mt-2 text-[11px] text-muted">
+                Nota de estacionalidad: en la vista de 12 meses se recomienda revisar si se repiten patrones anuales, bimensuales o trimestrales para confirmar estacionalidad editorial.
               </div>
             </div>
           ) : (
