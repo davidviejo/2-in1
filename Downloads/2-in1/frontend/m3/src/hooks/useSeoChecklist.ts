@@ -90,6 +90,18 @@ const normalizeSeoPage = (page: SeoPage): SeoPage => ({
 
 const normalizeSeoPages = (pages: SeoPage[]) => pages.map(normalizeSeoPage);
 
+
+const persistSeoPages = (storageKey: string, nextPages: SeoPage[]) => {
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(nextPages));
+  } catch (error) {
+    console.warn('No se pudo persistir SEO Checklist en localStorage.', {
+      storageKey,
+      pages: nextPages.length,
+      error,
+    });
+  }
+};
 const AI_DRIVEN_STATUSES = new Set<ChecklistStatus>(['SI_IA', 'ERROR_CLARO_IA']);
 
 const isProtectedManualSiOverwrite = (
@@ -206,7 +218,7 @@ export const useSeoChecklist = () => {
       const parsed = JSON.parse(saved) as SeoPage[];
       const normalized = normalizeSeoPages(parsed);
       if (JSON.stringify(parsed) !== JSON.stringify(normalized)) {
-        localStorage.setItem(storageKey, JSON.stringify(normalized));
+        persistSeoPages(storageKey, normalized);
       }
 
       return normalized;
@@ -223,7 +235,7 @@ export const useSeoChecklist = () => {
           normalizeSeoPages([...prev, ...newPages]),
           activeBrandTerms,
         );
-        localStorage.setItem(storageKey, JSON.stringify(updated));
+        persistSeoPages(storageKey, updated);
         return updated;
       });
     },
@@ -237,7 +249,7 @@ export const useSeoChecklist = () => {
           normalizeSeoPages(prev.map((p) => (p.id === id ? { ...p, ...updates } : p))),
           activeBrandTerms,
         );
-        localStorage.setItem(storageKey, JSON.stringify(updated));
+        persistSeoPages(storageKey, updated);
         return updated;
       });
     },
@@ -260,7 +272,7 @@ export const useSeoChecklist = () => {
           ),
           activeBrandTerms,
         );
-        localStorage.setItem(storageKey, JSON.stringify(updated));
+        persistSeoPages(storageKey, updated);
         return updated;
       });
     },
@@ -284,7 +296,7 @@ export const useSeoChecklist = () => {
             },
           };
         });
-        localStorage.setItem(storageKey, JSON.stringify(updated));
+        persistSeoPages(storageKey, updated);
         return updated;
       });
     },
@@ -295,7 +307,7 @@ export const useSeoChecklist = () => {
     (id: string) => {
       setPages((prev) => {
         const updated = prev.filter((p) => p.id !== id);
-        localStorage.setItem(storageKey, JSON.stringify(updated));
+        persistSeoPages(storageKey, updated);
         return updated;
       });
     },
@@ -306,7 +318,7 @@ export const useSeoChecklist = () => {
     (ids: string[]) => {
       setPages((prev) => {
         const updated = prev.filter((p) => !ids.includes(p.id));
-        localStorage.setItem(storageKey, JSON.stringify(updated));
+        persistSeoPages(storageKey, updated);
         return updated;
       });
     },
