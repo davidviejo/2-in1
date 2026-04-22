@@ -12,8 +12,6 @@ import type {
 const GSC_API_BASE = 'https://www.googleapis.com/webmasters/v3';
 const USER_INFO_API = 'https://www.googleapis.com/oauth2/v2/userinfo';
 const DEFAULT_PAGED_ROW_LIMIT = 25000;
-const DEFAULT_PAGED_MAX_PAGES = 20;
-const DEFAULT_PAGED_MAX_ROWS = 250000;
 const DEFAULT_PAGED_SEARCH_TYPE: GSCSearchType = 'web';
 
 
@@ -80,8 +78,8 @@ export const querySearchAnalyticsPaged = async (
     dimensionFilterGroups,
     rowLimit = DEFAULT_PAGED_ROW_LIMIT,
     startRow = 0,
-    maxPages = DEFAULT_PAGED_MAX_PAGES,
-    maxRows = DEFAULT_PAGED_MAX_ROWS,
+    maxPages,
+    maxRows,
   } = params;
 
   const allRows: GSCRow[] = [];
@@ -89,7 +87,7 @@ export const querySearchAnalyticsPaged = async (
   let currentStartRow = startRow;
   let truncatedReason: GSCPagedSearchAnalyticsResponse['metadata']['truncatedReason'];
 
-  while (pagesFetched < maxPages && allRows.length < maxRows) {
+  while ((typeof maxPages !== 'number' || pagesFetched < maxPages) && (typeof maxRows !== 'number' || allRows.length < maxRows)) {
     const data: GSCResponse = await queryPageAnalytics(
       accessToken,
       siteUrl,
@@ -112,11 +110,13 @@ export const querySearchAnalyticsPaged = async (
       break;
     }
 
-    const remaining = maxRows - allRows.length;
-    if (pageRows.length > remaining) {
-      allRows.push(...pageRows.slice(0, remaining));
-      truncatedReason = 'max_rows_reached';
-      break;
+    if (typeof maxRows === 'number') {
+      const remaining = maxRows - allRows.length;
+      if (pageRows.length > remaining) {
+        allRows.push(...pageRows.slice(0, remaining));
+        truncatedReason = 'max_rows_reached';
+        break;
+      }
     }
 
     allRows.push(...pageRows);
@@ -127,9 +127,9 @@ export const querySearchAnalyticsPaged = async (
     }
   }
 
-  if (!truncatedReason && pagesFetched >= maxPages && allRows.length > 0) {
+  if (!truncatedReason && typeof maxPages === 'number' && pagesFetched >= maxPages && allRows.length > 0) {
     truncatedReason = 'max_pages_reached';
-  } else if (!truncatedReason && allRows.length >= maxRows) {
+  } else if (!truncatedReason && typeof maxRows === 'number' && allRows.length >= maxRows) {
     truncatedReason = 'max_rows_reached';
   }
 
