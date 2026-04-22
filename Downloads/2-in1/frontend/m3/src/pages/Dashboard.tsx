@@ -1483,6 +1483,16 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     }
 
     const exportDate = new Date().toISOString().slice(0, 10);
+    const rawUrlRows = sanitizeRowsForSheets(
+      queryPageData.map((row) => ({
+        query: row.keys?.[0] || '',
+        url: row.keys?.[1] || '',
+        clicks: Number(row.clicks || 0),
+        impressions: Number(row.impressions || 0),
+        ctrPct: Number(((row.ctr || 0) * 100).toFixed(2)),
+        position: Number((row.position || 0).toFixed(2)),
+      })),
+    );
     const allSummaryRows = sanitizeRowsForSheets(
       actionableInsights.map((insight) => ({
         insightId: insight.id,
@@ -1550,6 +1560,10 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(plan.summaryRows), 'Resumen');
 
       const usedNames = new Set<string>(['Resumen']);
+      if (part === 0 && rawUrlRows.length > 0) {
+        const rawSheetName = buildUniqueSheetName('URLs_GSC_Bruto', `URLs_GSC_${part + 1}`, usedNames);
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rawUrlRows), rawSheetName);
+      }
       Object.entries(plan.detailGroups).forEach(([analysisType, rows], groupIndex) => {
         if (rows.length === 0) return;
         const sheetName = buildUniqueSheetName(
