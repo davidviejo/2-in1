@@ -56,6 +56,39 @@ const normalizeModule = (module: TemplateModuleDTO): ModuleData => ({
   tasks: module.tasks.map((task) => ({ ...task, status: task.status || 'pending' })),
 });
 
+const mergeModulesWithLocalFallback = (localModules: ModuleData[], remoteModules: ModuleData[]): ModuleData[] => {
+  const remoteById = new Map(remoteModules.map((module) => [module.id, module]));
+
+  const mergedLocalModules = localModules.map((localModule) => {
+    const remoteModule = remoteById.get(localModule.id);
+    if (!remoteModule) {
+      return clone(localModule);
+    }
+
+    const remoteTasksById = new Map(remoteModule.tasks.map((task) => [task.id, task]));
+    const mergedTasks = localModule.tasks.map((localTask) => {
+      const remoteTask = remoteTasksById.get(localTask.id);
+      return remoteTask ? { ...localTask, ...remoteTask } : clone(localTask);
+    });
+
+    const additionalRemoteTasks = remoteModule.tasks.filter(
+      (remoteTask) => !localModule.tasks.some((localTask) => localTask.id === remoteTask.id),
+    );
+
+    return {
+      ...localModule,
+      ...remoteModule,
+      tasks: [...mergedTasks, ...clone(additionalRemoteTasks)],
+    };
+  });
+
+  const additionalRemoteModules = remoteModules.filter(
+    (remoteModule) => !localModules.some((localModule) => localModule.id === remoteModule.id),
+  );
+
+  return [...mergedLocalModules, ...clone(additionalRemoteModules)].sort((a, b) => a.id - b.id);
+};
+
 const getLocalTemplate = (vertical: ClientVertical): ResolvedTemplate => ({
   vertical,
   version: LOCAL_TEMPLATE_VERSION,
@@ -91,16 +124,19 @@ export class TemplateService {
   }
 
   static getTemplate(vertical: ClientVertical): ResolvedTemplate {
+    const localTemplate = getLocalTemplate(vertical);
     const remoteTemplate = remoteCatalog?.templates?.[vertical];
     if (!remoteTemplate || !Array.isArray(remoteTemplate.modules) || remoteTemplate.modules.length === 0) {
-      return getLocalTemplate(vertical);
+      return localTemplate;
     }
+
+    const normalizedRemoteModules = remoteTemplate.modules.map(normalizeModule);
 
     return {
       vertical,
       version: remoteTemplate.version || remoteCatalog?.version || LOCAL_TEMPLATE_VERSION,
       source: 'remote',
-      modules: clone(remoteTemplate.modules.map(normalizeModule)),
+      modules: mergeModulesWithLocalFallback(localTemplate.modules, normalizedRemoteModules),
     };
   }
 }
