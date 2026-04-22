@@ -103,6 +103,7 @@ interface ProjectContextType {
   handleReorderRoadmap: (newOrder: string[]) => void;
   addManualCompletedTask: (title: string, description: string) => void;
   deleteCompletedTaskLog: (logEntryId: string) => void;
+  updateCompletedTaskImpact: (logEntryId: string, updates: Partial<CompletedTask['beforeAfter']>) => void;
 
   // Notes Actions
   addNote: (content: string, type: 'project' | 'general') => void;
@@ -870,6 +871,29 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
               completedAt: Date.now(),
               source: 'module',
               moduleId: moduleId,
+              beforeAfter: {
+                link: {
+                  property: taskToToggle.impactLink?.property || taskToToggle.insightSourceMeta?.property || '',
+                  query: taskToToggle.impactLink?.query || taskToToggle.insightSourceMeta?.query || '',
+                  url: taskToToggle.impactLink?.url || taskToToggle.insightSourceMeta?.url || '',
+                  module: c.modules.find((module) => module.id === moduleId)?.title || `Módulo ${moduleId}`,
+                },
+                postWindowDays: taskToToggle.impactPostWindowDays || 28,
+                minimumValidationDays: 14,
+                status: 'pending_baseline',
+                insight: 'Completa el baseline y el periodo post para evaluar impacto real.',
+                trace: {
+                  source: 'gsc',
+                  property: taskToToggle.impactLink?.property || taskToToggle.insightSourceMeta?.property || '',
+                  query: taskToToggle.impactLink?.query || taskToToggle.insightSourceMeta?.query,
+                  url: taskToToggle.impactLink?.url || taskToToggle.insightSourceMeta?.url,
+                  module: c.modules.find((module) => module.id === moduleId)?.title || `Módulo ${moduleId}`,
+                  projectType: c.projectType,
+                  sector: c.sector,
+                  geoScope: c.geoScope,
+                  timestamp: Date.now(),
+                },
+              },
             };
             newLog = [logEntry, ...newLog];
           }
@@ -922,6 +946,29 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
               completedAt: Date.now(),
               source: 'module',
               moduleId: moduleId,
+              beforeAfter: {
+                link: {
+                  property: taskToUpdate.impactLink?.property || taskToUpdate.insightSourceMeta?.property || '',
+                  query: taskToUpdate.impactLink?.query || taskToUpdate.insightSourceMeta?.query || '',
+                  url: taskToUpdate.impactLink?.url || taskToUpdate.insightSourceMeta?.url || '',
+                  module: c.modules.find((module) => module.id === moduleId)?.title || `Módulo ${moduleId}`,
+                },
+                postWindowDays: taskToUpdate.impactPostWindowDays || 28,
+                minimumValidationDays: 14,
+                status: 'pending_baseline',
+                insight: 'Completa el baseline y el periodo post para evaluar impacto real.',
+                trace: {
+                  source: 'gsc',
+                  property: taskToUpdate.impactLink?.property || taskToUpdate.insightSourceMeta?.property || '',
+                  query: taskToUpdate.impactLink?.query || taskToUpdate.insightSourceMeta?.query,
+                  url: taskToUpdate.impactLink?.url || taskToUpdate.insightSourceMeta?.url,
+                  module: c.modules.find((module) => module.id === moduleId)?.title || `Módulo ${moduleId}`,
+                  projectType: c.projectType,
+                  sector: c.sector,
+                  geoScope: c.geoScope,
+                  timestamp: Date.now(),
+                },
+              },
             };
             newLog = [logEntry, ...newLog];
           }
@@ -969,6 +1016,43 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
             completedTasksLog: (c.completedTasksLog || []).filter(
               (entry) => entry.id !== logEntryId,
             ),
+          };
+        }),
+      );
+    },
+    [currentClientId],
+  );
+
+  const updateCompletedTaskImpact = useCallback(
+    (logEntryId: string, updates: Partial<CompletedTask['beforeAfter']>) => {
+      setClients((prev) =>
+        prev.map((c) => {
+          if (c.id !== currentClientId) return c;
+          return {
+            ...c,
+            completedTasksLog: (c.completedTasksLog || []).map((entry) => {
+              if (entry.id !== logEntryId) return entry;
+              return {
+                ...entry,
+                beforeAfter: {
+                  link: entry.beforeAfter?.link || {},
+                  postWindowDays: entry.beforeAfter?.postWindowDays || 28,
+                  minimumValidationDays: entry.beforeAfter?.minimumValidationDays || 14,
+                  status: entry.beforeAfter?.status || 'pending_baseline',
+                  insight: entry.beforeAfter?.insight || 'Pendiente de evaluación.',
+                  trace: entry.beforeAfter?.trace || {
+                    source: 'gsc',
+                    property: '',
+                    projectType: c.projectType,
+                    sector: c.sector,
+                    geoScope: c.geoScope,
+                    timestamp: Date.now(),
+                  },
+                  ...entry.beforeAfter,
+                  ...updates,
+                },
+              };
+            }),
           };
         }),
       );
@@ -1127,6 +1211,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       handleReorderRoadmap,
       addManualCompletedTask,
       deleteCompletedTaskLog,
+      updateCompletedTaskImpact,
       updateAIRoadmap,
       importMultipleAIRoadmapTasks,
       updateIAVisibilityConfig,
@@ -1167,6 +1252,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       handleReorderRoadmap,
       addManualCompletedTask,
       deleteCompletedTaskLog,
+      updateCompletedTaskImpact,
       updateAIRoadmap,
       importMultipleAIRoadmapTasks,
       updateIAVisibilityConfig,

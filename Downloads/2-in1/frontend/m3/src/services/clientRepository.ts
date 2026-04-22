@@ -213,7 +213,32 @@ const normalizeClient = (client: Client, options?: { validateDuplicateTaskIds?: 
     subSector: normalizeSubSector((client as Partial<Client>).subSector),
     modules: normalizeModules(client.modules || []),
     notes: client.notes || [],
-    completedTasksLog: client.completedTasksLog || [],
+    completedTasksLog: (client.completedTasksLog || []).map((entry) => ({
+      ...entry,
+      beforeAfter: entry.beforeAfter
+        ? {
+            link: entry.beforeAfter.link || {},
+            postWindowDays: entry.beforeAfter.postWindowDays || 28,
+            minimumValidationDays: entry.beforeAfter.minimumValidationDays || 14,
+            status: entry.beforeAfter.status || 'pending_baseline',
+            insight: entry.beforeAfter.insight || 'Pendiente de evaluación.',
+            trace: entry.beforeAfter.trace || {
+              source: 'gsc',
+              property: entry.beforeAfter.link?.property || '',
+              query: entry.beforeAfter.link?.query,
+              url: entry.beforeAfter.link?.url,
+              module: entry.beforeAfter.link?.module,
+              projectType,
+              sector: normalizeSector((client as Partial<Client>).sector),
+              geoScope: normalizeGeoScope((client as Partial<Client>).geoScope, projectType),
+              timestamp: Date.now(),
+            },
+            baseline: entry.beforeAfter.baseline,
+            postAction: entry.beforeAfter.postAction,
+            lastEvaluatedAt: entry.beforeAfter.lastEvaluatedAt,
+          }
+        : undefined,
+    })),
     customRoadmapOrder: dedupeStable(client.customRoadmapOrder || []),
     iaVisibility: normalizeIAVisibilityState(client.iaVisibility),
     roadmapTemplateMode:

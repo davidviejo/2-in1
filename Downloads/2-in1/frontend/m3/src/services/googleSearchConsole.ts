@@ -470,6 +470,76 @@ export const getGSCPageDateData = async (
     searchType,
   });
 
+export const getGSCAggregateMetrics = async (
+  accessToken: string,
+  siteUrl: string,
+  startDate: string,
+  endDate: string,
+  filters?: {
+    query?: string;
+    url?: string;
+  },
+) => {
+  const dimensionFilters = [
+    filters?.query
+      ? {
+          dimension: 'query' as const,
+          operator: 'equals' as const,
+          expression: filters.query,
+        }
+      : null,
+    filters?.url
+      ? {
+          dimension: 'page' as const,
+          operator: 'equals' as const,
+          expression: filters.url,
+        }
+      : null,
+  ].filter(Boolean);
+
+  const response = await querySearchAnalyticsPaged(accessToken, {
+    siteUrl,
+    startDate,
+    endDate,
+    dimensions: ['query', 'page'],
+    rowLimit: 5000,
+    maxPages: 5,
+    dimensionFilterGroups:
+      dimensionFilters.length > 0
+        ? [
+            {
+              groupType: 'and',
+              filters: dimensionFilters,
+            },
+          ]
+        : undefined,
+  });
+
+  const rows = response.rows || [];
+  const totals = rows.reduce(
+    (acc, row) => {
+      const impressions = Number(row.impressions || 0);
+      const clicks = Number(row.clicks || 0);
+      acc.clicks += clicks;
+      acc.impressions += impressions;
+      acc.weightedPosition += Number(row.position || 0) * impressions;
+      return acc;
+    },
+    { clicks: 0, impressions: 0, weightedPosition: 0 },
+  );
+
+  const ctr = totals.impressions > 0 ? totals.clicks / totals.impressions : 0;
+  const position = totals.impressions > 0 ? totals.weightedPosition / totals.impressions : 0;
+
+  return {
+    clicks: totals.clicks,
+    impressions: totals.impressions,
+    ctr,
+    position,
+    rowsFetched: rows.length,
+  };
+};
+
 export const getGSCQueryWinnersLosersData = async (
   accessToken: string,
   siteUrl: string,

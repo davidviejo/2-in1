@@ -62,6 +62,7 @@ export const AppRoutes: React.FC = () => {
     handleReorderRoadmap,
     addManualCompletedTask,
     deleteCompletedTaskLog,
+    updateCompletedTaskImpact,
     addNote,
     updateNote,
     deleteNote,
@@ -168,6 +169,12 @@ export const AppRoutes: React.FC = () => {
                       completedTasks={currentClient?.completedTasksLog || []}
                       onAddManualTask={addManualCompletedTask}
                       onDeleteLogEntry={deleteCompletedTaskLog}
+                      onUpdateImpact={updateCompletedTaskImpact}
+                      projectContext={{
+                        projectType: currentClient?.projectType || 'MEDIA',
+                        sector: currentClient?.sector || 'Otro',
+                        geoScope: currentClient?.geoScope || 'global',
+                      }}
                     />
                   }
                 />
