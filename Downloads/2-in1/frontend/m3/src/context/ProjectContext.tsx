@@ -23,6 +23,7 @@ import {
   InsightFlowTrace,
   InsightSourceMeta,
   ProjectScoreContext,
+  AIRoadmapGenerationRecord,
 } from '../types';
 import { ClientRepository } from '../services/clientRepository';
 import { ProjectRemoteRepository } from '../services/projectRemoteRepository';
@@ -114,6 +115,9 @@ interface ProjectContextType {
 
   // AI Roadmap Actions
   updateAIRoadmap: (tasks: Task[]) => void;
+  saveAIRoadmapGeneration: (
+    record: Omit<AIRoadmapGenerationRecord, 'id' | 'timestamp'> & Partial<Pick<AIRoadmapGenerationRecord, 'id' | 'timestamp'>>,
+  ) => void;
   importMultipleAIRoadmapTasks: (tasks: Task[]) => void;
 
   // IA Visibility Actions
@@ -799,6 +803,33 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
     [currentClientId],
   );
 
+  const saveAIRoadmapGeneration = useCallback(
+    (
+      record: Omit<AIRoadmapGenerationRecord, 'id' | 'timestamp'> &
+        Partial<Pick<AIRoadmapGenerationRecord, 'id' | 'timestamp'>>,
+    ) => {
+      const persistedRecord: AIRoadmapGenerationRecord = {
+        ...record,
+        id: record.id || crypto.randomUUID(),
+        timestamp: record.timestamp || Date.now(),
+      };
+      setClients((prev) =>
+        prev.map((c) =>
+          c.id === currentClientId
+            ? {
+                ...c,
+                aiRoadmapGenerationHistory: [
+                  persistedRecord,
+                  ...(c.aiRoadmapGenerationHistory || []),
+                ].slice(0, 100),
+              }
+            : c,
+        ),
+      );
+    },
+    [currentClientId],
+  );
+
   const importMultipleAIRoadmapTasks = useCallback(
     (tasks: Task[]) => {
       const targetModuleId = 9; // MIA: Fichas de IA
@@ -1253,6 +1284,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       deleteCompletedTaskLog,
       updateCompletedTaskImpact,
       updateAIRoadmap,
+      saveAIRoadmapGeneration,
       importMultipleAIRoadmapTasks,
       updateIAVisibilityConfig,
       saveIAVisibilityRunResult,
@@ -1295,6 +1327,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       deleteCompletedTaskLog,
       updateCompletedTaskImpact,
       updateAIRoadmap,
+      saveAIRoadmapGeneration,
       importMultipleAIRoadmapTasks,
       updateIAVisibilityConfig,
       saveIAVisibilityRunResult,

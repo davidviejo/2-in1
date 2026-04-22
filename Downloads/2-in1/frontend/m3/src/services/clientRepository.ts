@@ -279,6 +279,12 @@ const normalizeClient = (client: Client, options?: { validateDuplicateTaskIds?: 
           .sort((a, b) => b.timestamp - a.timestamp)
           .slice(0, 500)
       : [],
+    aiRoadmapGenerationHistory: Array.isArray(client.aiRoadmapGenerationHistory)
+      ? client.aiRoadmapGenerationHistory
+          .filter((entry) => entry && typeof entry.promptInput === 'string')
+          .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+          .slice(0, 100)
+      : [],
     roadmapTemplateMode:
       client.roadmapTemplateMode ||
       ((client.initialConfigPreset?.useGenericConfig ? 'generic' : 'contextual') as

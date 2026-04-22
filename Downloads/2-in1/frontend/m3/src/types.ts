@@ -301,6 +301,52 @@ export interface IAVisibilityState {
   history: IAVisibilityRunResult[];
 }
 
+export type AIRoadmapPromptTemplateKey =
+  | 'growth'
+  | 'local_seo'
+  | 'quick_wins'
+  | 'traffic_recovery'
+  | 'quarterly_plan';
+
+export interface AIRoadmapTraceItem {
+  id: string;
+  label: string;
+  detail: string;
+  priority?: string;
+  module?: string;
+  property?: string;
+  query?: string;
+  url?: string;
+  currentPeriod?: string;
+  previousPeriod?: string;
+  timestamp: number;
+}
+
+export interface AIRoadmapContextSnapshot {
+  projectType: ProjectType;
+  sector: string;
+  geoScope: GeoScope;
+  property?: string;
+  currentPeriod?: string;
+  previousPeriod?: string;
+  weakModules: AIRoadmapTraceItem[];
+  openInsights: AIRoadmapTraceItem[];
+  quickWins: AIRoadmapTraceItem[];
+  weakestProperties: AIRoadmapTraceItem[];
+  blockedTasks: AIRoadmapTraceItem[];
+}
+
+export interface AIRoadmapGenerationRecord {
+  id: string;
+  timestamp: number;
+  provider: 'openai' | 'mistral' | 'gemini';
+  model: string;
+  template?: AIRoadmapPromptTemplateKey;
+  promptInput: string;
+  contextSnapshot: AIRoadmapContextSnapshot;
+  generatedTaskIds: string[];
+}
+
 export const createDefaultIAVisibilityState = (): IAVisibilityState => ({
   config: {
     tone: 'neutral',
@@ -339,6 +385,7 @@ export interface Client {
   roadmapTemplateMode?: 'contextual' | 'generic';
   moduleWeights?: Partial<Record<number, number>>;
   seoSnapshots?: SeoPerformanceSnapshot[];
+  aiRoadmapGenerationHistory?: AIRoadmapGenerationRecord[];
 }
 
 export interface NewClientInput {
