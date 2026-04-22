@@ -64,6 +64,11 @@ import {
   QueryBrandFilter,
 } from '../utils/queryBrandSegment';
 import { parseBrandTerms } from '../utils/brandTerms';
+import {
+  formatProjectContextLabel,
+  getDashboardContextProfile,
+  rankInsightsByProjectContext,
+} from '../utils/dashboardContext';
 
 const GSC_COMPARISON_MODE_LABELS: Record<GSCComparisonMode, string> = {
   previous_period: 'Periodo anterior',
@@ -384,6 +389,21 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     [filteredGscSites, selectedSite],
   );
 
+  const activeProjectType = currentClient?.projectType || 'MEDIA';
+  const activeSector = currentClient?.sector || 'Generico';
+  const activeGeoScope = currentClient?.geoScope || 'global';
+  const activeAnalysisProjectTypes = currentClient?.analysisProjectTypes || [activeProjectType];
+
+  const contextProfile = useMemo(
+    () => getDashboardContextProfile(activeProjectType, activeSector),
+    [activeProjectType, activeSector],
+  );
+
+  const contextLabel = useMemo(
+    () => formatProjectContextLabel(activeProjectType, activeSector, activeGeoScope),
+    [activeGeoScope, activeProjectType, activeSector],
+  );
+
   const badge = useMemo(() => {
     if (globalScore >= 95) return { title: 'Chief SEO Officer', variant: 'success' as const };
     if (globalScore >= 80) return { title: 'Jefe de Audiencias', variant: 'warning' as const };
@@ -463,6 +483,17 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     [actionableInsights, trafficSegmentFilter],
   );
 
+  const prioritizedContextInsights = useMemo(
+    () =>
+      rankInsightsByProjectContext(
+        segmentFilteredInsights,
+        activeProjectType,
+        activeAnalysisProjectTypes,
+        activeSector,
+      ),
+    [activeAnalysisProjectTypes, activeProjectType, activeSector, segmentFilteredInsights],
+  );
+
   const actionableGroupedInsights = useMemo(
     () =>
       groupedInsights
@@ -484,13 +515,13 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   );
 
   const actionableTopOpportunities = useMemo(
-    () => segmentFilteredInsights.filter((insight) => insight.category === 'opportunity').slice(0, 3),
-    [segmentFilteredInsights],
+    () => prioritizedContextInsights.filter((insight) => insight.category === 'opportunity').slice(0, 3),
+    [prioritizedContextInsights],
   );
 
   const actionableTopRisks = useMemo(
-    () => segmentFilteredInsights.filter((insight) => insight.category === 'risk').slice(0, 3),
-    [segmentFilteredInsights],
+    () => prioritizedContextInsights.filter((insight) => insight.category === 'risk').slice(0, 3),
+    [prioritizedContextInsights],
   );
 
   const topQueriesNormalized = useMemo(
@@ -518,18 +549,18 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
 
 
   const prioritizedQuickWins = useMemo(
-    () => segmentFilteredInsights.filter((insight) => insight.findingFamily === 'quick_win').slice(0, 5),
-    [segmentFilteredInsights],
+    () => prioritizedContextInsights.filter((insight) => insight.findingFamily === 'quick_win').slice(0, 5),
+    [prioritizedContextInsights],
   );
 
   const prioritizedAnomalies = useMemo(
-    () => segmentFilteredInsights.filter((insight) => insight.findingFamily === 'anomaly').slice(0, 5),
-    [segmentFilteredInsights],
+    () => prioritizedContextInsights.filter((insight) => insight.findingFamily === 'anomaly').slice(0, 5),
+    [prioritizedContextInsights],
   );
 
   const filteredInsights = useMemo(
     () =>
-      segmentFilteredInsights.filter((insight) => {
+      prioritizedContextInsights.filter((insight) => {
         const categoryMatch = selectedCategory === 'all' || insight.category === selectedCategory;
         const priorityMatch = selectedPriority === 'all' || insight.priority === selectedPriority;
         const moduleMatch = selectedModule === 'all' || String(insight.moduleId || '') === selectedModule;
@@ -538,7 +569,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
         const scopeMatch = selectedRuleScope === 'all' || insight.ruleScope === selectedRuleScope;
         return categoryMatch && priorityMatch && moduleMatch && brandMatch && statusMatch && scopeMatch;
       }),
-    [segmentFilteredInsights, selectedCategory, selectedPriority, selectedModule, selectedBrandType, selectedStatus, selectedRuleScope],
+    [prioritizedContextInsights, selectedCategory, selectedPriority, selectedModule, selectedBrandType, selectedStatus, selectedRuleScope],
   );
 
   const categoryOptions = useMemo(
@@ -666,7 +697,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   );
 
   const recommendedAction = useMemo(() => {
-    const candidate = filteredInsights[0] || actionableInsights[0];
+    const candidate = filteredInsights[0] || prioritizedContextInsights[0];
     if (!candidate) {
       return null;
     }
@@ -685,21 +716,21 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       },
       insight: candidate,
     };
-  }, [actionableInsights, filteredInsights, selectedSite]);
+  }, [filteredInsights, prioritizedContextInsights, selectedSite]);
 
   const reviewNowActions = useMemo(() => {
     if (actionableInsights.length === 0) {
       return [];
     }
 
-    return actionableInsights.slice(0, 3).map((insight) => ({
+    return prioritizedContextInsights.slice(0, 3).map((insight) => ({
       id: insight.id,
       title: insight.title,
       action: insight.suggestedAction || 'Analizar insight y convertir en tarea.',
       context: `${insight.propertyId || selectedSite || 'sin propiedad'} · ${insight.periodCurrent?.startDate || startDate} → ${insight.periodCurrent?.endDate || endDate}`,
       insight,
     }));
-  }, [actionableInsights, endDate, selectedSite, startDate]);
+  }, [endDate, prioritizedContextInsights, selectedSite, startDate]);
 
   const saveBrandConfig = () => {
     if (!currentClient) return;
@@ -1255,39 +1286,52 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
           <div>
             <h3 className="font-bold text-lg">Centro de decisión SEO</h3>
             <p className="text-sm text-muted mt-1">
-              Lectura ejecutiva con trazabilidad completa: dato GSC → insight → siguiente acción.
+              Lectura ejecutiva contextual: dato GSC → insight → tarea validable según tipología y sector.
             </p>
           </div>
-          <Badge variant="neutral" className="text-xs">
-            Propiedad: {visibleSelectedGscSite || 'sin seleccionar'}
-          </Badge>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="neutral" className="text-xs">
+              Contexto: {contextLabel}
+            </Badge>
+            <Badge variant="neutral" className="text-xs">
+              Propiedad: {visibleSelectedGscSite || 'sin seleccionar'}
+            </Badge>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border bg-surface-alt p-4 text-xs text-muted">
+          <div className="font-semibold text-foreground text-sm">Prioridades activas</div>
+          <div className="mt-1">
+            {contextProfile.focusAreas.join(' · ')}
+          </div>
+          <div className="mt-2">{contextProfile.sectorExamples}</div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
           <div className="rounded-xl border border-border bg-surface-alt p-4">
             <div className="text-[11px] uppercase tracking-wide text-muted">Oportunidades</div>
             <div className="mt-1 text-2xl font-bold text-foreground">{actionableTopOpportunities.length}</div>
-            <div className="mt-1 text-xs text-muted line-clamp-2">{actionableTopOpportunities[0]?.title || 'No hay oportunidades priorizadas todavía.'}</div>
+            <div className="mt-1 text-xs text-muted line-clamp-2">{actionableTopOpportunities[0]?.title || contextProfile.opportunitiesHint}</div>
           </div>
           <div className="rounded-xl border border-border bg-surface-alt p-4">
             <div className="text-[11px] uppercase tracking-wide text-muted">Riesgos</div>
             <div className="mt-1 text-2xl font-bold text-foreground">{actionableTopRisks.length}</div>
-            <div className="mt-1 text-xs text-muted line-clamp-2">{actionableTopRisks[0]?.title || 'Sin riesgos críticos en esta lectura.'}</div>
+            <div className="mt-1 text-xs text-muted line-clamp-2">{actionableTopRisks[0]?.title || contextProfile.risksHint}</div>
           </div>
           <div className="rounded-xl border border-border bg-surface-alt p-4">
             <div className="text-[11px] uppercase tracking-wide text-muted">Quick wins</div>
             <div className="mt-1 text-2xl font-bold text-foreground">{prioritizedQuickWins.length}</div>
-            <div className="mt-1 text-xs text-muted">Impacto rápido con baja fricción de ejecución.</div>
+            <div className="mt-1 text-xs text-muted">{contextProfile.quickWinsHint}</div>
           </div>
           <div className="rounded-xl border border-border bg-surface-alt p-4">
             <div className="text-[11px] uppercase tracking-wide text-muted">Anomalías</div>
             <div className="mt-1 text-2xl font-bold text-foreground">{prioritizedAnomalies.length}</div>
-            <div className="mt-1 text-xs text-muted">Detectadas desde señales de variación abrupta.</div>
+            <div className="mt-1 text-xs text-muted">Detectadas con señal priorizada para {activeProjectType.toLowerCase()}.</div>
           </div>
           <div className="rounded-xl border border-primary/20 bg-primary-soft p-4">
             <div className="text-[11px] uppercase tracking-wide text-primary">Siguiente acción recomendada</div>
             <div className="mt-1 text-sm font-semibold text-foreground line-clamp-2">{recommendedAction?.title || 'Configura propiedad y periodo para generar acción recomendada.'}</div>
-            <div className="mt-1 text-xs text-muted line-clamp-3">{recommendedAction?.action || 'Sin datos suficientes todavía para sugerir la siguiente acción.'}</div>
+            <div className="mt-1 text-xs text-muted line-clamp-3">{recommendedAction?.action || contextProfile.nextActionHint}</div>
             {recommendedAction && (
               <div className="mt-2 space-y-1 text-[10px] text-muted">
                 <div>Origen: {recommendedAction.trace.source}</div>
@@ -1308,7 +1352,7 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
           <div>
             <h3 className="font-bold text-lg">Quick wins y anomalías automáticas (GSC)</h3>
             <p className="text-sm text-muted mt-1">
-              Hallazgos accionables adaptados a {currentClient?.projectType || 'MEDIA'} · {currentClient?.sector || 'Genérico'} · {currentClient?.geoScope || 'global'}.
+              Hallazgos accionables adaptados a {contextLabel} con fallback genérico para análisis cruzado.
             </p>
           </div>
           <Badge variant="neutral" className="text-xs">
