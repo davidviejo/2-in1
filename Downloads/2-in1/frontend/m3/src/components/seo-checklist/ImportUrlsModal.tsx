@@ -9,6 +9,7 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   onImport: (pages: SeoPage[]) => void;
+  onBulkReplaceUrls?: (replacements: { id: string; newUrl: string }[]) => void;
   existingPages: SeoPage[];
 }
 
@@ -16,6 +17,7 @@ interface ImportErrorSummary {
   emptyRows: number[];
   invalidUrlRows: number[];
   duplicateUrlRows: number[];
+  migrationSourceNotFoundRows: number[];
 }
 
 const isValidUrl = (rawUrl: string): boolean => {
@@ -28,7 +30,13 @@ const isValidUrl = (rawUrl: string): boolean => {
   }
 };
 
-export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, existingPages }) => {
+export const ImportUrlsModal: React.FC<Props> = ({
+  isOpen,
+  onClose,
+  onImport,
+  onBulkReplaceUrls,
+  existingPages,
+}) => {
   const [inputText, setInputText] = useState('');
   const [ignoreDuplicates, setIgnoreDuplicates] = useState(true);
   const [importErrors, setImportErrors] = useState<ImportErrorSummary | null>(null);
@@ -51,7 +59,12 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
       emptyRows: [],
       invalidUrlRows: [],
       duplicateUrlRows: [],
+      migrationSourceNotFoundRows: [],
     };
+    const replacements: { id: string; newUrl: string }[] = [];
+    const existingByUrl = new Map<string, SeoPage>(
+      existingPages.map((p) => [p.url.toLowerCase(), p] as const),
+    );
     const seenUrls = new Set<string>(
       ignoreDuplicates ? existingPages.map((p) => p.url.toLowerCase()) : [],
     );
@@ -61,7 +74,7 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
       const rowNumber = index + 1;
       // Split by tab or comma
       const parts = line
-        .split(/\t|,|;/)
+        .split(/\t|,|;|\|/)
         .map((s) => s.trim())
         .filter((s) => s !== '');
 
@@ -71,6 +84,35 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
       }
 
       const rawUrl = parts[0];
+
+      const isBulkMigrationLine =
+        parts.length === 2 && isValidUrl(parts[0]) && isValidUrl(parts[1]) && Boolean(onBulkReplaceUrls);
+
+      if (isBulkMigrationLine) {
+        const oldUrl = normalizeSeoUrl(parts[0]);
+        const newUrl = normalizeSeoUrl(parts[1]);
+        const oldUrlKey = oldUrl.toLowerCase();
+        const newUrlKey = newUrl.toLowerCase();
+        const existingPage = existingByUrl.get(oldUrlKey);
+
+        if (!existingPage) {
+          errorSummary.migrationSourceNotFoundRows.push(rowNumber);
+          return;
+        }
+
+        if (ignoreDuplicates && newUrlKey !== oldUrlKey && seenUrls.has(newUrlKey)) {
+          errorSummary.duplicateUrlRows.push(rowNumber);
+          return;
+        }
+
+        replacements.push({ id: existingPage.id, newUrl });
+        seenUrls.delete(oldUrlKey);
+        seenUrls.add(newUrlKey);
+        existingByUrl.delete(oldUrlKey);
+        existingByUrl.set(newUrlKey, { ...existingPage, url: newUrl });
+        return;
+      }
+
       if (!isValidUrl(rawUrl)) {
         errorSummary.invalidUrlRows.push(rowNumber);
         return;
@@ -112,17 +154,24 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
 
     setImportErrors(errorSummary);
 
+    if (replacements.length > 0) {
+      onBulkReplaceUrls?.(replacements);
+    }
+
     if (newPages.length > 0) {
       onImport(newPages);
-      const hasErrors =
-        errorSummary.emptyRows.length > 0 ||
-        errorSummary.invalidUrlRows.length > 0 ||
-        errorSummary.duplicateUrlRows.length > 0;
+    }
 
-      if (!hasErrors) {
-        setInputText('');
-        handleCloseModal();
-      }
+    const hasErrors =
+      errorSummary.emptyRows.length > 0 ||
+      errorSummary.invalidUrlRows.length > 0 ||
+      errorSummary.duplicateUrlRows.length > 0 ||
+      errorSummary.migrationSourceNotFoundRows.length > 0;
+
+    const hasChanges = newPages.length > 0 || replacements.length > 0;
+    if (hasChanges && !hasErrors) {
+      setInputText('');
+      handleCloseModal();
     }
   };
 
@@ -148,6 +197,9 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
             <br />
             <code className="bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-xs mt-1 block w-fit">
               URL | Keyword Principal | Tipo Página | Geo (Opcional) | Cluster (Opcional)
+            </code>
+            <code className="bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-xs mt-2 block w-fit">
+              URL antigua | URL nueva (migración masiva conservando datos)
             </code>
           </p>
           {brandTerms.length > 0 && (
@@ -205,9 +257,16 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
                     {importErrors.duplicateUrlRows.join(', #')})
                   </li>
                 )}
+                {importErrors.migrationSourceNotFoundRows.length > 0 && (
+                  <li>
+                    URL antigua no encontrada: {importErrors.migrationSourceNotFoundRows.length} (#{' '}
+                    {importErrors.migrationSourceNotFoundRows.join(', #')})
+                  </li>
+                )}
                 {importErrors.emptyRows.length === 0 &&
                   importErrors.invalidUrlRows.length === 0 &&
-                  importErrors.duplicateUrlRows.length === 0 && <li>Sin descartes.</li>}
+                  importErrors.duplicateUrlRows.length === 0 &&
+                  importErrors.migrationSourceNotFoundRows.length === 0 && <li>Sin descartes.</li>}
               </ul>
             </div>
           )}

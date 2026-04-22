@@ -247,6 +247,14 @@ const SeoChecklistPage: React.FC = () => {
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
         onImport={addPages}
+        onBulkReplaceUrls={(replacements) =>
+          bulkUpdatePages(
+            replacements.map((replacement) => ({
+              id: replacement.id,
+              changes: { url: replacement.newUrl },
+            })),
+          )
+        }
         existingPages={pages}
       />
 

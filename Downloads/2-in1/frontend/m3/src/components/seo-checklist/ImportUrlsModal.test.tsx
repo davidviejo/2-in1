@@ -69,6 +69,33 @@ describe('ImportUrlsModal', () => {
     expect(screen.getByText(/URL duplicada:\s*1/)).toBeDefined();
     expect(onImport).not.toHaveBeenCalled();
   });
+
+  it('permite migración masiva con formato "URL antigua | URL nueva" sin crear nuevas filas', () => {
+    const onImport = vi.fn();
+    const onBulkReplaceUrls = vi.fn();
+
+    render(
+      <ImportUrlsModal
+        isOpen={true}
+        onClose={vi.fn()}
+        onImport={onImport}
+        onBulkReplaceUrls={onBulkReplaceUrls}
+        existingPages={[{ ...buildPage('https://example.com/antigua'), id: 'page-1' }]}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: 'https://example.com/antigua | https://example.com/nueva' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /importar urls/i }));
+
+    expect(onBulkReplaceUrls).toHaveBeenCalledTimes(1);
+    expect(onBulkReplaceUrls).toHaveBeenCalledWith([
+      { id: 'page-1', newUrl: 'https://example.com/nueva' },
+    ]);
+    expect(onImport).not.toHaveBeenCalled();
+  });
 });
 
 function buildPage(url: string): SeoPage {
