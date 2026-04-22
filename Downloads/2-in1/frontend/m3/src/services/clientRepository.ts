@@ -158,6 +158,29 @@ const normalizeSeoSnapshot = (rawSnapshot: unknown): SeoPerformanceSnapshot | nu
   };
 };
 
+const normalizeNote = (note: unknown, fallbackScope: Note['scopeType'], fallbackScopeId: string): Note | null => {
+  if (!note || typeof note !== 'object') {
+    return null;
+  }
+  const raw = note as Partial<Note>;
+  if (typeof raw.content !== 'string') {
+    return null;
+  }
+  return {
+    id: typeof raw.id === 'string' && raw.id.length > 0 ? raw.id : crypto.randomUUID(),
+    content: raw.content,
+    scopeType: raw.scopeType || fallbackScope,
+    scopeId: raw.scopeId || fallbackScopeId,
+    author: typeof raw.author === 'string' && raw.author.length > 0 ? raw.author : 'Equipo SEO',
+    createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : Date.now(),
+    updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : undefined,
+    tags: Array.isArray(raw.tags) ? raw.tags.filter((tag): tag is string => typeof tag === 'string') : [],
+    isPinned: Boolean(raw.isPinned),
+    isInternal: Boolean(raw.isInternal),
+    trace: raw.trace,
+  };
+};
+
 const dedupeStable = (items: string[]): string[] => {
   const seen = new Set<string>();
   return items.filter((item) => {
@@ -243,7 +266,11 @@ const normalizeClient = (client: Client, options?: { validateDuplicateTaskIds?: 
     ),
     subSector: normalizeSubSector((client as Partial<Client>).subSector),
     modules: normalizeModules(client.modules || []),
-    notes: client.notes || [],
+    notes: Array.isArray(client.notes)
+      ? client.notes
+          .map((note) => normalizeNote(note, 'client', client.id))
+          .filter((note): note is Note => note !== null)
+      : [],
     completedTasksLog: (client.completedTasksLog || []).map((entry) => ({
       ...entry,
       beforeAfter: entry.beforeAfter
@@ -452,7 +479,12 @@ export class ClientRepository {
     const saved = localStorage.getItem(GENERAL_NOTES_KEY);
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed)
+          ? parsed
+              .map((note) => normalizeNote(note, 'global', 'global'))
+              .filter((note): note is Note => note !== null)
+          : [];
       } catch (e) {
         console.error('Failed to parse general notes', e);
       }

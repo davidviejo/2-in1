@@ -17,6 +17,7 @@ import {
 import { Link } from 'react-router-dom';
 import { Spinner } from './ui/Spinner';
 import { getTemplateBadgeText, getTemplateBadgeTone } from '@/utils/taskTemplateMeta';
+import ContextNoteButton from './ContextNoteButton';
 
 interface ModuleTaskItemProps {
   task: Task;
@@ -192,6 +193,17 @@ const ModuleTaskItem: React.FC<ModuleTaskItemProps> = memo(
                 defaultValue={task.userNotes || ''}
                 onBlur={(e) => onUpdateTaskNotes(moduleId, task.id, e.target.value)}
               />
+              <div className="mt-2">
+                <ContextNoteButton
+                  scopeType="task"
+                  scopeId={task.id}
+                  title={task.title}
+                  compact
+                  tags={['task', task.category || 'general']}
+                  suggestedContent={`Tarea: ${task.title}\\nMódulo: ${moduleId}`}
+                  className="inline-flex items-center gap-2 rounded-md border border-slate-200 dark:border-slate-700 px-2 py-1 text-[11px] text-slate-500 hover:text-primary"
+                />
+              </div>
             </div>
 
             {learningMode && (

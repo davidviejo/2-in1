@@ -28,6 +28,7 @@ import { Spinner } from '../components/ui/Spinner';
 import ModuleTaskItem from '../components/ModuleTaskItem';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import { useTranslation } from 'react-i18next';
+import ContextNoteButton from '@/components/ContextNoteButton';
 
 interface ModuleDetailProps {
   modules: ModuleData[];
@@ -303,6 +304,15 @@ const ModuleDetail: React.FC<ModuleDetailProps> = ({
               >
                 <HelpCircle size={14} /> Modo Aprendizaje: {learningMode ? 'ON' : 'OFF'}
               </button>
+            </div>
+            <div className="mb-4">
+              <ContextNoteButton
+                scopeType="module"
+                scopeId={String(module.id)}
+                title={`Módulo ${module.id}: ${module.title}`}
+                tags={['module', `m${module.id}`]}
+                suggestedContent={`Seguimiento módulo ${module.id} · ${module.title}`}
+              />
             </div>
             <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">
               {module.title}

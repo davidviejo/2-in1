@@ -73,6 +73,8 @@ import {
   rankInsightsByProjectContext,
 } from '../utils/dashboardContext';
 import { computeHybridGlobalScore } from '../utils/hybridGlobalScore';
+import ContextNoteButton from '@/components/ContextNoteButton';
+import { openContextualNotes } from '@/utils/noteEvents';
 
 const GSC_COMPARISON_MODE_LABELS: Record<GSCComparisonMode, string> = {
   previous_period: 'Periodo anterior',
@@ -1652,6 +1654,24 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
           type="button"
           onClick={(event) => {
             event.stopPropagation();
+            const scopeId = insight.propertyId || insight.id;
+            const scopeType = insight.propertyId ? 'property' : 'insight';
+            openContextualNotes({
+              scopeType,
+              scopeId,
+              title: insight.title,
+              tags: ['dashboard', insight.category, insight.priority],
+              suggestedContent: `Insight: ${insight.title}\nAcción sugerida: ${insight.suggestedAction || 'Pendiente'}`,
+            });
+          }}
+          className="rounded-md border border-border px-2 py-1 text-[11px] text-muted"
+        >
+          Añadir nota
+        </button>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
             setInsightStatus(insight.id, 'ignored');
           }}
           className="rounded-md border border-border px-2 py-1 text-[11px] text-muted hover:border-danger/40"
@@ -1695,6 +1715,15 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
 
   return (
     <div className="page-shell relative animate-fade-in">
+      <div className="mb-3 flex justify-end">
+        <ContextNoteButton
+          scopeType="module"
+          scopeId={`dashboard:${currentClient?.id || 'global'}`}
+          title="Panel de control"
+          tags={['dashboard', activeProjectType, activeSector]}
+          suggestedContent={`Revisión dashboard ${startDate}..${endDate} · propiedad ${selectedSite || 'sin-propiedad'}`}
+        />
+      </div>
       {selectedInsight && (
         <div className="overlay-backdrop animate-fade-in">
           <ErrorBoundary>
