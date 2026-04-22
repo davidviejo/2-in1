@@ -81,8 +81,12 @@ const GSC_COMPARISON_MODE_LABELS: Record<GSCComparisonMode, string> = {
   previous_year: 'Mismo periodo del año pasado',
 };
 
-const GOOGLE_SHEETS_SAFE_CELL_LIMIT = 8_000_000;
 const MAX_INSIGHTS_EXPORT_FILES = 12;
+const GOOGLE_SHEETS_CELL_LIMIT = 10_000_000;
+const EXPORT_CELL_SAFETY_MARGIN = 250_000;
+const EXPORT_RESERVED_ROWS = 300;
+const EXPORT_RESERVED_COLUMNS = 6;
+const MAX_GOOGLE_SHEETS_CELL_CHARS = 50_000;
 
 interface DashboardProps {
   modules: ModuleData[];
@@ -348,6 +352,36 @@ const sanitizeSheetName = (value: string, fallback: string) => {
   return sanitized.slice(0, 31);
 };
 
+const sanitizeFilenamePart = (value: string, fallback: string) => {
+  const sanitized = value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+  return sanitized || fallback;
+};
+
+const waitForNextBulkDownload = (ms = 250) =>
+  new Promise<void>((resolve) => {
+    window.setTimeout(() => resolve(), ms);
+  });
+
+const triggerWorkbookDownload = async (workbook: XLSX.WorkBook, filename: string) => {
+  const workbookBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([workbookBuffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  await waitForNextBulkDownload();
+  URL.revokeObjectURL(url);
+};
+
 const mapInsightRowForExport = (row: SeoInsight['relatedRows'][number]) => {
   const queryFromKeys = row.keys?.[0] ?? '';
   const urlFromKeys = row.keys?.[1] ?? '';
@@ -362,7 +396,46 @@ const mapInsightRowForExport = (row: SeoInsight['relatedRows'][number]) => {
   };
 };
 
+const formatInsightEvidence = (insight: SeoInsight) =>
+  insight.evidence
+    .map((item) => `${item.label}: ${item.value}${item.context ? ` (${item.context})` : ''}`)
+    .join(' || ');
+
+const formatInsightTrace = (insight: SeoInsight) =>
+  JSON.stringify({
+    source: insight.trace?.source || '',
+    query: insight.trace?.query || '',
+    url: insight.trace?.url || '',
+    propertyId: insight.trace?.propertyId || '',
+    moduleId: insight.trace?.moduleId ?? '',
+  });
+
+const sanitizeSheetCellValue = (value: unknown) => {
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  if (value.length <= MAX_GOOGLE_SHEETS_CELL_CHARS) {
+    return value;
+  }
+
+  return `${value.slice(0, MAX_GOOGLE_SHEETS_CELL_CHARS - 3)}...`;
+};
+
+const sanitizeExportRowForSheets = (row: Record<string, unknown>) =>
+  Object.fromEntries(Object.entries(row).map(([key, value]) => [key, sanitizeSheetCellValue(value)]));
+
 const buildInsightExportRows = (insight: SeoInsight) => {
+  const evidenceDetalle = formatInsightEvidence(insight);
+  const traceDetalle = formatInsightTrace(insight);
+  const metadataDetalle = JSON.stringify({
+    sourceType: insight.sourceType,
+    sourceId: insight.sourceId,
+    affectedCount: insight.affectedCount,
+    potentialTraffic: insight.potentialTraffic ?? '',
+    findingFamily: insight.findingFamily || '',
+  });
+
   if (insight.relatedRows.length === 0) {
     return [
       {
@@ -391,6 +464,14 @@ const buildInsightExportRows = (insight: SeoInsight) => {
         periodoAnterior: insight.periodPrevious ? `${insight.periodPrevious.startDate}..${insight.periodPrevious.endDate}` : '',
         resumen: insight.summary,
         motivo: insight.reason,
+        affectedCount: insight.affectedCount,
+        potentialTraffic: insight.potentialTraffic ?? '',
+        sourceType: insight.sourceType,
+        sourceId: insight.sourceId,
+        findingFamily: insight.findingFamily || '',
+        evidenciaDetalle: evidenceDetalle,
+        traceDetalle,
+        metadataDetalle,
         query: '',
         url: '',
         clicks: '',
@@ -427,6 +508,14 @@ const buildInsightExportRows = (insight: SeoInsight) => {
     periodoAnterior: insight.periodPrevious ? `${insight.periodPrevious.startDate}..${insight.periodPrevious.endDate}` : '',
     resumen: insight.summary,
     motivo: insight.reason,
+    affectedCount: insight.affectedCount,
+    potentialTraffic: insight.potentialTraffic ?? '',
+    sourceType: insight.sourceType,
+    sourceId: insight.sourceId,
+    findingFamily: insight.findingFamily || '',
+    evidenciaDetalle: evidenceDetalle,
+    traceDetalle,
+    metadataDetalle,
     ...mapInsightRowForExport(row),
   }));
 };
@@ -1374,51 +1463,103 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     showSuccess('Reporte descargado.');
   };
 
-  const handleExportInsightsWorkbook = () => {
+  const handleExportInsightsWorkbook = async () => {
     if (actionableInsights.length === 0) {
       showSuccess('No hay puntos para exportar en este momento.');
       return;
     }
 
-    const expandedRows = actionableInsights.flatMap((insight) => buildInsightExportRows(insight));
-    const detailColumns = Math.max(1, Object.keys(expandedRows[0] || {}).length);
-    const estimatedCells = expandedRows.length * detailColumns;
     const exportDate = new Date().toISOString().slice(0, 10);
+    const rowsByInsight = actionableInsights.map((insight) => ({
+      insight,
+      rows: buildInsightExportRows(insight).map((row) => sanitizeExportRowForSheets(row as Record<string, unknown>)),
+    }));
+    const detailColumns = Math.max(1, Object.keys(rowsByInsight[0]?.rows[0] || {}).length);
+    const availableCells = Math.max(
+      100_000,
+      GOOGLE_SHEETS_CELL_LIMIT - EXPORT_CELL_SAFETY_MARGIN,
+    );
+    const effectiveColumns = detailColumns + EXPORT_RESERVED_COLUMNS;
+    const maxRowsPerFile = Math.max(
+      1,
+      Math.floor(availableCells / Math.max(1, effectiveColumns)) - EXPORT_RESERVED_ROWS,
+    );
 
-    if (estimatedCells <= GOOGLE_SHEETS_SAFE_CELL_LIMIT) {
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(expandedRows), 'SEO Insights');
-      XLSX.writeFile(workbook, `SEO_Insights_Detallados_${exportDate}.xlsx`);
-      showSuccess(`Excel exportado en 1 sheet (${expandedRows.length} filas).`);
-      return;
+    const fileChunks: Array<typeof rowsByInsight> = [];
+    let currentChunk: typeof rowsByInsight = [];
+    let currentChunkRows = 0;
+    rowsByInsight.forEach((entry) => {
+      if (currentChunkRows + entry.rows.length > maxRowsPerFile && currentChunk.length > 0) {
+        fileChunks.push(currentChunk);
+        currentChunk = [];
+        currentChunkRows = 0;
+      }
+      currentChunk.push(entry);
+      currentChunkRows += entry.rows.length;
+    });
+    if (currentChunk.length > 0) {
+      fileChunks.push(currentChunk);
     }
 
-    const rowsPerFile = Math.max(1, Math.floor(GOOGLE_SHEETS_SAFE_CELL_LIMIT / detailColumns));
-    const totalFilesNeeded = Math.ceil(expandedRows.length / rowsPerFile);
+    const totalFilesNeeded = fileChunks.length;
     const totalFiles = Math.min(MAX_INSIGHTS_EXPORT_FILES, totalFilesNeeded);
 
     for (let part = 0; part < totalFiles; part += 1) {
-      const start = part * rowsPerFile;
-      const end = Math.min(start + rowsPerFile, expandedRows.length);
-      const rowsChunk = expandedRows.slice(start, end);
-      if (rowsChunk.length === 0) {
-        continue;
-      }
+      const insightChunk = fileChunks[part];
+      if (!insightChunk || insightChunk.length === 0) continue;
 
+      const summaryRows = insightChunk.map(({ insight, rows }) => ({
+        insightId: insight.id,
+        titulo: insight.title,
+        categoria: insight.category,
+        prioridad: insight.priority,
+        severidad: insight.severity,
+        score: insight.score,
+        estado: insight.status,
+        propiedad: insight.propertyId,
+        relatedRows: rows.length,
+        affectedCount: insight.affectedCount,
+      }));
+      const detailRows = insightChunk.flatMap((entry) => entry.rows);
       const workbook = XLSX.utils.book_new();
-      const sheetName = sanitizeSheetName(`SEO Insights P${part + 1}`, `Insights_${part + 1}`);
-      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rowsChunk), sheetName);
-      XLSX.writeFile(workbook, `SEO_Insights_Detallados_${exportDate}_parte_${part + 1}.xlsx`);
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), 'Resumen');
+      XLSX.utils.book_append_sheet(
+        workbook,
+        XLSX.utils.json_to_sheet(detailRows),
+        sanitizeSheetName(`Detalle P${part + 1}`, `Detalle_${part + 1}`),
+      );
+
+      const fileName = (() => {
+        if (totalFiles === 1) {
+          return `SEO_Insights_Detallados_${exportDate}.xlsx`;
+        }
+
+        const firstInsight = insightChunk[0]?.insight;
+        const lastInsight = insightChunk[insightChunk.length - 1]?.insight;
+        const rangeStart = rowsByInsight.findIndex((entry) => entry.insight.id === firstInsight?.id) + 1;
+        const rangeEnd = rowsByInsight.findIndex((entry) => entry.insight.id === lastInsight?.id) + 1;
+        const titleFrom = sanitizeFilenamePart(firstInsight?.title || `insight_${rangeStart}`, `insight_${rangeStart}`);
+        const titleTo = sanitizeFilenamePart(lastInsight?.title || `insight_${rangeEnd}`, `insight_${rangeEnd}`);
+        const rangeLabel = `${String(rangeStart).padStart(2, '0')}-${String(rangeEnd).padStart(2, '0')}`;
+        return `SEO_Insights_Detallados_${exportDate}_parte_${part + 1}_${rangeLabel}_${titleFrom}_a_${titleTo}.xlsx`;
+      })();
+
+      await triggerWorkbookDownload(workbook, fileName);
     }
 
     if (totalFiles < totalFilesNeeded) {
       showSuccess(
-        `Se exportaron ${totalFiles} archivos por límite de tamaño. Aún quedan ${totalFilesNeeded - totalFiles} parte(s) por exportar; aplica más filtros para reducir volumen.`,
+        `Se exportaron ${totalFiles} archivos por límite de hojas. Aún quedan ${totalFilesNeeded - totalFiles} parte(s) por exportar; aplica más filtros para reducir volumen.`,
       );
       return;
     }
 
-    showSuccess(`Volumen alto detectado: se exportaron ${totalFiles} archivos separados para Google Sheets/Drive.`);
+    if (totalFiles === 1) {
+      showSuccess(`Excel exportado con 2 pestañas (Resumen + Detalle) y ${rowsByInsight.length} insights consolidados.`);
+      return;
+    }
+
+    showSuccess(`Se exportaron ${totalFiles} archivos (cada uno con Resumen + Detalle) para optimizar capacidad de Sheets.`);
   };
 
   const handleExportTrendingUrls = () => {
