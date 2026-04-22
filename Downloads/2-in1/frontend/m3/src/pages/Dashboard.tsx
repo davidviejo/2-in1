@@ -81,7 +81,6 @@ const GSC_COMPARISON_MODE_LABELS: Record<GSCComparisonMode, string> = {
   previous_year: 'Mismo periodo del año pasado',
 };
 
-const GOOGLE_SHEETS_SAFE_CELL_LIMIT = 8_000_000;
 const MAX_INSIGHTS_EXPORT_FILES = 12;
 
 interface DashboardProps {
@@ -357,6 +356,22 @@ const sanitizeSheetName = (value: string, fallback: string) => {
   }
 
   return sanitized.slice(0, 31);
+};
+
+const buildUniqueSheetName = (baseName: string, fallback: string, usedNames: Set<string>) => {
+  const base = sanitizeSheetName(baseName, fallback);
+  let candidate = base;
+  let counter = 2;
+
+  while (usedNames.has(candidate)) {
+    const suffix = `_${counter}`;
+    const maxBaseLength = Math.max(1, 31 - suffix.length);
+    candidate = `${base.slice(0, maxBaseLength)}${suffix}`;
+    counter += 1;
+  }
+
+  usedNames.add(candidate);
+  return candidate;
 };
 
 const mapInsightRowForExport = (row: SeoInsight['relatedRows'][number]) => {
@@ -1431,45 +1446,61 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       return;
     }
 
-    const expandedRows = actionableInsights.flatMap((insight) => buildInsightExportRows(insight));
-    const detailColumns = Math.max(1, Object.keys(expandedRows[0] || {}).length);
-    const estimatedCells = expandedRows.length * detailColumns;
     const exportDate = new Date().toISOString().slice(0, 10);
-
-    if (estimatedCells <= GOOGLE_SHEETS_SAFE_CELL_LIMIT) {
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(expandedRows), 'SEO Insights');
-      XLSX.writeFile(workbook, `SEO_Insights_Detallados_${exportDate}.xlsx`);
-      showSuccess(`Excel exportado en 1 sheet (${expandedRows.length} filas).`);
-      return;
-    }
-
-    const rowsPerFile = Math.max(1, Math.floor(GOOGLE_SHEETS_SAFE_CELL_LIMIT / detailColumns));
-    const totalFilesNeeded = Math.ceil(expandedRows.length / rowsPerFile);
+    const insightsPerFile = Math.max(1, Math.floor(actionableInsights.length / MAX_INSIGHTS_EXPORT_FILES));
+    const totalFilesNeeded = Math.ceil(actionableInsights.length / insightsPerFile);
     const totalFiles = Math.min(MAX_INSIGHTS_EXPORT_FILES, totalFilesNeeded);
 
     for (let part = 0; part < totalFiles; part += 1) {
-      const start = part * rowsPerFile;
-      const end = Math.min(start + rowsPerFile, expandedRows.length);
-      const rowsChunk = expandedRows.slice(start, end);
-      if (rowsChunk.length === 0) {
-        continue;
-      }
+      const start = part * insightsPerFile;
+      const end = Math.min(start + insightsPerFile, actionableInsights.length);
+      const insightChunk = actionableInsights.slice(start, end);
+      if (insightChunk.length === 0) continue;
 
+      const summaryRows = insightChunk.map((insight) => ({
+        insightId: insight.id,
+        titulo: insight.title,
+        categoria: insight.category,
+        prioridad: insight.priority,
+        severidad: insight.severity,
+        score: insight.score,
+        estado: insight.status,
+        propiedad: insight.propertyId,
+        relatedRows: insight.relatedRows.length,
+        affectedCount: insight.affectedCount,
+      }));
       const workbook = XLSX.utils.book_new();
-      const sheetName = sanitizeSheetName(`SEO Insights P${part + 1}`, `Insights_${part + 1}`);
-      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rowsChunk), sheetName);
-      XLSX.writeFile(workbook, `SEO_Insights_Detallados_${exportDate}_parte_${part + 1}.xlsx`);
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), 'Resumen');
+
+      const usedNames = new Set<string>(['Resumen']);
+      insightChunk.forEach((insight, index) => {
+        const rows = buildInsightExportRows(insight);
+        const insightPrefix = `${String(start + index + 1).padStart(2, '0')}`;
+        const sheetName = buildUniqueSheetName(
+          `${insightPrefix}_${insight.title}`,
+          `Insight_${start + index + 1}`,
+          usedNames,
+        );
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), sheetName);
+      });
+
+      const fileSuffix = totalFiles > 1 ? `_parte_${part + 1}` : '';
+      XLSX.writeFile(workbook, `SEO_Insights_Detallados_${exportDate}${fileSuffix}.xlsx`);
     }
 
     if (totalFiles < totalFilesNeeded) {
       showSuccess(
-        `Se exportaron ${totalFiles} archivos por límite de tamaño. Aún quedan ${totalFilesNeeded - totalFiles} parte(s) por exportar; aplica más filtros para reducir volumen.`,
+        `Se exportaron ${totalFiles} archivos por límite de hojas. Aún quedan ${totalFilesNeeded - totalFiles} parte(s) por exportar; aplica más filtros para reducir volumen.`,
       );
       return;
     }
 
-    showSuccess(`Volumen alto detectado: se exportaron ${totalFiles} archivos separados para Google Sheets/Drive.`);
+    if (totalFiles === 1) {
+      showSuccess(`Excel exportado con ${actionableInsights.length} pestañas de detalle + 1 resumen.`);
+      return;
+    }
+
+    showSuccess(`Se exportaron ${totalFiles} archivos con pestañas separadas por cada insight.`);
   };
 
   const handleExportTrendingUrls = () => {
