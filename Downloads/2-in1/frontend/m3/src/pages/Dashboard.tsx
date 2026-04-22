@@ -123,6 +123,23 @@ interface NormalizedQueryRow {
   deltaClicksPct: number;
 }
 
+type ModuleExecutionTag = 'crítico' | 'en progreso' | 'validando impacto' | 'estable';
+
+interface ModuleMaturityDetail {
+  moduleId: number;
+  moduleTitle: string;
+  moduleDescription: string;
+  score: number;
+  openTasks: number;
+  completedTasks: number;
+  openInsights: number;
+  quickWins: number;
+  gscImpact: number | null;
+  insights: SeoInsight[];
+  keyTasks: ModuleData['tasks'];
+  tag: ModuleExecutionTag;
+}
+
 export const getVisibleSelectedGscSite = (
   selectedSite: string,
   filteredGscSites: Array<{ siteUrl: string }>,
@@ -209,6 +226,30 @@ const PERFORMANCE_METRIC_LABELS: Record<PerformanceMetric, string> = {
   impressions: 'Impresiones',
   ctr: 'CTR',
   position: 'Posición media',
+};
+
+const OPEN_INSIGHT_STATUSES: SeoInsightLifecycleStatus[] = [
+  'new',
+  'triaged',
+  'planned',
+  'in_progress',
+  'postponed',
+  'actionable',
+  'watch',
+  'investigate',
+];
+
+const resolveModuleExecutionTag = (input: {
+  score: number;
+  openTasks: number;
+  openInsights: number;
+  completedTasks: number;
+  gscImpact: number | null;
+}): ModuleExecutionTag => {
+  if (input.score < 45 || input.openInsights >= 3) return 'crítico';
+  if (input.openTasks > 0 || input.openInsights > 0) return 'en progreso';
+  if (input.completedTasks > 0 && input.gscImpact !== null) return 'validando impacto';
+  return 'estable';
 };
 
 const classifyQueryCategory = (query: string): QueryCategoryFilter => {
@@ -365,6 +406,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   const [comparisonMode, setComparisonMode] = useState<GSCComparisonMode>('previous_period');
   const [showInsightsHelp, setShowInsightsHelp] = useState(false);
   const [showBrandConfigModal, setShowBrandConfigModal] = useState(false);
+  const [selectedModuleDetailId, setSelectedModuleDetailId] = useState<number | null>(null);
   const [projectSectorDraft, setProjectSectorDraft] = useState('');
   const [brandTermsDraft, setBrandTermsDraft] = useState('');
   const [analysisProjectTypesDraft, setAnalysisProjectTypesDraft] = useState<ProjectType[]>([]);
@@ -475,22 +517,6 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       .filter((entry): entry is { moduleId: number; title: string; weight: number; maturity: number } => Boolean(entry));
   }, [modules, projectScoreContext]);
 
-  const chartData = useMemo(
-    () =>
-      modules.map((m) => {
-        const total = m.tasks.length;
-        const completed = m.tasks.filter((t) => t.status === 'completed').length;
-        const percentage = total === 0 ? 0 : Math.round((completed / total) * 100);
-        return {
-          name: `M${m.id}`,
-          fullTitle: m.title,
-          score: percentage,
-          color: percentage === 100 ? '#10b981' : percentage > 50 ? '#3b82f6' : '#94a3b8',
-        };
-      }),
-    [modules],
-  );
-
   const radarData = useMemo(() => {
     const categoryScores: Record<string, { total: number; completed: number }> = {};
     modules.forEach((m) => {
@@ -539,6 +565,69 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     [insights, isIgnored, getInsightStatus],
   );
 
+  const moduleMaturityDetails = useMemo<ModuleMaturityDetail[]>(
+    () =>
+      modules.map((module) => {
+        const completedTasks = module.tasks.filter((task) => task.status === 'completed').length;
+        const openTasks = module.tasks.length - completedTasks;
+        const structuralScore = module.tasks.length > 0
+          ? Math.round((completedTasks / module.tasks.length) * 100)
+          : 0;
+        const score = Math.round(projectScoreContext?.moduleMaturity[module.id] ?? structuralScore);
+        const relatedInsights = actionableInsights.filter((insight) => insight.moduleId === module.id);
+        const openInsights = relatedInsights.filter((insight) => OPEN_INSIGHT_STATUSES.includes(insight.status)).length;
+        const quickWins = relatedInsights.filter((insight) => insight.findingFamily === 'quick_win').length;
+        const gscImpact = relatedInsights.length
+          ? Number(
+            (
+              relatedInsights.reduce((sum, insight) => sum + Number(insight.impact || 0), 0) /
+              relatedInsights.length
+            ).toFixed(1),
+          )
+          : null;
+        const keyTasks = [...module.tasks]
+          .filter((task) => task.status !== 'completed')
+          .sort((a, b) => {
+            const impactOrder = { High: 3, Medium: 2, Low: 1 };
+            return (impactOrder[b.impact] || 0) - (impactOrder[a.impact] || 0);
+          })
+          .slice(0, 3);
+
+        return {
+          moduleId: module.id,
+          moduleTitle: module.title,
+          moduleDescription: module.description,
+          score,
+          openTasks,
+          completedTasks,
+          openInsights,
+          quickWins,
+          gscImpact,
+          insights: relatedInsights,
+          keyTasks,
+          tag: resolveModuleExecutionTag({ score, openTasks, openInsights, completedTasks, gscImpact }),
+        };
+      }),
+    [actionableInsights, modules, projectScoreContext?.moduleMaturity],
+  );
+
+  const chartData = useMemo(
+    () =>
+      moduleMaturityDetails.map((item) => ({
+        moduleId: item.moduleId,
+        name: `M${item.moduleId}`,
+        fullTitle: item.moduleTitle,
+        score: item.score,
+        color: item.score === 100 ? '#10b981' : item.score > 60 ? '#3b82f6' : '#f59e0b',
+      })),
+    [moduleMaturityDetails],
+  );
+
+  const selectedModuleDetail = useMemo(
+    () => moduleMaturityDetails.find((item) => item.moduleId === selectedModuleDetailId) || moduleMaturityDetails[0] || null,
+    [moduleMaturityDetails, selectedModuleDetailId],
+  );
+
   useEffect(() => {
     const insightId = searchParams.get('insightId');
     if (!insightId || actionableInsights.length === 0) return;
@@ -549,6 +638,17 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     nextParams.delete('insightId');
     setSearchParams(nextParams, { replace: true });
   }, [actionableInsights, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (moduleMaturityDetails.length === 0) {
+      setSelectedModuleDetailId(null);
+      return;
+    }
+
+    if (!selectedModuleDetailId || !moduleMaturityDetails.some((item) => item.moduleId === selectedModuleDetailId)) {
+      setSelectedModuleDetailId(moduleMaturityDetails[0].moduleId);
+    }
+  }, [moduleMaturityDetails, selectedModuleDetailId]);
 
   const segmentFilteredInsights = useMemo(
     () =>
@@ -2321,12 +2421,144 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                   />
                   <Bar dataKey="score" radius={[6, 6, 0, 0]} barSize={40}>
                     {chartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={entry.color}
+                        onClick={() => setSelectedModuleDetailId(entry.moduleId)}
+                        className="cursor-pointer"
+                      />
                     ))}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
+            <div className="mt-3 text-xs text-muted">
+              Haz clic en una barra para abrir la ficha del módulo y conectar estructura, ejecución e impacto.
+            </div>
+            {selectedModuleDetail ? (
+              <div className="mt-6 rounded-xl border border-border bg-surface-alt/30 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-primary">M{selectedModuleDetail.moduleId}</div>
+                    <h4 className="text-lg font-bold">{selectedModuleDetail.moduleTitle}</h4>
+                    <p className="mt-1 text-sm text-muted">{selectedModuleDetail.moduleDescription}</p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge
+                      variant={
+                        selectedModuleDetail.tag === 'crítico'
+                          ? 'danger'
+                          : selectedModuleDetail.tag === 'en progreso'
+                            ? 'warning'
+                            : selectedModuleDetail.tag === 'validando impacto'
+                              ? 'primary'
+                              : 'success'
+                      }
+                    >
+                      {selectedModuleDetail.tag}
+                    </Badge>
+                    <Badge variant="neutral">Score {selectedModuleDetail.score}%</Badge>
+                  </div>
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+                  <div className="rounded-lg border border-border bg-surface px-3 py-2">
+                    <div className="text-[11px] text-muted">Tareas abiertas</div>
+                    <div className="text-lg font-bold">{selectedModuleDetail.openTasks}</div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-surface px-3 py-2">
+                    <div className="text-[11px] text-muted">Tareas completadas</div>
+                    <div className="text-lg font-bold">{selectedModuleDetail.completedTasks}</div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-surface px-3 py-2">
+                    <div className="text-[11px] text-muted">Insights abiertos</div>
+                    <div className="text-lg font-bold">{selectedModuleDetail.openInsights}</div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-surface px-3 py-2">
+                    <div className="text-[11px] text-muted">Quick wins</div>
+                    <div className="text-lg font-bold">{selectedModuleDetail.quickWins}</div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-surface px-3 py-2">
+                    <div className="text-[11px] text-muted">Impacto GSC</div>
+                    <div className="text-lg font-bold">
+                      {selectedModuleDetail.gscImpact === null ? 'N/D' : `${selectedModuleDetail.gscImpact.toFixed(1)}%`}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-surface px-3 py-2">
+                    <div className="text-[11px] text-muted">Rendimiento afectado</div>
+                    <div className="text-sm font-semibold text-foreground">
+                      {selectedModuleDetail.gscImpact === null
+                        ? 'Sin señal GSC'
+                        : selectedModuleDetail.gscImpact >= 50
+                          ? 'Impacto alto'
+                          : selectedModuleDetail.gscImpact >= 20
+                            ? 'Impacto medio'
+                            : 'Impacto bajo'}
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-muted">Tareas clave</div>
+                    <div className="mt-2 space-y-2">
+                      {selectedModuleDetail.keyTasks.length > 0 ? selectedModuleDetail.keyTasks.map((task) => (
+                        <div key={task.id} className="rounded-lg border border-border bg-surface p-2">
+                          <div className="text-sm font-semibold">{task.title}</div>
+                          <div className="text-[11px] text-muted">{task.impact} · estado {task.status}</div>
+                        </div>
+                      )) : (
+                        <div className="rounded-lg border border-dashed border-border p-2 text-xs text-muted">
+                          No hay tareas abiertas en este módulo.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-muted">Insights clave y evolución</div>
+                    <div className="mt-2 space-y-2">
+                      {selectedModuleDetail.insights.slice(0, 3).map((insight) => (
+                        <button
+                          type="button"
+                          key={insight.id}
+                          onClick={() => setSelectedInsight(insight)}
+                          className="w-full rounded-lg border border-border bg-surface p-2 text-left hover:border-primary/40"
+                        >
+                          <div className="text-sm font-semibold line-clamp-1">{insight.title}</div>
+                          <div className="mt-1 text-[11px] text-muted">
+                            {insight.periodPrevious?.startDate && insight.periodPrevious?.endDate
+                              ? `${insight.periodPrevious.startDate}→${insight.periodPrevious.endDate}`
+                              : 'Sin periodo previo'}
+                            {' · '}
+                            {insight.periodCurrent?.startDate && insight.periodCurrent?.endDate
+                              ? `${insight.periodCurrent.startDate}→${insight.periodCurrent.endDate}`
+                              : 'Sin periodo actual'}
+                          </div>
+                        </button>
+                      ))}
+                      {selectedModuleDetail.insights.length === 0 && (
+                        <div className="rounded-lg border border-dashed border-border p-2 text-xs text-muted">
+                          Sin insights asociados para este módulo en el periodo actual.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-muted">
+                  <div>
+                    Trazabilidad: {visibleSelectedGscSite || selectedSite || 'Sin propiedad'} · actual {startDate}..{endDate} · anterior{' '}
+                    {comparisonPeriod
+                      ? `${comparisonPeriod.previous.startDate}..${comparisonPeriod.previous.endDate}`
+                      : 'Sin comparativa'} · módulo M{selectedModuleDetail.moduleId} · ts {new Date().toLocaleString()}
+                  </div>
+                  <Button size="sm" variant="secondary" onClick={() => navigate(`/app/module/${selectedModuleDetail.moduleId}`)}>
+                    Abrir módulo
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 rounded-xl border border-dashed border-border p-4 text-sm text-muted">
+                Sin módulos disponibles para construir la ficha integrada.
+              </div>
+            )}
           </div>
         </div>
 
