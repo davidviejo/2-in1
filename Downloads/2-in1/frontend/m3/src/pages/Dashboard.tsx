@@ -81,6 +81,9 @@ const GSC_COMPARISON_MODE_LABELS: Record<GSCComparisonMode, string> = {
   previous_year: 'Mismo periodo del año pasado',
 };
 
+const GOOGLE_SHEETS_SAFE_CELL_LIMIT = 8_000_000;
+const MAX_INSIGHTS_EXPORT_FILES = 12;
+
 interface DashboardProps {
   modules: ModuleData[];
   globalScore: number;
@@ -1377,73 +1380,45 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       return;
     }
 
-    const workbook = XLSX.utils.book_new();
-
     const expandedRows = actionableInsights.flatMap((insight) => buildInsightExportRows(insight));
+    const detailColumns = Math.max(1, Object.keys(expandedRows[0] || {}).length);
+    const estimatedCells = expandedRows.length * detailColumns;
+    const exportDate = new Date().toISOString().slice(0, 10);
 
-    const summaryRows = actionableInsights.map((insight) => ({
-      categoria: insight.category,
-      insightId: insight.id,
-      titulo: insight.title,
-      prioridad: insight.priority,
-      severidad: insight.severity,
-      score: insight.score,
-      oportunidad: insight.opportunity,
-      confianza: insight.confidence,
-      impacto: insight.impact,
-      urgencia: insight.urgency,
-      facilidad: insight.ease,
-      valorNegocio: insight.businessValue,
-      facilidadImplementacion: insight.implementationEase,
-      accionSugerida: insight.suggestedAction,
-      regla: insight.ruleKey,
-      alcanceRegla: insight.ruleScope,
-      explicacionAplicabilidad: insight.appliesBecause,
-      modulo: insight.moduleId || '',
-      brandType: insight.brandType,
-      estado: insight.status,
-      propiedad: insight.propertyId,
-      periodoActual: insight.periodCurrent ? `${insight.periodCurrent.startDate}..${insight.periodCurrent.endDate}` : '',
-      periodoAnterior: insight.periodPrevious ? `${insight.periodPrevious.startDate}..${insight.periodPrevious.endDate}` : '',
-      resumen: insight.summary,
-      motivo: insight.reason,
-      filasRelacionadas: insight.relatedRows.length,
-    }));
+    if (estimatedCells <= GOOGLE_SHEETS_SAFE_CELL_LIMIT) {
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(expandedRows), 'SEO Insights');
+      XLSX.writeFile(workbook, `SEO_Insights_Detallados_${exportDate}.xlsx`);
+      showSuccess(`Excel exportado en 1 sheet (${expandedRows.length} filas).`);
+      return;
+    }
 
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), 'Resumen insights');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(expandedRows), 'Detalle completo');
+    const rowsPerFile = Math.max(1, Math.floor(GOOGLE_SHEETS_SAFE_CELL_LIMIT / detailColumns));
+    const totalFilesNeeded = Math.ceil(expandedRows.length / rowsPerFile);
+    const totalFiles = Math.min(MAX_INSIGHTS_EXPORT_FILES, totalFilesNeeded);
 
-    const usedSheetNames = new Set<string>(['Resumen insights', 'Detalle completo']);
+    for (let part = 0; part < totalFiles; part += 1) {
+      const start = part * rowsPerFile;
+      const end = Math.min(start + rowsPerFile, expandedRows.length);
+      const rowsChunk = expandedRows.slice(start, end);
+      if (rowsChunk.length === 0) {
+        continue;
+      }
 
-    actionableInsights
-      .reduce((acc, insight) => {
-        const key = insight.suggestedAction?.trim() || 'Sin acción sugerida';
-        if (!acc.has(key)) {
-          acc.set(key, []);
-        }
-        acc.get(key)?.push(insight);
-        return acc;
-      }, new Map<string, SeoInsight[]>())
-      .forEach((groupInsights, actionLabel, index) => {
-        const actionRows = groupInsights.flatMap((insight) => buildInsightExportRows(insight));
+      const workbook = XLSX.utils.book_new();
+      const sheetName = sanitizeSheetName(`SEO Insights P${part + 1}`, `Insights_${part + 1}`);
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rowsChunk), sheetName);
+      XLSX.writeFile(workbook, `SEO_Insights_Detallados_${exportDate}_parte_${part + 1}.xlsx`);
+    }
 
-        const baseName = sanitizeSheetName(actionLabel, `Accion ${index + 1}`);
-        let sheetName = baseName;
-        let suffix = 2;
-        while (usedSheetNames.has(sheetName)) {
-          const trimmed = baseName.slice(0, Math.max(1, 31 - (` (${suffix})`.length)));
-          sheetName = `${trimmed} (${suffix})`;
-          suffix += 1;
-        }
-        usedSheetNames.add(sheetName);
+    if (totalFiles < totalFilesNeeded) {
+      showSuccess(
+        `Se exportaron ${totalFiles} archivos por límite de tamaño. Aún quedan ${totalFilesNeeded - totalFiles} parte(s) por exportar; aplica más filtros para reducir volumen.`,
+      );
+      return;
+    }
 
-        XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(actionRows), sheetName);
-      });
-
-    XLSX.writeFile(workbook, `SEO_Insights_Detallados_${new Date().toISOString().slice(0, 10)}.xlsx`);
-    showSuccess(
-      `Excel exportado con ${actionableInsights.length} insights y ${Math.max(1, new Set(actionableInsights.map((item) => item.suggestedAction?.trim() || 'Sin acción sugerida')).size)} pestañas de acción.`,
-    );
+    showSuccess(`Volumen alto detectado: se exportaron ${totalFiles} archivos separados para Google Sheets/Drive.`);
   };
 
   const handleExportTrendingUrls = () => {
