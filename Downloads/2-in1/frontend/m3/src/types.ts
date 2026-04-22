@@ -257,11 +257,33 @@ export interface ProjectInitialConfigPreset {
   scoreWeights: ProjectScoreWeights;
 }
 
+export type NoteScopeType = 'client' | 'property' | 'module' | 'task' | 'insight' | 'query' | 'global';
+
+export interface NoteTrace {
+  property?: string;
+  query?: string;
+  url?: string;
+  module?: string;
+  projectType?: ProjectType;
+  sector?: string;
+  geoScope?: GeoScope;
+  periodCurrent?: string;
+  periodPrevious?: string;
+  timestamp: number;
+}
+
 export interface Note {
   id: string;
   content: string;
+  scopeType?: NoteScopeType;
+  scopeId?: string;
+  author?: string;
   createdAt: number;
   updatedAt?: number;
+  tags?: string[];
+  isPinned?: boolean;
+  isInternal?: boolean;
+  trace?: NoteTrace;
 }
 
 export interface IAVisibilityPromptConfig {

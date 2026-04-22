@@ -39,6 +39,7 @@ import LanguageSwitcher from './ui/LanguageSwitcher';
 import { InternalShell } from './shell/ShellVariants';
 import ConfirmDialog from './ui/ConfirmDialog';
 import { useToast } from './ui/ToastContext';
+import { NOTE_CONTEXT_EVENT, NoteContextRequest } from '@/utils/noteEvents';
 
 interface NavItemProps {
   to: string;
@@ -98,7 +99,14 @@ interface LayoutProps {
   // Notes Props
   generalNotes?: Note[];
   projectNotes?: Note[];
-  onAddNote?: (content: string, type: 'project' | 'general') => void;
+  onAddNote?: (
+    content: string,
+    type: 'project' | 'general',
+    options?: Partial<Pick<Note, 'scopeType' | 'scopeId' | 'author' | 'tags' | 'isInternal' | 'isPinned' | 'trace'>>,
+  ) => void;
+  onTogglePinNote?: (noteId: string, type: 'project' | 'general') => void;
+  onToggleInternalNote?: (noteId: string, type: 'project' | 'general') => void;
+  onConvertNoteToTask?: (noteId: string, type: 'project' | 'general', moduleId?: number) => void;
   onUpdateNote?: (noteId: string, content: string, type: 'project' | 'general') => void;
   onDeleteNote?: (noteId: string, type: 'project' | 'general') => void;
 }
@@ -117,6 +125,9 @@ const Layout: React.FC<LayoutProps> = ({
   generalNotes = [],
   projectNotes = [],
   onAddNote = () => {},
+  onTogglePinNote = () => {},
+  onToggleInternalNote = () => {},
+  onConvertNoteToTask = () => {},
   onUpdateNote = () => {},
   onDeleteNote = () => {},
 }) => {
@@ -132,6 +143,7 @@ const Layout: React.FC<LayoutProps> = ({
   const [isEmergencyLoading, setIsEmergencyLoading] = useState(false);
   const [showEmergencyConfirm, setShowEmergencyConfirm] = useState(false);
   const [isNotesOpen, setIsNotesOpen] = useState(false);
+  const [noteContext, setNoteContext] = useState<NoteContextRequest | null>(null);
   const activeTab = useMemo<TabType>(() => {
     const path = location.pathname;
     if (
@@ -177,6 +189,16 @@ const Layout: React.FC<LayoutProps> = ({
       localStorage.setItem('mediaflow_theme', 'light');
     }
   }, [darkMode]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const customEvent = event as CustomEvent<NoteContextRequest>;
+      setNoteContext(customEvent.detail);
+      setIsNotesOpen(true);
+    };
+    window.addEventListener(NOTE_CONTEXT_EVENT, handler as EventListener);
+    return () => window.removeEventListener(NOTE_CONTEXT_EVENT, handler as EventListener);
+  }, []);
 
 
   const handleTabChange = (tab: TabType) => {
@@ -561,13 +583,20 @@ const Layout: React.FC<LayoutProps> = ({
       {/* Notes Panel */}
       <NotesPanel
         isOpen={isNotesOpen}
-        onClose={() => setIsNotesOpen(false)}
+        onClose={() => {
+          setIsNotesOpen(false);
+          setNoteContext(null);
+        }}
         projectNotes={projectNotes}
         generalNotes={generalNotes}
         onAddNote={onAddNote}
         onUpdateNote={onUpdateNote}
         onDeleteNote={onDeleteNote}
+        onTogglePinNote={onTogglePinNote}
+        onToggleInternalNote={onToggleInternalNote}
+        onConvertNoteToTask={onConvertNoteToTask}
         projectName={clients?.find((c) => c.id === currentClientId)?.name || 'Proyecto'}
+        contextRequest={noteContext}
       />
 
       {/* Main Content */}

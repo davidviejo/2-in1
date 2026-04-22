@@ -109,9 +109,16 @@ interface ProjectContextType {
   updateCompletedTaskImpact: (logEntryId: string, updates: Partial<CompletedTask['beforeAfter']>) => void;
 
   // Notes Actions
-  addNote: (content: string, type: 'project' | 'general') => void;
+  addNote: (
+    content: string,
+    type: 'project' | 'general',
+    options?: Partial<Pick<Note, 'scopeType' | 'scopeId' | 'author' | 'tags' | 'isInternal' | 'isPinned' | 'trace'>>,
+  ) => void;
   updateNote: (noteId: string, content: string, type: 'project' | 'general') => void;
   deleteNote: (noteId: string, type: 'project' | 'general') => void;
+  togglePinNote: (noteId: string, type: 'project' | 'general') => void;
+  toggleInternalNote: (noteId: string, type: 'project' | 'general') => void;
+  convertNoteToTask: (noteId: string, type: 'project' | 'general', moduleId?: number) => void;
 
   // AI Roadmap Actions
   updateAIRoadmap: (tasks: Task[]) => void;
@@ -1131,10 +1138,21 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
   );
 
   const addNote = useCallback(
-    (content: string, type: 'project' | 'general') => {
+    (
+      content: string,
+      type: 'project' | 'general',
+      options?: Partial<Pick<Note, 'scopeType' | 'scopeId' | 'author' | 'tags' | 'isInternal' | 'isPinned' | 'trace'>>,
+    ) => {
       const newNote: Note = {
         id: crypto.randomUUID(),
         content,
+        scopeType: options?.scopeType || (type === 'general' ? 'global' : 'client'),
+        scopeId: options?.scopeId || (type === 'general' ? 'global' : currentClientId),
+        author: options?.author || 'Equipo SEO',
+        tags: options?.tags || [],
+        isInternal: options?.isInternal || false,
+        isPinned: options?.isPinned || false,
+        trace: options?.trace,
         createdAt: Date.now(),
       };
 
@@ -1149,6 +1167,95 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
     },
     [currentClientId],
+  );
+
+  const togglePinNote = useCallback(
+    (noteId: string, type: 'project' | 'general') => {
+      if (type === 'general') {
+        setGeneralNotes((prev) =>
+          prev.map((note) =>
+            note.id === noteId ? { ...note, isPinned: !note.isPinned, updatedAt: Date.now() } : note,
+          ),
+        );
+        return;
+      }
+
+      setClients((prev) =>
+        prev.map((client) =>
+          client.id === currentClientId
+            ? {
+                ...client,
+                notes: (client.notes || []).map((note) =>
+                  note.id === noteId ? { ...note, isPinned: !note.isPinned, updatedAt: Date.now() } : note,
+                ),
+              }
+            : client,
+        ),
+      );
+    },
+    [currentClientId],
+  );
+
+  const toggleInternalNote = useCallback(
+    (noteId: string, type: 'project' | 'general') => {
+      if (type === 'general') {
+        setGeneralNotes((prev) =>
+          prev.map((note) =>
+            note.id === noteId ? { ...note, isInternal: !note.isInternal, updatedAt: Date.now() } : note,
+          ),
+        );
+        return;
+      }
+
+      setClients((prev) =>
+        prev.map((client) =>
+          client.id === currentClientId
+            ? {
+                ...client,
+                notes: (client.notes || []).map((note) =>
+                  note.id === noteId ? { ...note, isInternal: !note.isInternal, updatedAt: Date.now() } : note,
+                ),
+              }
+            : client,
+        ),
+      );
+    },
+    [currentClientId],
+  );
+
+  const convertNoteToTask = useCallback(
+    (noteId: string, type: 'project' | 'general', moduleId = 1) => {
+      const sourceNotes =
+        type === 'general'
+          ? generalNotes
+          : clients.find((client) => client.id === currentClientId)?.notes || [];
+      const note = sourceNotes.find((item) => item.id === noteId);
+      if (!note || !note.content.trim()) return;
+
+      addTask(
+        moduleId,
+        `Nota convertida · ${note.scopeType || 'global'}`,
+        note.content,
+        'Medium',
+        'Nota',
+        {
+          isInCustomRoadmap: true,
+          insightSourceMeta: {
+            insightId: `note-${note.id}`,
+            sourceType: 'note',
+            sourceLabel: note.scopeType || 'global',
+            moduleId,
+            metricsSnapshot: {},
+            property: note.trace?.property || '',
+            query: note.trace?.query || '',
+            url: note.trace?.url || '',
+            timestamp: Date.now(),
+          },
+        },
+      );
+      togglePinNote(noteId, type);
+    },
+    [addTask, clients, currentClientId, generalNotes, togglePinNote],
   );
 
   const updateNote = useCallback(
@@ -1293,6 +1400,9 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       addNote,
       updateNote,
       deleteNote,
+      togglePinNote,
+      toggleInternalNote,
+      convertNoteToTask,
       importData,
       restoreProjectData,
       resetCurrentProject,
@@ -1336,6 +1446,9 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       addNote,
       updateNote,
       deleteNote,
+      togglePinNote,
+      toggleInternalNote,
+      convertNoteToTask,
       importData,
       restoreProjectData,
       resetCurrentProject,

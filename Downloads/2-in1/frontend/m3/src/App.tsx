@@ -66,6 +66,9 @@ export const AppRoutes: React.FC = () => {
     addNote,
     updateNote,
     deleteNote,
+    togglePinNote,
+    toggleInternalNote,
+    convertNoteToTask,
   } = useProject();
 
   return (
@@ -100,6 +103,9 @@ export const AppRoutes: React.FC = () => {
               onAddNote={addNote}
               onUpdateNote={updateNote}
               onDeleteNote={deleteNote}
+              onTogglePinNote={togglePinNote}
+              onToggleInternalNote={toggleInternalNote}
+              onConvertNoteToTask={convertNoteToTask}
             >
               <Routes>
                 <Route

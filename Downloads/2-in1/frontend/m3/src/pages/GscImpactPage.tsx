@@ -59,6 +59,7 @@ import {
   summarizePortfolioStatusCounts,
 } from '@/features/gsc-impact/portfolioAnalysis';
 import * as XLSX from 'xlsx';
+import ContextNoteButton from '@/components/ContextNoteButton';
 
 type DeviceFilter = 'all' | 'DESKTOP' | 'MOBILE' | 'TABLET';
 
@@ -1451,6 +1452,13 @@ const GscImpactPage: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <ContextNoteButton
+              scopeType="property"
+              scopeId={selectedSite || 'sin-propiedad'}
+              title={`Propiedad ${selectedSite || 'sin seleccionar'}`}
+              tags={['gsc-impact', viewMode]}
+              suggestedContent={`Seguimiento impacto GSC (${viewMode}) en ${selectedSite || 'propiedad pendiente'}`}
+            />
             {!gscAccessToken ? (
               <Button onClick={() => login()}>
                 <LogIn size={16} />
