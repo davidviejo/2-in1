@@ -71,7 +71,7 @@ const ClientSwitcher: React.FC<ClientSwitcherProps> = ({
         .filter(Boolean),
       initialConfigPreset: useGenericConfig
         ? getGenericInitialConfigPreset()
-        : getDefaultInitialConfigPreset(getProjectTypeFromVertical(newClientVertical)),
+        : getDefaultInitialConfigPreset(getProjectTypeFromVertical(newClientVertical), sector),
     });
     setNewClientName('');
     setNewClientVertical('media');

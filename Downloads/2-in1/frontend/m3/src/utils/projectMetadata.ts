@@ -5,6 +5,7 @@ import {
   ProjectScoreWeights,
   ProjectType,
 } from '../types';
+import { buildContextualRoadmap } from '@/config/projectContextualRoadmap';
 
 export const PROJECT_TYPE_BY_VERTICAL: Record<ClientVertical, ProjectType> = {
   media: 'MEDIA',
@@ -234,10 +235,29 @@ export const normalizeBrandTerms = (brandTerms: unknown): string[] => {
   return Array.from(new Set(cleaned));
 };
 
-export const getDefaultInitialConfigPreset = (projectType: ProjectType): ProjectInitialConfigPreset => ({
-  ...PROJECT_PRESET_BY_TYPE[projectType],
-  useGenericConfig: false,
-});
+export const getDefaultInitialConfigPreset = (
+  projectType: ProjectType,
+  sector?: string,
+): ProjectInitialConfigPreset => {
+  const contextual = buildContextualRoadmap({ projectType, sector });
+  const base = PROJECT_PRESET_BY_TYPE[projectType];
+  return {
+    ...base,
+    suggestedModuleIds:
+      contextual.suggestedModuleIds.length > 0 ? contextual.suggestedModuleIds : base.suggestedModuleIds,
+    scoreWeights:
+      Object.keys(contextual.moduleWeights).length > 0
+        ? {
+            visibility: contextual.moduleWeights[2] || base.scoreWeights.visibility,
+            technical: contextual.moduleWeights[1] || base.scoreWeights.technical,
+            content: contextual.moduleWeights[3] || base.scoreWeights.content,
+            authority: contextual.moduleWeights[5] || base.scoreWeights.authority,
+            conversion: contextual.moduleWeights[8] || base.scoreWeights.conversion,
+          }
+        : base.scoreWeights,
+    useGenericConfig: false,
+  };
+};
 
 export const getGenericInitialConfigPreset = (): ProjectInitialConfigPreset => ({
   suggestedModuleIds: [1, 2, 3, 4, 5],

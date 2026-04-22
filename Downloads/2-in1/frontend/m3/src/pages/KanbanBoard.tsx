@@ -32,6 +32,7 @@ import { Badge } from '../components/ui/Badge';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import { useToast } from '../components/ui/ToastContext';
 import { useTranslation } from 'react-i18next';
+import { getTemplateBadgeText } from '@/utils/taskTemplateMeta';
 
 interface ConfirmState {
   title: string;
@@ -333,6 +334,13 @@ const KanbanBoard: React.FC = () => {
                               <h4 className="mb-3 text-sm font-medium leading-snug text-foreground">
                                 {item.task.title}
                               </h4>
+                              {getTemplateBadgeText(item.task.templateMeta) && (
+                                <div className="mb-3">
+                                  <Badge variant="neutral" className="normal-case tracking-normal text-[10px]">
+                                    {getTemplateBadgeText(item.task.templateMeta)}
+                                  </Badge>
+                                </div>
+                              )}
                               {item.task.insightSourceMeta && (
                                 <Link
                                   to={`/app/dashboard?insightId=${encodeURIComponent(item.task.insightSourceMeta.insightId)}`}

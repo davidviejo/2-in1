@@ -39,6 +39,7 @@ import {
   normalizeSector,
   normalizeSubSector,
 } from '../utils/projectMetadata';
+import { buildContextualRoadmap } from '@/config/projectContextualRoadmap';
 
 interface ProjectContextType {
   clients: Client[];
@@ -321,6 +322,33 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
     const templateVersion = strategy.getTemplateVersion();
     const projectType = input.projectType || getProjectTypeFromVertical(vertical);
 
+    const createdAt = Date.now();
+    const contextualRoadmap = buildContextualRoadmap({
+      projectType,
+      sector: input.sector,
+      useGenericConfig: input.initialConfigPreset?.useGenericConfig,
+      createdAt,
+    });
+    const suggestionMetaByTask = new Map(
+      contextualRoadmap.suggestions.map((suggestion) => [`${suggestion.moduleId}:${suggestion.taskId}`, suggestion.meta]),
+    );
+    const customRoadmapOrder: string[] = [];
+    const initialModulesWithContext = initialModules.map((module) => ({
+      ...module,
+      tasks: module.tasks.map((task) => {
+        const match = suggestionMetaByTask.get(`${module.id}:${task.id}`);
+        if (!match) {
+          return task;
+        }
+        customRoadmapOrder.push(task.id);
+        return {
+          ...task,
+          isInCustomRoadmap: true,
+          templateMeta: match,
+        };
+      }),
+    }));
+
     const newClient: Client = {
       id: crypto.randomUUID(),
       name: input.name,
@@ -332,14 +360,23 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       country: normalizeCountry(input.country, normalizeGeoScope(input.geoScope, projectType)),
       primaryLanguage: normalizePrimaryLanguage(input.primaryLanguage),
       brandTerms: normalizeBrandTerms(input.brandTerms),
-      initialConfigPreset: normalizeInitialConfigPreset(input.initialConfigPreset, projectType),
+      initialConfigPreset: normalizeInitialConfigPreset(
+        input.initialConfigPreset || {
+          ...input.initialConfigPreset,
+          suggestedModuleIds: contextualRoadmap.suggestedModuleIds,
+          useGenericConfig: contextualRoadmap.roadmapTemplateMode === 'generic',
+        },
+        projectType,
+      ),
       subSector: normalizeSubSector(input.subSector),
-      modules: initialModules, // Deep copy handled in Strategy
+      modules: initialModulesWithContext, // Deep copy handled in Strategy
       templateVersion,
-      createdAt: Date.now(),
+      createdAt,
       notes: [],
       completedTasksLog: [],
-      customRoadmapOrder: [],
+      customRoadmapOrder,
+      roadmapTemplateMode: contextualRoadmap.roadmapTemplateMode,
+      moduleWeights: contextualRoadmap.moduleWeights,
       iaVisibility: createDefaultIAVisibilityState(),
     };
     setClients((prev) => [...prev, newClient]);
@@ -450,6 +487,18 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
           status: options?.status || 'pending',
           assignee: options?.assignee,
           insightSourceMeta: options?.insightSourceMeta,
+          templateMeta: currentClient
+            ? {
+                templateId: 'custom-client',
+                templateLabel: 'Personalizado por cliente',
+                origin: 'client_custom',
+                projectType: currentClient.projectType || 'MEDIA',
+                sector: currentClient.sector,
+                moduleId,
+                priority: impact,
+                generatedAt: Date.now(),
+              }
+            : undefined,
         };
         return {
           ...m,
@@ -458,7 +507,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       });
       updateCurrentClientModules(newModules);
     },
-    [modules, updateCurrentClientModules],
+    [currentClient, modules, updateCurrentClientModules],
   );
 
   const addTasksBulk = useCallback(
@@ -495,6 +544,18 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
               category: task.category,
               isCustom: true,
               isInCustomRoadmap: task.isInRoadmap || false,
+              templateMeta: c
+                ? {
+                    templateId: 'custom-client',
+                    templateLabel: 'Personalizado por cliente',
+                    origin: 'client_custom' as const,
+                    projectType: c.projectType || 'MEDIA',
+                    sector: c.sector,
+                    moduleId: task.moduleId,
+                    priority: task.impact,
+                    generatedAt: Date.now(),
+                  }
+                : undefined,
             };
             tasksByModule.get(task.moduleId)?.push(newTask);
 
