@@ -82,6 +82,10 @@ const GSC_COMPARISON_MODE_LABELS: Record<GSCComparisonMode, string> = {
 };
 
 const MAX_INSIGHTS_EXPORT_FILES = 12;
+const GOOGLE_SHEETS_MAX_CELLS = 10_000_000;
+const GOOGLE_SHEETS_SAFE_CELLS = 9_200_000;
+const GOOGLE_SHEETS_MAX_CELL_CHARACTERS = 50_000;
+const GOOGLE_SHEETS_SAFE_CELL_CHARACTERS = 49_000;
 
 interface DashboardProps {
   modules: ModuleData[];
@@ -373,6 +377,38 @@ const buildUniqueSheetName = (baseName: string, fallback: string, usedNames: Set
   usedNames.add(candidate);
   return candidate;
 };
+
+const sanitizeCellValueForSheets = (value: unknown): string | number => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : '';
+  }
+  if (typeof value === 'string') {
+    if (value.length <= GOOGLE_SHEETS_SAFE_CELL_CHARACTERS) {
+      return value;
+    }
+    return `${value.slice(0, GOOGLE_SHEETS_SAFE_CELL_CHARACTERS - 1)}…`;
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  const serialized = String(value);
+  if (serialized.length <= GOOGLE_SHEETS_SAFE_CELL_CHARACTERS) {
+    return serialized;
+  }
+
+  return `${serialized.slice(0, GOOGLE_SHEETS_SAFE_CELL_CHARACTERS - 1)}…`;
+};
+
+const sanitizeRowsForSheets = (rows: Array<Record<string, unknown>>) =>
+  rows.map((row) =>
+    Object.fromEntries(
+      Object.entries(row).map(([key, value]) => [key, sanitizeCellValueForSheets(value)]),
+    ),
+  );
 
 const mapInsightRowForExport = (row: SeoInsight['relatedRows'][number]) => {
   const queryFromKeys = row.keys?.[0] ?? '';
@@ -1447,17 +1483,8 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     }
 
     const exportDate = new Date().toISOString().slice(0, 10);
-    const insightsPerFile = Math.max(1, Math.floor(actionableInsights.length / MAX_INSIGHTS_EXPORT_FILES));
-    const totalFilesNeeded = Math.ceil(actionableInsights.length / insightsPerFile);
-    const totalFiles = Math.min(MAX_INSIGHTS_EXPORT_FILES, totalFilesNeeded);
-
-    for (let part = 0; part < totalFiles; part += 1) {
-      const start = part * insightsPerFile;
-      const end = Math.min(start + insightsPerFile, actionableInsights.length);
-      const insightChunk = actionableInsights.slice(start, end);
-      if (insightChunk.length === 0) continue;
-
-      const summaryRows = insightChunk.map((insight) => ({
+    const allSummaryRows = sanitizeRowsForSheets(
+      actionableInsights.map((insight) => ({
         insightId: insight.id,
         titulo: insight.title,
         categoria: insight.category,
@@ -1468,17 +1495,72 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
         propiedad: insight.propertyId,
         relatedRows: insight.relatedRows.length,
         affectedCount: insight.affectedCount,
-      }));
+      })),
+    );
+    const allDetailRows = sanitizeRowsForSheets(
+      actionableInsights.flatMap((insight) => buildInsightExportRows(insight)),
+    );
+    const summaryColumnCount = Math.max(1, Object.keys(allSummaryRows[0] || {}).length);
+    const detailColumnCount = Math.max(1, Object.keys(allDetailRows[0] || {}).length);
+    const summaryCellCount = (allSummaryRows.length + 1) * summaryColumnCount;
+    const remainingCellsForDetail = Math.max(1, GOOGLE_SHEETS_SAFE_CELLS - summaryCellCount);
+    const maxDetailRowsPerFile = Math.max(1, Math.floor(remainingCellsForDetail / detailColumnCount));
+    const preparedInsights = actionableInsights.map((insight, index) => ({
+      summaryRow: allSummaryRows[index],
+      detailRows: sanitizeRowsForSheets(buildInsightExportRows(insight)),
+    }));
+    const filePlans: Array<{
+      start: number;
+      end: number;
+      summaryRows: Array<Record<string, string | number>>;
+      detailRows: Array<Record<string, string | number>>;
+    }> = [];
+    let cursor = 0;
+
+    while (cursor < preparedInsights.length && filePlans.length < MAX_INSIGHTS_EXPORT_FILES) {
+      const start = cursor;
+      const summaryRows: Array<Record<string, string | number>> = [];
+      const detailRows: Array<Record<string, string | number>> = [];
+      let detailRowsCount = 0;
+
+      while (cursor < preparedInsights.length) {
+        const candidate = preparedInsights[cursor];
+        const candidateRowsCount = Math.max(1, candidate.detailRows.length);
+        if (detailRows.length > 0 && detailRowsCount + candidateRowsCount > maxDetailRowsPerFile) {
+          break;
+        }
+
+        summaryRows.push(candidate.summaryRow);
+        detailRows.push(...candidate.detailRows);
+        detailRowsCount += candidateRowsCount;
+        cursor += 1;
+      }
+
+      filePlans.push({ start, end: cursor, summaryRows, detailRows });
+    }
+
+    const totalFiles = filePlans.length;
+
+    filePlans.forEach((plan, part) => {
       const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), 'Resumen');
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(plan.summaryRows), 'Resumen');
 
       const usedNames = new Set<string>(['Resumen']);
-      insightChunk.forEach((insight, index) => {
-        const rows = buildInsightExportRows(insight);
-        const insightPrefix = `${String(start + index + 1).padStart(2, '0')}`;
+      const detailRowsByAnalysisType = plan.detailRows.reduce((acc, row) => {
+        const category = typeof row.categoria === 'string' && row.categoria.trim()
+          ? row.categoria.trim()
+          : 'sin_categoria';
+        if (!acc.has(category)) {
+          acc.set(category, []);
+        }
+        acc.get(category)?.push(row);
+        return acc;
+      }, new Map<string, Array<Record<string, string | number>>>());
+
+      Array.from(detailRowsByAnalysisType.entries()).forEach(([analysisType, rows]) => {
         const sheetName = buildUniqueSheetName(
-          `${insightPrefix}_${insight.title}`,
-          `Insight_${start + index + 1}`,
+          `Tipo_${analysisType}`,
+          `Tipo_${part + 1}`,
           usedNames,
         );
         XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), sheetName);
@@ -1486,21 +1568,22 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
 
       const fileSuffix = totalFiles > 1 ? `_parte_${part + 1}` : '';
       XLSX.writeFile(workbook, `SEO_Insights_Detallados_${exportDate}${fileSuffix}.xlsx`);
-    }
+    });
 
-    if (totalFiles < totalFilesNeeded) {
+    if (cursor < preparedInsights.length) {
+      const remainingInsights = preparedInsights.length - cursor;
       showSuccess(
-        `Se exportaron ${totalFiles} archivos por límite de hojas. Aún quedan ${totalFilesNeeded - totalFiles} parte(s) por exportar; aplica más filtros para reducir volumen.`,
+        `Se exportaron ${totalFiles} archivos optimizados por límite de celdas. Aún quedan ${remainingInsights} insight(s) sin exportar; aplica más filtros para reducir volumen.`,
       );
       return;
     }
 
     if (totalFiles === 1) {
-      showSuccess(`Excel exportado con ${actionableInsights.length} pestañas de detalle + 1 resumen.`);
+      showSuccess(`Excel exportado con pestañas por tipo de análisis + 1 resumen, respetando el límite de Google Sheets (${GOOGLE_SHEETS_MAX_CELLS.toLocaleString()} celdas y ${GOOGLE_SHEETS_MAX_CELL_CHARACTERS.toLocaleString()} caracteres por celda).`);
       return;
     }
 
-    showSuccess(`Se exportaron ${totalFiles} archivos con pestañas separadas por cada insight.`);
+    showSuccess(`Se exportaron ${totalFiles} archivos optimizados para Google Sheets con pestañas por tipo de análisis.`);
   };
 
   const handleExportTrendingUrls = () => {
