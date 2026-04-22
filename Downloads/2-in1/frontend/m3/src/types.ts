@@ -200,6 +200,55 @@ export interface ProjectScoreContext {
   moduleMaturity: Record<number, number>;
 }
 
+export type SeoSnapshotScope = 'client' | 'property' | 'portfolio' | 'module';
+export type SeoSnapshotCaptureType = 'auto' | 'manual';
+
+export interface SeoSnapshotPeriod {
+  currentStart: string;
+  currentEnd: string;
+  previousStart?: string;
+  previousEnd?: string;
+  comparisonLabel?: string;
+}
+
+export interface SeoSnapshotMetricBlock {
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+}
+
+export interface SeoPerformanceSnapshot {
+  id: string;
+  scope: SeoSnapshotScope;
+  scopeId: string;
+  scopeLabel: string;
+  moduleId?: number;
+  property: string;
+  period: SeoSnapshotPeriod;
+  metrics: SeoSnapshotMetricBlock;
+  brandMetrics?: {
+    brand: SeoSnapshotMetricBlock;
+    nonBrand: SeoSnapshotMetricBlock;
+  };
+  globalScore: number;
+  moduleScores: Record<number, number>;
+  openInsights: number;
+  openTasks: number;
+  captureType: SeoSnapshotCaptureType;
+  trace: {
+    clientId: string;
+    projectType: ProjectType;
+    sector: string;
+    geoScope: GeoScope;
+    module?: string;
+    query?: string;
+    url?: string;
+    timestamp: number;
+  };
+  timestamp: number;
+}
+
 export interface ProjectInitialConfigPreset {
   useGenericConfig?: boolean;
   suggestedModuleIds: number[];
@@ -289,6 +338,7 @@ export interface Client {
   templateVersion?: string;
   roadmapTemplateMode?: 'contextual' | 'generic';
   moduleWeights?: Partial<Record<number, number>>;
+  seoSnapshots?: SeoPerformanceSnapshot[];
 }
 
 export interface NewClientInput {

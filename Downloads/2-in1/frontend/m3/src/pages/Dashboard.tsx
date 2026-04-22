@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import {
   ResponsiveContainer,
   BarChart,
@@ -18,7 +18,7 @@ import {
   ReferenceLine,
   Legend,
 } from 'recharts';
-import { GSCRow, ModuleData } from '../types';
+import { GSCRow, ModuleData, SeoPerformanceSnapshot } from '../types';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowRight,
@@ -426,6 +426,22 @@ const buildInsightExportRows = (insight: SeoInsight) => {
   }));
 };
 
+const sumGscRows = (rows: GSCRow[]) => {
+  const clicks = rows.reduce((sum, row) => sum + (Number(row.clicks) || 0), 0);
+  const impressions = rows.reduce((sum, row) => sum + (Number(row.impressions) || 0), 0);
+  const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
+  const position = impressions > 0
+    ? rows.reduce((sum, row) => sum + (Number(row.position) || 0) * (Number(row.impressions) || 0), 0) / impressions
+    : 0;
+
+  return {
+    clicks,
+    impressions,
+    ctr: Number(ctr.toFixed(2)),
+    position: Number(position.toFixed(2)),
+  };
+};
+
 const HeroMetric: React.FC<HeroMetricProps> = ({ title, value, description, tone, onClick, ctaLabel }) => {
   if (onClick) {
     return (
@@ -453,7 +469,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { success: showSuccess } = useToast();
-  const { currentClient, updateCurrentClientProfile, addTask, projectScoreContext } = useProject();
+  const { currentClient, updateCurrentClientProfile, addTask, projectScoreContext, saveClientSnapshot } = useProject();
   const [quickTask, setQuickTask] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [selectedInsight, setSelectedInsight] = useState<SeoInsight | null>(null);
@@ -477,6 +493,8 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   const [projectSectorDraft, setProjectSectorDraft] = useState('');
   const [brandTermsDraft, setBrandTermsDraft] = useState('');
   const [analysisProjectTypesDraft, setAnalysisProjectTypesDraft] = useState<ProjectType[]>([]);
+  const [historyScopeFilter, setHistoryScopeFilter] = useState<'all' | 'client' | 'property' | 'module'>('all');
+  const autoSnapshotGuardRef = React.useRef(new Set<string>());
 
   const [startDate, setStartDate] = useState<string>(() => {
     const d = new Date();
@@ -1099,6 +1117,174 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   );
 
   const effectiveGlobalScore = hybridGlobalScore.globalScore;
+  const snapshotHistory = (currentClient?.seoSnapshots || []) as SeoPerformanceSnapshot[];
+
+  const currentMetricBlock = useMemo(() => sumGscRows(gscData), [gscData]);
+  const currentBrandMetricBlock = useMemo(() => {
+    const brandClicks = brandDeltaSummary.current.brand;
+    const nonBrandClicks = brandDeltaSummary.current.nonBrand;
+    const totalClicks = brandClicks + nonBrandClicks || 1;
+    const brandRatio = brandClicks / totalClicks;
+    const nonBrandRatio = nonBrandClicks / totalClicks;
+    return {
+      brand: {
+        clicks: brandClicks,
+        impressions: Number((performanceSummary.current.impressions * brandRatio).toFixed(0)),
+        ctr: performanceSummary.current.ctr,
+        position: performanceSummary.current.position,
+      },
+      nonBrand: {
+        clicks: nonBrandClicks,
+        impressions: Number((performanceSummary.current.impressions * nonBrandRatio).toFixed(0)),
+        ctr: performanceSummary.current.ctr,
+        position: performanceSummary.current.position,
+      },
+    };
+  }, [brandDeltaSummary.current.brand, brandDeltaSummary.current.nonBrand, performanceSummary.current.ctr, performanceSummary.current.impressions, performanceSummary.current.position]);
+
+  const moduleScoresMap = useMemo(
+    () =>
+      moduleMaturityDetails.reduce<Record<number, number>>((acc, moduleDetail) => {
+        acc[moduleDetail.moduleId] = moduleDetail.score;
+        return acc;
+      }, {}),
+    [moduleMaturityDetails],
+  );
+
+  const openTasksCount = useMemo(
+    () => modules.reduce((sum, module) => sum + module.tasks.filter((task) => task.status !== 'completed').length, 0),
+    [modules],
+  );
+  const openInsightsCount = useMemo(
+    () => actionableInsights.filter((insight) => OPEN_INSIGHT_STATUSES.includes(insight.status)).length,
+    [actionableInsights],
+  );
+
+  const snapshotPeriod = useMemo(() => ({
+    currentStart: startDate,
+    currentEnd: endDate,
+    previousStart: comparisonPeriod?.previous.startDate,
+    previousEnd: comparisonPeriod?.previous.endDate,
+    comparisonLabel: comparisonPeriod ? GSC_COMPARISON_MODE_LABELS[comparisonPeriod.mode] : undefined,
+  }), [comparisonPeriod, endDate, startDate]);
+
+  const createSnapshotsPayload = useCallback((captureType: 'auto' | 'manual') => {
+    if (!currentClient) {
+      return [] as Omit<SeoPerformanceSnapshot, 'id' | 'timestamp'>[];
+    }
+
+    const baseSnapshot = {
+      property: selectedSite || 'Sin propiedad GSC',
+      period: snapshotPeriod,
+      metrics: currentMetricBlock,
+      brandMetrics: currentBrandMetricBlock,
+      globalScore: Math.round(effectiveGlobalScore),
+      moduleScores: moduleScoresMap,
+      openInsights: openInsightsCount,
+      openTasks: openTasksCount,
+      captureType,
+      trace: {
+        clientId: currentClient.id,
+        projectType: currentClient.projectType || 'MEDIA',
+        sector: currentClient.sector || 'Otro',
+        geoScope: currentClient.geoScope || 'global',
+        timestamp: Date.now(),
+      },
+    };
+
+    const moduleSnapshots = moduleMaturityDetails.map((moduleDetail) => ({
+      ...baseSnapshot,
+      scope: 'module' as const,
+      scopeId: `${currentClient.id}:module:${moduleDetail.moduleId}`,
+      scopeLabel: `M${moduleDetail.moduleId} · ${moduleDetail.moduleTitle}`,
+      moduleId: moduleDetail.moduleId,
+      openInsights: moduleDetail.openInsights,
+      openTasks: moduleDetail.openTasks,
+      globalScore: moduleDetail.score,
+      trace: {
+        ...baseSnapshot.trace,
+        module: moduleDetail.moduleTitle,
+      },
+    }));
+
+    return [
+      {
+        ...baseSnapshot,
+        scope: 'client' as const,
+        scopeId: currentClient.id,
+        scopeLabel: currentClient.name,
+      },
+      {
+        ...baseSnapshot,
+        scope: 'property' as const,
+        scopeId: `${currentClient.id}:${selectedSite || 'no-property'}`,
+        scopeLabel: selectedSite || 'Sin propiedad GSC',
+      },
+      {
+        ...baseSnapshot,
+        scope: 'portfolio' as const,
+        scopeId: `${currentClient.id}:portfolio`,
+        scopeLabel: `${currentClient.name} · Portfolio`,
+      },
+      ...moduleSnapshots,
+    ];
+  }, [currentBrandMetricBlock, currentClient, currentMetricBlock, effectiveGlobalScore, moduleMaturityDetails, moduleScoresMap, openInsightsCount, openTasksCount, selectedSite, snapshotPeriod]);
+
+  const handleCaptureSnapshot = useCallback((captureType: 'auto' | 'manual' = 'manual') => {
+    const snapshots = createSnapshotsPayload(captureType);
+    snapshots.forEach((snapshot) => saveClientSnapshot(snapshot));
+    if (captureType === 'manual') {
+      showSuccess(`Snapshot manual guardado (${snapshots.length} ámbitos).`);
+    }
+  }, [createSnapshotsPayload, saveClientSnapshot, showSuccess]);
+
+  useEffect(() => {
+    if (!currentClient || !selectedSite || isLoadingGsc || gscData.length === 0) {
+      return;
+    }
+    const autoKey = `${currentClient.id}:${selectedSite}:${snapshotPeriod.currentStart}:${snapshotPeriod.currentEnd}`;
+    if (autoSnapshotGuardRef.current.has(autoKey)) {
+      return;
+    }
+    autoSnapshotGuardRef.current.add(autoKey);
+    handleCaptureSnapshot('auto');
+  }, [currentClient, gscData.length, handleCaptureSnapshot, isLoadingGsc, selectedSite, snapshotPeriod.currentEnd, snapshotPeriod.currentStart]);
+
+  const filteredSnapshotHistory = useMemo(() => {
+    const base = historyScopeFilter === 'all'
+      ? snapshotHistory
+      : snapshotHistory.filter((snapshot) => snapshot.scope === historyScopeFilter);
+    return base.slice(0, 80);
+  }, [historyScopeFilter, snapshotHistory]);
+
+  const latestClientSnapshot = useMemo(
+    () => snapshotHistory.find((snapshot) => snapshot.scope === 'client'),
+    [snapshotHistory],
+  );
+  const comparisonWindows = useMemo(() => {
+    const dayMs = 86400000;
+    const now = Date.now();
+    const evaluateWindow = (days: number) => {
+      const cutoff = now - days * dayMs;
+      const candidate = snapshotHistory.find(
+        (snapshot) => snapshot.scope === 'client' && snapshot.timestamp <= cutoff,
+      );
+      if (!candidate) {
+        return { days, available: false as const };
+      }
+
+      return {
+        days,
+        available: true as const,
+        deltaClicks: currentMetricBlock.clicks - candidate.metrics.clicks,
+        deltaImpressions: currentMetricBlock.impressions - candidate.metrics.impressions,
+        deltaCtr: Number((currentMetricBlock.ctr - candidate.metrics.ctr).toFixed(2)),
+        deltaPosition: Number((currentMetricBlock.position - candidate.metrics.position).toFixed(2)),
+      };
+    };
+
+    return [evaluateWindow(7), evaluateWindow(28), evaluateWindow(90)];
+  }, [currentMetricBlock.clicks, currentMetricBlock.ctr, currentMetricBlock.impressions, currentMetricBlock.position, snapshotHistory]);
 
   const scoreBadge = useMemo(() => {
     if (effectiveGlobalScore >= 95) return { title: 'Chief SEO Officer', variant: 'success' as const };
@@ -1763,6 +1949,109 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
           onClick={() => setSelectedStatus('new')}
           ctaLabel="Ver insights nuevos"
         />
+      </section>
+
+      <section className="bg-surface rounded-2xl border border-border p-6 shadow-sm space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="font-bold text-lg">Histórico de snapshots SEO</h3>
+            <p className="text-sm text-muted">
+              Base para reporting before/after por cliente, propiedad y módulo.
+            </p>
+          </div>
+          <Button onClick={() => handleCaptureSnapshot('manual')} variant="secondary">
+            Guardar snapshot manual
+          </Button>
+        </div>
+        <div className="grid gap-3 md:grid-cols-5">
+          <Card className="p-3">
+            <div className="text-xs text-muted">Snapshots guardados</div>
+            <div className="text-xl font-bold">{snapshotHistory.length}</div>
+          </Card>
+          <Card className="p-3">
+            <div className="text-xs text-muted">Último snapshot vs actual</div>
+            <div className="text-sm font-semibold">
+              {latestClientSnapshot
+                ? `${currentMetricBlock.clicks - latestClientSnapshot.metrics.clicks >= 0 ? '+' : ''}${(currentMetricBlock.clicks - latestClientSnapshot.metrics.clicks).toLocaleString()} clics`
+                : 'Sin histórico'}
+            </div>
+          </Card>
+          {comparisonWindows.map((window) => (
+            <Card key={window.days} className="p-3">
+              <div className="text-xs text-muted">Comparativa {window.days}d</div>
+              <div className="text-sm font-semibold">
+                {window.available ? `${window.deltaClicks >= 0 ? '+' : ''}${window.deltaClicks.toLocaleString()} clics` : 'Sin baseline'}
+              </div>
+            </Card>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {[
+            { key: 'all', label: 'Todos' },
+            { key: 'client', label: 'Cliente' },
+            { key: 'property', label: 'Propiedad' },
+            { key: 'module', label: 'Módulo' },
+          ].map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              className={`rounded-brand-md border px-3 py-1 text-xs font-semibold ${
+                historyScopeFilter === option.key ? 'border-primary bg-primary-soft text-primary' : 'border-border text-muted'
+              }`}
+              onClick={() => setHistoryScopeFilter(option.key as 'all' | 'client' | 'property' | 'module')}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+
+        {filteredSnapshotHistory.length === 0 ? (
+          <Card className="p-4 text-sm text-muted">
+            Aún no hay snapshots para este alcance. Conecta propiedad GSC y guarda el primer snapshot.
+          </Card>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase text-muted border-b border-border">
+                  <th className="py-2 pr-3">Ámbito</th>
+                  <th className="py-2 pr-3">Periodo</th>
+                  <th className="py-2 pr-3">Clics</th>
+                  <th className="py-2 pr-3">Score</th>
+                  <th className="py-2 pr-3">Insights/Tareas</th>
+                  <th className="py-2 pr-3">Trazabilidad</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredSnapshotHistory.map((snapshot) => (
+                  <tr key={snapshot.id} className="border-b border-border/60">
+                    <td className="py-2 pr-3">
+                      <div className="font-semibold">{snapshot.scopeLabel}</div>
+                      <div className="text-xs text-muted">{snapshot.scope}</div>
+                    </td>
+                    <td className="py-2 pr-3 text-xs">
+                      {snapshot.period.currentStart} → {snapshot.period.currentEnd}
+                    </td>
+                    <td className="py-2 pr-3">
+                      {snapshot.metrics.clicks.toLocaleString()}
+                      <div className="text-xs text-muted">
+                        Imp {snapshot.metrics.impressions.toLocaleString()} · CTR {snapshot.metrics.ctr.toFixed(2)}%
+                      </div>
+                    </td>
+                    <td className="py-2 pr-3">{snapshot.globalScore}%</td>
+                    <td className="py-2 pr-3 text-xs">
+                      {snapshot.openInsights} / {snapshot.openTasks}
+                    </td>
+                    <td className="py-2 pr-3 text-xs text-muted">
+                      {snapshot.property} · {snapshot.trace.projectType} · {new Date(snapshot.timestamp).toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       <section className="bg-surface rounded-2xl border border-border p-6 shadow-sm space-y-5">
