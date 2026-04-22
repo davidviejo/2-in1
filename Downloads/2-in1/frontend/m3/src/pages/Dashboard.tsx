@@ -2322,6 +2322,12 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                   </div>
                   <p className="mt-1 text-xs text-muted line-clamp-2">{insight.summary}</p>
                   <div className="mt-1 text-[11px] text-muted">{insight.appliesBecause}</div>
+                  <div className="mt-1 text-[11px] text-muted">
+                    Impacto esperado: {Math.round(insight.impact)} · Acción: {insight.action}
+                  </div>
+                  <div className="mt-1 text-[11px] text-muted">
+                    Módulo afectado: {insight.moduleId ? `M${insight.moduleId}` : 'Sin módulo'}
+                  </div>
                   <div className="mt-2 text-[11px] text-muted">Score {insight.score} · {insight.affectedCount} filas · regla {insight.ruleKey}</div>
                 </button>
               )) : <div className="text-xs text-muted">Sin quick wins detectados en este periodo.</div>}
