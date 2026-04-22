@@ -92,29 +92,53 @@ export class ProjectRemoteRepository {
     snapshot: Omit<ProjectSnapshotDTO, 'version' | 'updatedAt'>,
     options?: { updatedFields?: string[] },
   ): Promise<ProjectSnapshotDTO> {
-    const meta = readSyncMeta();
-    const payload: ProjectSnapshotDTO = {
+    const buildPayload = (version: number): ProjectSnapshotDTO => ({
       ...snapshot,
-      version: meta.version,
+      version,
       updatedAt: Date.now(),
-      expectedVersion: meta.version,
+      expectedVersion: version,
       originClientId: getOriginClientId(),
       updatedFields: options?.updatedFields || ['clients', 'generalNotes', 'currentClientId'],
-    };
+    });
 
+    const meta = readSyncMeta();
     const response = await fetch(`${resolveApiUrl()}/api/v1/project-api/snapshot`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(buildPayload(meta.version)),
     });
 
     if (response.status === 409) {
       const conflictData = await response.json();
-      if (conflictData?.serverSnapshot) {
-        this.persistCache(conflictData.serverSnapshot);
-        saveSyncMeta({ version: conflictData.serverSnapshot.version });
+      const serverVersion = conflictData?.serverSnapshot?.version;
+
+      if (!Number.isFinite(serverVersion)) {
+        throw new Error('version_conflict');
       }
-      throw new Error('version_conflict');
+
+      const retryResponse = await fetch(`${resolveApiUrl()}/api/v1/project-api/snapshot`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildPayload(serverVersion)),
+      });
+
+      if (retryResponse.status === 409) {
+        const retryConflictData = await retryResponse.json();
+        if (retryConflictData?.serverSnapshot) {
+          this.persistCache(retryConflictData.serverSnapshot);
+          saveSyncMeta({ version: retryConflictData.serverSnapshot.version });
+        }
+        throw new Error('version_conflict');
+      }
+
+      if (!retryResponse.ok) {
+        throw new Error(`sync_failed_${retryResponse.status}`);
+      }
+
+      const retriedSaved = (await retryResponse.json()) as ProjectSnapshotDTO;
+      this.persistCache(retriedSaved);
+      saveSyncMeta({ version: retriedSaved.version });
+      return retriedSaved;
     }
 
     if (!response.ok) {

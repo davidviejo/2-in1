@@ -114,4 +114,33 @@ describe('ProjectRemoteRepository', () => {
     expect(snapshot.clients).toHaveLength(1);
     expect(snapshot.clients[0]?.id).toBe('fallback-client');
   });
+
+  it('retries snapshot sync with server version when initial save conflicts', async () => {
+    const localClient = createClient();
+    const conflictServerSnapshot = {
+      version: 5,
+      updatedAt: 100,
+      currentClientId: localClient.id,
+      clients: [localClient],
+      generalNotes: [],
+    };
+    const savedSnapshot = {
+      ...conflictServerSnapshot,
+      version: 6,
+      updatedAt: 200,
+    };
+
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ serverSnapshot: conflictServerSnapshot }), { status: 409 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(savedSnapshot), { status: 200 }));
+
+    const result = await ProjectRemoteRepository.saveSnapshot({
+      clients: [localClient],
+      generalNotes: [],
+      currentClientId: localClient.id,
+    });
+
+    expect(result.version).toBe(6);
+    expect(result.clients[0]?.id).toBe(localClient.id);
+  });
 });
