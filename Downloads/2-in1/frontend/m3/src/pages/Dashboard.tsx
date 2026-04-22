@@ -603,7 +603,6 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   const [brandTermsDraft, setBrandTermsDraft] = useState('');
   const [analysisProjectTypesDraft, setAnalysisProjectTypesDraft] = useState<ProjectType[]>([]);
   const [historyScopeFilter, setHistoryScopeFilter] = useState<'all' | 'client' | 'property' | 'module'>('all');
-  const autoSnapshotGuardRef = React.useRef(new Set<string>());
 
   const [startDate, setStartDate] = useState<string>(() => {
     const d = new Date();
@@ -1355,18 +1354,6 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       showSuccess(`Snapshot manual guardado (${snapshots.length} ámbitos).`);
     }
   }, [createSnapshotsPayload, saveClientSnapshot, showSuccess]);
-
-  useEffect(() => {
-    if (!currentClient || !selectedSite || isLoadingGsc || gscData.length === 0) {
-      return;
-    }
-    const autoKey = `${currentClient.id}:${selectedSite}:${snapshotPeriod.currentStart}:${snapshotPeriod.currentEnd}`;
-    if (autoSnapshotGuardRef.current.has(autoKey)) {
-      return;
-    }
-    autoSnapshotGuardRef.current.add(autoKey);
-    handleCaptureSnapshot('auto');
-  }, [currentClient, gscData.length, handleCaptureSnapshot, isLoadingGsc, selectedSite, snapshotPeriod.currentEnd, snapshotPeriod.currentStart]);
 
   const filteredSnapshotHistory = useMemo(() => {
     const base = historyScopeFilter === 'all'
