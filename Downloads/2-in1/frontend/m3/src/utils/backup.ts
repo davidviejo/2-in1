@@ -34,6 +34,15 @@ export interface BackupPayload {
   storage: BackupStorageSnapshot;
 }
 
+type LegacyBackupPayload = Partial<BackupPayload> & {
+  projects?: Client[];
+  notasGenerales?: Note[];
+  notes?: Note[];
+  activeClientId?: string;
+  selectedProjectId?: string;
+  config?: Partial<AppSettings>;
+};
+
 interface BuildBackupPayloadOptions {
   clients: Client[];
   generalNotes: Note[];
@@ -80,14 +89,17 @@ export const buildBackupPayload = ({
 export const isBackupPayload = (value: unknown): value is BackupPayload => {
   if (!value || typeof value !== 'object') return false;
 
-  const payload = value as Partial<BackupPayload> & { schema?: { version?: unknown } };
+  const payload = value as LegacyBackupPayload & { schema?: { version?: unknown } };
   const hasValidVersion = typeof payload.version === 'number';
   const hasValidSchemaVersion =
     typeof payload.schema === 'object' &&
     payload.schema !== null &&
     typeof payload.schema.version === 'number';
+  const hasLegacyClients = Array.isArray(payload.projects);
+  const hasClients = Array.isArray(payload.clients) || hasLegacyClients;
 
-  return Array.isArray(payload.clients) && (hasValidVersion || hasValidSchemaVersion);
+  // Accept legacy snapshots that predate versioning metadata.
+  return hasClients && (hasValidVersion || hasValidSchemaVersion || hasLegacyClients);
 };
 
 const normalizeBackupClient = (rawClient: Client): Client => {
@@ -111,6 +123,21 @@ const normalizeBackupClient = (rawClient: Client): Client => {
 };
 
 export const migrateBackupPayload = (value: BackupPayload): BackupPayload => {
+  const legacyValue = value as BackupPayload & LegacyBackupPayload;
+  const clientsSource = Array.isArray(legacyValue.clients)
+    ? legacyValue.clients
+    : Array.isArray(legacyValue.projects)
+      ? legacyValue.projects
+      : [];
+  const generalNotesSource = Array.isArray(legacyValue.generalNotes)
+    ? legacyValue.generalNotes
+    : Array.isArray(legacyValue.notes)
+      ? legacyValue.notes
+      : Array.isArray(legacyValue.notasGenerales)
+        ? legacyValue.notasGenerales
+        : [];
+  const rawSettings = legacyValue.settings || legacyValue.config || {};
+
   return {
     ...value,
     version: BACKUP_SCHEMA_VERSION,
@@ -119,14 +146,21 @@ export const migrateBackupPayload = (value: BackupPayload): BackupPayload => {
       version: BACKUP_SCHEMA_VERSION,
     },
     exportedAt: typeof value.exportedAt === 'number' ? value.exportedAt : Date.now(),
-    clients: (value.clients || []).map((client) => normalizeBackupClient(client)),
-    generalNotes: Array.isArray(value.generalNotes) ? value.generalNotes : [],
-    currentClientId: typeof value.currentClientId === 'string' ? value.currentClientId : '',
+    clients: clientsSource.map((client) => normalizeBackupClient(client)),
+    generalNotes: generalNotesSource,
+    currentClientId:
+      typeof value.currentClientId === 'string'
+        ? value.currentClientId
+        : typeof legacyValue.activeClientId === 'string'
+          ? legacyValue.activeClientId
+          : typeof legacyValue.selectedProjectId === 'string'
+            ? legacyValue.selectedProjectId
+            : '',
     storage: value.storage || {},
-    settings: value.settings || {
-      openaiApiKey: '',
-      geminiApiKey: '',
-      mistralApiKey: '',
+    settings: {
+      openaiApiKey: typeof rawSettings.openaiApiKey === 'string' ? rawSettings.openaiApiKey : '',
+      geminiApiKey: typeof rawSettings.geminiApiKey === 'string' ? rawSettings.geminiApiKey : '',
+      mistralApiKey: typeof rawSettings.mistralApiKey === 'string' ? rawSettings.mistralApiKey : '',
     },
   };
 };
