@@ -1811,7 +1811,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
           type="button"
           onClick={(event) => {
             event.stopPropagation();
-            setInsightStatus(insight.id, 'ignored');
+            setInsightStatus(insight, 'ignored');
           }}
           className="rounded-md border border-border px-2 py-1 text-[11px] text-muted hover:border-danger/40"
         >
@@ -1821,7 +1821,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
           type="button"
           onClick={(event) => {
             event.stopPropagation();
-            setInsightStatus(insight.id, 'postponed');
+            setInsightStatus(insight, 'postponed');
           }}
           className="rounded-md border border-border px-2 py-1 text-[11px] text-muted"
         >
@@ -1831,7 +1831,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
           type="button"
           onClick={(event) => {
             event.stopPropagation();
-            setInsightStatus(insight.id, 'planned');
+            setInsightStatus(insight, 'planned');
             setSelectedInsight(insight);
           }}
           className="rounded-md border border-primary/40 px-2 py-1 text-[11px] text-primary"
@@ -1842,7 +1842,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
           type="button"
           onClick={(event) => {
             event.stopPropagation();
-            setInsightStatus(insight.id, 'done');
+            setInsightStatus(insight, 'done');
           }}
           className="rounded-md border border-success/40 px-2 py-1 text-[11px] text-success"
         >
