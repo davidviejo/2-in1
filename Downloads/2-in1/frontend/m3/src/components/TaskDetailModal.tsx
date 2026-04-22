@@ -26,6 +26,10 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     title: task?.title || '',
     description: task?.description || '',
     dueDate: task?.dueDate || '',
+    impactProperty: task?.impactLink?.property || '',
+    impactQuery: task?.impactLink?.query || '',
+    impactUrl: task?.impactLink?.url || '',
+    impactWindow: task?.impactPostWindowDays || 28,
   }), [task]);
 
   const [notes, setNotes] = useState(taskDraft.notes);
@@ -33,6 +37,10 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   const [title, setTitle] = useState(taskDraft.title);
   const [description, setDescription] = useState(taskDraft.description);
   const [dueDate, setDueDate] = useState(taskDraft.dueDate);
+  const [impactProperty, setImpactProperty] = useState(taskDraft.impactProperty);
+  const [impactQuery, setImpactQuery] = useState(taskDraft.impactQuery);
+  const [impactUrl, setImpactUrl] = useState(taskDraft.impactUrl);
+  const [impactWindow, setImpactWindow] = useState(taskDraft.impactWindow);
 
   if (!isOpen || !task || moduleId === null) return null;
 
@@ -43,6 +51,13 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
       title: title,
       description: description,
       dueDate: dueDate,
+      impactLink: {
+        property: impactProperty.trim(),
+        query: impactQuery.trim(),
+        url: impactUrl.trim(),
+        module: `Módulo ${moduleId}`,
+      },
+      impactPostWindowDays: Math.max(7, Math.min(90, impactWindow || 28)),
     });
     onClose();
   };
@@ -160,6 +175,61 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               placeholder="Añade notas, enlaces o contexto adicional aquí..."
               className="w-full h-32 p-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 resize-y"
             />
+          </div>
+
+          <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-4 dark:border-cyan-900 dark:bg-cyan-950/30">
+            <h3 className="text-sm font-bold text-cyan-900 dark:text-cyan-200 mb-3">Antes vs Después (GSC)</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-cyan-800 dark:text-cyan-300 mb-1">
+                  Propiedad GSC
+                </label>
+                <input
+                  type="text"
+                  value={impactProperty}
+                  onChange={(e) => setImpactProperty(e.target.value)}
+                  placeholder="sc-domain:midominio.com"
+                  className="w-full p-2 rounded-lg border border-cyan-200 dark:border-cyan-800 bg-white dark:bg-slate-700"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-cyan-800 dark:text-cyan-300 mb-1">
+                  Ventana post-acción (días)
+                </label>
+                <input
+                  type="number"
+                  min={7}
+                  max={90}
+                  value={impactWindow}
+                  onChange={(e) => setImpactWindow(Number(e.target.value))}
+                  className="w-full p-2 rounded-lg border border-cyan-200 dark:border-cyan-800 bg-white dark:bg-slate-700"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-cyan-800 dark:text-cyan-300 mb-1">
+                  Query objetivo
+                </label>
+                <input
+                  type="text"
+                  value={impactQuery}
+                  onChange={(e) => setImpactQuery(e.target.value)}
+                  placeholder="ej: abogado penal madrid"
+                  className="w-full p-2 rounded-lg border border-cyan-200 dark:border-cyan-800 bg-white dark:bg-slate-700"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-cyan-800 dark:text-cyan-300 mb-1">
+                  URL objetivo
+                </label>
+                <input
+                  type="text"
+                  value={impactUrl}
+                  onChange={(e) => setImpactUrl(e.target.value)}
+                  placeholder="https://..."
+                  className="w-full p-2 rounded-lg border border-cyan-200 dark:border-cyan-800 bg-white dark:bg-slate-700"
+                />
+              </div>
+            </div>
           </div>
         </div>
 

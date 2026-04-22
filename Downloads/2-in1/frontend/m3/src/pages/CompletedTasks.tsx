@@ -1,20 +1,30 @@
-import React, { useState } from 'react';
-import { CompletedTask } from '../types';
-import { CheckCircle2, Calendar, Plus, ClipboardList, PenTool, Trash2 } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { CompletedTask, GeoScope, ProjectType } from '../types';
+import { CheckCircle2, Calendar, Plus, ClipboardList, PenTool, Trash2, Link2, Gauge } from 'lucide-react';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import { useToast } from '../components/ui/ToastContext';
 import { useTranslation } from 'react-i18next';
+import { useGSCAuth } from '../hooks/useGSCAuth';
+import { getGSCAggregateMetrics } from '../services/googleSearchConsole';
 
 interface CompletedTasksProps {
   completedTasks: CompletedTask[];
   onAddManualTask: (title: string, description: string) => void;
   onDeleteLogEntry: (id: string) => void;
+  onUpdateImpact: (id: string, updates: Partial<CompletedTask['beforeAfter']>) => void;
+  projectContext: {
+    projectType: ProjectType;
+    sector: string;
+    geoScope: GeoScope;
+  };
 }
 
 const CompletedTasks: React.FC<CompletedTasksProps> = ({
   completedTasks,
   onAddManualTask,
   onDeleteLogEntry,
+  onUpdateImpact,
+  projectContext,
 }) => {
   const { t } = useTranslation();
   const { successAction } = useToast();
@@ -22,6 +32,8 @@ const CompletedTasks: React.FC<CompletedTasksProps> = ({
   const [newTitle, setNewTitle] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
+  const [isEvaluatingId, setIsEvaluatingId] = useState<string | null>(null);
+  const { gscAccessToken, login } = useGSCAuth();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,6 +57,107 @@ const CompletedTasks: React.FC<CompletedTasksProps> = ({
   };
 
   const sortedTasks = [...completedTasks].sort((a, b) => b.completedAt - a.completedAt);
+  const impactedTasks = useMemo(
+    () => sortedTasks.filter((task) => task.beforeAfter),
+    [sortedTasks],
+  );
+
+  const evaluateBeforeAfter = async (task: CompletedTask) => {
+    if (!task.beforeAfter) return;
+    const property = task.beforeAfter.link.property?.trim();
+    if (!property) {
+      return;
+    }
+    if (!gscAccessToken) {
+      login();
+      return;
+    }
+
+    const completedDate = new Date(task.completedAt);
+    const baselineEnd = new Date(completedDate);
+    baselineEnd.setUTCDate(baselineEnd.getUTCDate() - 1);
+    const baselineStart = new Date(baselineEnd);
+    baselineStart.setUTCDate(baselineStart.getUTCDate() - 27);
+
+    const postStart = new Date(completedDate);
+    const postEnd = new Date(completedDate);
+    postEnd.setUTCDate(postEnd.getUTCDate() + task.beforeAfter.postWindowDays - 1);
+
+    const toYmd = (date: Date) => date.toISOString().split('T')[0];
+    const daysElapsed = Math.max(
+      0,
+      Math.floor((Date.now() - postStart.getTime()) / (1000 * 60 * 60 * 24)) + 1,
+    );
+
+    try {
+      setIsEvaluatingId(task.id);
+      const [baseline, post] = await Promise.all([
+        getGSCAggregateMetrics(gscAccessToken, property, toYmd(baselineStart), toYmd(baselineEnd), {
+          query: task.beforeAfter.link.query,
+          url: task.beforeAfter.link.url,
+        }),
+        getGSCAggregateMetrics(gscAccessToken, property, toYmd(postStart), toYmd(postEnd), {
+          query: task.beforeAfter.link.query,
+          url: task.beforeAfter.link.url,
+        }),
+      ]);
+
+      const deltaClicks = post.clicks - baseline.clicks;
+      const deltaImpressions = post.impressions - baseline.impressions;
+      const deltaCtr = post.ctr - baseline.ctr;
+      const deltaPosition = baseline.position - post.position;
+      const validationThreshold = task.beforeAfter.minimumValidationDays || 14;
+      const enoughWindow = daysElapsed >= validationThreshold;
+
+      const status = !enoughWindow
+        ? 'insufficient_window'
+        : deltaClicks > 0 || deltaCtr > 0.005 || deltaPosition > 0.5
+          ? 'improvement'
+          : deltaClicks < 0 || deltaCtr < -0.005 || deltaPosition < -0.5
+            ? 'worse'
+            : 'neutral';
+
+      const insight = !enoughWindow
+        ? `Todavía no hay ventana suficiente (${daysElapsed}/${validationThreshold} días).`
+        : `ΔClicks ${deltaClicks >= 0 ? '+' : ''}${deltaClicks}, ΔImp ${deltaImpressions >= 0 ? '+' : ''}${deltaImpressions}, ΔCTR ${(deltaCtr * 100).toFixed(2)}pp, ΔPos ${deltaPosition.toFixed(2)}.`;
+
+      onUpdateImpact(task.id, {
+        baseline: {
+          clicks: baseline.clicks,
+          impressions: baseline.impressions,
+          ctr: baseline.ctr,
+          position: baseline.position,
+          periodStart: toYmd(baselineStart),
+          periodEnd: toYmd(baselineEnd),
+          capturedAt: Date.now(),
+        },
+        postAction: {
+          clicks: post.clicks,
+          impressions: post.impressions,
+          ctr: post.ctr,
+          position: post.position,
+          periodStart: toYmd(postStart),
+          periodEnd: toYmd(postEnd),
+          capturedAt: Date.now(),
+        },
+        status,
+        insight,
+        lastEvaluatedAt: Date.now(),
+        trace: {
+          ...task.beforeAfter.trace,
+          property,
+          query: task.beforeAfter.link.query,
+          url: task.beforeAfter.link.url,
+          projectType: projectContext.projectType,
+          sector: projectContext.sector,
+          geoScope: projectContext.geoScope,
+          timestamp: Date.now(),
+        },
+      });
+    } finally {
+      setIsEvaluatingId(null);
+    }
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -174,7 +287,29 @@ const CompletedTasks: React.FC<CompletedTasksProps> = ({
                     >
                       {task.source === 'manual' ? 'Registro Manual' : `Módulo ${task.moduleId}`}
                     </span>
+                    {task.beforeAfter && (
+                      <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full font-medium bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300">
+                        Antes vs Después
+                      </span>
+                    )}
                   </div>
+                  {task.beforeAfter && (
+                    <div className="mt-3 rounded-lg border border-slate-200 dark:border-slate-700 p-3 text-xs">
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        <span className="inline-flex items-center gap-1"><Link2 size={12} />{task.beforeAfter.link.property || 'Propiedad sin definir'}</span>
+                        {task.beforeAfter.link.query && <span>Query: {task.beforeAfter.link.query}</span>}
+                        {task.beforeAfter.link.url && <span>URL: {task.beforeAfter.link.url}</span>}
+                      </div>
+                      <button
+                        onClick={() => void evaluateBeforeAfter(task)}
+                        disabled={isEvaluatingId === task.id}
+                        className="px-3 py-1.5 rounded bg-cyan-600 text-white hover:bg-cyan-700 disabled:opacity-60"
+                      >
+                        {isEvaluatingId === task.id ? 'Evaluando...' : 'Evaluar impacto GSC'}
+                      </button>
+                      <p className="mt-2 text-slate-600 dark:text-slate-300">{task.beforeAfter.insight}</p>
+                    </div>
+                  )}
                 </div>
                 <div className="self-center">
                   <button
@@ -189,6 +324,25 @@ const CompletedTasks: React.FC<CompletedTasksProps> = ({
             ))}
           </div>
         )}
+      </div>
+
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
+        <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+          <Gauge size={18} />
+          Vista global “Antes vs Después”
+        </h2>
+        <div className="mt-3 space-y-2">
+          {impactedTasks.length === 0 ? (
+            <p className="text-sm text-slate-500">Aún no hay tareas con trazabilidad de impacto GSC.</p>
+          ) : (
+            impactedTasks.map((task) => (
+              <div key={`${task.id}-impact`} className="text-sm border border-slate-200 dark:border-slate-700 rounded-lg p-3">
+                <div className="font-semibold text-slate-800 dark:text-slate-200">{task.title}</div>
+                <div className="text-xs text-slate-500">{task.beforeAfter?.insight}</div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
     </div>
   );

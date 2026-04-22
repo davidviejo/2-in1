@@ -23,6 +23,8 @@ export interface Task {
   flow?: InsightFlowTrace;
   insightSourceMeta?: InsightSourceMeta;
   templateMeta?: TaskTemplateMeta;
+  impactLink?: TaskImpactLink;
+  impactPostWindowDays?: number;
 }
 
 export type TaskTemplateOrigin = 'generic' | 'project_type' | 'sector' | 'client_custom';
@@ -93,6 +95,55 @@ export interface CompletedTask {
   completedAt: number;
   source: 'manual' | 'module';
   moduleId?: number;
+  beforeAfter?: TaskBeforeAfterAnalysis;
+}
+
+export interface TaskImpactLink {
+  query?: string;
+  url?: string;
+  property?: string;
+  module?: string;
+}
+
+export interface TaskImpactSnapshot {
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+  periodStart: string;
+  periodEnd: string;
+  capturedAt: number;
+}
+
+export type TaskImpactValidationStatus =
+  | 'improvement'
+  | 'neutral'
+  | 'worse'
+  | 'insufficient_window'
+  | 'pending_baseline';
+
+export interface TaskImpactTrace {
+  source: 'gsc';
+  property: string;
+  query?: string;
+  url?: string;
+  module?: string;
+  projectType?: ProjectType;
+  sector?: string;
+  geoScope?: GeoScope;
+  timestamp: number;
+}
+
+export interface TaskBeforeAfterAnalysis {
+  link: TaskImpactLink;
+  postWindowDays: number;
+  minimumValidationDays: number;
+  baseline?: TaskImpactSnapshot;
+  postAction?: TaskImpactSnapshot;
+  status: TaskImpactValidationStatus;
+  insight: string;
+  lastEvaluatedAt?: number;
+  trace: TaskImpactTrace;
 }
 
 export interface ModuleData {
