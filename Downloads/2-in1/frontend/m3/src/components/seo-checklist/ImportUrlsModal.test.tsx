@@ -155,6 +155,33 @@ describe('ImportUrlsModal', () => {
     expect(importedPages[0].pageType).toBe('Article');
   });
 
+  it('acepta columnas separadas por múltiples espacios cuando no llegan tabuladores', async () => {
+    const onImport = vi.fn();
+
+    render(
+      <ImportUrlsModal isOpen onClose={vi.fn()} onImport={onImport} existingPages={[]} />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(/https:\/\/example.com\/page1/i), {
+      target: {
+        value: 'https://www.rafibra.es/  reparación de depósitos de gasolina  Página  Español  -',
+      },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Importar URLs' }));
+
+    await waitFor(() => {
+      expect(onImport).toHaveBeenCalledTimes(1);
+    });
+
+    const importedPages = onImport.mock.calls[0][0];
+    expect(importedPages[0].url).toBe('https://www.rafibra.es/');
+    expect(importedPages[0].kwPrincipal).toBe('reparación de depósitos de gasolina');
+    expect(importedPages[0].pageType).toBe('Página');
+    expect(importedPages[0].geoTarget).toBe('Español');
+    expect(importedPages[0].cluster).toBe('-');
+  });
+
   it('importa 10.000 URLs y muestra progreso asíncrono', async () => {
     const onImport = vi.fn();
     const largeInput = Array.from({ length: 10000 }, (_, index) => {

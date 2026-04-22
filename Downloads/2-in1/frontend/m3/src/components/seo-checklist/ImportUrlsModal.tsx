@@ -57,6 +57,38 @@ const resolveImportedUrlColumns = (parts: string[]): {
   };
 };
 
+const splitImportedLine = (line: string): string[] => {
+  const trimmedLine = line.trim();
+  if (!trimmedLine) return [];
+
+  if (line.includes('\t')) {
+    return line.split('\t').map((part) => part.trim());
+  }
+
+  if (line.includes('|')) {
+    return line.split('|').map((part) => part.trim());
+  }
+
+  if (line.includes(';')) {
+    return line.split(';').map((part) => part.trim());
+  }
+
+  if (line.includes(',')) {
+    return line.split(',').map((part) => part.trim());
+  }
+
+  const columnsByWhitespace = line
+    .trim()
+    .split(/\s{2,}/)
+    .map((part) => part.trim());
+
+  if (columnsByWhitespace.length > 1) {
+    return columnsByWhitespace;
+  }
+
+  return [trimmedLine];
+};
+
 const createEmptyChecklist = (): Record<ChecklistKey, ChecklistItem> => {
   return CHECKLIST_POINTS.reduce(
     (acc, pt) => {
@@ -131,11 +163,7 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
           const line = lines[index];
           const rowNumber = index + 1;
           try {
-            // Split by tab, comma, semicolon or pipe
-            const parts = line
-              .split(/\t|,|;|\|/)
-              .map((s) => s.trim())
-              .filter((s) => s !== '');
+            const parts = splitImportedLine(line);
 
             if (parts.length < 1 || !parts[0]) {
               errorSummary.emptyRows.push(rowNumber);
