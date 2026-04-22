@@ -106,7 +106,7 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
 
     const CHUNK_SIZE = 500;
     const lines = inputText.split('\n');
-    const newPages: SeoPage[] = [];
+    let totalImported = 0;
     const errorSummary: ImportErrorSummary = {
       emptyRows: [],
       invalidUrlRows: [],
@@ -123,6 +123,8 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
     try {
       for (let start = 0; start < lines.length; start += CHUNK_SIZE) {
         const end = Math.min(start + CHUNK_SIZE, lines.length);
+
+        const chunkPages: SeoPage[] = [];
 
         // Simple parsing: URL [tab] KW [tab] Type [tab] Geo [tab] Cluster
         for (let index = start; index < end; index += 1) {
@@ -161,7 +163,7 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
             const kwPrincipal = parts[1 + metadataOffset] || '';
             const isBrandKeyword = kwPrincipal ? isBrandTermMatch(kwPrincipal, brandTerms) : false;
 
-            newPages.push({
+            chunkPages.push({
               id: createSeoPageId(),
               url: normalizedUrl,
               kwPrincipal: isBrandKeyword ? '' : kwPrincipal,
@@ -177,6 +179,11 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
           }
         }
 
+        if (chunkPages.length > 0) {
+          onImport(chunkPages);
+          totalImported += chunkPages.length;
+        }
+
         setImportProgress(Math.round((end / lines.length) * 100));
 
         if (end < lines.length) {
@@ -186,8 +193,7 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
 
       setImportErrors(errorSummary);
 
-      if (newPages.length > 0) {
-        onImport(newPages);
+      if (totalImported > 0) {
         const hasErrors =
           errorSummary.emptyRows.length > 0 ||
           errorSummary.invalidUrlRows.length > 0 ||

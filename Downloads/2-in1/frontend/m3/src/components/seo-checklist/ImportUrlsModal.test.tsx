@@ -94,9 +94,13 @@ describe('ImportUrlsModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Importar URLs' }));
 
     await waitFor(() => {
-      expect(onImport).toHaveBeenCalledTimes(1);
+      expect(onImport).toHaveBeenCalledTimes(3);
     });
-    expect(onImport.mock.calls[0][0]).toHaveLength(1200);
+    const totalImported = onImport.mock.calls.reduce(
+      (acc, [chunk]) => acc + ((chunk as unknown[]).length || 0),
+      0,
+    );
+    expect(totalImported).toBe(1200);
   });
 
   it('usa la URL nueva cuando recibe formato de migración "URL antigua | URL nueva"', async () => {
@@ -171,9 +175,13 @@ describe('ImportUrlsModal', () => {
     expect(screen.getByRole('button', { name: 'Importando…' }).getAttribute('disabled')).not.toBeNull();
 
     await waitFor(() => {
-      expect(onImport).toHaveBeenCalledTimes(1);
+      expect(onImport).toHaveBeenCalledTimes(20);
     });
-    expect(onImport.mock.calls[0][0]).toHaveLength(10000);
+    const totalImported = onImport.mock.calls.reduce(
+      (acc, [chunk]) => acc + ((chunk as unknown[]).length || 0),
+      0,
+    );
+    expect(totalImported).toBe(10000);
   });
 
   it('distingue duplicadas ya existentes de duplicadas dentro del propio import', async () => {
