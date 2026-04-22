@@ -18,6 +18,13 @@ interface ImportErrorSummary {
   duplicateUrlRows: number[];
 }
 
+const createSeoPageId = (): string => {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+  return `seo-page-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+};
+
 const isValidUrl = (rawUrl: string): boolean => {
   try {
     const normalizedUrl = normalizeSeoUrl(rawUrl);
@@ -26,6 +33,34 @@ const isValidUrl = (rawUrl: string): boolean => {
   } catch {
     return false;
   }
+};
+
+const createEmptyChecklist = (): Record<ChecklistKey, ChecklistItem> => {
+  return CHECKLIST_POINTS.reduce(
+    (acc, pt) => {
+      acc[pt.key] = {
+        key: pt.key,
+        label: pt.label,
+        status_manual: 'NA',
+        notes_manual: '',
+      };
+      return acc;
+    },
+    {} as Record<ChecklistKey, ChecklistItem>,
+  );
+};
+
+const buildSeenUrls = (pages: SeoPage[]): Set<string> => {
+  const seen = new Set<string>();
+  for (const page of pages) {
+    if (!page?.url || typeof page.url !== 'string') continue;
+    try {
+      seen.add(normalizeSeoUrl(page.url).toLowerCase());
+    } catch {
+      // Ignore malformed legacy URLs from persisted state.
+    }
+  }
+  return seen;
 };
 
 export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, existingPages }) => {
@@ -46,68 +81,60 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
     if (!inputText.trim()) return;
 
     const lines = inputText.split('\n');
-    let newPages: SeoPage[] = [];
+    const newPages: SeoPage[] = [];
     const errorSummary: ImportErrorSummary = {
       emptyRows: [],
       invalidUrlRows: [],
       duplicateUrlRows: [],
     };
-    const seenUrls = new Set<string>(
-      ignoreDuplicates ? existingPages.map((p) => p.url.toLowerCase()) : [],
-    );
+    const seenUrls = ignoreDuplicates ? buildSeenUrls(existingPages) : new Set<string>();
 
     // Simple parsing: URL [tab] KW [tab] Type [tab] Geo [tab] Cluster
     lines.forEach((line, index) => {
       const rowNumber = index + 1;
-      // Split by tab or comma
-      const parts = line
-        .split(/\t|,|;/)
-        .map((s) => s.trim())
-        .filter((s) => s !== '');
+      try {
+        // Split by tab or comma
+        const parts = line
+          .split(/\t|,|;/)
+          .map((s) => s.trim())
+          .filter((s) => s !== '');
 
-      if (parts.length < 1 || !parts[0]) {
-        errorSummary.emptyRows.push(rowNumber);
-        return;
-      }
+        if (parts.length < 1 || !parts[0]) {
+          errorSummary.emptyRows.push(rowNumber);
+          return;
+        }
 
-      const rawUrl = parts[0];
-      if (!isValidUrl(rawUrl)) {
+        const rawUrl = parts[0];
+        if (!isValidUrl(rawUrl)) {
+          errorSummary.invalidUrlRows.push(rowNumber);
+          return;
+        }
+
+        const normalizedUrl = normalizeSeoUrl(rawUrl);
+        const normalizedUrlKey = normalizedUrl.toLowerCase();
+        if (ignoreDuplicates && seenUrls.has(normalizedUrlKey)) {
+          errorSummary.duplicateUrlRows.push(rowNumber);
+          return;
+        }
+        seenUrls.add(normalizedUrlKey);
+
+        const kwPrincipal = parts[1] || '';
+        const isBrandKeyword = kwPrincipal ? isBrandTermMatch(kwPrincipal, brandTerms) : false;
+
+        newPages.push({
+          id: createSeoPageId(),
+          url: normalizedUrl,
+          kwPrincipal: isBrandKeyword ? '' : kwPrincipal,
+          isBrandKeyword,
+          pageType: parts[2] || 'Article',
+          geoTarget: parts[3] || '',
+          cluster: parts[4] || '',
+          checklist: createEmptyChecklist(),
+        });
+      } catch (error) {
+        console.warn('No se pudo procesar la fila importada de URLs.', { rowNumber, error });
         errorSummary.invalidUrlRows.push(rowNumber);
-        return;
       }
-
-      const normalizedUrl = normalizeSeoUrl(rawUrl);
-      const normalizedUrlKey = normalizedUrl.toLowerCase();
-      if (ignoreDuplicates && seenUrls.has(normalizedUrlKey)) {
-        errorSummary.duplicateUrlRows.push(rowNumber);
-        return;
-      }
-      seenUrls.add(normalizedUrlKey);
-
-      // Initial checklist state
-      const checklist: Record<string, ChecklistItem> = {};
-      CHECKLIST_POINTS.forEach((pt) => {
-        checklist[pt.key] = {
-          key: pt.key,
-          label: pt.label,
-          status_manual: 'NA',
-          notes_manual: '',
-        };
-      });
-
-      const kwPrincipal = parts[1] || '';
-      const isBrandKeyword = kwPrincipal ? isBrandTermMatch(kwPrincipal, brandTerms) : false;
-
-      newPages.push({
-        id: crypto.randomUUID(),
-        url: normalizedUrl,
-        kwPrincipal: isBrandKeyword ? '' : kwPrincipal,
-        isBrandKeyword,
-        pageType: parts[2] || 'Article',
-        geoTarget: parts[3] || '',
-        cluster: parts[4] || '',
-        checklist: checklist as Record<ChecklistKey, ChecklistItem>,
-      });
     });
 
     setImportErrors(errorSummary);
