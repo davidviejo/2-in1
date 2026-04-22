@@ -35,6 +35,27 @@ const isValidUrl = (rawUrl: string): boolean => {
   }
 };
 
+const resolveImportedUrlColumns = (parts: string[]): {
+  rawUrl: string;
+  metadataOffset: number;
+} => {
+  const firstColumn = parts[0] || '';
+  const secondColumn = parts[1] || '';
+  const isUrlMigrationRow = isValidUrl(firstColumn) && isValidUrl(secondColumn);
+
+  if (isUrlMigrationRow) {
+    return {
+      rawUrl: secondColumn,
+      metadataOffset: 1,
+    };
+  }
+
+  return {
+    rawUrl: firstColumn,
+    metadataOffset: 0,
+  };
+};
+
 const createEmptyChecklist = (): Record<ChecklistKey, ChecklistItem> => {
   return CHECKLIST_POINTS.reduce(
     (acc, pt) => {
@@ -105,9 +126,9 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
           const line = lines[index];
           const rowNumber = index + 1;
           try {
-            // Split by tab or comma
+            // Split by tab, comma, semicolon or pipe
             const parts = line
-              .split(/\t|,|;/)
+              .split(/\t|,|;|\|/)
               .map((s) => s.trim())
               .filter((s) => s !== '');
 
@@ -116,7 +137,7 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
               continue;
             }
 
-            const rawUrl = parts[0];
+            const { rawUrl, metadataOffset } = resolveImportedUrlColumns(parts);
             if (!isValidUrl(rawUrl)) {
               errorSummary.invalidUrlRows.push(rowNumber);
               continue;
@@ -130,7 +151,7 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
             }
             seenUrls.add(normalizedUrlKey);
 
-            const kwPrincipal = parts[1] || '';
+            const kwPrincipal = parts[1 + metadataOffset] || '';
             const isBrandKeyword = kwPrincipal ? isBrandTermMatch(kwPrincipal, brandTerms) : false;
 
             newPages.push({
@@ -138,9 +159,9 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
               url: normalizedUrl,
               kwPrincipal: isBrandKeyword ? '' : kwPrincipal,
               isBrandKeyword,
-              pageType: parts[2] || 'Article',
-              geoTarget: parts[3] || '',
-              cluster: parts[4] || '',
+              pageType: parts[2 + metadataOffset] || 'Article',
+              geoTarget: parts[3 + metadataOffset] || '',
+              cluster: parts[4 + metadataOffset] || '',
               checklist: createEmptyChecklist(),
             });
           } catch (error) {
