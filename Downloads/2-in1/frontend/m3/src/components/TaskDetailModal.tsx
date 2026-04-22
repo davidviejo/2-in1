@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Task } from '../types';
-import { X, Save, FileText, CheckCircle2, Circle, Calendar } from 'lucide-react';
+import { X, Save, FileText, CheckCircle2, Circle, Calendar, ExternalLink } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 interface TaskDetailModalProps {
   isOpen: boolean;
@@ -77,6 +78,20 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 font-medium"
             />
           </div>
+          {task.insightSourceMeta && (
+            <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-900 dark:border-indigo-800 dark:bg-indigo-950/30 dark:text-indigo-200">
+              <div className="font-semibold">Creado desde insight {task.insightSourceMeta.insightId}</div>
+              <div className="mt-1">Fuente: {task.insightSourceMeta.sourceLabel}</div>
+              <div>Query: {task.insightSourceMeta.query || 'N/A'} · URL: {task.insightSourceMeta.url || 'N/A'}</div>
+              <Link
+                to={`/app/dashboard?insightId=${encodeURIComponent(task.insightSourceMeta.insightId)}`}
+                className="mt-2 inline-flex items-center gap-1 underline"
+              >
+                Abrir insight original
+                <ExternalLink size={12} />
+              </Link>
+            </div>
+          )}
           <div>
             <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
               Descripción

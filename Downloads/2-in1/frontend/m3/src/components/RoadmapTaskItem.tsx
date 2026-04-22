@@ -165,6 +165,16 @@ const RoadmapTaskItem: React.FC<RoadmapTaskItemProps> = memo(
                     {item.task.description}
                   </p>
                 )}
+                {item.task.insightSourceMeta && (
+                  <Link
+                    to={`/app/dashboard?insightId=${encodeURIComponent(item.task.insightSourceMeta.insightId)}`}
+                    onClick={(event) => event.stopPropagation()}
+                    className="mt-2 inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700"
+                  >
+                    Creado desde insight {item.task.insightSourceMeta.insightId}
+                    <ExternalLink size={10} />
+                  </Link>
+                )}
               </div>
 
               <div className="mt-1 text-slate-400">
@@ -184,6 +194,20 @@ const RoadmapTaskItem: React.FC<RoadmapTaskItemProps> = memo(
                 <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed mb-4">
                   {item.task.description}
                 </p>
+                {item.task.insightSourceMeta && (
+                  <div className="mb-4 rounded-lg border border-indigo-100 bg-indigo-50/60 p-3 text-xs text-indigo-900 dark:border-indigo-900 dark:bg-indigo-900/20 dark:text-indigo-100">
+                    <div className="font-semibold">Creado desde insight {item.task.insightSourceMeta.insightId}</div>
+                    <div className="mt-1">Origen: {item.task.insightSourceMeta.sourceLabel}</div>
+                    <div>Query: {item.task.insightSourceMeta.query || 'N/A'} · URL: {item.task.insightSourceMeta.url || 'N/A'}</div>
+                    <Link
+                      to={`/app/dashboard?insightId=${encodeURIComponent(item.task.insightSourceMeta.insightId)}`}
+                      className="mt-2 inline-flex items-center gap-1 text-indigo-700 underline dark:text-indigo-300"
+                    >
+                      Abrir insight original
+                      <ExternalLink size={12} />
+                    </Link>
+                  </div>
+                )}
 
                 <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>

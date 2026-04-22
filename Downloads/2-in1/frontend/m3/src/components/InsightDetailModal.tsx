@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { X, ExternalLink, Download, Search, Sparkles, Plus, Ban, Undo2, Bot } from 'lucide-react';
+import { X, ExternalLink, Download, Search, Sparkles, Plus, Ban, Undo2, Bot, KanbanSquare, MapPinned } from 'lucide-react';
 import { SeoInsight } from '../types/seoInsights';
 import { generateSEOAnalysis } from '../services/geminiService';
 import { generateSEOAnalysisWithOpenAI } from '../services/openaiService';
@@ -31,6 +31,9 @@ export const InsightDetailModal: React.FC<InsightDetailModalProps> = ({
   const { success: showSuccess, error: showError } = useToast();
   const { getApiKey } = useSettings();
   const { addTask, modules } = useProject();
+  const [targetModuleId, setTargetModuleId] = useState<number | 'auto'>('auto');
+  const [targetAssignee, setTargetAssignee] = useState('');
+  const [targetImpact, setTargetImpact] = useState<'High' | 'Medium' | 'Low'>('Medium');
 
   const filteredItems = useMemo(() => {
     const lowerFilter = filter.toLowerCase();
@@ -47,28 +50,67 @@ export const InsightDetailModal: React.FC<InsightDetailModalProps> = ({
     [insight?.relatedRows, isIgnored],
   );
 
-  const handleCreateTask = (item: any) => {
+  const findExistingTaskFromInsight = (insightId: string) => {
+    for (const module of modules) {
+      const task = module.tasks.find(
+        (candidate) =>
+          candidate.insightSourceMeta?.insightId === insightId && candidate.status !== 'completed',
+      );
+      if (task) {
+        return { task, moduleId: module.id };
+      }
+    }
+    return null;
+  };
+
+  const resolveTargetModuleId = () => {
+    if (targetModuleId !== 'auto') {
+      return targetModuleId;
+    }
     let targetModule = modules.find((m) => m.isCustom || m.title.includes('Extras'));
     if (!targetModule && modules.length > 0) targetModule = modules[0];
+    return targetModule?.id;
+  };
 
-    if (!targetModule) {
+  const handleCreateTask = (item: any, destination: 'task' | 'roadmap' | 'kanban') => {
+    const existingTask = findExistingTaskFromInsight(insight.id);
+    if (existingTask) {
+      showError(
+        `Ya existe una tarea abierta desde este insight en Módulo ${existingTask.moduleId}: ${existingTask.task.title}`,
+      );
+      return;
+    }
+
+    const moduleId = resolveTargetModuleId();
+
+    if (!moduleId) {
       showError('No hay módulos disponibles para crear tareas.');
       return;
     }
 
     const taskDraft = buildTaskFromInsight(insight, item);
+    const destinationMap = {
+      task: { status: 'pending', inRoadmap: false, label: 'Tarea' },
+      roadmap: { status: 'commitment', inRoadmap: true, label: 'Roadmap' },
+      kanban: { status: 'in-progress', inRoadmap: true, label: 'Kanban' },
+    } as const;
+    const destinationConfig = destinationMap[destination];
+
     addTask(
-      targetModule.id,
+      moduleId,
       taskDraft.title || `Optimizar: ${item.keys?.[0] || 'consulta'}`,
       taskDraft.description || '',
-      taskDraft.impact || 'Medium',
+      targetImpact || taskDraft.impact || 'Medium',
       taskDraft.category || 'Strategy',
       {
-        isInCustomRoadmap: true,
+        isInCustomRoadmap: destinationConfig.inRoadmap,
         flow: taskDraft.flow,
+        status: destinationConfig.status,
+        assignee: targetAssignee.trim() || undefined,
+        insightSourceMeta: taskDraft.insightSourceMeta,
       },
     );
-    showSuccess(`Tarea creada en roadmap en módulo "${targetModule.title}"`);
+    showSuccess(`Enviado a ${destinationConfig.label} (Módulo ${moduleId}).`);
   };
 
   const handleExport = () => {
@@ -224,6 +266,38 @@ export const InsightDetailModal: React.FC<InsightDetailModalProps> = ({
           <Download size={16} /> CSV
         </button>
       </div>
+      <div className="mx-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-700 dark:bg-slate-800/50">
+        <div className="mb-2 font-semibold text-slate-700 dark:text-slate-200">Destino rápido insight → trabajo</div>
+        <div className="grid gap-2 md:grid-cols-3">
+          <select
+            value={targetModuleId}
+            onChange={(event) => setTargetModuleId(event.target.value === 'auto' ? 'auto' : Number(event.target.value))}
+            className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 dark:border-slate-700 dark:bg-slate-900"
+          >
+            <option value="auto">Módulo automático</option>
+            {modules.map((module) => (
+              <option key={module.id} value={module.id}>
+                M{module.id} · {module.title}
+              </option>
+            ))}
+          </select>
+          <select
+            value={targetImpact}
+            onChange={(event) => setTargetImpact(event.target.value as 'High' | 'Medium' | 'Low')}
+            className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 dark:border-slate-700 dark:bg-slate-900"
+          >
+            <option value="High">Prioridad Alta</option>
+            <option value="Medium">Prioridad Media</option>
+            <option value="Low">Prioridad Baja</option>
+          </select>
+          <input
+            value={targetAssignee}
+            onChange={(event) => setTargetAssignee(event.target.value)}
+            placeholder="Responsable (opcional)"
+            className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 dark:border-slate-700 dark:bg-slate-900"
+          />
+        </div>
+      </div>
 
       {aiAnalysis && (
         <div className="mx-6 mt-4 p-4 bg-purple-50 dark:bg-purple-900/20 rounded-xl border border-purple-100 dark:border-purple-800 animate-in fade-in slide-in-from-top-2 relative">
@@ -337,11 +411,25 @@ export const InsightDetailModal: React.FC<InsightDetailModalProps> = ({
                   <td className="px-4 py-3 text-center">
                     <div className="flex items-center justify-center gap-1">
                       <button
-                        onClick={() => handleCreateTask(item)}
+                        onClick={() => handleCreateTask(item, 'task')}
                         className="p-1.5 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-lg transition-colors"
                         title="Convertir en Tarea"
                       >
                         <Plus size={16} />
+                      </button>
+                      <button
+                        onClick={() => handleCreateTask(item, 'roadmap')}
+                        className="p-1.5 hover:bg-violet-100 dark:hover:bg-violet-900/50 text-violet-600 dark:text-violet-300 rounded-lg transition-colors"
+                        title="Enviar al Roadmap Cliente"
+                      >
+                        <MapPinned size={16} />
+                      </button>
+                      <button
+                        onClick={() => handleCreateTask(item, 'kanban')}
+                        className="p-1.5 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-600 dark:text-emerald-300 rounded-lg transition-colors"
+                        title="Enviar al Kanban"
+                      >
+                        <KanbanSquare size={16} />
                       </button>
                       <button
                         onClick={() => onIgnoreRow(item)}
