@@ -7,6 +7,7 @@
         Esta pantalla quedó en modo legado y sin soporte activo.
         El checklist canónico vive en la SPA.
     </div>
-    <a class="btn btn-primary" href="/#/app/checklist">Ir al checklist canónico (SPA)</a>
+    <a class="btn btn-primary" href="{{ spa_url }}">Ir al checklist canónico (SPA)</a>
+    <a class="btn btn-outline-secondary ms-2" href="{{ url_for('checklist.redirect_to_spa') }}">Ir por endpoint puente</a>
 </div>
 {% endblock %}
