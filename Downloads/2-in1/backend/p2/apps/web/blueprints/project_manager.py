@@ -9,6 +9,8 @@ import pandas as pd
 from datetime import datetime
 from werkzeug.utils import secure_filename
 import logging
+from urllib.parse import unquote, urlparse
+import re
 from apps.core.database import (
     get_all_projects,
     get_project,
@@ -43,6 +45,48 @@ def _clean_cluster_attr(raw_value):
         return None
     return value
 
+
+
+
+def _derive_keyword_from_url(raw_url):
+    """
+    Genera una keyword objetivo rápida a partir de la URL.
+    Ejemplo: /servicios/seo-local/ -> "seo local"
+    """
+    if not raw_url:
+        return ""
+
+    source = str(raw_url).strip()
+    if not source:
+        return ""
+
+    parsed = urlparse(source if '://' in source else f"https://dummy.local{source if source.startswith('/') else '/' + source}")
+
+    path_parts = [part for part in parsed.path.split('/') if part.strip()]
+    slug = path_parts[-1] if path_parts else ''
+
+    if slug:
+        slug = slug.rsplit('.', 1)[0]
+        slug = unquote(slug)
+        slug = re.sub(r'[-_]+', ' ', slug)
+        slug = re.sub(r'\s+', ' ', slug).strip()
+        return slug.lower()
+
+    host = (parsed.netloc or '').replace('www.', '').strip()
+    if host:
+        domain_root = host.split(':', 1)[0].split('.')
+        if domain_root:
+            return domain_root[0].lower()
+
+    return ""
+
+
+def _find_best_column(columns, aliases):
+    for col in columns:
+        normalized = col.strip().lower()
+        if any(alias in normalized for alias in aliases):
+            return col
+    return None
 
 def merge_clusters_by_url(existing_clusters, imported_clusters):
     """
@@ -140,19 +184,10 @@ def upload_clusters():
         # Normalizar columnas (mayúsculas/minúsculas)
         df.columns = [c.lower().strip() for c in df.columns]
 
-        # Buscar columnas clave
-        col_name = next((
-            c for c in df.columns
-            if 'nombre' in c or 'cluster' in c or 'name' in c
-        ), None)
-        col_url = next((
-            c for c in df.columns
-            if 'url' in c or 'link' in c
-        ), None)
-        col_kw = next((
-            c for c in df.columns
-            if 'keyword' in c or 'clave' in c or 'kw' in c
-        ), None)
+        # Buscar columnas clave (soporta imports rápidos "URL | Kw objetivo")
+        col_name = _find_best_column(df.columns, ('nombre', 'cluster', 'name'))
+        col_url = _find_best_column(df.columns, ('url', 'link'))
+        col_kw = _find_best_column(df.columns, ('keyword', 'clave', 'kw', 'target'))
 
         if not col_url:
             return "El archivo debe tener al menos una columna 'URL'", 400
@@ -180,6 +215,41 @@ def upload_clusters():
     except Exception:
         logging.error("Error processing cluster upload", exc_info=True)
         return "Error interno al procesar el archivo.", 500
+
+
+@project_bp.route('/projects/auto_assign_keywords', methods=['POST'])
+@require_role_web(['operator'])
+def auto_assign_keywords():
+    """
+    Autocompleta KW objetivo para los clusters de un proyecto
+    en base al slug de cada URL.
+    """
+    p_id = (request.form.get('id') or '').strip()
+    apply_on = (request.form.get('apply_on') or 'missing').strip().lower()
+
+    if not p_id:
+        return "Falta el ID del proyecto", 400
+
+    project = get_project(p_id)
+    if not project:
+        return "Proyecto no encontrado", 404
+
+    clusters = [dict(cluster) for cluster in (project.get('clusters') or []) if isinstance(cluster, dict)]
+    if not clusters:
+        return redirect(url_for('project_bp.manager'))
+
+    for cluster in clusters:
+        current_kw = (cluster.get('target_kw') or '').strip()
+        should_update = apply_on == 'all' or not current_kw
+        if not should_update:
+            continue
+
+        inferred_kw = _derive_keyword_from_url(cluster.get('url', ''))
+        if inferred_kw:
+            cluster['target_kw'] = inferred_kw
+
+    replace_clusters(p_id, clusters)
+    return redirect(url_for('project_bp.manager'))
 
 
 @project_bp.route('/projects/save', methods=['POST'])
