@@ -15,7 +15,8 @@ interface Props {
 interface ImportErrorSummary {
   emptyRows: number[];
   invalidUrlRows: number[];
-  duplicateUrlRows: number[];
+  duplicateExistingUrlRows: number[];
+  duplicateImportedUrlRows: number[];
 }
 
 const createSeoPageId = (): string => {
@@ -109,9 +110,11 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
     const errorSummary: ImportErrorSummary = {
       emptyRows: [],
       invalidUrlRows: [],
-      duplicateUrlRows: [],
+      duplicateExistingUrlRows: [],
+      duplicateImportedUrlRows: [],
     };
-    const seenUrls = ignoreDuplicates ? buildSeenUrls(existingPages) : new Set<string>();
+    const seenExistingUrls = ignoreDuplicates ? buildSeenUrls(existingPages) : new Set<string>();
+    const seenImportedUrls = new Set<string>();
     const yieldToMainThread = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
     setIsImporting(true);
@@ -145,11 +148,15 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
 
             const normalizedUrl = normalizeSeoUrl(rawUrl);
             const normalizedUrlKey = normalizedUrl.toLowerCase();
-            if (ignoreDuplicates && seenUrls.has(normalizedUrlKey)) {
-              errorSummary.duplicateUrlRows.push(rowNumber);
+            if (ignoreDuplicates && seenExistingUrls.has(normalizedUrlKey)) {
+              errorSummary.duplicateExistingUrlRows.push(rowNumber);
               continue;
             }
-            seenUrls.add(normalizedUrlKey);
+            if (seenImportedUrls.has(normalizedUrlKey)) {
+              errorSummary.duplicateImportedUrlRows.push(rowNumber);
+              continue;
+            }
+            seenImportedUrls.add(normalizedUrlKey);
 
             const kwPrincipal = parts[1 + metadataOffset] || '';
             const isBrandKeyword = kwPrincipal ? isBrandTermMatch(kwPrincipal, brandTerms) : false;
@@ -184,7 +191,8 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
         const hasErrors =
           errorSummary.emptyRows.length > 0 ||
           errorSummary.invalidUrlRows.length > 0 ||
-          errorSummary.duplicateUrlRows.length > 0;
+          errorSummary.duplicateExistingUrlRows.length > 0 ||
+          errorSummary.duplicateImportedUrlRows.length > 0;
 
         if (!hasErrors) {
           setInputText('');
@@ -281,15 +289,23 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
                     {importErrors.invalidUrlRows.join(', #')})
                   </li>
                 )}
-                {importErrors.duplicateUrlRows.length > 0 && (
+                {importErrors.duplicateExistingUrlRows.length > 0 && (
                   <li>
-                    URL duplicada: {importErrors.duplicateUrlRows.length} (#{' '}
-                    {importErrors.duplicateUrlRows.join(', #')})
+                    URL ya existente en checklist: {importErrors.duplicateExistingUrlRows.length}{' '}
+                    (#{importErrors.duplicateExistingUrlRows.join(', #')})
+                  </li>
+                )}
+                {importErrors.duplicateImportedUrlRows.length > 0 && (
+                  <li>
+                    URL duplicada dentro de este mismo import:{' '}
+                    {importErrors.duplicateImportedUrlRows.length} (#
+                    {importErrors.duplicateImportedUrlRows.join(', #')})
                   </li>
                 )}
                 {importErrors.emptyRows.length === 0 &&
                   importErrors.invalidUrlRows.length === 0 &&
-                  importErrors.duplicateUrlRows.length === 0 && <li>Sin descartes.</li>}
+                  importErrors.duplicateExistingUrlRows.length === 0 &&
+                  importErrors.duplicateImportedUrlRows.length === 0 && <li>Sin descartes.</li>}
               </ul>
             </div>
           )}
