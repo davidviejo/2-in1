@@ -489,6 +489,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   const [comparisonMode, setComparisonMode] = useState<GSCComparisonMode>('previous_period');
   const [showInsightsHelp, setShowInsightsHelp] = useState(false);
   const [showBrandConfigModal, setShowBrandConfigModal] = useState(false);
+  const [showTrendingPanel, setShowTrendingPanel] = useState(false);
   const [selectedModuleDetailId, setSelectedModuleDetailId] = useState<number | null>(null);
   const [projectSectorDraft, setProjectSectorDraft] = useState('');
   const [brandTermsDraft, setBrandTermsDraft] = useState('');
@@ -918,6 +919,11 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       .slice(0, 8);
     return { countsByWindow, topRelevant, sustained };
   }, [trendingUrls, trendingWindows]);
+
+  const hasTrendingReport = useMemo(
+    () => trendingWindows.some((window) => window.rows.length > 0 || !window.available),
+    [trendingWindows],
+  );
 
 
   const prioritizedQuickWins = useMemo(
@@ -1431,6 +1437,44 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     showSuccess(
       `Excel exportado con ${actionableInsights.length} insights y ${Math.max(1, new Set(actionableInsights.map((item) => item.suggestedAction?.trim() || 'Sin acción sugerida')).size)} pestañas de acción.`,
     );
+  };
+
+  const handleExportTrendingUrls = () => {
+    if (!hasTrendingReport) {
+      showSuccess('No hay datos de URLs en tendencia para exportar.');
+      return;
+    }
+
+    const rows = trendingWindows.flatMap((window) =>
+      window.rows.map((trend) => ({
+        ventana: window.label,
+        periodo: trend.periodLabel,
+        rangoPico: trend.peakRange,
+        rangoActual: window.currentRange,
+        rangoBaseline: window.baselineRange,
+        url: trend.url,
+        clicksActuales: Math.round(trend.currentClicks),
+        clicksBaseline: Math.round(Math.max(0, trend.baselineClicks)),
+        incrementoClicksAbs: Math.round(trend.clickIncrease),
+        incrementoClicksPct: Number(trend.clickChangePct.toFixed(1)),
+        multiplicador: Number(trend.surgeRatio.toFixed(2)),
+        impresiones: Math.round(trend.impressions),
+        ctrPct: Number(trend.ctr.toFixed(2)),
+        posicion: Number(trend.position.toFixed(2)),
+        estado: trend.statusLabel,
+      })),
+    );
+
+    if (rows.length === 0) {
+      showSuccess('No hay URLs con pico para exportar en esta selección.');
+      return;
+    }
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'URLs en tendencia');
+    XLSX.writeFile(workbook, `URLs_Tendencia_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    showSuccess(`Exportación completada con ${rows.length} filas de URLs en tendencia.`);
   };
 
   const simulateVoiceRecording = () => {
@@ -3105,13 +3149,11 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
             </div>
           )}
 
-          {trendingWindows.some((window) => window.rows.length > 0 || !window.available) ? (
+          {hasTrendingReport ? (
             <div className="bg-surface p-5 rounded-2xl shadow-sm border border-border">
               <h3 className="font-bold mb-4 flex items-center gap-2">
                 <TrendingUp className="text-primary" size={20} /> URLs en tendencia
-                <span className="text-[10px] bg-primary-soft text-primary px-1.5 py-0.5 rounded font-bold uppercase">
-                  Informe completo
-                </span>
+                <span className="text-[10px] bg-primary-soft text-primary px-1.5 py-0.5 rounded font-bold uppercase">Panel dedicado</span>
               </h3>
               <div className="rounded-xl border border-border bg-surface-alt/30 p-3 text-xs">
                 <div className="font-semibold text-foreground">Resumen de detección</div>
@@ -3128,19 +3170,57 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                   </div>
                 )}
               </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button variant="secondary" onClick={() => setShowTrendingPanel(true)}>
+                  <TrendingUp size={16} /> Abrir panel URLs en tendencia
+                </Button>
+                <Button variant="ghost" onClick={handleExportTrendingUrls}>
+                  <Download size={16} /> Exportar URLs en tendencia
+                </Button>
+              </div>
               {trendingSummary.topRelevant.length > 0 && (
                 <div className="mt-3 rounded-xl border border-border bg-surface-alt/20 p-3">
-                  <div className="text-xs font-semibold text-foreground">Top URLs más relevantes</div>
+                  <div className="text-xs font-semibold text-foreground">Top 5 URLs más relevantes</div>
                   <ul className="mt-2 space-y-1 text-xs text-muted">
-                    {trendingSummary.topRelevant.map((trend, index) => (
+                    {trendingSummary.topRelevant.slice(0, 5).map((trend, index) => (
                       <li key={`${trend.url}-${trend.periodKey}-${index}`}>
-                        {index + 1}. {trend.url} · {trend.periodLabel} · +{Math.round(trend.clickIncrease).toLocaleString()} clics · x{trend.surgeRatio.toFixed(2)}
+                        {index + 1}. {trend.url} · {trend.periodLabel} · +{Math.round(trend.clickIncrease).toLocaleString()} clics
                       </li>
                     ))}
                   </ul>
                 </div>
               )}
-              <div className="mt-4 space-y-4">
+              <div className="mt-3 text-[11px] text-muted">
+                El detalle completo por ventanas se mueve a un panel dedicado para evitar que esta sección estire el layout.
+              </div>
+            </div>
+          ) : (
+            <div className="bg-surface p-5 rounded-2xl shadow-sm border border-border opacity-60">
+              <h3 className="font-bold mb-4 flex items-center gap-2">
+                <TrendingUp className="text-muted" size={20} /> URLs en tendencia
+              </h3>
+              <div className="text-sm text-muted text-center py-4">
+                No se detectaron picos considerables con el periodo actual.
+              </div>
+            </div>
+          )}
+
+          <Modal
+            isOpen={showTrendingPanel}
+            onClose={() => setShowTrendingPanel(false)}
+            title="Panel de URLs en tendencia"
+            className="max-w-6xl"
+          >
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-surface-alt/30 p-3 text-xs">
+                <div className="text-muted">
+                  URLs con pico por periodo: día {trendingSummary.countsByWindow['24h'] || 0} · semana {trendingSummary.countsByWindow['7d'] || 0} · mes {trendingSummary.countsByWindow['30d'] || 0} · 3m {trendingSummary.countsByWindow['3m'] || 0} · 6m {trendingSummary.countsByWindow['6m'] || 0} · 12m {trendingSummary.countsByWindow['12m'] || 0}
+                </div>
+                <Button variant="secondary" onClick={handleExportTrendingUrls}>
+                  <Download size={16} /> Exportar datos
+                </Button>
+              </div>
+              <div className="space-y-4">
                 {trendingWindows.map((window) => (
                   <div key={window.key} className="rounded-xl border border-border">
                     <div className="flex items-start justify-between gap-3 border-b border-border px-3 py-2 bg-surface-alt/40">
@@ -3207,23 +3287,8 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                   </div>
                 ))}
               </div>
-              <div className="mt-3 text-[11px] text-muted">
-                Orden de prioridad aplicado: 1) mayor crecimiento relativo y absoluto, 2) señales sostenidas en múltiples ventanas, 3) picos recientes de alto impacto.
-              </div>
-              <div className="mt-2 text-[11px] text-muted">
-                Nota de estacionalidad: en la vista de 12 meses se recomienda revisar si se repiten patrones anuales, bimensuales o trimestrales para confirmar estacionalidad editorial.
-              </div>
             </div>
-          ) : (
-            <div className="bg-surface p-5 rounded-2xl shadow-sm border border-border opacity-60">
-              <h3 className="font-bold mb-4 flex items-center gap-2">
-                <TrendingUp className="text-muted" size={20} /> URLs en tendencia
-              </h3>
-              <div className="text-sm text-muted text-center py-4">
-                No se detectaron picos considerables con el periodo actual.
-              </div>
-            </div>
-          )}
+          </Modal>
 
           <div className="bg-surface p-6 rounded-2xl shadow-sm border border-border">
             <div className="h-48 w-full">
