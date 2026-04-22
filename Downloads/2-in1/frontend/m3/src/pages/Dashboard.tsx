@@ -1508,35 +1508,39 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     const preparedInsights = actionableInsights.map((insight, index) => ({
       summaryRow: allSummaryRows[index],
       detailRows: sanitizeRowsForSheets(buildInsightExportRows(insight)),
+      analysisType: insight.category || 'General',
     }));
     const filePlans: Array<{
       start: number;
       end: number;
       summaryRows: Array<Record<string, string | number>>;
-      detailRows: Array<Record<string, string | number>>;
+      detailGroups: Record<string, Array<Record<string, string | number>>>;
     }> = [];
     let cursor = 0;
 
     while (cursor < preparedInsights.length && filePlans.length < MAX_INSIGHTS_EXPORT_FILES) {
       const start = cursor;
       const summaryRows: Array<Record<string, string | number>> = [];
-      const detailRows: Array<Record<string, string | number>> = [];
+      const detailGroups: Record<string, Array<Record<string, string | number>>> = {};
       let detailRowsCount = 0;
 
       while (cursor < preparedInsights.length) {
         const candidate = preparedInsights[cursor];
         const candidateRowsCount = Math.max(1, candidate.detailRows.length);
-        if (detailRows.length > 0 && detailRowsCount + candidateRowsCount > maxDetailRowsPerFile) {
+        if (detailRowsCount > 0 && detailRowsCount + candidateRowsCount > maxDetailRowsPerFile) {
           break;
         }
 
         summaryRows.push(candidate.summaryRow);
-        detailRows.push(...candidate.detailRows);
+        if (!detailGroups[candidate.analysisType]) {
+          detailGroups[candidate.analysisType] = [];
+        }
+        detailGroups[candidate.analysisType].push(...candidate.detailRows);
         detailRowsCount += candidateRowsCount;
         cursor += 1;
       }
 
-      filePlans.push({ start, end: cursor, summaryRows, detailRows });
+      filePlans.push({ start, end: cursor, summaryRows, detailGroups });
     }
 
     const totalFiles = filePlans.length;
@@ -1546,9 +1550,15 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(plan.summaryRows), 'Resumen');
 
       const usedNames = new Set<string>(['Resumen']);
-      const insightPrefix = `${String(plan.start + 1).padStart(2, '0')}-${String(plan.end).padStart(2, '0')}`;
-      const sheetName = buildUniqueSheetName(`Detalle_${insightPrefix}`, `Detalle_${part + 1}`, usedNames);
-      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(plan.detailRows), sheetName);
+      Object.entries(plan.detailGroups).forEach(([analysisType, rows], groupIndex) => {
+        if (rows.length === 0) return;
+        const sheetName = buildUniqueSheetName(
+          `Detalle_${analysisType}`,
+          `Detalle_${part + 1}_${groupIndex + 1}`,
+          usedNames,
+        );
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), sheetName);
+      });
 
       const fileSuffix = totalFiles > 1 ? `_parte_${part + 1}` : '';
       XLSX.writeFile(workbook, `SEO_Insights_Detallados_${exportDate}${fileSuffix}.xlsx`);
@@ -1563,7 +1573,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     }
 
     if (totalFiles === 1) {
-      showSuccess(`Excel exportado con 1 pestaña de detalle + 1 resumen, respetando el límite de Google Sheets (${GOOGLE_SHEETS_MAX_CELLS.toLocaleString()} celdas y ${GOOGLE_SHEETS_MAX_CELL_CHARACTERS.toLocaleString()} caracteres por celda).`);
+      showSuccess(`Excel exportado con pestañas de detalle por tipo de análisis + 1 resumen, respetando el límite de Google Sheets (${GOOGLE_SHEETS_MAX_CELLS.toLocaleString()} celdas y ${GOOGLE_SHEETS_MAX_CELL_CHARACTERS.toLocaleString()} caracteres por celda).`);
       return;
     }
 
