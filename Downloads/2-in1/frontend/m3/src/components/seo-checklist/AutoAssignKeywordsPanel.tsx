@@ -3,6 +3,10 @@ import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { SeoPage } from '../../types/seoChecklist';
 import { getPageMetrics, getPageQueries } from '../../services/googleSearchConsole';
+import {
+  getCachedUrlKeywordEntry,
+  getLatestGscUrlKeywordCache,
+} from '../../services/gscUrlKeywordCache';
 import { useSeoChecklistSettings } from '../../hooks/useSeoChecklistSettings';
 import { isBrandTermMatch } from '../../utils/brandTerms';
 
@@ -177,6 +181,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
   const [sourceMode, setSourceMode] = useState<KeywordSourceMode>('without_kw');
   const [status, setStatus] = useState('');
   const [isLoadingGsc, setIsLoadingGsc] = useState(false);
+  const [reuseDashboardData, setReuseDashboardData] = useState(true);
   const { settings } = useSeoChecklistSettings();
   const activeBrandTerms = useMemo(() => settings.brandTerms || [], [settings.brandTerms]);
 
@@ -186,12 +191,12 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
   const actionableProposalsCount = proposals.filter((proposal) => proposal.proposedKeyword).length;
 
   const loadGscData = async () => {
-    const token = localStorage.getItem('mediaflow_gsc_token');
     const site = localStorage.getItem('mediaflow_gsc_selected_site');
+    const token = localStorage.getItem('mediaflow_gsc_token');
 
-    if (!token || !site) {
+    if (!site) {
       setStatus(
-        'Primero conecta GSC y selecciona una propiedad (Dashboard) para poder cargar queries.',
+        'Primero selecciona una propiedad en Dashboard para reutilizar o cargar queries.',
       );
       return;
     }
@@ -213,9 +218,49 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
     const start = new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
     let okCount = 0;
+    let reusedCount = 0;
+    let fetchedCount = 0;
+    let missingTokenCount = 0;
     const updates: { id: string; changes: Partial<SeoPage> }[] = [];
+    const cachedSnapshot = reuseDashboardData ? getLatestGscUrlKeywordCache(site) : null;
 
     for (const page of targetPages) {
+      const cachedEntry = getCachedUrlKeywordEntry(cachedSnapshot, page.url);
+      if (cachedEntry) {
+        reusedCount += 1;
+        okCount += 1;
+        updates.push({
+          id: page.id,
+          changes: {
+            gscMetrics: {
+              clicks: Number(cachedEntry.metrics.clicks || 0),
+              impressions: Number(cachedEntry.metrics.impressions || 0),
+              ctr: Number(cachedEntry.metrics.ctr || 0),
+              position: Number(cachedEntry.metrics.position || 0) || undefined,
+              queryCount: Number(cachedEntry.metrics.queryCount || 0),
+              source: 'page',
+              updatedAt: Date.now(),
+            },
+            checklist: {
+              ...page.checklist,
+              OPORTUNIDADES: {
+                ...page.checklist.OPORTUNIDADES,
+                autoData: {
+                  ...(page.checklist.OPORTUNIDADES?.autoData || {}),
+                  gscQueries: cachedEntry.queries.map(normalizeQueryRow),
+                },
+              },
+            },
+          },
+        });
+        continue;
+      }
+
+      if (!token) {
+        missingTokenCount += 1;
+        continue;
+      }
+
       try {
         const [pageMetricsRow, pageQueries] = await Promise.all([
           getPageMetrics(token, site, page.url, start, end),
@@ -230,6 +275,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
         }
 
         okCount += 1;
+        fetchedCount += 1;
         updates.push({
           id: page.id,
           changes: {
@@ -265,7 +311,20 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
       onBulkUpdate(updates);
     }
 
-    setStatus(`Carga GSC finalizada: ${okCount} URL(s) con datos actualizados.`);
+    const reusedText =
+      reusedCount > 0
+        ? ` ${reusedCount} URL(s) reutilizadas desde datos ya recopilados en Dashboard.`
+        : '';
+    const fetchedText =
+      fetchedCount > 0 ? ` ${fetchedCount} URL(s) consultadas de nuevo en GSC.` : '';
+    const missingTokenText =
+      missingTokenCount > 0
+        ? ` ${missingTokenCount} URL(s) sin actualizar por falta de token GSC para consulta en vivo.`
+        : '';
+
+    setStatus(
+      `Carga finalizada: ${okCount} URL(s) con datos actualizados.${reusedText}${fetchedText}${missingTokenText}`,
+    );
     setIsLoadingGsc(false);
   };
 
@@ -315,6 +374,15 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
             <option value="all">Todas las URLs</option>
           </select>
         </div>
+        <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            className="h-4 w-4"
+            checked={reuseDashboardData}
+            onChange={(event) => setReuseDashboardData(event.target.checked)}
+          />
+          Reutilizar datos ya recopilados en Dashboard (si existen)
+        </label>
       </div>
 
       <div className="flex flex-wrap gap-2">

@@ -6,6 +6,7 @@ import {
   getGSCQueryPageData,
   getGSCPageDateData,
 } from '../services/googleSearchConsole';
+import { persistGscUrlKeywordCache } from '../services/gscUrlKeywordCache';
 import { runAnalysisInWorker } from '../utils/workerClient';
 import { ProjectType } from '../types';
 import { useToast } from '../components/ui/ToastContext';
@@ -144,6 +145,13 @@ export const useGSCData = (
         sector: context?.sector,
         geoScope: context?.geoScope,
       });
+
+      persistGscUrlKeywordCache(
+        resolvedSelectedSite,
+        finalStartDate,
+        finalEndDate,
+        currentQueryPageData || [],
+      );
 
       return {
         gscData: dateData,
