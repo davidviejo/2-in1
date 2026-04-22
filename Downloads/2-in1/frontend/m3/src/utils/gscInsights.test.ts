@@ -48,4 +48,22 @@ describe('GSC Insights Engine', () => {
     expect(result.items[0].keys[0]).toBe('cannibal');
     expect(result.items[0].keys[1]).toContain('URLs');
   });
+
+  it('builds quick wins aligned with current project type only', () => {
+    const result = analyzeGSCInsights({
+      currentRows: [
+        { keys: ['comprar zapatillas', 'https://shop.com/category/zapatillas'], clicks: 25, impressions: 900, ctr: 0.02, position: 6 },
+        { keys: ['zapatillas running', 'https://shop.com/category/running'], clicks: 18, impressions: 850, ctr: 0.018, position: 7 },
+        { keys: ['marca zapatillas', 'https://shop.com/pdp/zapa-1'], clicks: 30, impressions: 400, ctr: 0.075, position: 4 },
+      ],
+      projectType: 'ECOM',
+      analysisProjectTypes: ['MEDIA', 'LOCAL'],
+      sector: 'Ecommerce Generalista',
+    });
+
+    const quickWinIds = result.quickWinsLayer.map((insight) => insight.id);
+    expect(quickWinIds.some((id) => id.startsWith('ecomCategoryPositions410-'))).toBe(true);
+    expect(quickWinIds.some((id) => id.startsWith('mediaLowCtrTop10-'))).toBe(false);
+    expect(result.quickWinsLayer.every((insight) => insight.applicableProjectTypes?.includes('ECOM'))).toBe(true);
+  });
 });
