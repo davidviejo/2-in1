@@ -530,7 +530,15 @@ export const analyzeGSCInsights = ({
   byQuery.forEach((rows, query) => {
     const significant = rows.filter((row) => row.impressions >= 80);
     if (significant.length >= 2) {
-      cannibalized.push({ ...significant[0], keys: [query, `${significant.length} URLs`] });
+      const competingUrls = significant
+        .map((row) => row.keys?.[1] || '')
+        .filter((value) => value.trim().length > 0);
+      const compactUrls = competingUrls.slice(0, 5).join(' | ');
+      const urlsLabel = compactUrls
+        ? `${significant.length} URLs: ${compactUrls}${competingUrls.length > 5 ? ' | ...' : ''}`
+        : `${significant.length} URLs`;
+
+      cannibalized.push({ ...significant[0], keys: [query, urlsLabel] });
     }
   });
   if (cannibalized.length) {
