@@ -213,13 +213,13 @@ export const detectTrendingUrls = (rows: GSCRow[]): UrlTrendSignal[] => {
   const newestDate = sortedDates[sortedDates.length - 1];
   if (!newestDate) return [];
 
-  const newestDateMs = new Date(`${newestDate}T00:00:00Z`).getTime();
-  const getRangeDates = (days: number, offsetDays: number) => {
-    const endMs = newestDateMs - offsetDays * DAY_MS;
-    const startMs = endMs - (days - 1) * DAY_MS;
+  const sortedDateMs = sortedDates.map((date) => new Date(`${date}T00:00:00Z`).getTime());
+  const getRangeDates = (endMs: number, days: number, offsetDays: number) => {
+    const effectiveEndMs = endMs - offsetDays * DAY_MS;
+    const startMs = effectiveEndMs - (days - 1) * DAY_MS;
     return {
       start: new Date(startMs).toISOString().slice(0, 10),
-      end: new Date(endMs).toISOString().slice(0, 10),
+      end: new Date(effectiveEndMs).toISOString().slice(0, 10),
     };
   };
 
@@ -231,53 +231,64 @@ export const detectTrendingUrls = (rows: GSCRow[]): UrlTrendSignal[] => {
       return [];
     }
 
-    const current = getRangeDates(windowDef.days, 0);
-    const baseline = getRangeDates(windowDef.days, windowDef.days);
-    const trends: UrlTrendSignal[] = [];
+    const bestTrendByUrl = new Map<string, UrlTrendSignal>();
+    const anchorStartIndex = requiredDays - 1;
+    const anchorEndIndex = sortedDateMs.length - 1;
 
-    groupedByUrl.forEach((entries, url) => {
-      const currentRows = entries.filter((entry) => entry.date >= current.start && entry.date <= current.end);
-      const baselineRows = entries.filter((entry) => entry.date >= baseline.start && entry.date <= baseline.end);
-      if (currentRows.length === 0 || baselineRows.length === 0) return;
+    for (let anchorIndex = anchorStartIndex; anchorIndex <= anchorEndIndex; anchorIndex += 1) {
+      const anchorDateMs = sortedDateMs[anchorIndex];
+      const current = getRangeDates(anchorDateMs, windowDef.days, 0);
+      const baseline = getRangeDates(anchorDateMs, windowDef.days, windowDef.days);
 
-      const currentClicks = currentRows.reduce((sum, row) => sum + row.clicks, 0);
-      const baselineClicks = baselineRows.reduce((sum, row) => sum + row.clicks, 0);
-      const clickIncrease = currentClicks - baselineClicks;
-      const clickChangePct = baselineClicks > 0 ? (clickIncrease / baselineClicks) * 100 : currentClicks > 0 ? 999 : 0;
-      const surgeRatio = baselineClicks > 0 ? currentClicks / baselineClicks : currentClicks > 0 ? 99 : 0;
+      groupedByUrl.forEach((entries, url) => {
+        const currentRows = entries.filter((entry) => entry.date >= current.start && entry.date <= current.end);
+        const baselineRows = entries.filter((entry) => entry.date >= baseline.start && entry.date <= baseline.end);
+        if (currentRows.length === 0 || baselineRows.length === 0) return;
 
-      const impressions = currentRows.reduce((sum, row) => sum + row.impressions, 0);
-      const ctr = impressions > 0 ? (currentClicks / impressions) * 100 : 0;
-      const position = impressions > 0
-        ? currentRows.reduce((sum, row) => sum + row.position * row.impressions, 0) / impressions
-        : 0;
+        const currentClicks = currentRows.reduce((sum, row) => sum + row.clicks, 0);
+        const baselineClicks = baselineRows.reduce((sum, row) => sum + row.clicks, 0);
+        const clickIncrease = currentClicks - baselineClicks;
+        const clickChangePct = baselineClicks > 0 ? (clickIncrease / baselineClicks) * 100 : currentClicks > 0 ? 999 : 0;
+        const surgeRatio = baselineClicks > 0 ? currentClicks / baselineClicks : currentClicks > 0 ? 99 : 0;
 
-      const strongPct = clickChangePct >= 80 && clickIncrease >= (windowDef.days === 1 ? 10 : 20);
-      const strongMultiplier = surgeRatio >= 2 && clickIncrease >= (windowDef.days === 1 ? 8 : 15);
-      const strongAbsolute = clickIncrease >= Math.max(25, windowDef.days * 1.5);
-      const hasPeak = clickIncrease > 0 && (strongPct || strongMultiplier || strongAbsolute);
-      if (!hasPeak) return;
+        const impressions = currentRows.reduce((sum, row) => sum + row.impressions, 0);
+        const ctr = impressions > 0 ? (currentClicks / impressions) * 100 : 0;
+        const position = impressions > 0
+          ? currentRows.reduce((sum, row) => sum + row.position * row.impressions, 0) / impressions
+          : 0;
 
-      const score = clickIncrease * Math.max(1, surgeRatio) + Math.max(0, clickChangePct);
-      trends.push({
-        url,
-        periodKey: windowDef.key,
-        periodLabel: windowDef.label,
-        peakRange: formatRange(current.start, current.end),
-        currentClicks,
-        baselineClicks,
-        clickIncrease,
-        clickChangePct,
-        surgeRatio,
-        impressions,
-        ctr,
-        position,
-        statusLabel: windowDef.statusLabel,
-        score,
+        const strongPct = clickChangePct >= 80 && clickIncrease >= (windowDef.days === 1 ? 10 : 20);
+        const strongMultiplier = surgeRatio >= 2 && clickIncrease >= (windowDef.days === 1 ? 8 : 15);
+        const strongAbsolute = clickIncrease >= Math.max(25, windowDef.days * 1.5);
+        const hasPeak = clickIncrease > 0 && (strongPct || strongMultiplier || strongAbsolute);
+        if (!hasPeak) return;
+
+        const score = clickIncrease * Math.max(1, surgeRatio) + Math.max(0, clickChangePct);
+        const candidateTrend: UrlTrendSignal = {
+          url,
+          periodKey: windowDef.key,
+          periodLabel: windowDef.label,
+          peakRange: formatRange(current.start, current.end),
+          currentClicks,
+          baselineClicks,
+          clickIncrease,
+          clickChangePct,
+          surgeRatio,
+          impressions,
+          ctr,
+          position,
+          statusLabel: windowDef.statusLabel,
+          score,
+        };
+
+        const existingTrend = bestTrendByUrl.get(url);
+        if (!existingTrend || candidateTrend.score > existingTrend.score) {
+          bestTrendByUrl.set(url, candidateTrend);
+        }
       });
-    });
+    }
 
-    return trends;
+    return Array.from(bestTrendByUrl.values());
   });
 
   return resultsByWindow.sort((a, b) => b.score - a.score);
