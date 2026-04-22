@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ImportUrlsModal } from './ImportUrlsModal';
 
@@ -28,7 +28,7 @@ describe('ImportUrlsModal', () => {
     });
   });
 
-  it('importa URLs aunque randomUUID no esté disponible', () => {
+  it('importa URLs aunque randomUUID no esté disponible', async () => {
     const onImport = vi.fn();
 
     render(
@@ -41,7 +41,9 @@ describe('ImportUrlsModal', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Importar URLs' }));
 
-    expect(onImport).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(onImport).toHaveBeenCalledTimes(1);
+    });
     const importedPages = onImport.mock.calls[0][0];
     expect(importedPages).toHaveLength(1);
     expect(importedPages[0].id).toMatch(/^seo-page-/);
@@ -49,7 +51,7 @@ describe('ImportUrlsModal', () => {
     expect(importedPages[0].kwPrincipal).toBe('keyword uno');
   });
 
-  it('no crashea cuando hay URLs legacy inválidas en existingPages', () => {
+  it('no crashea cuando hay URLs legacy inválidas en existingPages', async () => {
     const onImport = vi.fn();
     const malformedExistingPages = [{ id: '1', url: null } as any, { id: '2' } as any];
 
@@ -68,12 +70,14 @@ describe('ImportUrlsModal', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Importar URLs' }));
 
-    expect(onImport).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(onImport).toHaveBeenCalledTimes(1);
+    });
     expect(onImport.mock.calls[0][0]).toHaveLength(1);
     expect(onImport.mock.calls[0][0][0].url).toBe('https://example.com/page-2');
   });
 
-  it('importa lotes grandes de URLs sin error', () => {
+  it('importa lotes grandes de URLs sin error', async () => {
     const onImport = vi.fn();
     const largeInput = Array.from({ length: 1200 }, (_, index) => {
       return `https://example.com/page-${index + 1}\tkw ${index + 1}`;
@@ -89,7 +93,34 @@ describe('ImportUrlsModal', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Importar URLs' }));
 
-    expect(onImport).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(onImport).toHaveBeenCalledTimes(1);
+    });
     expect(onImport.mock.calls[0][0]).toHaveLength(1200);
+  });
+
+  it('importa 10.000 URLs y muestra progreso asíncrono', async () => {
+    const onImport = vi.fn();
+    const largeInput = Array.from({ length: 10000 }, (_, index) => {
+      return `https://example.com/page-${index + 1}\tkw ${index + 1}`;
+    }).join('\n');
+
+    render(
+      <ImportUrlsModal isOpen onClose={vi.fn()} onImport={onImport} existingPages={[]} />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(/https:\/\/example.com\/page1/i), {
+      target: { value: largeInput },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Importar URLs' }));
+
+    expect(screen.getByText(/Importando URLs/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Importando…' }).getAttribute('disabled')).not.toBeNull();
+
+    await waitFor(() => {
+      expect(onImport).toHaveBeenCalledTimes(1);
+    });
+    expect(onImport.mock.calls[0][0]).toHaveLength(10000);
   });
 });

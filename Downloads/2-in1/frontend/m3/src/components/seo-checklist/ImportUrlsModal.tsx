@@ -67,6 +67,8 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
   const [inputText, setInputText] = useState('');
   const [ignoreDuplicates, setIgnoreDuplicates] = useState(true);
   const [importErrors, setImportErrors] = useState<ImportErrorSummary | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
   const { settings } = useSettings();
   const brandTerms = useMemo(() => settings.brandTerms || [], [settings.brandTerms]);
 
@@ -77,9 +79,10 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
     onClose();
   };
 
-  const handleImport = () => {
-    if (!inputText.trim()) return;
+  const handleImport = async () => {
+    if (!inputText.trim() || isImporting) return;
 
+    const CHUNK_SIZE = 500;
     const lines = inputText.split('\n');
     const newPages: SeoPage[] = [];
     const errorSummary: ImportErrorSummary = {
@@ -88,68 +91,87 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
       duplicateUrlRows: [],
     };
     const seenUrls = ignoreDuplicates ? buildSeenUrls(existingPages) : new Set<string>();
+    const yieldToMainThread = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-    // Simple parsing: URL [tab] KW [tab] Type [tab] Geo [tab] Cluster
-    lines.forEach((line, index) => {
-      const rowNumber = index + 1;
-      try {
-        // Split by tab or comma
-        const parts = line
-          .split(/\t|,|;/)
-          .map((s) => s.trim())
-          .filter((s) => s !== '');
+    setIsImporting(true);
+    setImportProgress(0);
 
-        if (parts.length < 1 || !parts[0]) {
-          errorSummary.emptyRows.push(rowNumber);
-          return;
+    try {
+      for (let start = 0; start < lines.length; start += CHUNK_SIZE) {
+        const end = Math.min(start + CHUNK_SIZE, lines.length);
+
+        // Simple parsing: URL [tab] KW [tab] Type [tab] Geo [tab] Cluster
+        for (let index = start; index < end; index += 1) {
+          const line = lines[index];
+          const rowNumber = index + 1;
+          try {
+            // Split by tab or comma
+            const parts = line
+              .split(/\t|,|;/)
+              .map((s) => s.trim())
+              .filter((s) => s !== '');
+
+            if (parts.length < 1 || !parts[0]) {
+              errorSummary.emptyRows.push(rowNumber);
+              continue;
+            }
+
+            const rawUrl = parts[0];
+            if (!isValidUrl(rawUrl)) {
+              errorSummary.invalidUrlRows.push(rowNumber);
+              continue;
+            }
+
+            const normalizedUrl = normalizeSeoUrl(rawUrl);
+            const normalizedUrlKey = normalizedUrl.toLowerCase();
+            if (ignoreDuplicates && seenUrls.has(normalizedUrlKey)) {
+              errorSummary.duplicateUrlRows.push(rowNumber);
+              continue;
+            }
+            seenUrls.add(normalizedUrlKey);
+
+            const kwPrincipal = parts[1] || '';
+            const isBrandKeyword = kwPrincipal ? isBrandTermMatch(kwPrincipal, brandTerms) : false;
+
+            newPages.push({
+              id: createSeoPageId(),
+              url: normalizedUrl,
+              kwPrincipal: isBrandKeyword ? '' : kwPrincipal,
+              isBrandKeyword,
+              pageType: parts[2] || 'Article',
+              geoTarget: parts[3] || '',
+              cluster: parts[4] || '',
+              checklist: createEmptyChecklist(),
+            });
+          } catch (error) {
+            console.warn('No se pudo procesar la fila importada de URLs.', { rowNumber, error });
+            errorSummary.invalidUrlRows.push(rowNumber);
+          }
         }
 
-        const rawUrl = parts[0];
-        if (!isValidUrl(rawUrl)) {
-          errorSummary.invalidUrlRows.push(rowNumber);
-          return;
+        setImportProgress(Math.round((end / lines.length) * 100));
+
+        if (end < lines.length) {
+          await yieldToMainThread();
         }
-
-        const normalizedUrl = normalizeSeoUrl(rawUrl);
-        const normalizedUrlKey = normalizedUrl.toLowerCase();
-        if (ignoreDuplicates && seenUrls.has(normalizedUrlKey)) {
-          errorSummary.duplicateUrlRows.push(rowNumber);
-          return;
-        }
-        seenUrls.add(normalizedUrlKey);
-
-        const kwPrincipal = parts[1] || '';
-        const isBrandKeyword = kwPrincipal ? isBrandTermMatch(kwPrincipal, brandTerms) : false;
-
-        newPages.push({
-          id: createSeoPageId(),
-          url: normalizedUrl,
-          kwPrincipal: isBrandKeyword ? '' : kwPrincipal,
-          isBrandKeyword,
-          pageType: parts[2] || 'Article',
-          geoTarget: parts[3] || '',
-          cluster: parts[4] || '',
-          checklist: createEmptyChecklist(),
-        });
-      } catch (error) {
-        console.warn('No se pudo procesar la fila importada de URLs.', { rowNumber, error });
-        errorSummary.invalidUrlRows.push(rowNumber);
       }
-    });
 
-    setImportErrors(errorSummary);
+      setImportErrors(errorSummary);
 
-    if (newPages.length > 0) {
-      onImport(newPages);
-      const hasErrors =
-        errorSummary.emptyRows.length > 0 ||
-        errorSummary.invalidUrlRows.length > 0 ||
-        errorSummary.duplicateUrlRows.length > 0;
+      if (newPages.length > 0) {
+        onImport(newPages);
+        const hasErrors =
+          errorSummary.emptyRows.length > 0 ||
+          errorSummary.invalidUrlRows.length > 0 ||
+          errorSummary.duplicateUrlRows.length > 0;
 
-      if (!hasErrors) {
-        setInputText('');
-        handleCloseModal();
+        if (!hasErrors) {
+          setInputText('');
+          handleCloseModal();
+        }
       }
+    } finally {
+      setIsImporting(false);
     }
   };
 
@@ -180,7 +202,7 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
           {brandTerms.length > 0 && (
             <p className="text-xs text-amber-600 dark:text-amber-400 mb-4">
               Términos de marca activos: {brandTerms.join(', ')}. Si la keyword coincide, la URL
-              se importará como "KW de marca" y sin keyword principal asignada.
+              se importará como &quot;KW de marca&quot; y sin keyword principal asignada.
             </p>
           )}
 
@@ -209,6 +231,18 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
               Ignorar URLs que ya están en la lista (evitar duplicados)
             </label>
           </div>
+
+          {isImporting && (
+            <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
+              <p className="font-semibold">Importando URLs… {importProgress}%</p>
+              <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-blue-100 dark:bg-blue-900/50">
+                <div
+                  className="h-full bg-blue-600 transition-all duration-200"
+                  style={{ width: `${importProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
 
           {importErrors && (
             <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
@@ -249,11 +283,11 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
           </button>
           <button
             onClick={handleImport}
-            disabled={!inputText.trim()}
+            disabled={!inputText.trim() || isImporting}
             className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-lg shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
           >
             <Clipboard size={18} />
-            Importar URLs
+            {isImporting ? 'Importando…' : 'Importar URLs'}
           </button>
         </div>
       </div>
