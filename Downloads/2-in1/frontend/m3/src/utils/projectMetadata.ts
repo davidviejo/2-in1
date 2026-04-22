@@ -43,6 +43,16 @@ export const DEFAULT_SECTOR_OPTIONS = [
 
 const VALID_PROJECT_TYPES: ProjectType[] = ['MEDIA', 'ECOM', 'LOCAL', 'NATIONAL', 'INTERNATIONAL'];
 const VALID_GEO_SCOPES: GeoScope[] = ['local', 'national', 'international', 'global'];
+const PROJECT_TYPE_ALIASES: Record<string, ProjectType> = {
+  media: 'MEDIA',
+  ecom: 'ECOM',
+  ecommerce: 'ECOM',
+  local: 'LOCAL',
+  national: 'NATIONAL',
+  internacional: 'INTERNATIONAL',
+  international: 'INTERNATIONAL',
+  global: 'INTERNATIONAL',
+};
 
 export const getProjectTypeFromVertical = (vertical: ClientVertical): ProjectType =>
   PROJECT_TYPE_BY_VERTICAL[vertical] || 'MEDIA';
@@ -59,9 +69,15 @@ export const inferGeoScopeFromProjectType = (projectType: ProjectType): GeoScope
 
 export const normalizeProjectType = (projectType: unknown, vertical?: ClientVertical): ProjectType => {
   if (typeof projectType === 'string') {
-    const normalized = projectType.trim().toUpperCase();
+    const raw = projectType.trim();
+    const normalized = raw.toUpperCase();
     if (VALID_PROJECT_TYPES.includes(normalized as ProjectType)) {
       return normalized as ProjectType;
+    }
+
+    const aliasMatch = PROJECT_TYPE_ALIASES[raw.toLowerCase()];
+    if (aliasMatch) {
+      return aliasMatch;
     }
   }
 

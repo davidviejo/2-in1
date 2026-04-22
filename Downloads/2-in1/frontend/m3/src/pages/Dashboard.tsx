@@ -72,6 +72,7 @@ import {
   getDashboardContextProfile,
   rankInsightsByProjectContext,
 } from '../utils/dashboardContext';
+import { computeHybridGlobalScore } from '../utils/hybridGlobalScore';
 
 const GSC_COMPARISON_MODE_LABELS: Record<GSCComparisonMode, string> = {
   previous_period: 'Periodo anterior',
@@ -474,15 +475,6 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       .filter((entry): entry is { moduleId: number; title: string; weight: number; maturity: number } => Boolean(entry));
   }, [modules, projectScoreContext]);
 
-  const badge = useMemo(() => {
-    if (globalScore >= 95) return { title: 'Chief SEO Officer', variant: 'success' as const };
-    if (globalScore >= 80) return { title: 'Jefe de Audiencias', variant: 'warning' as const };
-    if (globalScore >= 60) return { title: 'Líder Técnico SEO', variant: 'primary' as const };
-    if (globalScore >= 40) return { title: 'Estratega SEO', variant: 'primary' as const };
-    if (globalScore >= 20) return { title: 'Analista Junior', variant: 'primary' as const };
-    return { title: 'Becario SEO', variant: 'neutral' as const };
-  }, [globalScore]);
-
   const chartData = useMemo(
     () =>
       modules.map((m) => {
@@ -822,6 +814,67 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     [actionableInsights],
   );
 
+  const hybridGlobalScore = useMemo(
+    () =>
+      computeHybridGlobalScore({
+        modules,
+        structuralScore: projectScoreContext?.score || globalScore,
+        performance: {
+          current: {
+            clicks: performanceSummary.current.clicks,
+            ctr: performanceSummary.current.ctr,
+            position: performanceSummary.current.position,
+          },
+          previous: {
+            clicks: performanceSummary.previous.clicks,
+            ctr: performanceSummary.previous.ctr,
+            position: performanceSummary.previous.position,
+          },
+        },
+        nonBrand: {
+          currentClicks: brandDeltaSummary.current.nonBrand,
+          previousClicks: Math.max(0, brandDeltaSummary.current.nonBrand - brandDeltaSummary.delta.nonBrand),
+        },
+        insights: actionableInsights,
+        propertyId: visibleSelectedGscSite || selectedSite || 'Sin propiedad',
+        periodCurrent: `${startDate}..${endDate}`,
+        periodPrevious: comparisonPeriod
+          ? `${comparisonPeriod.previous.startDate}..${comparisonPeriod.previous.endDate}`
+          : 'Sin comparativa',
+        timestamp: Date.now(),
+      }),
+    [
+      actionableInsights,
+      brandDeltaSummary.current.nonBrand,
+      brandDeltaSummary.delta.nonBrand,
+      comparisonPeriod,
+      endDate,
+      globalScore,
+      modules,
+      performanceSummary.current.clicks,
+      performanceSummary.current.ctr,
+      performanceSummary.current.position,
+      performanceSummary.previous.clicks,
+      performanceSummary.previous.ctr,
+      performanceSummary.previous.position,
+      projectScoreContext?.score,
+      selectedSite,
+      startDate,
+      visibleSelectedGscSite,
+    ],
+  );
+
+  const effectiveGlobalScore = hybridGlobalScore.globalScore;
+
+  const scoreBadge = useMemo(() => {
+    if (effectiveGlobalScore >= 95) return { title: 'Chief SEO Officer', variant: 'success' as const };
+    if (effectiveGlobalScore >= 80) return { title: 'Jefe de Audiencias', variant: 'warning' as const };
+    if (effectiveGlobalScore >= 60) return { title: 'Líder Técnico SEO', variant: 'primary' as const };
+    if (effectiveGlobalScore >= 40) return { title: 'Estratega SEO', variant: 'primary' as const };
+    if (effectiveGlobalScore >= 20) return { title: 'Analista Junior', variant: 'primary' as const };
+    return { title: 'Becario SEO', variant: 'neutral' as const };
+  }, [effectiveGlobalScore]);
+
   const recommendedAction = useMemo(() => {
     const candidate = filteredInsights[0] || prioritizedContextInsights[0];
     if (!candidate) {
@@ -875,7 +928,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
 
   const handleExport = () => {
     const date = new Date().toLocaleDateString();
-    const text = `REPORTE SEO MEDIAFLOW - ${date}\nPuntuación Global: ${globalScore}% (${badge.title})\nInsights activos: ${actionableInsights.length}\n\n${modules.map((m) => `${m.title}: ${m.tasks.filter((t) => t.status === 'completed').length}/${m.tasks.length}`).join('\n')}`;
+    const text = `REPORTE SEO MEDIAFLOW - ${date}\nPuntuación Global Híbrida: ${effectiveGlobalScore}% (${scoreBadge.title})\nSubscore Estructural: ${hybridGlobalScore.structuralSubscore}%\nSubscore Rendimiento: ${hybridGlobalScore.performanceSubscore}%\nVariación vs periodo anterior: ${hybridGlobalScore.variationVsPrevious >= 0 ? '+' : ''}${hybridGlobalScore.variationVsPrevious}\nInsights activos: ${actionableInsights.length}\n\n${modules.map((m) => `${m.title}: ${m.tasks.filter((t) => t.status === 'completed').length}/${m.tasks.length}`).join('\n')}`;
     const blob = new Blob([text], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1378,7 +1431,7 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
         <div>
           <h2 className="text-2xl font-bold flex items-center gap-3">
             Visión General de Madurez
-            <Badge variant={badge.variant}>{badge.title}</Badge>
+            <Badge variant={scoreBadge.variant}>{scoreBadge.title}</Badge>
           </h2>
           <p className="text-muted mt-1">
             Sigue la evolución SEO de tu publicación desde la auditoría hasta la autoridad.
@@ -1446,8 +1499,8 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
       <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <HeroMetric
           title="Score global"
-          value={`${Math.round(globalScore)}%`}
-          description={`Variación periodo: ${performanceSummary.delta.clicks >= 0 ? '+' : ''}${performanceSummary.delta.clicks.toFixed(1)}% en clics vs comparativa.`}
+          value={`${Math.round(effectiveGlobalScore)}%`}
+          description={`Estructural ${hybridGlobalScore.structuralSubscore}% · Rendimiento ${hybridGlobalScore.performanceSubscore}% · Variación ${hybridGlobalScore.variationVsPrevious >= 0 ? '+' : ''}${hybridGlobalScore.variationVsPrevious}.`}
           tone="bg-gradient-to-br from-slate-900 to-slate-700 text-on-primary"
           onClick={() => navigate('/app/roadmap')}
           ctaLabel="Abrir roadmap"
@@ -1532,6 +1585,67 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                 </div>
               ))
             )}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border bg-surface-alt p-4 space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="font-semibold text-foreground text-sm">Score híbrido (estructura + rendimiento real)</div>
+            {hybridGlobalScore.fallbackUsed ? (
+              <Badge variant="warning">Sin GSC suficiente · fallback activo</Badge>
+            ) : (
+              <Badge variant="success">Híbrido con señal GSC</Badge>
+            )}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
+            <div className="rounded-lg border border-border bg-surface p-3">
+              <div className="text-muted">Score Global</div>
+              <div className="text-xl font-bold text-foreground">{hybridGlobalScore.globalScore}%</div>
+            </div>
+            <div className="rounded-lg border border-border bg-surface p-3">
+              <div className="text-muted">Subscore estructural</div>
+              <div className="text-xl font-bold text-foreground">{hybridGlobalScore.structuralSubscore}%</div>
+            </div>
+            <div className="rounded-lg border border-border bg-surface p-3">
+              <div className="text-muted">Subscore rendimiento</div>
+              <div className="text-xl font-bold text-foreground">{hybridGlobalScore.performanceSubscore}%</div>
+            </div>
+            <div className="rounded-lg border border-border bg-surface p-3">
+              <div className="text-muted">Variación vs anterior</div>
+              <div className="text-xl font-bold text-foreground">
+                {hybridGlobalScore.variationVsPrevious >= 0 ? '+' : ''}
+                {hybridGlobalScore.variationVsPrevious}
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+            <div className="rounded-lg border border-success/30 bg-success-soft p-3">
+              <div className="font-medium text-foreground">Qué lo sube</div>
+              {hybridGlobalScore.driversUp.length === 0 ? (
+                <div className="mt-1 text-muted">Sin señales positivas destacadas en este periodo.</div>
+              ) : (
+                hybridGlobalScore.driversUp.slice(0, 3).map((driver) => (
+                  <div key={driver.key} className="mt-1 text-muted">
+                    <strong className="text-foreground">{driver.label}</strong>: {driver.detail}
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="rounded-lg border border-danger/30 bg-danger-soft p-3">
+              <div className="font-medium text-foreground">Qué lo baja</div>
+              {hybridGlobalScore.driversDown.length === 0 ? (
+                <div className="mt-1 text-muted">Sin señales de caída relevantes.</div>
+              ) : (
+                hybridGlobalScore.driversDown.slice(0, 3).map((driver) => (
+                  <div key={driver.key} className="mt-1 text-muted">
+                    <strong className="text-foreground">{driver.label}</strong>: {driver.detail}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+          <div className="text-[11px] text-muted">
+            Trazabilidad: {hybridGlobalScore.trace.propertyId} · actual {hybridGlobalScore.trace.periodCurrent} · anterior {hybridGlobalScore.trace.periodPrevious} · módulo {hybridGlobalScore.trace.module} · ts {new Date(hybridGlobalScore.trace.timestamp).toLocaleString()}
           </div>
         </div>
 
@@ -2137,7 +2251,7 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                   <div className="w-full bg-surface-alt h-1.5 rounded-full mt-4">
                     <div
                       className="bg-primary h-full rounded-full"
-                      style={{ width: `${globalScore}%` }}
+                      style={{ width: `${effectiveGlobalScore}%` }}
                     ></div>
                   </div>
                 </div>
