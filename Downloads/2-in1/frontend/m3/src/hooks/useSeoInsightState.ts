@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { SeoInsight, SeoInsightLifecycleStatus } from '../types/seoInsights';
 
 const STORAGE_KEY = 'mediaflow-seo-insight-state-v2';
+const FINGERPRINT_PREFIX = 'fingerprint';
 
 export interface SeoInsightStateEntry {
   insightId: string;
@@ -21,6 +22,22 @@ const isValidStatus = (status: unknown): status is SeoInsightLifecycleStatus =>
   status === 'watch' ||
   status === 'investigate' ||
   status === 'ok';
+
+const normalizeToken = (value?: string | number | null) =>
+  String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+
+const buildInsightFingerprint = (insight: SeoInsight) => {
+  const stableRule = normalizeToken(insight.ruleKey || insight.title);
+  const property = normalizeToken(insight.propertyId || insight.trace?.propertyId);
+  const moduleId = normalizeToken(insight.moduleId ?? insight.trace?.moduleId);
+  const sourceType = normalizeToken(insight.sourceType);
+  const action = normalizeToken(insight.suggestedAction || insight.action);
+
+  return [stableRule, property, moduleId, sourceType, action].join('|');
+};
 
 export const useSeoInsightState = (scope: string) => {
   const [entries, setEntries] = useState<Record<string, SeoInsightStateEntry>>({});
@@ -42,19 +59,43 @@ export const useSeoInsightState = (scope: string) => {
   }, [entries]);
 
   const getInsightStatus = (insight: SeoInsight): SeoInsightLifecycleStatus => {
-    const key = `${scope}:${insight.id}`;
-    return entries[key]?.status || insight.status || 'new';
+    const byIdKey = `${scope}:${insight.id}`;
+    const byFingerprintKey = `${scope}:${FINGERPRINT_PREFIX}:${buildInsightFingerprint(insight)}`;
+
+    return entries[byIdKey]?.status || entries[byFingerprintKey]?.status || insight.status || 'new';
   };
 
-  const setInsightStatus = (insightId: string, status: SeoInsightLifecycleStatus) => {
+  const setInsightStatus = (insightOrId: string | SeoInsight, status: SeoInsightLifecycleStatus) => {
     if (!isValidStatus(status)) return;
-    const key = `${scope}:${insightId}`;
+    const updatedAt = Date.now();
+
+    if (typeof insightOrId === 'string') {
+      const key = `${scope}:${insightOrId}`;
+      setEntries((prev) => ({
+        ...prev,
+        [key]: {
+          insightId: insightOrId,
+          status,
+          updatedAt,
+        },
+      }));
+      return;
+    }
+
+    const fingerprintKey = `${scope}:${FINGERPRINT_PREFIX}:${buildInsightFingerprint(insightOrId)}`;
+    const idKey = `${scope}:${insightOrId.id}`;
+
     setEntries((prev) => ({
       ...prev,
-      [key]: {
-        insightId,
+      [idKey]: {
+        insightId: insightOrId.id,
         status,
-        updatedAt: Date.now(),
+        updatedAt,
+      },
+      [fingerprintKey]: {
+        insightId: insightOrId.id,
+        status,
+        updatedAt,
       },
     }));
   };
