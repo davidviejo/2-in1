@@ -18,6 +18,13 @@ interface ImportErrorSummary {
   duplicateUrlRows: number[];
 }
 
+const createSeoPageId = (): string => {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+  return `seo-page-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+};
+
 const isValidUrl = (rawUrl: string): boolean => {
   try {
     const normalizedUrl = normalizeSeoUrl(rawUrl);
@@ -28,10 +35,40 @@ const isValidUrl = (rawUrl: string): boolean => {
   }
 };
 
+const createEmptyChecklist = (): Record<ChecklistKey, ChecklistItem> => {
+  return CHECKLIST_POINTS.reduce(
+    (acc, pt) => {
+      acc[pt.key] = {
+        key: pt.key,
+        label: pt.label,
+        status_manual: 'NA',
+        notes_manual: '',
+      };
+      return acc;
+    },
+    {} as Record<ChecklistKey, ChecklistItem>,
+  );
+};
+
+const buildSeenUrls = (pages: SeoPage[]): Set<string> => {
+  const seen = new Set<string>();
+  for (const page of pages) {
+    if (!page?.url || typeof page.url !== 'string') continue;
+    try {
+      seen.add(normalizeSeoUrl(page.url).toLowerCase());
+    } catch {
+      // Ignore malformed legacy URLs from persisted state.
+    }
+  }
+  return seen;
+};
+
 export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, existingPages }) => {
   const [inputText, setInputText] = useState('');
   const [ignoreDuplicates, setIgnoreDuplicates] = useState(true);
   const [importErrors, setImportErrors] = useState<ImportErrorSummary | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
   const { settings } = useSettings();
   const brandTerms = useMemo(() => settings.brandTerms || [], [settings.brandTerms]);
 
@@ -42,87 +79,97 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
     onClose();
   };
 
-  const handleImport = () => {
-    if (!inputText.trim()) return;
+  const handleImport = async () => {
+    if (!inputText.trim() || isImporting) return;
 
-    const lines = inputText.split('\n');
-    let newPages: SeoPage[] = [];
-    const errorSummary: ImportErrorSummary = {
-      emptyRows: [],
-      invalidUrlRows: [],
-      duplicateUrlRows: [],
-    };
-    const seenUrls = new Set<string>(
-      ignoreDuplicates ? existingPages.map((p) => p.url.toLowerCase()) : [],
-    );
+    setIsImporting(true);
+    setImportProgress(0);
+    try {
+      const lines = inputText.split('\n');
+      const newPages: SeoPage[] = [];
+      const errorSummary: ImportErrorSummary = {
+        emptyRows: [],
+        invalidUrlRows: [],
+        duplicateUrlRows: [],
+      };
+      const seenUrls = ignoreDuplicates ? buildSeenUrls(existingPages) : new Set<string>();
 
-    // Simple parsing: URL [tab] KW [tab] Type [tab] Geo [tab] Cluster
-    lines.forEach((line, index) => {
-      const rowNumber = index + 1;
-      // Split by tab or comma
-      const parts = line
-        .split(/\t|,|;/)
-        .map((s) => s.trim())
-        .filter((s) => s !== '');
+      const chunkSize = 500;
+      for (let index = 0; index < lines.length; index += chunkSize) {
+        const chunk = lines.slice(index, index + chunkSize);
 
-      if (parts.length < 1 || !parts[0]) {
-        errorSummary.emptyRows.push(rowNumber);
-        return;
+        chunk.forEach((line, chunkOffset) => {
+          const rowNumber = index + chunkOffset + 1;
+          try {
+            // Split by tab or comma
+            const parts = line
+              .split(/\t|,|;/)
+              .map((s) => s.trim())
+              .filter((s) => s !== '');
+
+            if (parts.length < 1 || !parts[0]) {
+              errorSummary.emptyRows.push(rowNumber);
+              return;
+            }
+
+            const rawUrl = parts[0];
+            if (!isValidUrl(rawUrl)) {
+              errorSummary.invalidUrlRows.push(rowNumber);
+              return;
+            }
+
+            const normalizedUrl = normalizeSeoUrl(rawUrl);
+            const normalizedUrlKey = normalizedUrl.toLowerCase();
+            if (ignoreDuplicates && seenUrls.has(normalizedUrlKey)) {
+              errorSummary.duplicateUrlRows.push(rowNumber);
+              return;
+            }
+            seenUrls.add(normalizedUrlKey);
+
+            const kwPrincipal = parts[1] || '';
+            const isBrandKeyword = kwPrincipal ? isBrandTermMatch(kwPrincipal, brandTerms) : false;
+
+            newPages.push({
+              id: createSeoPageId(),
+              url: normalizedUrl,
+              kwPrincipal: isBrandKeyword ? '' : kwPrincipal,
+              isBrandKeyword,
+              pageType: parts[2] || 'Article',
+              geoTarget: parts[3] || '',
+              cluster: parts[4] || '',
+              checklist: createEmptyChecklist(),
+            });
+          } catch (error) {
+            console.warn('No se pudo procesar la fila importada de URLs.', { rowNumber, error });
+            errorSummary.invalidUrlRows.push(rowNumber);
+          }
+        });
+
+        setImportProgress(
+          Math.round((Math.min(index + chunkSize, lines.length) / lines.length) * 100),
+        );
+
+        if (index + chunkSize < lines.length) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
       }
 
-      const rawUrl = parts[0];
-      if (!isValidUrl(rawUrl)) {
-        errorSummary.invalidUrlRows.push(rowNumber);
-        return;
+      setImportErrors(errorSummary);
+
+      if (newPages.length > 0) {
+        onImport(newPages);
+        const hasErrors =
+          errorSummary.emptyRows.length > 0 ||
+          errorSummary.invalidUrlRows.length > 0 ||
+          errorSummary.duplicateUrlRows.length > 0;
+
+        if (!hasErrors) {
+          setInputText('');
+          handleCloseModal();
+        }
       }
-
-      const normalizedUrl = normalizeSeoUrl(rawUrl);
-      const normalizedUrlKey = normalizedUrl.toLowerCase();
-      if (ignoreDuplicates && seenUrls.has(normalizedUrlKey)) {
-        errorSummary.duplicateUrlRows.push(rowNumber);
-        return;
-      }
-      seenUrls.add(normalizedUrlKey);
-
-      // Initial checklist state
-      const checklist: Record<string, ChecklistItem> = {};
-      CHECKLIST_POINTS.forEach((pt) => {
-        checklist[pt.key] = {
-          key: pt.key,
-          label: pt.label,
-          status_manual: 'NA',
-          notes_manual: '',
-        };
-      });
-
-      const kwPrincipal = parts[1] || '';
-      const isBrandKeyword = kwPrincipal ? isBrandTermMatch(kwPrincipal, brandTerms) : false;
-
-      newPages.push({
-        id: crypto.randomUUID(),
-        url: normalizedUrl,
-        kwPrincipal: isBrandKeyword ? '' : kwPrincipal,
-        isBrandKeyword,
-        pageType: parts[2] || 'Article',
-        geoTarget: parts[3] || '',
-        cluster: parts[4] || '',
-        checklist: checklist as Record<ChecklistKey, ChecklistItem>,
-      });
-    });
-
-    setImportErrors(errorSummary);
-
-    if (newPages.length > 0) {
-      onImport(newPages);
-      const hasErrors =
-        errorSummary.emptyRows.length > 0 ||
-        errorSummary.invalidUrlRows.length > 0 ||
-        errorSummary.duplicateUrlRows.length > 0;
-
-      if (!hasErrors) {
-        setInputText('');
-        handleCloseModal();
-      }
+    } finally {
+      setIsImporting(false);
     }
   };
 
@@ -211,6 +258,11 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
               </ul>
             </div>
           )}
+          {isImporting && (
+            <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+              Importando URLs... {importProgress}%
+            </p>
+          )}
         </div>
 
         <div className="p-6 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3">
@@ -222,11 +274,11 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
           </button>
           <button
             onClick={handleImport}
-            disabled={!inputText.trim()}
+            disabled={!inputText.trim() || isImporting}
             className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-lg shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
           >
             <Clipboard size={18} />
-            Importar URLs
+            {isImporting ? 'Importando...' : 'Importar URLs'}
           </button>
         </div>
       </div>
