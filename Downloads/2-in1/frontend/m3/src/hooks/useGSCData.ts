@@ -19,6 +19,40 @@ type GscSyncProgress = {
   startedAt: number | null;
 };
 
+const GSC_STEP_MAX_RETRIES = 2;
+const GSC_STEP_RETRY_BASE_DELAY_MS = 1200;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const runStepWithRetry = async <T>(
+  label: string,
+  runStep: () => Promise<T>,
+  updateLabel: (nextLabel: string) => void,
+): Promise<T> => {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= GSC_STEP_MAX_RETRIES; attempt += 1) {
+    try {
+      return await runStep();
+    } catch (error) {
+      lastError = error;
+
+      if (attempt >= GSC_STEP_MAX_RETRIES) {
+        throw error;
+      }
+
+      const nextAttempt = attempt + 1;
+      updateLabel(
+        `${label} · reintentando (${nextAttempt}/${GSC_STEP_MAX_RETRIES})`,
+      );
+      await sleep(GSC_STEP_RETRY_BASE_DELAY_MS * nextAttempt);
+      updateLabel(label);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('Error ejecutando paso de sincronización GSC');
+};
+
 const getPreviousRange = (startDate: string, endDate: string) => {
   const start = new Date(`${startDate}T00:00:00Z`);
   const end = new Date(`${endDate}T00:00:00Z`);
@@ -162,26 +196,53 @@ export const useGSCData = (
           startedAt: prev.startedAt || Date.now(),
         }));
       };
+      const updateCurrentStepLabel = (nextLabel: string) => {
+        setSyncProgress((prev) => ({
+          ...prev,
+          currentStepLabel: nextLabel,
+          startedAt: prev.startedAt || Date.now(),
+        }));
+      };
 
       const [dateData, comparisonDateData, currentQueryPageData, previousQueryPageData, pageDateData] =
         await Promise.all([
-          getSearchAnalytics(accessToken!, resolvedSelectedSite, finalStartDate, finalEndDate).then((result) => {
+          runStepWithRetry(
+            progressSteps[0],
+            () => getSearchAnalytics(accessToken!, resolvedSelectedSite, finalStartDate, finalEndDate),
+            updateCurrentStepLabel,
+          ).then((result) => {
             updateProgress(progressSteps[1]);
             return result;
           }),
-          getSearchAnalytics(accessToken!, resolvedSelectedSite, previousStartDate, previousEndDate).then((result) => {
+          runStepWithRetry(
+            progressSteps[1],
+            () => getSearchAnalytics(accessToken!, resolvedSelectedSite, previousStartDate, previousEndDate),
+            updateCurrentStepLabel,
+          ).then((result) => {
             updateProgress(progressSteps[2]);
             return result;
           }),
-          getGSCQueryPageData(accessToken!, resolvedSelectedSite, finalStartDate, finalEndDate).then((result) => {
+          runStepWithRetry(
+            progressSteps[2],
+            () => getGSCQueryPageData(accessToken!, resolvedSelectedSite, finalStartDate, finalEndDate),
+            updateCurrentStepLabel,
+          ).then((result) => {
             updateProgress(progressSteps[3]);
             return result;
           }),
-          getGSCQueryPageData(accessToken!, resolvedSelectedSite, previousStartDate, previousEndDate).then((result) => {
+          runStepWithRetry(
+            progressSteps[3],
+            () => getGSCQueryPageData(accessToken!, resolvedSelectedSite, previousStartDate, previousEndDate),
+            updateCurrentStepLabel,
+          ).then((result) => {
             updateProgress(progressSteps[4]);
             return result;
           }),
-          getGSCPageDateData(accessToken!, resolvedSelectedSite, finalStartDate, finalEndDate).then((result) => {
+          runStepWithRetry(
+            progressSteps[4],
+            () => getGSCPageDateData(accessToken!, resolvedSelectedSite, finalStartDate, finalEndDate),
+            updateCurrentStepLabel,
+          ).then((result) => {
             updateProgress(progressSteps[5]);
             return result;
           }),
@@ -224,6 +285,9 @@ export const useGSCData = (
     },
     enabled: !!accessToken && !!resolvedSelectedSite,
     staleTime: 1000 * 60 * 5,
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   useEffect(() => {
