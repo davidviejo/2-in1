@@ -48,21 +48,25 @@ export type TagValues = {
 };
 
 export type PromptInput = {
-  title?: unknown;
   promptText?: unknown;
-  objective?: unknown;
+  country?: unknown;
   language?: unknown;
-  status?: unknown;
+  isActive?: unknown;
+  priority?: unknown;
+  notes?: unknown;
   tagIds?: unknown;
+  intentClassification?: unknown;
 };
 
 export type PromptValues = {
-  title: string;
   promptText: string;
-  objective: string | null;
+  country: string;
   language: string;
-  status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ARCHIVED';
+  isActive: boolean;
+  priority: number;
+  notes: string | null;
   tagIds: string[];
+  intentClassification: string | null;
 };
 
 const DOMAIN_REGEX = /^(?=.{1,253}$)(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/i;
@@ -206,24 +210,30 @@ export function validateTagInput(input: TagInput): {
   };
 }
 
-const PROMPT_STATUSES = new Set(['DRAFT', 'ACTIVE', 'PAUSED', 'ARCHIVED']);
-
 export function validatePromptInput(input: PromptInput): {
   values?: PromptValues;
   errors?: Record<string, string>;
 } {
   const errors: Record<string, string> = {};
-  const title = readString(input.title);
   const promptText = readString(input.promptText);
-  const objective = readString(input.objective);
+  const country = readString(input.country).toUpperCase();
   const language = readString(input.language).toLowerCase() || 'es';
-  const status = readString(input.status).toUpperCase() || 'ACTIVE';
-
-  if (!title) {
-    errors.title = 'Prompt title is required.';
-  } else if (title.length > 140) {
-    errors.title = 'Prompt title must be 140 characters or fewer.';
-  }
+  const notes = readString(input.notes);
+  const intentClassification = readString(input.intentClassification);
+  const parsedPriority =
+    typeof input.priority === 'number'
+      ? input.priority
+      : typeof input.priority === 'string'
+        ? Number.parseInt(input.priority, 10)
+        : Number.NaN;
+  const isActive =
+    typeof input.isActive === 'boolean'
+      ? input.isActive
+      : input.isActive === 'true'
+        ? true
+        : input.isActive === 'false'
+          ? false
+          : true;
 
   if (!promptText) {
     errors.promptText = 'Prompt text is required.';
@@ -231,16 +241,26 @@ export function validatePromptInput(input: PromptInput): {
     errors.promptText = 'Prompt text must be 8000 characters or fewer.';
   }
 
-  if (objective.length > 500) {
-    errors.objective = 'Objective must be 500 characters or fewer.';
+  if (!country) {
+    errors.country = 'Country is required.';
+  } else if (!/^[A-Z]{2}$/.test(country)) {
+    errors.country = 'Country must be a 2-letter ISO code (e.g. US, ES).';
   }
 
   if (!/^[a-z]{2,5}(?:-[a-z]{2,5})?$/.test(language)) {
     errors.language = 'Language must be a language code (e.g. en or es-mx).';
   }
 
-  if (!PROMPT_STATUSES.has(status)) {
-    errors.status = 'Status must be one of DRAFT, ACTIVE, PAUSED, or ARCHIVED.';
+  if (!Number.isInteger(parsedPriority) || parsedPriority < 1 || parsedPriority > 999) {
+    errors.priority = 'Priority must be an integer between 1 and 999.';
+  }
+
+  if (notes.length > 1000) {
+    errors.notes = 'Notes must be 1000 characters or fewer.';
+  }
+
+  if (intentClassification.length > 120) {
+    errors.intentClassification = 'Intent classification must be 120 characters or fewer.';
   }
 
   const tagIds = Array.isArray(input.tagIds)
@@ -257,12 +277,14 @@ export function validatePromptInput(input: PromptInput): {
 
   return {
     values: {
-      title,
       promptText,
-      objective: objective || null,
+      country,
       language,
-      status: status as PromptValues['status'],
-      tagIds: Array.from(new Set(tagIds))
+      isActive,
+      priority: parsedPriority,
+      notes: notes || null,
+      tagIds: Array.from(new Set(tagIds)),
+      intentClassification: intentClassification || null
     }
   };
 }
