@@ -3,6 +3,7 @@ import type { GSCRow } from '../types';
 const STORAGE_KEY = 'mediaflow_gsc_url_keyword_cache_v1';
 const MAX_QUERIES_PER_URL = 20;
 const MAX_CACHE_ENTRIES = 5;
+const MAX_URLS_PER_SNAPSHOT = 1500;
 
 export interface CachedUrlKeywordQuery {
   query: string;
@@ -55,7 +56,11 @@ const safeParseCache = (): GscUrlKeywordCacheSnapshot[] => {
 };
 
 const saveCache = (snapshots: GscUrlKeywordCacheSnapshot[]) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshots.slice(0, MAX_CACHE_ENTRIES)));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshots.slice(0, MAX_CACHE_ENTRIES)));
+  } catch (error) {
+    console.warn('No se pudo guardar caché de keywords por URL de GSC.', error);
+  }
 };
 
 export const persistGscUrlKeywordCache = (
@@ -97,7 +102,7 @@ export const persistGscUrlKeywordCache = (
     byUrl.set(page, pageMap);
   }
 
-  const urls: Record<string, CachedUrlKeywordEntry> = {};
+  const urlEntries: Array<[string, CachedUrlKeywordEntry]> = [];
   for (const [url, queryMap] of byUrl.entries()) {
     const sortedQueries = Array.from(queryMap.values())
       .sort((a, b) => {
@@ -119,7 +124,7 @@ export const persistGscUrlKeywordCache = (
       0,
     );
 
-    urls[url] = {
+    urlEntries.push([url, {
       queries: sortedQueries,
       metrics: {
         clicks: totalClicks,
@@ -131,8 +136,20 @@ export const persistGscUrlKeywordCache = (
             : 0,
         queryCount: sortedQueries.length,
       },
-    };
+    }]);
   }
+
+  const urls: Record<string, CachedUrlKeywordEntry> = Object.fromEntries(
+    urlEntries
+      .sort(([, a], [, b]) => {
+        if (b.metrics.clicks !== a.metrics.clicks) return b.metrics.clicks - a.metrics.clicks;
+        if (b.metrics.impressions !== a.metrics.impressions) {
+          return b.metrics.impressions - a.metrics.impressions;
+        }
+        return a.metrics.position - b.metrics.position;
+      })
+      .slice(0, MAX_URLS_PER_SNAPSHOT),
+  );
 
   const snapshot: GscUrlKeywordCacheSnapshot = {
     siteUrl,
