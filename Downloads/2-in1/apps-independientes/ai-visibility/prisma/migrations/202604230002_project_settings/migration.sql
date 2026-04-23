@@ -1,0 +1,7 @@
+ALTER TABLE "project"
+  ADD COLUMN "primaryDomain" TEXT NOT NULL DEFAULT 'example.com',
+  ADD COLUMN "mainCountry" TEXT NOT NULL DEFAULT 'US',
+  ADD COLUMN "mainLanguage" TEXT NOT NULL DEFAULT 'en',
+  ADD COLUMN "isActive" BOOLEAN NOT NULL DEFAULT true,
+  ADD COLUMN "chartColor" TEXT NOT NULL DEFAULT '#1d4ed8',
+  ADD COLUMN "notes" TEXT;

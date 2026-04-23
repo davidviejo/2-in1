@@ -97,7 +97,13 @@ model Project {
   ownerUserId    String
   name           String
   slug           String          @unique
+  primaryDomain  String
   description    String?
+  mainCountry    String
+  mainLanguage   String
+  isActive       Boolean         @default(true)
+  chartColor     String          @default("#1d4ed8")
+  notes          String?
   status         ProjectStatus   @default(ACTIVE)
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
