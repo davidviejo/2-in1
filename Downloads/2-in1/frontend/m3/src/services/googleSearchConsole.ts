@@ -467,6 +467,10 @@ export const getGSCPageDateData = async (
   endDate: string,
   rowLimit: number = 25000,
   searchType: GSCSearchType = 'web',
+  options?: {
+    maxPages?: number;
+    maxRows?: number;
+  },
 ) =>
   querySearchAnalyticsPaged(accessToken, {
     siteUrl,
@@ -475,6 +479,8 @@ export const getGSCPageDateData = async (
     dimensions: ['page', 'date'],
     rowLimit,
     searchType,
+    maxPages: options?.maxPages,
+    maxRows: options?.maxRows,
   });
 
 export const getGSCAggregateMetrics = async (

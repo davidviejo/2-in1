@@ -32,6 +32,7 @@ vi.mock('../components/ui/ToastContext', () => ({
   useToast: () => ({
     success: vi.fn(),
     error: vi.fn(),
+    info: vi.fn(),
   }),
 }));
 
@@ -69,6 +70,19 @@ vi.mock('../hooks/useGSCData', () => ({
     pageDateData: [],
     comparisonPeriod: null,
     isLoadingGsc: false,
+    syncProgress: {
+      completedSteps: 0,
+      totalSteps: 0,
+      currentStepLabel: '',
+      startedAt: null,
+      analysis: {
+        status: 'idle',
+        currentChunk: 0,
+        totalChunks: 0,
+        percentage: 0,
+        label: '',
+      },
+    },
     insights: {
       insights: [],
       groupedInsights: [],
@@ -108,6 +122,8 @@ vi.mock('../context/ProjectContext', () => ({
     },
     updateCurrentClientProfile: vi.fn(),
     addTask: vi.fn(),
+    projectScoreContext: null,
+    saveClientSnapshot: vi.fn(),
   }),
 }));
 

@@ -33,6 +33,8 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const WORKER_ANALYSIS_CHUNK_SIZE = 20000;
 const WORKER_ANALYSIS_EXTREME_ROW_GUARDRAIL = 2000000;
+const GSC_PAGE_DATE_MAX_PAGES = 8;
+const GSC_PAGE_DATE_MAX_ROWS = 200000;
 
 const buildEmptyInsightResult = (title: string): GSCInsights['quickWins'] => ({
   title,
@@ -148,7 +150,7 @@ export const useGSCData = (
     geoScope?: string;
   },
 ) => {
-  const { error: showError } = useToast();
+  const { error: showError, warning: showWarning } = useToast();
   const queryClient = useQueryClient();
   const [syncProgress, setSyncProgress] = useState<GscSyncProgress>({
     completedSteps: 0,
@@ -278,6 +280,7 @@ export const useGSCData = (
         }));
       };
 
+      let evolutionLoadDegraded = false;
       const [dateData, comparisonDateData, currentQueryPageData, previousQueryPageData, pageDateData] =
         await Promise.all([
           runStepWithRetry(
@@ -314,13 +317,47 @@ export const useGSCData = (
           }),
           runStepWithRetry(
             progressSteps[4],
-            () => getGSCPageDateData(accessToken!, resolvedSelectedSite, finalStartDate, finalEndDate),
+            async () => {
+              try {
+                return await getGSCPageDateData(
+                  accessToken!,
+                  resolvedSelectedSite,
+                  finalStartDate,
+                  finalEndDate,
+                  25000,
+                  'web',
+                  {
+                    maxPages: GSC_PAGE_DATE_MAX_PAGES,
+                    maxRows: GSC_PAGE_DATE_MAX_ROWS,
+                  },
+                );
+              } catch (pageDateError) {
+                evolutionLoadDegraded = true;
+                console.warn(
+                  '[GSC] No se pudo cargar evolución por URL completa; se continúa sin ese bloque para evitar fallo total.',
+                  pageDateError,
+                );
+                return {
+                  rows: [],
+                  metadata: {
+                    isPartial: true,
+                    pagesFetched: 0,
+                    rowsFetched: 0,
+                    truncatedReason: 'max_rows_reached' as const,
+                  },
+                };
+              }
+            },
             updateCurrentStepLabel,
           ).then((result) => {
             updateProgress(progressSteps[5]);
             return result;
           }),
         ]);
+
+      if (evolutionLoadDegraded) {
+        showWarning('No se pudo cargar toda la evolución por URL en esta propiedad grande. Se mostrará el resto del panel.');
+      }
 
       const analysisCurrentRows = currentQueryPageData || [];
       const analysisPreviousRows = previousQueryPageData || [];
