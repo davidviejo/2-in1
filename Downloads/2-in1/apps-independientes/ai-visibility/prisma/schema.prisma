@@ -144,9 +144,11 @@ model Competitor {
   id            String                @id @default(cuid())
   projectId     String
   name          String
-  domain        String?
+  domain        String
+  aliases       String[]              @default([])
   category      String?
   isActive      Boolean               @default(true)
+  chartColor    String                @default("#1d4ed8")
   createdAt     DateTime              @default(now())
   updatedAt     DateTime              @updatedAt
   deletedAt     DateTime?
@@ -155,6 +157,7 @@ model Competitor {
   kpiSnapshots  KpiSnapshot[]
 
   @@unique([projectId, name])
+  @@unique([projectId, domain])
   @@index([projectId])
   @@index([projectId, domain])
   @@index([deletedAt])
