@@ -1,75 +1,158 @@
 # AGENTS.md
 
-Guía rápida para trabajar en este repo **2-in-1** (gestión de cliente + suite interna SEO).
+Guía operativa para trabajar en el ecosistema **2-in-1** (suite principal + backend + apps independientes).
 
-## 1) Estructura real del repo
-- Código principal: `Downloads/2-in1/`
-  - Frontend SPA (React + Vite + TS): `Downloads/2-in1/frontend/m3`
-  - Backend (Flask): `Downloads/2-in1/backend/p2`
-  - Apps independientes: `Downloads/2-in1/apps-independientes/`
-  - Scripts de arranque/verificación: `Downloads/2-in1/scripts`
-  - Runbook: `Downloads/2-in1/docs/RUNBOOK.md`
-- Nota: en la raíz (`/workspace/2-in1`) casi no hay código de app; entrar siempre a `Downloads/2-in1`.
+## 1) Mapa real del monorepo
 
-## 2) Levantar el proyecto
+> ⚠️ En `/workspace/2-in1` hay metadatos. El código activo vive dentro de `Downloads/2-in1/`.
+
+- **Raíz de trabajo real**: `Downloads/2-in1/`
+- **Frontend principal (SPA)**: `Downloads/2-in1/frontend/m3` (React + Vite + TypeScript)
+- **Backend principal**: `Downloads/2-in1/backend/p2` (Flask + Blueprints)
+- **Apps independientes**: `Downloads/2-in1/apps-independientes/`
+  - `local-seo-audit-poc` (Next.js 14 + TS, ejecución propia)
+- **Scripts de orquestación/verificación**: `Downloads/2-in1/scripts/`
+- **Runbook general**: `Downloads/2-in1/docs/RUNBOOK.md`
+- **Histórico legado**: `Downloads/2-in1/Tendencias-medios-main` (referencia; no flujo canónico actual)
+
+---
+
+## 2) Ecosistema Frontend (principal)
+
+### Ubicación y stack
+- Ruta: `Downloads/2-in1/frontend/m3`
+- Stack: React 19 + Vite 6 + TypeScript + Tailwind + React Query + Vitest + Playwright.
+
+### Comandos oficiales
+Desde `Downloads/2-in1/frontend/m3`:
+- `npm install`
+- `npm run dev` (default: `http://localhost:5173`)
+- `npm run build`
+- `npm run preview`
+- `npm run test` (Vitest)
+- `npm run test:e2e` (Playwright)
+- `npm run lint`
+- `npx tsc --noEmit` (typecheck; no script npm dedicado)
+
+### Variables de entorno relevantes
+- `VITE_API_URL`
+- `VITE_API_PORT` (fallback default 5000)
+- `VITE_PYTHON_ENGINE_URL`
+- `VITE_GOOGLE_CLIENT_ID`
+
+### Convenciones frontend
+- Componentes/páginas: `PascalCase` (`src/components`, `src/pages`).
+- Hooks: prefijo `use*` (`src/hooks`).
+- Servicios: `camelCase` con sufijos `Service` / `Client` / `Repository`.
+- Alias de imports: `@/`.
+- En páginas, evitar colores hardcodeados (`text-slate-*`, `bg-blue-*`, etc.); usar componentes semánticos de `src/components/ui` y utilidades del design system.
+
+### Nota de integración de Trends Media
+- El módulo de tendencias/editorial ya está integrado en la SPA (`/#/app/trends-media`).
+- No arrancar el proyecto legacy por separado para flujo normal.
+
+---
+
+## 3) Ecosistema Backend (principal)
+
+### Ubicación y stack
+- Ruta: `Downloads/2-in1/backend/p2`
+- Stack: Python 3.11 + Flask + SQLite + Blueprints + pytest.
+
+### Arranque local
+Desde `Downloads/2-in1/backend/p2`:
+- `python -m venv venv && source venv/bin/activate`
+- `pip install -r requirements.txt`
+- `python -m spacy download es_core_news_sm`
+- `python run.py` (default: `http://127.0.0.1:5000`)
+
+### Comandos de calidad/backend
+- `pytest` o `make test`
+- `make lint` (Ruff)
+- `make format` (Ruff format, cuando aplique)
+- `mypy run.py` (baseline actual; ver `pyproject.toml`)
+
+### Arquitectura backend (guía rápida)
+- Entrada: `run.py`
+- Factory app: `apps/web/__init__.py`
+- Blueprints: `apps/web/blueprints/**`
+- Núcleo y utilidades: `apps/core/**`
+- Datos/reportes/snapshots: `data/`, `reports/`, `snapshots/`
+
+### Config/env sensible
+- Mantener CORS y orígenes vía configuración (ej. `FRONTEND_URL`/`MEDIAFLOW_FRONTEND_URL`).
+- Credenciales IA/API siempre server-side (no exponer secretos al frontend).
+
+---
+
+## 4) Ecosistema de Apps Independientes
+
+### 4.1 `local-seo-audit-poc`
+- Ruta: `Downloads/2-in1/apps-independientes/local-seo-audit-poc`
+- Naturaleza: PoC **independiente** (no acoplada al frontend principal ni al backend Flask).
+- Stack: Next.js 14 + React 18 + TypeScript.
+
+Comandos:
+- `npm install`
+- `npm run dev` (default: `http://localhost:3000`)
+- `npm run build`
+- `npm run start`
+- `npm run lint`
+
+Estructura:
+- `app/` (UI + API route local)
+- `components/`
+- `lib/` (tipos, scoring, reglas, report builder, mocks)
+
+### 4.2 Criterio operativo para apps independientes
+- No asumir integración automática con `frontend/m3` o `backend/p2`.
+- Tratar puertos, dependencias y `.env` de cada app de forma aislada.
+- Si una app independiente migra al core, documentar explícitamente ruta destino y estado de deprecación.
+
+---
+
+## 5) Orquestación full-stack del ecosistema principal
+
 Desde `Downloads/2-in1`:
-- Full stack (Linux/Mac): `./scripts/dev.sh`
-- Full stack (PowerShell): `./scripts/dev.ps1`
+- Linux/Mac: `./scripts/dev.sh`
+- PowerShell: `./scripts/dev.ps1`
 
-Manual:
-- Backend:
-  - `cd backend/p2 && python -m venv venv && source venv/bin/activate`
-  - `pip install -r requirements.txt`
-  - `python -m spacy download es_core_news_sm`
-  - `python run.py` (por defecto `:5000`)
-- Frontend:
-  - `cd frontend/m3 && npm install && npm run dev` (por defecto `:5173`)
+Estos scripts son el punto recomendado para levantar frontend + backend principal juntos.
 
-## 3) Build, test, lint, typecheck
-### Frontend (`frontend/m3`)
-- Build: `npm run build`
-- Unit tests (Vitest): `npm run test`
-- E2E (Playwright): `npm run test:e2e`
-- Lint: `npm run lint`
-- Typecheck: `npx tsc --noEmit` (**no hay script npm dedicado**)
+---
 
-### Backend (`backend/p2`)
-- Run: `python run.py`
-- Tests: `pytest` (o `make test`)
-- Lint: **TODO (no hay herramienta configurada en comandos oficiales)**
-- Typecheck: **TODO (no hay herramienta configurada en comandos oficiales)**
+## 6) Seguridad y DO-NOT
 
-## 4) Convenciones observadas en el código
-- Frontend:
-  - Componentes/páginas: `PascalCase` (`src/components`, `src/pages`).
-  - Hooks: prefijo `use*` en `src/hooks`.
-  - Servicios: `camelCase` con sufijo `Service`/`Client`/`Repository` en `src/services`.
-  - Imports con alias `@/` habilitado en Vite/TS.
-  - UI/tokens: usar componentes semánticos de `src/components/ui` y utilidades semánticas; en páginas evitar clases de color directas (`text-slate-*`, `bg-blue-*`, etc.) según `frontend/m3/README.md`.
-- Backend:
-  - Arquitectura modular con Flask Blueprints en `apps/web/blueprints`.
-  - Entrada principal en `backend/p2/run.py` y factory en `apps/web/__init__.py`.
+- No commitear secretos ni artefactos locales: `.env`, `*.db`, `venv/`, `node_modules/`, `dist/`, `__pycache__/`.
+- No hardcodear API keys o credenciales en código cliente/servidor.
+- Mantener `.gitignore` al día si se agregan nuevos artefactos de build.
+- Evitar abrir CORS con `*` sin justificación técnica y aprobación explícita.
 
-## 5) Seguridad y DO-NOT
-- No commitear secretos ni archivos locales: `.env`, `*.db`, `venv/`, `node_modules/`, `dist/`, `__pycache__/` (ver `.gitignore`).
-- No hardcodear credenciales/API keys en frontend ni backend; usar variables de entorno.
-- Mantener CORS/orígenes controlados vía configuración (`FRONTEND_URL`) y no abrir comodines sin justificación.
+---
 
-## 6) Definición de Done (DoD)
+## 7) Definición de Done (DoD)
+
 Un cambio está “done” cuando:
-1. Compila/build correcto en el ecosistema afectado.
-2. Tests relevantes pasan (frontend: Vitest/E2E si aplica; backend: pytest en alcance).
-3. Lint/typecheck ejecutados donde existan.
+1. Build/ejecución correcta en el ecosistema afectado.
+2. Tests relevantes pasan en el alcance del cambio.
+3. Lint/typecheck ejecutados donde existan comandos oficiales.
 4. Si hay UI, validación visual realizada.
-5. Sin secretos ni artefactos locales en el commit.
+5. Sin secretos ni archivos locales en commit/PR.
+6. Documentación actualizada cuando cambian rutas, scripts o responsabilidades entre frontend/backend/apps independientes.
 
-## 7) Validación visual
-Para cambios de interfaz en `frontend/m3`:
-- Ejecutar app y validar flujo en navegador.
-- Usar E2E (`npm run test:e2e`) o scripts de verificación existentes (`frontend/m3/verify_frontend.py`, `scripts/verify_layout.py`) cuando aplique.
-- Adjuntar captura/screenshot del estado final en la PR.
+---
 
-## Pendientes por validar (sin inventar)
-- TODO: estandarizar comando oficial de **lint backend**.
-- TODO: estandarizar comando oficial de **typecheck backend**.
-- TODO: definir set mínimo obligatorio de tests por tipo de cambio (smoke vs suite completa).
+## 8) Validación visual (cuando aplica UI)
+
+Para cambios de interfaz:
+- Levantar app afectada y validar flujo en navegador.
+- Ejecutar E2E o scripts de verificación disponibles cuando aplique.
+- Adjuntar screenshot/captura en la PR final.
+
+---
+
+## 9) Pendientes abiertos (sin inventar)
+
+- Estandarizar comando oficial de typecheck backend completo.
+- Formalizar alcance mínimo obligatorio de tests por tipo de cambio.
+- Definir política única para promoción de apps independientes al ecosistema principal.
