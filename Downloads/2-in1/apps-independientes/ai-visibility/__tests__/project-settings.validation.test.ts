@@ -92,26 +92,29 @@ describe('project settings validation', () => {
 
   it('validates prompt payload with multiple tags', () => {
     const result = validatePromptInput({
-      title: 'Track LLM ranking for homepage',
       promptText: 'How visible is Acme in AI overviews?',
-      objective: 'Weekly visibility check',
+      country: 'us',
       language: 'es-mx',
-      status: 'active',
+      isActive: true,
+      priority: 10,
+      notes: 'Weekly visibility check',
+      intentClassification: 'navigational',
       tagIds: ['tag1', 'tag2', 'tag1']
     });
 
     expect(result.values).toBeDefined();
-    expect(result.values?.status).toBe('ACTIVE');
+    expect(result.values?.country).toBe('US');
+    expect(result.values?.priority).toBe(10);
     expect(result.values?.tagIds).toEqual(['tag1', 'tag2']);
   });
 
-  it('rejects invalid prompt status', () => {
+  it('rejects invalid prompt priority', () => {
     const result = validatePromptInput({
-      title: 'Bad status',
       promptText: 'Prompt text',
-      status: 'invalid'
+      country: 'US',
+      priority: 0
     });
 
-    expect(result.errors?.status).toMatch(/must be one of/i);
+    expect(result.errors?.priority).toMatch(/between 1 and 999/i);
   });
 });

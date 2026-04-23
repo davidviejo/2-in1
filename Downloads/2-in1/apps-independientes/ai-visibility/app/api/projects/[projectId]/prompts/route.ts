@@ -40,6 +40,15 @@ function parseTagIds(raw: string | null): string[] {
   );
 }
 
+function parsePositiveInt(raw: string | null, fallback: number): number {
+  if (!raw) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 export async function GET(
   request: NextRequest,
   context: {
@@ -55,54 +64,104 @@ export async function GET(
   }
 
   const query = request.nextUrl.searchParams.get('q')?.trim() ?? '';
+  const country = request.nextUrl.searchParams.get('country')?.trim().toUpperCase() ?? '';
+  const language = request.nextUrl.searchParams.get('language')?.trim().toLowerCase() ?? '';
+  const intentClassification = request.nextUrl.searchParams.get('intentClassification')?.trim() ?? '';
+  const activeFilter = request.nextUrl.searchParams.get('active');
   const tagIds = parseTagIds(request.nextUrl.searchParams.get('tagIds'));
+  const page = parsePositiveInt(request.nextUrl.searchParams.get('page'), 1);
+  const pageSize = Math.min(parsePositiveInt(request.nextUrl.searchParams.get('pageSize'), 20), 100);
 
-  const prompts = await prisma.prompt.findMany({
-    where: {
-      projectId,
-      deletedAt: null,
-      ...(query
-        ? {
-            OR: [
-              { title: { contains: query, mode: 'insensitive' } },
-              { promptText: { contains: query, mode: 'insensitive' } }
-            ]
-          }
-        : {}),
-      ...(tagIds.length > 0
-        ? {
-            AND: tagIds.map((tagId) => ({
-              promptTags: {
-                some: {
-                  tagId,
-                  tag: { deletedAt: null }
+  const where = {
+    projectId,
+    deletedAt: null,
+    ...(query
+      ? {
+          OR: [{ promptText: { contains: query, mode: 'insensitive' as const } }, { title: { contains: query, mode: 'insensitive' as const } }, { notes: { contains: query, mode: 'insensitive' as const } }]
+        }
+      : {}),
+    ...(country ? { country } : {}),
+    ...(language ? { language } : {}),
+    ...(intentClassification ? { intentClassification: { contains: intentClassification, mode: 'insensitive' as const } } : {}),
+    ...(activeFilter === 'active' ? { isActive: true } : {}),
+    ...(activeFilter === 'inactive' ? { isActive: false } : {}),
+    ...(tagIds.length > 0
+      ? {
+          AND: tagIds.map((tagId) => ({
+            promptTags: {
+              some: {
+                tagId,
+                tag: { deletedAt: null }
+              }
+            }
+          }))
+        }
+      : {})
+  };
+
+  const [total, prompts] = await Promise.all([
+    prisma.prompt.count({ where }),
+    prisma.prompt.findMany({
+      where,
+      include: {
+        promptTags: {
+          where: { tag: { deletedAt: null } },
+          include: { tag: true },
+          orderBy: { tag: { name: 'asc' } }
+        },
+        runs: {
+          orderBy: { executedAt: 'desc' },
+          include: {
+            responses: {
+              include: {
+                citations: { select: { id: true } },
+                brandMentions: {
+                  where: { mentionType: 'OWN_BRAND' },
+                  select: { id: true }
                 }
               }
-            }))
-          }
-        : {})
-    },
-    include: {
-      promptTags: {
-        where: {
-          tag: {
-            deletedAt: null
-          }
-        },
-        include: {
-          tag: true
-        },
-        orderBy: {
-          tag: {
-            name: 'asc'
+            }
           }
         }
-      }
-    },
-    orderBy: [{ updatedAt: 'desc' }]
+      },
+      orderBy: [{ priority: 'asc' }, { updatedAt: 'desc' }],
+      skip: (page - 1) * pageSize,
+      take: pageSize
+    })
+  ]);
+
+  const rows = prompts.map((prompt: (typeof prompts)[number]) => {
+    const responses = prompt.runs.flatMap((run: (typeof prompt.runs)[number]) => run.responses);
+    const responsesCount = responses.length;
+    const responsesWithMention = responses.filter((response: (typeof responses)[number]) => response.brandMentions.length > 0).length;
+    const responsesWithCitations = responses.filter((response: (typeof responses)[number]) => response.citations.length > 0).length;
+
+    return {
+      id: prompt.id,
+      promptText: prompt.promptText,
+      country: prompt.country,
+      language: prompt.language,
+      isActive: prompt.isActive,
+      priority: prompt.priority,
+      notes: prompt.notes,
+      intentClassification: prompt.intentClassification,
+      promptTags: prompt.promptTags,
+      responsesCount,
+      mentionRate: responsesCount > 0 ? Number((responsesWithMention / responsesCount).toFixed(4)) : null,
+      citationRate: responsesCount > 0 ? Number((responsesWithCitations / responsesCount).toFixed(4)) : null,
+      lastRunDate: prompt.runs[0]?.executedAt ?? null
+    };
   });
 
-  return NextResponse.json({ prompts });
+  return NextResponse.json({
+    prompts: rows,
+    pagination: {
+      page,
+      pageSize,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / pageSize))
+    }
+  });
 }
 
 export async function POST(
@@ -146,6 +205,9 @@ export async function POST(
   const prompt = await prisma.prompt.create({
     data: {
       projectId,
+      title: rest.promptText.slice(0, 80),
+      objective: rest.notes,
+      status: rest.isActive ? 'ACTIVE' : 'PAUSED',
       ...rest,
       promptTags: {
         create: tagIds.map((tagId) => ({ tagId }))

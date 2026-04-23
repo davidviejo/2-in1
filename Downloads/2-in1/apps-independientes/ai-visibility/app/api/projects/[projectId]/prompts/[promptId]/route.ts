@@ -63,6 +63,9 @@ export async function PATCH(
   const prompt = await prisma.prompt.update({
     where: { id: promptId },
     data: {
+      title: rest.promptText.slice(0, 80),
+      objective: rest.notes,
+      status: rest.isActive ? 'ACTIVE' : 'PAUSED',
       ...rest,
       promptTags: {
         deleteMany: {},

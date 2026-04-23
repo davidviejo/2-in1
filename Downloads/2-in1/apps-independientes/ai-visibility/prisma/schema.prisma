@@ -181,7 +181,12 @@ model Prompt {
   title            String
   promptText       String
   objective        String?
+  country          String       @default("US")
   language         String       @default("es")
+  isActive         Boolean      @default(true)
+  priority         Int          @default(100)
+  notes            String?
+  intentClassification String?
   status           PromptStatus @default(ACTIVE)
   scheduleCron     String?
   scheduleTimezone String?
@@ -196,6 +201,7 @@ model Prompt {
   kpiSnapshots     KpiSnapshot[]
 
   @@index([projectId, status])
+  @@index([projectId, isActive, priority])
   @@index([projectId, isScheduleActive])
   @@index([deletedAt])
   @@map("prompt")
