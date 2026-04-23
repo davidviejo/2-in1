@@ -107,6 +107,7 @@ npm run typecheck  # tsc --noEmit
 npm run test       # vitest (run)
 npm run test:watch # vitest modo watch
 npm run db:up      # levanta PostgreSQL local
+npm run db:seed    # carga dataset demo de reporting (1 proyecto dental + data histórica)
 npm run dev:local  # db + prisma + app
 ```
 
