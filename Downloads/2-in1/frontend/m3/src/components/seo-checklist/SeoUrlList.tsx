@@ -129,7 +129,7 @@ export const SeoUrlList: React.FC<Props> = ({
       'Cluster',
       ...CHECKLIST_POINTS.map((p) => p.label),
     ];
-    const exportPages = filteredPages;
+    const exportPages = pages;
 
     const summaryData = exportPages.map((p) => [
       p.url,
@@ -207,7 +207,7 @@ export const SeoUrlList: React.FC<Props> = ({
             cluster.kwObjetivo,
             cluster.intent || '',
             cluster.coverage || 'OPPORTUNITY',
-            (cluster.topUrlsSample || cluster.urls || []).slice(0, 3).join('\n'),
+                (cluster.topUrlsSample || cluster.urls || []).join('\n'),
           ]);
 
           // Variations
