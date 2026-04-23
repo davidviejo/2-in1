@@ -345,17 +345,6 @@ export const querySearchAnalyticsPaged = async (
     });
   }
 
-  if ((hasPage || hasQuery) && dateRangeDays > 31 && !dateChunkSizeDays) {
-    activeStartDate = addDays(endDate, -30);
-    truncatedReason = truncatedReason || 'safety_stop';
-    console.warn('GSC_FALLBACK_APPLIED', {
-      reason: 'long_date_range_reduced',
-      siteUrl: normalizedSiteUrl,
-      originalRange: `${startDate}..${endDate}`,
-      fallbackRange: `${activeStartDate}..${endDate}`,
-    });
-  }
-
   const chunkWindowDays = dateChunkSizeDays
     || ((activeDimensions.includes('page') || activeDimensions.includes('query')) ? HIGH_CARDINALITY_DAILY_WINDOW_DAYS : STANDARD_WEEKLY_WINDOW_DAYS);
   const chunks = shouldChunkDates ? buildDateChunks(activeStartDate, activeEndDate, chunkWindowDays) : [{ startDate: activeStartDate, endDate: activeEndDate }];

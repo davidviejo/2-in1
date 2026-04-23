@@ -29,8 +29,6 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const WORKER_ANALYSIS_CHUNK_SIZE = 20000;
 const WORKER_ANALYSIS_EXTREME_ROW_GUARDRAIL = 2000000;
-const GSC_PAGE_DATE_MAX_PAGES = 8;
-const GSC_PAGE_DATE_MAX_ROWS = 200000;
 
 const buildEmptyInsightResult = (title: string): GSCInsights['quickWins'] => ({
   title,
@@ -277,7 +275,13 @@ export const useGSCData = (
       };
 
       let evolutionLoadDegraded = false;
-      const [dateData, comparisonDateData, currentQueryPageData, previousQueryPageData, pageDateData] =
+      const [
+        dateData,
+        comparisonDateData,
+        currentQueryPageResponse,
+        previousQueryPageResponse,
+        pageDateData,
+      ] =
         await Promise.all([
           runStepWithRetry(
             progressSteps[0],
@@ -316,7 +320,7 @@ export const useGSCData = (
               dimensions: ['query', 'page'],
               rowLimit: 1000,
               allowHighCardinality: true,
-            }).then((result) => result.rows || []),
+            }),
             updateCurrentStepLabel,
           ).then((result) => {
             updateProgress(progressSteps[3]);
@@ -331,7 +335,7 @@ export const useGSCData = (
               dimensions: ['query', 'page'],
               rowLimit: 1000,
               allowHighCardinality: true,
-            }).then((result) => result.rows || []),
+            }),
             updateCurrentStepLabel,
           ).then((result) => {
             updateProgress(progressSteps[4]);
@@ -348,8 +352,6 @@ export const useGSCData = (
                   dimensions: ['page', 'date'],
                   rowLimit: 25000,
                   searchType: 'web',
-                  maxPages: GSC_PAGE_DATE_MAX_PAGES,
-                  maxRows: GSC_PAGE_DATE_MAX_ROWS,
                   allowHighCardinality: true,
                 });
               } catch (pageDateError) {
@@ -380,8 +382,17 @@ export const useGSCData = (
         showWarning('No se pudo cargar toda la evolución por URL en esta propiedad grande. Se mostrará el resto del panel.');
       }
 
-      const analysisCurrentRows = currentQueryPageData || [];
-      const analysisPreviousRows = previousQueryPageData || [];
+      const analysisCurrentRows = currentQueryPageResponse.rows || [];
+      const analysisPreviousRows = previousQueryPageResponse.rows || [];
+      const currentPartialReason = currentQueryPageResponse.metadata?.truncatedReason;
+      const previousPartialReason = previousQueryPageResponse.metadata?.truncatedReason;
+
+      if (currentQueryPageResponse.metadata?.isPartial || previousQueryPageResponse.metadata?.isPartial) {
+        const reasons = [currentPartialReason, previousPartialReason].filter(Boolean).join(', ');
+        showWarning(
+          `GSC devolvió un dataset parcial para query+page (${reasons || 'sin motivo detallado'}). Los insights pueden ser incompletos.`,
+        );
+      }
       const totalRowsForAnalysis = analysisCurrentRows.length + analysisPreviousRows.length;
 
       if (totalRowsForAnalysis > WORKER_ANALYSIS_EXTREME_ROW_GUARDRAIL) {
@@ -463,14 +474,14 @@ export const useGSCData = (
         resolvedSelectedSite,
         finalStartDate,
         finalEndDate,
-        currentQueryPageData || [],
+        analysisCurrentRows,
       );
 
       return {
         gscData: dateData,
         comparisonGscData: comparisonDateData,
-        queryPageData: currentQueryPageData || [],
-        comparisonQueryPageData: previousQueryPageData || [],
+        queryPageData: analysisCurrentRows,
+        comparisonQueryPageData: analysisPreviousRows,
         pageDateData: pageDateData.rows || [],
         insights,
         comparisonPeriod: {
