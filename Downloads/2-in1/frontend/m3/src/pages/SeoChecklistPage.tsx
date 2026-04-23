@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSeoChecklist } from '../hooks/useSeoChecklist';
+import { useProject } from '../context/ProjectContext';
 import { SeoUrlList } from '../components/seo-checklist/SeoUrlList';
 import { SeoChecklistDetail } from '../components/seo-checklist/SeoChecklistDetail';
 import { ImportUrlsModal } from '../components/seo-checklist/ImportUrlsModal';
@@ -20,7 +21,12 @@ import { AutoClusterizationPanel } from '../components/seo-checklist/AutoCluster
 import { AutoAssignKeywordsPanel } from '../components/seo-checklist/AutoAssignKeywordsPanel';
 
 const SeoChecklistPage: React.FC = () => {
+  const { currentClientId } = useProject();
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
+  const legacyBatchJobsKey = 'mediaflow_batch_jobs';
+  const batchJobsStorageKey = currentClientId
+    ? `mediaflow_batch_jobs_${currentClientId}`
+    : legacyBatchJobsKey;
 
   useEffect(() => {
     const fetchCaps = async () => {
@@ -69,26 +75,43 @@ const SeoChecklistPage: React.FC = () => {
 
 
   // Batch Job State
-  const [jobs, setJobs] = useState<BatchJobStatus[]>(() => {
-    const savedJobs = localStorage.getItem('mediaflow_batch_jobs');
-    if (!savedJobs) return [];
-    try {
-      const parsed = JSON.parse(savedJobs);
-      if (!Array.isArray(parsed)) {
-        return [];
-      }
-
-      return parsed.filter((job): job is BatchJobStatus => Boolean(job?.id));
-    } catch (e) {
-      console.error('Failed to parse saved jobs', e);
-      return [];
-    }
-  });
+  const [jobs, setJobs] = useState<BatchJobStatus[]>([]);
   const [isMonitorOpen, setIsMonitorOpen] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem('mediaflow_batch_jobs', JSON.stringify(jobs));
-  }, [jobs]);
+    const parseStoredJobs = (rawValue: string | null) => {
+      if (!rawValue) return [];
+      try {
+        const parsed = JSON.parse(rawValue);
+        if (!Array.isArray(parsed)) return [];
+        return parsed.filter((job): job is BatchJobStatus => Boolean(job?.id));
+      } catch (e) {
+        console.error('Failed to parse saved jobs', e);
+        return [];
+      }
+    };
+
+    const scopedJobs = parseStoredJobs(localStorage.getItem(batchJobsStorageKey));
+    if (scopedJobs.length > 0) {
+      setJobs(scopedJobs);
+      return;
+    }
+
+    if (batchJobsStorageKey !== legacyBatchJobsKey) {
+      const legacyJobs = parseStoredJobs(localStorage.getItem(legacyBatchJobsKey));
+      if (legacyJobs.length > 0) {
+        setJobs(legacyJobs);
+        localStorage.setItem(batchJobsStorageKey, JSON.stringify(legacyJobs));
+        return;
+      }
+    }
+
+    setJobs([]);
+  }, [batchJobsStorageKey]);
+
+  useEffect(() => {
+    localStorage.setItem(batchJobsStorageKey, JSON.stringify(jobs));
+  }, [batchJobsStorageKey, jobs]);
 
   const handleRunBatch = async (selectedPages: SeoPage[], config: AnalysisConfigPayload) => {
     // Construct payload
