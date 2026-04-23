@@ -95,6 +95,7 @@ interface LayoutProps {
   currentClientId?: string;
   onSwitchClient?: (id: string) => void;
   onAddClient?: (input: NewClientInput) => void;
+  onRenameClient?: (id: string, name: string) => void;
   onDeleteClient?: (id: string) => void;
   // Notes Props
   generalNotes?: Note[];
@@ -121,6 +122,7 @@ const Layout: React.FC<LayoutProps> = ({
   currentClientId,
   onSwitchClient,
   onAddClient,
+  onRenameClient,
   onDeleteClient,
   generalNotes = [],
   projectNotes = [],
@@ -438,13 +440,14 @@ const Layout: React.FC<LayoutProps> = ({
 
         {/* Right Side Actions */}
         <div className="hidden lg:flex items-center gap-3">
-          {clients && onSwitchClient && onAddClient && onDeleteClient && (
+          {clients && onSwitchClient && onAddClient && onRenameClient && onDeleteClient && (
             <div className="w-64">
               <ClientSwitcher
                 clients={clients}
                 currentClientId={currentClientId || ''}
                 onSwitchClient={onSwitchClient}
                 onAddClient={onAddClient}
+                onRenameClient={onRenameClient}
                 onDeleteClient={onDeleteClient}
               />
             </div>
@@ -472,12 +475,13 @@ const Layout: React.FC<LayoutProps> = ({
         <div className="px-4 pb-4 flex-1 overflow-y-auto custom-scrollbar flex flex-col">
           {/* Mobile Client Switcher */}
           <div className="lg:hidden mb-4">
-            {clients && onSwitchClient && onAddClient && onDeleteClient && (
+            {clients && onSwitchClient && onAddClient && onRenameClient && onDeleteClient && (
               <ClientSwitcher
                 clients={clients}
                 currentClientId={currentClientId || ''}
                 onSwitchClient={onSwitchClient}
                 onAddClient={onAddClient}
+                onRenameClient={onRenameClient}
                 onDeleteClient={onDeleteClient}
               />
             )}
