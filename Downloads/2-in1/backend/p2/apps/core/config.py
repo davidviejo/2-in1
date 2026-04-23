@@ -6,7 +6,10 @@ class Config:
     # Basic Config
     SECRET_KEY = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 
-    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16 MB max upload size
+    # Upload size limit (Flask/Werkzeug).
+    # Can be increased for large project import backups via env var.
+    MAX_CONTENT_LENGTH_MB = max(1, int(os.environ.get('MAX_CONTENT_LENGTH_MB', 128)))
+    MAX_CONTENT_LENGTH = MAX_CONTENT_LENGTH_MB * 1024 * 1024
 
     # Database
     DATABASE_URL = os.environ.get('DATABASE_URL')
