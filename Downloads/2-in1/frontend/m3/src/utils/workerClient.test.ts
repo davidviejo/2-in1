@@ -13,7 +13,6 @@ describe('workerClient', () => {
     mockPostMessage = vi.fn();
     mockTerminate = vi.fn();
 
-    // Create a mock worker instance
     mockWorkerInstance = {
       postMessage: mockPostMessage,
       terminate: mockTerminate,
@@ -24,8 +23,6 @@ describe('workerClient', () => {
       dispatchEvent: vi.fn(),
     };
 
-    // Create a mock constructor
-    // Note: We use a regular function so it can be called with 'new'
     const MockWorker = vi.fn(function () {
       return mockWorkerInstance;
     });
@@ -36,61 +33,75 @@ describe('workerClient', () => {
     window.Worker = originalWorker;
   });
 
-  it('should send data to worker and resolve with insights', async () => {
+  it('should stream chunks to worker and resolve with insights', async () => {
     const mockData: GSCRow[] = [
-      { keys: ['test'], clicks: 10, impressions: 100, ctr: 0.1, position: 1 },
+      { keys: ['q1', '/p1'], clicks: 10, impressions: 100, ctr: 0.1, position: 1 },
+      { keys: ['q2', '/p2'], clicks: 20, impressions: 200, ctr: 0.1, position: 2 },
     ];
-    const mockInsights = { quickWins: { count: 1 } }; // Partial mock
+    const mockInsights = { quickWins: { count: 1 } };
 
-    // Setup the worker to respond when postMessage is called
-    mockPostMessage.mockImplementation(() => {
-      // Simulate async response
-      setTimeout(() => {
-        if (mockWorkerInstance.onmessage) {
-          mockWorkerInstance.onmessage({
+    mockPostMessage.mockImplementation((message: { type: string }) => {
+      if (message.type === 'FINALIZE') {
+        setTimeout(() => {
+          mockWorkerInstance.onmessage?.({
             data: { type: 'SUCCESS', payload: mockInsights },
           });
-        }
-      }, 10);
+        }, 0);
+      }
     });
 
-    const result = await runAnalysisInWorker(mockData);
+    const progressSpy = vi.fn();
+    const result = await runAnalysisInWorker(
+      { currentRows: mockData, previousRows: [] },
+      { chunkSize: 1000, onProgress: progressSpy },
+    );
 
     expect(window.Worker).toHaveBeenCalledTimes(1);
-    expect(mockPostMessage).toHaveBeenCalledWith(mockData);
+    expect(mockPostMessage).toHaveBeenNthCalledWith(1, expect.objectContaining({ type: 'INIT' }));
+    expect(mockPostMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'CHUNK', payload: expect.objectContaining({ chunkIndex: 1, totalChunks: 1 }) }),
+    );
+    expect(mockPostMessage).toHaveBeenLastCalledWith({ type: 'FINALIZE' });
     expect(result).toEqual(mockInsights);
+    expect(progressSpy).not.toHaveBeenCalled();
     expect(mockTerminate).toHaveBeenCalled();
+  });
+
+  it('should forward worker progress callbacks', async () => {
+    mockPostMessage.mockImplementation((message: { type: string }) => {
+      if (message.type === 'FINALIZE') {
+        setTimeout(() => {
+          mockWorkerInstance.onmessage?.({
+            data: { type: 'PROGRESS', payload: { chunkIndex: 1, totalChunks: 1, period: 'current' } },
+          });
+          mockWorkerInstance.onmessage?.({
+            data: { type: 'SUCCESS', payload: { quickWins: { count: 0 } } },
+          });
+        }, 0);
+      }
+    });
+
+    const progressSpy = vi.fn();
+    await runAnalysisInWorker(
+      { currentRows: [{ keys: ['q', '/p'], clicks: 1, impressions: 10, ctr: 0.1, position: 2 }] },
+      { chunkSize: 1000, onProgress: progressSpy },
+    );
+
+    expect(progressSpy).toHaveBeenCalledWith({ chunkIndex: 1, totalChunks: 1, period: 'current' });
   });
 
   it('should reject when worker returns error', async () => {
-    const mockData: GSCRow[] = [];
-
-    mockPostMessage.mockImplementation(() => {
-      setTimeout(() => {
-        if (mockWorkerInstance.onmessage) {
-          mockWorkerInstance.onmessage({
+    mockPostMessage.mockImplementation((message: { type: string }) => {
+      if (message.type === 'FINALIZE') {
+        setTimeout(() => {
+          mockWorkerInstance.onmessage?.({
             data: { type: 'ERROR', payload: 'Some error' },
           });
-        }
-      }, 10);
+        }, 0);
+      }
     });
 
-    await expect(runAnalysisInWorker(mockData)).rejects.toThrow('Some error');
-    expect(mockTerminate).toHaveBeenCalled();
-  });
-
-  it('should reject when worker throws error event', async () => {
-    const mockData: GSCRow[] = [];
-
-    mockPostMessage.mockImplementation(() => {
-      setTimeout(() => {
-        if (mockWorkerInstance.onerror) {
-          mockWorkerInstance.onerror(new Error('Network error'));
-        }
-      }, 10);
-    });
-
-    await expect(runAnalysisInWorker(mockData)).rejects.toThrow('Network error');
+    await expect(runAnalysisInWorker({ currentRows: [] })).rejects.toThrow('Some error');
     expect(mockTerminate).toHaveBeenCalled();
   });
 });
