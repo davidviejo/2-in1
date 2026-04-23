@@ -46,6 +46,12 @@ enum BrandMentionType {
   COMPETITOR
 }
 
+enum ResponseStatus {
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
 enum SnapshotGranularity {
   DAY
   WEEK
@@ -259,7 +265,12 @@ model Response {
   runId           String
   ordinal         Int                    @default(1)
   rawText         String
-  normalizedText  String?
+  cleanedText     String?
+  status          ResponseStatus         @default(SUCCEEDED)
+  language        String?
+  mentionDetected Boolean                @default(false)
+  mentionType     BrandMentionType?
+  sentiment       String?
   tokenIn         Int?
   tokenOut        Int?
   latencyMs       Int?

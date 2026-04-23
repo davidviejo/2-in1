@@ -35,12 +35,32 @@ describe('run tracking validation', () => {
     const result = validateUpdateRunStatusInput({
       status: 'succeeded',
       startedAt: '2026-04-23T10:00:00.000Z',
-      completedAt: '2026-04-23T10:10:00.000Z'
+      completedAt: '2026-04-23T10:10:00.000Z',
+      response: {
+        rawText: 'Original AI output',
+        cleanedText: 'Original AI output',
+        status: 'succeeded',
+        language: 'en',
+        mentionDetected: true,
+        mentionType: 'own_brand',
+        sentiment: 'positive'
+      }
     });
 
     expect(result.values).toBeDefined();
     expect(result.values?.status).toBe('SUCCEEDED');
     expect(result.values?.completedAt?.toISOString()).toBe('2026-04-23T10:10:00.000Z');
+    expect(result.values?.response?.mentionType).toBe('OWN_BRAND');
+  });
+
+  it('requires response payload for terminal statuses', () => {
+    const result = validateUpdateRunStatusInput({
+      status: 'canceled',
+      completedAt: '2026-04-23T10:10:00.000Z'
+    });
+
+    expect(result.values).toBeUndefined();
+    expect(result.errors?.response).toMatch(/require response/i);
   });
 
   it('parses list filters and validates paging', () => {
