@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { persistRunResponse } from '@/lib/responses/persistence';
 
 import type { CreateRunInput, RunListFilters, UpdateRunStatusInput } from './validation';
 
@@ -62,13 +63,19 @@ export async function updateRunStatus(projectId: string, runId: string, payload:
     nextData.startedAt = new Date();
   }
 
-  return prisma.run.update({
+  const run = await prisma.run.update({
     where: { id: runId },
     data: nextData,
     include: {
       prompt: { select: { id: true, title: true } }
     }
   });
+
+  if (payload.response) {
+    await persistRunResponse(run.id, payload.response);
+  }
+
+  return run;
 }
 
 function getRunWhere(filters: RunListFilters) {

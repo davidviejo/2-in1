@@ -266,7 +266,12 @@ async function main() {
           runId: run.id,
           ordinal: 1,
           rawText: buildResponseText(sentiment, prompt.title, ownAlias.alias, competitor.name),
-          normalizedText: `${sentiment} sentiment`,
+          cleanedText: `${sentiment} sentiment`,
+          status: 'SUCCEEDED',
+          language: 'es',
+          mentionDetected: true,
+          mentionType: 'OWN_BRAND',
+          sentiment,
           tokenIn: 180 + (promptIndex * 3),
           tokenOut: 240 + (modelIndex * 25),
           latencyMs: 900 + (modelIndex * 180) + (promptIndex * 12)

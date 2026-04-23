@@ -1,6 +1,8 @@
 export type RunStatusValue = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELED';
 export type RunSourceValue = 'UI' | 'API' | 'BACKFILL' | 'IMPORT_FILE';
 export type RunTriggerTypeValue = 'MANUAL' | 'SCHEDULED' | 'IMPORT' | 'API';
+export type ResponseStatusValue = 'SUCCEEDED' | 'FAILED' | 'CANCELED';
+export type MentionTypeValue = 'OWN_BRAND' | 'COMPETITOR';
 
 export type ValidationResult<T> = {
   values?: T;
@@ -23,6 +25,15 @@ export type UpdateRunStatusInput = {
   errorMessage: string | null;
   startedAt: Date | null;
   completedAt: Date | null;
+  response: {
+    rawText: string;
+    cleanedText: string;
+    status: ResponseStatusValue;
+    language: string | null;
+    mentionDetected: boolean;
+    mentionType: MentionTypeValue | null;
+    sentiment: string | null;
+  } | null;
 };
 
 export type RunListFilters = {
@@ -46,8 +57,11 @@ const RUN_SOURCE_LIST = ['UI', 'API', 'BACKFILL', 'IMPORT_FILE'] as const;
 const RUN_TRIGGER_LIST = ['MANUAL', 'SCHEDULED', 'IMPORT', 'API'] as const;
 
 const RUN_STATUS_VALUES = new Set<RunStatusValue>(RUN_STATUS_LIST);
+const TERMINAL_RUN_STATUSES = new Set<RunStatusValue>(['SUCCEEDED', 'FAILED', 'CANCELED']);
 const RUN_SOURCE_VALUES = new Set<RunSourceValue>(RUN_SOURCE_LIST);
 const RUN_TRIGGER_VALUES = new Set<RunTriggerTypeValue>(RUN_TRIGGER_LIST);
+const RESPONSE_STATUS_VALUES = new Set<ResponseStatusValue>(['SUCCEEDED', 'FAILED', 'CANCELED']);
+const MENTION_TYPE_VALUES = new Set<MentionTypeValue>(['OWN_BRAND', 'COMPETITOR']);
 
 function asTrimmedString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
@@ -147,6 +161,7 @@ export function validateUpdateRunStatusInput(payload: unknown): ValidationResult
 
   const startedAtRaw = body.startedAt;
   const completedAtRaw = body.completedAt;
+  const responseRaw = body.response;
 
   const startedAt = typeof startedAtRaw === 'string' ? parseDate(startedAtRaw) : startedAtRaw === null || startedAtRaw === undefined ? null : undefined;
   const completedAt = typeof completedAtRaw === 'string' ? parseDate(completedAtRaw) : completedAtRaw === null || completedAtRaw === undefined ? null : undefined;
@@ -175,6 +190,70 @@ export function validateUpdateRunStatusInput(payload: unknown): ValidationResult
     errors.errorMessage = 'errorMessage is only allowed for FAILED status.';
   }
 
+  let response: UpdateRunStatusInput['response'] = null;
+
+  if (responseRaw !== undefined && responseRaw !== null && typeof responseRaw !== 'object') {
+    errors.response = 'response must be an object when provided.';
+  }
+
+  if (responseRaw && typeof responseRaw === 'object') {
+    const responseBody = responseRaw as Record<string, unknown>;
+    const rawText = asTrimmedString(responseBody.rawText);
+    const cleanedText = asTrimmedString(responseBody.cleanedText);
+    const responseStatusRaw = asTrimmedString(responseBody.status).toUpperCase();
+    const responseStatus = responseStatusRaw as ResponseStatusValue;
+    const languageRaw = responseBody.language;
+    const mentionDetectedRaw = responseBody.mentionDetected;
+    const mentionDetected = mentionDetectedRaw === true ? true : mentionDetectedRaw === false ? false : null;
+    const mentionTypeRaw = asTrimmedString(responseBody.mentionType).toUpperCase();
+    const mentionType = mentionTypeRaw ? (mentionTypeRaw as MentionTypeValue) : null;
+    const sentimentRaw = responseBody.sentiment;
+
+    if (!rawText) {
+      errors.responseRawText = 'response.rawText is required when response is provided.';
+    }
+
+    if (!RESPONSE_STATUS_VALUES.has(responseStatus)) {
+      errors.responseStatus = `response.status must be one of: ${Array.from(RESPONSE_STATUS_VALUES).join(', ')}.`;
+    }
+
+    if (languageRaw !== undefined && languageRaw !== null && typeof languageRaw !== 'string') {
+      errors.responseLanguage = 'response.language must be a string when provided.';
+    }
+
+    if (mentionDetected === null) {
+      errors.responseMentionDetected = 'response.mentionDetected must be boolean.';
+    }
+
+    if (mentionType && !MENTION_TYPE_VALUES.has(mentionType)) {
+      errors.responseMentionType = `response.mentionType must be one of: ${Array.from(MENTION_TYPE_VALUES).join(', ')}.`;
+    }
+
+    if (sentimentRaw !== undefined && sentimentRaw !== null && typeof sentimentRaw !== 'string') {
+      errors.responseSentiment = 'response.sentiment must be a string when provided.';
+    }
+
+    if (mentionDetected === false && mentionType) {
+      errors.responseMentionType = 'response.mentionType is only allowed when mentionDetected is true.';
+    }
+
+    if (Object.keys(errors).length === 0) {
+      response = {
+        rawText,
+        cleanedText,
+        status: responseStatus,
+        language: typeof languageRaw === 'string' ? languageRaw.trim() || null : null,
+        mentionDetected: mentionDetected ?? false,
+        mentionType,
+        sentiment: typeof sentimentRaw === 'string' ? sentimentRaw.trim() || null : null
+      };
+    }
+  }
+
+  if (TERMINAL_RUN_STATUSES.has(status) && !response) {
+    errors.response = 'Terminal statuses require response payload for auditing.';
+  }
+
   if (Object.keys(errors).length > 0) {
     return { errors };
   }
@@ -184,7 +263,8 @@ export function validateUpdateRunStatusInput(payload: unknown): ValidationResult
       status,
       errorMessage: status === 'FAILED' ? asTrimmedString(errorMessageRaw) : null,
       startedAt: startedAt ?? null,
-      completedAt: completedAt ?? null
+      completedAt: completedAt ?? null,
+      response
     }
   };
 }
