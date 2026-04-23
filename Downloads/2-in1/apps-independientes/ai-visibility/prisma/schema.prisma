@@ -7,9 +7,349 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Workspace {
-  id        String   @id @default(cuid())
-  name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum PromptStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum TagType {
+  TOPIC
+  INTENT
+  MARKET
+  CAMPAIGN
+  CUSTOM
+}
+
+enum RunStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+enum RunTriggerType {
+  MANUAL
+  SCHEDULED
+  IMPORT
+  API
+}
+
+enum RunSource {
+  UI
+  API
+  BACKFILL
+  IMPORT_FILE
+}
+
+enum BrandMentionType {
+  OWN_BRAND
+  COMPETITOR
+}
+
+enum SnapshotGranularity {
+  DAY
+  WEEK
+  MONTH
+  CUSTOM
+}
+
+enum ExportJobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+enum ExportFormat {
+  CSV
+  JSON
+  XLSX
+}
+
+model User {
+  id            String      @id @default(cuid())
+  email         String      @unique
+  name          String
+  isActive      Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  deletedAt     DateTime?
+  projectsOwned Project[]
+  prompts       Prompt[]
+  runsTriggered Run[]
+  exportJobs    ExportJob[]
+
+  @@index([isActive])
+  @@map("user")
+}
+
+model Project {
+  id             String          @id @default(cuid())
+  ownerUserId    String
+  name           String
+  slug           String          @unique
+  description    String?
+  status         ProjectStatus   @default(ACTIVE)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  deletedAt      DateTime?
+  owner          User            @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
+  brandAliases   BrandAlias[]
+  competitors    Competitor[]
+  tags           Tag[]
+  prompts        Prompt[]
+  runs           Run[]
+  brandMentions  ResponseBrandMention[]
+  kpiSnapshots   KpiSnapshot[]
+  exportJobs     ExportJob[]
+
+  @@index([ownerUserId])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("project")
+}
+
+model BrandAlias {
+  id              String                @id @default(cuid())
+  projectId       String
+  alias           String
+  normalizedAlias String
+  notes           String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  project         Project               @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  mentions        ResponseBrandMention[]
+
+  @@unique([projectId, normalizedAlias])
+  @@index([projectId])
+  @@map("brand_alias")
+}
+
+model Competitor {
+  id            String                @id @default(cuid())
+  projectId     String
+  name          String
+  domain        String?
+  category      String?
+  isActive      Boolean               @default(true)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  deletedAt     DateTime?
+  project       Project               @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  mentions      ResponseBrandMention[]
+  kpiSnapshots  KpiSnapshot[]
+
+  @@unique([projectId, name])
+  @@index([projectId])
+  @@index([projectId, domain])
+  @@index([deletedAt])
+  @@map("competitor")
+}
+
+model Tag {
+  id         String      @id @default(cuid())
+  projectId  String
+  name       String
+  type       TagType
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  deletedAt  DateTime?
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  promptTags PromptTag[]
+
+  @@unique([projectId, type, name])
+  @@index([projectId, type])
+  @@index([deletedAt])
+  @@map("tag")
+}
+
+model Prompt {
+  id               String       @id @default(cuid())
+  projectId        String
+  createdByUserId  String?
+  title            String
+  promptText       String
+  objective        String?
+  language         String       @default("es")
+  status           PromptStatus @default(ACTIVE)
+  scheduleCron     String?
+  scheduleTimezone String?
+  isScheduleActive Boolean      @default(false)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  deletedAt        DateTime?
+  project          Project      @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  createdBy        User?        @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+  promptTags       PromptTag[]
+  runs             Run[]
+  kpiSnapshots     KpiSnapshot[]
+
+  @@index([projectId, status])
+  @@index([projectId, isScheduleActive])
+  @@index([deletedAt])
+  @@map("prompt")
+}
+
+model PromptTag {
+  promptId   String
+  tagId      String
+  createdAt  DateTime @default(now())
+  prompt     Prompt   @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  tag        Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([promptId, tagId])
+  @@index([tagId])
+  @@map("prompt_tag")
+}
+
+model Run {
+  id                String         @id @default(cuid())
+  projectId         String
+  promptId          String
+  triggeredByUserId String?
+  status            RunStatus      @default(QUEUED)
+  triggerType       RunTriggerType @default(MANUAL)
+  source            RunSource      @default(UI)
+  provider          String
+  model             String
+  environment       String?
+  importBatchKey    String?
+  externalRef       String?
+  scheduledFor      DateTime?
+  executedAt        DateTime       @default(now())
+  startedAt         DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  project           Project        @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  prompt            Prompt         @relation(fields: [promptId], references: [id], onDelete: Restrict)
+  triggeredBy       User?          @relation(fields: [triggeredByUserId], references: [id], onDelete: SetNull)
+  responses         Response[]
+
+  @@index([projectId, executedAt])
+  @@index([projectId, model, executedAt])
+  @@index([promptId, executedAt])
+  @@index([triggerType, scheduledFor])
+  @@index([importBatchKey])
+  @@map("run")
+}
+
+model Response {
+  id              String                 @id @default(cuid())
+  runId           String
+  ordinal         Int                    @default(1)
+  rawText         String
+  normalizedText  String?
+  tokenIn         Int?
+  tokenOut        Int?
+  latencyMs       Int?
+  isError         Boolean                @default(false)
+  errorType       String?
+  errorMessage    String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  run             Run                    @relation(fields: [runId], references: [id], onDelete: Cascade)
+  brandMentions   ResponseBrandMention[]
+  citations       Citation[]
+
+  @@unique([runId, ordinal])
+  @@index([createdAt])
+  @@map("response")
+}
+
+model ResponseBrandMention {
+  id            String           @id @default(cuid())
+  responseId    String
+  projectId     String
+  competitorId  String?
+  brandAliasId  String?
+  mentionType   BrandMentionType
+  mentionText   String
+  mentionCount  Int              @default(1)
+  createdAt     DateTime         @default(now())
+  response      Response         @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  project       Project          @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  competitor    Competitor?      @relation(fields: [competitorId], references: [id], onDelete: SetNull)
+  brandAlias    BrandAlias?      @relation(fields: [brandAliasId], references: [id], onDelete: SetNull)
+
+  @@index([responseId])
+  @@index([projectId, mentionType])
+  @@index([competitorId])
+  @@index([brandAliasId])
+  @@map("response_brand_mention")
+}
+
+model Citation {
+  id            String    @id @default(cuid())
+  responseId    String
+  sourceUrl     String
+  sourceDomain  String
+  title         String?
+  snippet       String?
+  position      Int?
+  confidence    Decimal?  @db.Decimal(5, 4)
+  publishedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  response      Response  @relation(fields: [responseId], references: [id], onDelete: Cascade)
+
+  @@index([responseId])
+  @@index([sourceDomain, createdAt])
+  @@index([publishedAt])
+  @@map("citation")
+}
+
+model KpiSnapshot {
+  id           String             @id @default(cuid())
+  projectId    String
+  promptId     String?
+  competitorId String?
+  model        String?
+  sourceDomain String?
+  granularity  SnapshotGranularity @default(CUSTOM)
+  periodStart  DateTime
+  periodEnd    DateTime
+  generatedAt  DateTime           @default(now())
+  metricsJson  Json
+  createdAt    DateTime           @default(now())
+  project      Project            @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  prompt       Prompt?            @relation(fields: [promptId], references: [id], onDelete: SetNull)
+  competitor   Competitor?        @relation(fields: [competitorId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, periodStart, periodEnd])
+  @@index([projectId, model, periodStart, periodEnd])
+  @@index([projectId, promptId, periodStart, periodEnd])
+  @@index([projectId, competitorId, periodStart, periodEnd])
+  @@index([projectId, sourceDomain, periodStart, periodEnd])
+  @@map("kpi_snapshot")
+}
+
+model ExportJob {
+  id                String          @id @default(cuid())
+  projectId         String
+  requestedByUserId String?
+  status            ExportJobStatus @default(QUEUED)
+  format            ExportFormat
+  filtersJson       Json
+  resultUrl         String?
+  errorMessage      String?
+  requestedAt       DateTime        @default(now())
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  project           Project         @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  requestedBy       User?           @relation(fields: [requestedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, requestedAt])
+  @@index([projectId, status])
+  @@map("export_job")
 }
