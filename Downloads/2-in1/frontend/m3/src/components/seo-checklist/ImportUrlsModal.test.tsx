@@ -254,4 +254,62 @@ describe('ImportUrlsModal', () => {
     expect(screen.getByText(/URL ya existente en checklist: 1/i)).toBeTruthy();
     expect(screen.getByText(/URL duplicada dentro de este mismo import: 1/i)).toBeTruthy();
   });
+
+  it('omite fila de encabezado y no importa pseudo-URLs inválidas', async () => {
+    const onImport = vi.fn();
+
+    render(
+      <ImportUrlsModal isOpen onClose={vi.fn()} onImport={onImport} existingPages={[]} />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(/https:\/\/example.com\/page1/i), {
+      target: {
+        value: [
+          'URL\tKeyword Principal\tTipo Página\tGeo (Opcional)\tCluster (Opcional)',
+          'pccomponentes\t-\t-\tES\t-',
+          'https://www.pccomponentes.com/\tpccomponentes\t-\tES\t-',
+        ].join('\n'),
+      },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Importar URLs' }));
+
+    await waitFor(() => {
+      expect(onImport).toHaveBeenCalledTimes(1);
+    });
+
+    const importedPages = onImport.mock.calls[0][0];
+    expect(importedPages).toHaveLength(1);
+    expect(importedPages[0].url).toBe('https://www.pccomponentes.com/');
+  });
+
+  it('separa URLs concatenadas sin salto de línea al pegar desde hojas de cálculo', async () => {
+    const onImport = vi.fn();
+
+    render(
+      <ImportUrlsModal isOpen onClose={vi.fn()} onImport={onImport} existingPages={[]} />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(/https:\/\/example.com\/page1/i), {
+      target: {
+        value: [
+          'https://www.pccomponentes.com/\tpccomponentes\t-\tES\t-',
+          'https://www.pccomponentes.com/como-ver-anime-naruto-completo-sin-rellenohttps://www.pccomponentes.com/\tnaruto sin relleno\t-\tES\t-',
+        ].join('\n'),
+      },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Importar URLs' }));
+
+    await waitFor(() => {
+      expect(onImport).toHaveBeenCalledTimes(1);
+    });
+
+    const importedPages = onImport.mock.calls[0][0];
+    expect(importedPages).toHaveLength(2);
+    expect(importedPages[0].url).toBe('https://www.pccomponentes.com/');
+    expect(importedPages[1].url).toBe(
+      'https://www.pccomponentes.com/como-ver-anime-naruto-completo-sin-relleno',
+    );
+  });
 });
