@@ -30,10 +30,33 @@ const isValidUrl = (rawUrl: string): boolean => {
   try {
     const normalizedUrl = normalizeSeoUrl(rawUrl);
     const parsedUrl = new URL(normalizedUrl);
-    return ['http:', 'https:'].includes(parsedUrl.protocol);
+    const hasValidProtocol = ['http:', 'https:'].includes(parsedUrl.protocol);
+    const hasHostname = parsedUrl.hostname.length > 0;
+    const hasDotInHostname = parsedUrl.hostname.includes('.');
+    const hasWhitespace = /\s/.test(rawUrl);
+    return hasValidProtocol && hasHostname && hasDotInHostname && !hasWhitespace;
   } catch {
     return false;
   }
+};
+
+const isHeaderLikeRow = (parts: string[]): boolean => {
+  if (parts.length === 0) return false;
+
+  const normalized = parts.map((part) => part.trim().toLowerCase());
+  const hasUrlHeader = normalized.some((part) => part === 'url');
+  const hasKeywordHeader = normalized.some(
+    (part) => part.includes('keyword') || part.includes('palabra clave'),
+  );
+
+  return hasUrlHeader && hasKeywordHeader;
+};
+
+const normalizeImportedInput = (rawInput: string): string => {
+  if (!rawInput) return rawInput;
+  // Cuando se pegan datos desde hojas de cálculo, a veces se "pegan" dos URLs seguidas sin salto.
+  // Insertamos salto de línea entre patrones `...<no-separador>https://...`.
+  return rawInput.replace(/([^\s|,;])(https?:\/\/)/g, '$1\n$2');
 };
 
 const resolveImportedUrlColumns = (parts: string[]): {
@@ -137,7 +160,7 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
     if (!inputText.trim() || isImporting) return;
 
     const CHUNK_SIZE = 500;
-    const lines = inputText.split('\n');
+    const lines = normalizeImportedInput(inputText).split('\n');
     let totalImported = 0;
     const errorSummary: ImportErrorSummary = {
       emptyRows: [],
@@ -167,6 +190,9 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
 
             if (parts.length < 1 || !parts[0]) {
               errorSummary.emptyRows.push(rowNumber);
+              continue;
+            }
+            if (isHeaderLikeRow(parts)) {
               continue;
             }
 
