@@ -12,6 +12,12 @@ import { ProjectType } from '../types';
 import { useToast } from '../components/ui/ToastContext';
 
 export type GSCComparisonMode = 'previous_period' | 'previous_year';
+type GscSyncProgress = {
+  completedSteps: number;
+  totalSteps: number;
+  currentStepLabel: string;
+  startedAt: number | null;
+};
 
 const getPreviousRange = (startDate: string, endDate: string) => {
   const start = new Date(`${startDate}T00:00:00Z`);
@@ -73,6 +79,12 @@ export const useGSCData = (
 ) => {
   const { error: showError } = useToast();
   const queryClient = useQueryClient();
+  const [syncProgress, setSyncProgress] = useState<GscSyncProgress>({
+    completedSteps: 0,
+    totalSteps: 0,
+    currentStepLabel: '',
+    startedAt: null,
+  });
   const [selectedSite, setSelectedSite] = useState<string>(
     () => localStorage.getItem('mediaflow_gsc_selected_site') || '',
   );
@@ -123,14 +135,56 @@ export const useGSCData = (
         finalStartDate,
         finalEndDate,
       );
+      const progressSteps = [
+        'Consultando rendimiento del periodo actual',
+        'Consultando rendimiento del periodo comparado',
+        'Cargando queries y páginas del periodo actual',
+        'Cargando queries y páginas del periodo comparado',
+        'Cargando evolución por URL',
+        'Analizando patrones SEO',
+      ];
+      const totalSteps = progressSteps.length;
+      let completedSteps = 0;
+
+      setSyncProgress({
+        completedSteps,
+        totalSteps,
+        currentStepLabel: progressSteps[0],
+        startedAt: Date.now(),
+      });
+
+      const updateProgress = (nextLabel?: string) => {
+        completedSteps += 1;
+        setSyncProgress((prev) => ({
+          completedSteps,
+          totalSteps,
+          currentStepLabel: nextLabel || prev.currentStepLabel,
+          startedAt: prev.startedAt || Date.now(),
+        }));
+      };
 
       const [dateData, comparisonDateData, currentQueryPageData, previousQueryPageData, pageDateData] =
         await Promise.all([
-          getSearchAnalytics(accessToken!, resolvedSelectedSite, finalStartDate, finalEndDate),
-          getSearchAnalytics(accessToken!, resolvedSelectedSite, previousStartDate, previousEndDate),
-          getGSCQueryPageData(accessToken!, resolvedSelectedSite, finalStartDate, finalEndDate),
-          getGSCQueryPageData(accessToken!, resolvedSelectedSite, previousStartDate, previousEndDate),
-          getGSCPageDateData(accessToken!, resolvedSelectedSite, finalStartDate, finalEndDate),
+          getSearchAnalytics(accessToken!, resolvedSelectedSite, finalStartDate, finalEndDate).then((result) => {
+            updateProgress(progressSteps[1]);
+            return result;
+          }),
+          getSearchAnalytics(accessToken!, resolvedSelectedSite, previousStartDate, previousEndDate).then((result) => {
+            updateProgress(progressSteps[2]);
+            return result;
+          }),
+          getGSCQueryPageData(accessToken!, resolvedSelectedSite, finalStartDate, finalEndDate).then((result) => {
+            updateProgress(progressSteps[3]);
+            return result;
+          }),
+          getGSCQueryPageData(accessToken!, resolvedSelectedSite, previousStartDate, previousEndDate).then((result) => {
+            updateProgress(progressSteps[4]);
+            return result;
+          }),
+          getGSCPageDateData(accessToken!, resolvedSelectedSite, finalStartDate, finalEndDate).then((result) => {
+            updateProgress(progressSteps[5]);
+            return result;
+          }),
         ]);
 
       const insights = await runAnalysisInWorker({
@@ -145,6 +199,7 @@ export const useGSCData = (
         sector: context?.sector,
         geoScope: context?.geoScope,
       });
+      updateProgress();
 
       persistGscUrlKeywordCache(
         resolvedSelectedSite,
@@ -172,6 +227,18 @@ export const useGSCData = (
   });
 
   useEffect(() => {
+    if (isLoadingData) {
+      return;
+    }
+    setSyncProgress({
+      completedSteps: 0,
+      totalSteps: 0,
+      currentStepLabel: '',
+      startedAt: null,
+    });
+  }, [isLoadingData]);
+
+  useEffect(() => {
     if (dataError) {
       console.error(dataError);
       showError('Error obteniendo datos de analítica.');
@@ -195,6 +262,7 @@ export const useGSCData = (
     pageDateData: siteData?.pageDateData || [],
     comparisonPeriod: siteData?.comparisonPeriod || null,
     isLoadingGsc: isLoadingSites || isLoadingData,
+    syncProgress,
     insights:
       siteData?.insights ||
       ({

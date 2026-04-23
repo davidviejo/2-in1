@@ -603,6 +603,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   const [brandTermsDraft, setBrandTermsDraft] = useState('');
   const [analysisProjectTypesDraft, setAnalysisProjectTypesDraft] = useState<ProjectType[]>([]);
   const [historyScopeFilter, setHistoryScopeFilter] = useState<'all' | 'client' | 'property' | 'module'>('all');
+  const [syncClock, setSyncClock] = useState(() => Date.now());
 
   const [startDate, setStartDate] = useState<string>(() => {
     const d = new Date();
@@ -638,6 +639,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     pageDateData,
     comparisonPeriod,
     isLoadingGsc,
+    syncProgress,
     insights: { insights, groupedInsights },
   } = useGSCData(gscAccessToken, startDate, endDate, comparisonMode, {
     propertyId: currentClient?.id,
@@ -674,6 +676,34 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     () => getVisibleSelectedGscSite(selectedSite, filteredGscSites),
     [filteredGscSites, selectedSite],
   );
+  const gscSyncPercent = useMemo(() => {
+    if (!syncProgress.totalSteps) {
+      return 0;
+    }
+    return Math.min(
+      99,
+      Math.max(0, Math.round((syncProgress.completedSteps / syncProgress.totalSteps) * 100)),
+    );
+  }, [syncProgress.completedSteps, syncProgress.totalSteps]);
+  useEffect(() => {
+    if (!isLoadingGsc) {
+      return undefined;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setSyncClock(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [isLoadingGsc]);
+  const gscSyncElapsedSeconds = useMemo(() => {
+    if (!isLoadingGsc || !syncProgress.startedAt) {
+      return 0;
+    }
+    return Math.max(1, Math.round((syncClock - syncProgress.startedAt) / 1000));
+  }, [isLoadingGsc, syncClock, syncProgress.startedAt]);
 
   const activeProjectType = currentClient?.projectType || 'MEDIA';
   const activeSector = currentClient?.sector || 'Generico';
@@ -2881,7 +2911,23 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                   <div className="h-full flex flex-col items-center justify-center text-muted gap-4">
                     <Spinner size={32} />
                     <Skeleton width="60%" height="20px" />
-                    <span className="text-sm">Sincronizando datos de Google...</span>
+                    <div className="w-full max-w-sm space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span>
+                          {syncProgress.currentStepLabel || 'Sincronizando datos de Google...'}
+                        </span>
+                        <span>{gscSyncPercent}%</span>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-surface-alt">
+                        <div
+                          className="h-full rounded-full bg-primary transition-all duration-500"
+                          style={{ width: `${gscSyncPercent}%` }}
+                        />
+                      </div>
+                      <span className="block text-center text-[11px] text-muted">
+                        Tiempo transcurrido: {gscSyncElapsedSeconds}s · En propiedades grandes puede tardar varios minutos.
+                      </span>
+                    </div>
                   </div>
                 ) : gscChartData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
