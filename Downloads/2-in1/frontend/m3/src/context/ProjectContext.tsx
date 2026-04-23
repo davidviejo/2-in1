@@ -56,6 +56,7 @@ interface ProjectContextType {
 
   // Actions
   addClient: (input: NewClientInput) => void;
+  renameClient: (id: string, name: string) => void;
   deleteClient: (id: string) => void;
   switchClient: (id: string) => void;
   updateCurrentClientProfile: (
@@ -425,6 +426,20 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
   const switchClient = useCallback((id: string) => {
     setCurrentClientId(id);
   }, []);
+
+  const renameClient = useCallback(
+    (id: string, name: string) => {
+      const nextName = name.trim();
+      if (!nextName) {
+        return;
+      }
+      setClients((prev) =>
+        prev.map((client) => (client.id === id ? { ...client, name: nextName } : client)),
+      );
+      flushSnapshotSyncNextTick(['clients']);
+    },
+    [flushSnapshotSyncNextTick],
+  );
 
   const updateCurrentClientProfile = useCallback(
     (updates: Pick<Client, 'projectType' | 'sector' | 'geoScope' | 'brandTerms' | 'analysisProjectTypes'>) => {
@@ -1370,6 +1385,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       projectScoreContext,
       generalNotes,
       addClient,
+      renameClient,
       deleteClient,
       switchClient,
       updateCurrentClientProfile,
@@ -1416,6 +1432,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       projectScoreContext,
       generalNotes,
       addClient,
+      renameClient,
       deleteClient,
       switchClient,
       updateCurrentClientProfile,

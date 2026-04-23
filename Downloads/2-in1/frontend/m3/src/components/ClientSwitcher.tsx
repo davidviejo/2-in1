@@ -10,6 +10,7 @@ import {
   Newspaper,
   Flag,
   Globe,
+  Pencil,
 } from 'lucide-react';
 import DataManagementPanel from './DataManagementPanel';
 import {
@@ -27,6 +28,7 @@ interface ClientSwitcherProps {
   currentClientId: string;
   onSwitchClient: (id: string) => void;
   onAddClient: (input: NewClientInput) => void;
+  onRenameClient: (id: string, name: string) => void;
   onDeleteClient: (id: string) => void;
 }
 
@@ -35,6 +37,7 @@ const ClientSwitcher: React.FC<ClientSwitcherProps> = ({
   currentClientId,
   onSwitchClient,
   onAddClient,
+  onRenameClient,
   onDeleteClient,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -185,19 +188,35 @@ const ClientSwitcher: React.FC<ClientSwitcherProps> = ({
                           </div>
                         </div>
                       </div>
-                      {clients.length > 1 && (
+                      <div className="flex items-center gap-1">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (confirm(`¿Eliminar proyecto ${client.name}?`))
-                              onDeleteClient(client.id);
+                            const nextName = window.prompt('Nuevo nombre del proyecto', client.name);
+                            if (!nextName || nextName.trim() === client.name) {
+                              return;
+                            }
+                            onRenameClient(client.id, nextName);
                           }}
-                          className="p-1 text-slate-400 hover:text-red-500 transition-colors"
-                          title="Eliminar Proyecto"
+                          className="p-1 text-slate-400 hover:text-blue-500 transition-colors"
+                          title="Editar nombre del proyecto"
                         >
-                          <Trash2 size={14} />
+                          <Pencil size={14} />
                         </button>
-                      )}
+                        {clients.length > 1 && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (confirm(`¿Eliminar proyecto ${client.name}?`))
+                                onDeleteClient(client.id);
+                            }}
+                            className="p-1 text-slate-400 hover:text-red-500 transition-colors"
+                            title="Eliminar Proyecto"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>

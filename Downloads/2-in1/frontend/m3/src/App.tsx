@@ -50,6 +50,7 @@ export const AppRoutes: React.FC = () => {
     generalNotes,
     switchClient,
     addClient,
+    renameClient,
     deleteClient,
     resetCurrentProject,
     addTask,
@@ -97,6 +98,7 @@ export const AppRoutes: React.FC = () => {
               currentClientId={currentClientId}
               onSwitchClient={switchClient}
               onAddClient={addClient}
+              onRenameClient={renameClient}
               onDeleteClient={deleteClient}
               generalNotes={generalNotes}
               projectNotes={currentClient?.notes || []}
