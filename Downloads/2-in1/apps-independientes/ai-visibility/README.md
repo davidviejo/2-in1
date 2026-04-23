@@ -6,16 +6,59 @@ Bootstrap de una app interna con **Next.js + TypeScript + Tailwind + Prisma + Po
 
 - Node.js 20+
 - npm 10+
-- PostgreSQL 14+
+- Docker (para PostgreSQL local)
 
-## Setup local
+## Setup local (nuevo desarrollador)
 
 ```bash
 npm install
 cp .env.example .env
 ```
 
-Ajusta `DATABASE_URL` en `.env` según tu instancia local de PostgreSQL.
+## Arranque local en un comando
+
+```bash
+npm run dev:local
+```
+
+Este comando:
+1. Levanta PostgreSQL local con `docker compose`.
+2. Genera el cliente de Prisma.
+3. Arranca Next.js en `http://localhost:3000`.
+
+Si prefieres levantar solo la base:
+
+```bash
+npm run db:up
+```
+
+## Variables de entorno
+
+Copia `.env.example` y ajusta valores si necesitas cambiar puertos/credenciales:
+
+- `NEXT_PUBLIC_APP_NAME`
+- `POSTGRES_DB`
+- `POSTGRES_USER`
+- `POSTGRES_PASSWORD`
+- `POSTGRES_PORT`
+- `DATABASE_URL`
+
+## Health check
+
+Ruta: `GET /api/health`
+
+Ejemplo de respuesta OK:
+
+```json
+{
+  "status": "ok",
+  "app": "up",
+  "db": "up",
+  "timestamp": "2026-04-23T00:00:00.000Z"
+}
+```
+
+Si la base de datos no está disponible, responde `503` con `db: "down"`.
 
 ## Comandos
 
@@ -27,6 +70,8 @@ npm run lint       # eslint (Next.js)
 npm run typecheck  # tsc --noEmit
 npm run test       # vitest (run)
 npm run test:watch # vitest modo watch
+npm run db:up      # levanta PostgreSQL local
+npm run dev:local  # db + prisma + app
 ```
 
 ## Base de datos (Prisma)
