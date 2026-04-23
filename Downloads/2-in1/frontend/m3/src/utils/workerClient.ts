@@ -13,6 +13,7 @@ export interface GSCWorkerPayload {
   analysisProjectTypes?: ProjectType[];
   sector?: string;
   geoScope?: string;
+  maxRowsPerInsight?: number;
 }
 
 interface GSCWorkerInitMessage {
@@ -110,6 +111,7 @@ export const runAnalysisInWorker = (
         analysisProjectTypes: payload.analysisProjectTypes,
         sector: payload.sector,
         geoScope: payload.geoScope,
+        maxRowsPerInsight: payload.maxRowsPerInsight,
       },
     };
 

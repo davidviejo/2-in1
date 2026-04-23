@@ -23,6 +23,8 @@ import {
 } from '../types/seoInsights';
 import { classifyQueryBrandSegment } from './queryBrandSegment';
 
+const DEFAULT_MAX_RELATED_ROWS_PER_INSIGHT = Number.MAX_SAFE_INTEGER;
+
 export interface InsightResult {
   title: string;
   description: string;
@@ -157,10 +159,13 @@ const toInsight = (
     projectType: ProjectType;
     sector: string;
     geoScope: string;
+    maxRowsPerInsight: number;
   },
 ): SeoInsight => {
   const config = SEO_INSIGHT_CATALOG[candidate.id] || { icon: 'Lightbulb', tone: 'blue' };
   const now = Date.now();
+  const cappedRows = candidate.relatedRows.slice(0, context.maxRowsPerInsight);
+  const affectedCount = Number(candidate.affectedCount || candidate.relatedRows.length);
 
   return {
     id: `${candidate.id}-${candidate.sourceId}`,
@@ -183,7 +188,7 @@ const toInsight = (
     periodCurrent: context.periodCurrent,
     periodPrevious: context.periodPrevious,
     evidence: candidate.evidence,
-    metricsSupport: candidate.relatedRows.map((row) => ({
+    metricsSupport: cappedRows.map((row) => ({
       query: row.keys?.[0] || '',
       url: row.keys?.[1] || '',
       clicks: row.clicks,
@@ -222,13 +227,13 @@ const toInsight = (
       tone: config.tone,
       categoryLabel: INSIGHT_CATEGORY_META[candidate.category].label,
     },
-    affectedCount: candidate.affectedCount,
+    affectedCount,
     businessValue: candidate.businessValue,
     implementationEase: candidate.implementationEase,
     impact: candidate.impact,
     urgency: candidate.urgency,
     ease: candidate.implementationEase,
-    relatedRows: candidate.relatedRows,
+    relatedRows: cappedRows,
     metrics: {
       potentialTraffic: candidate.potentialTraffic,
     },
@@ -283,6 +288,7 @@ export const analyzeGSCInsights = ({
   sector = 'Generico',
   geoScope = 'global',
   analysisProjectTypes = [],
+  maxRowsPerInsight = DEFAULT_MAX_RELATED_ROWS_PER_INSIGHT,
 }: SeoInsightEngineInput): GSCInsightsEngineResult => {
   const activeProjectTypes = Array.from(new Set([projectType, ...analysisProjectTypes]));
   const comparableRows = buildComparableRows(currentRows, previousRows).filter((row) => row.current.impressions > 0);
@@ -1295,7 +1301,7 @@ export const analyzeGSCInsights = ({
 
   const sortedInsights = candidates
     .map((candidate) =>
-      toInsight(candidate, { propertyId, periodCurrent, periodPrevious, projectType, sector, geoScope }),
+      toInsight(candidate, { propertyId, periodCurrent, periodPrevious, projectType, sector, geoScope, maxRowsPerInsight }),
     )
     .sort((a, b) => b.score - a.score);
 

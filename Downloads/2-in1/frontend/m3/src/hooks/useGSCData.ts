@@ -33,6 +33,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const WORKER_ANALYSIS_CHUNK_SIZE = 20000;
 const WORKER_ANALYSIS_EXTREME_ROW_GUARDRAIL = 2000000;
+const WORKER_ANALYSIS_SOFT_ROW_LIMIT = 300000;
 const GSC_PAGE_DATE_MAX_PAGES = 8;
 const GSC_PAGE_DATE_MAX_ROWS = 200000;
 
@@ -122,6 +123,20 @@ const getYearOverYearRange = (startDate: string, endDate: string) => {
     previousStartDate: previousYearStart.toISOString().split('T')[0],
     previousEndDate: previousYearEnd.toISOString().split('T')[0],
   };
+};
+
+const trimRowsForAnalysis = <T extends { clicks?: number; impressions?: number }>(
+  rows: T[],
+  maxRows: number,
+): T[] => {
+  if (rows.length <= maxRows) return rows;
+  return [...rows]
+    .sort(
+      (a, b) =>
+        (Number(b.clicks || 0) + Number(b.impressions || 0) * 0.05) -
+        (Number(a.clicks || 0) + Number(a.impressions || 0) * 0.05),
+    )
+    .slice(0, maxRows);
 };
 
 const getComparisonRange = (
@@ -359,9 +374,33 @@ export const useGSCData = (
         showWarning('No se pudo cargar toda la evolución por URL en esta propiedad grande. Se mostrará el resto del panel.');
       }
 
-      const analysisCurrentRows = currentQueryPageData || [];
-      const analysisPreviousRows = previousQueryPageData || [];
-      const totalRowsForAnalysis = analysisCurrentRows.length + analysisPreviousRows.length;
+      const rawAnalysisCurrentRows = currentQueryPageData || [];
+      const rawAnalysisPreviousRows = previousQueryPageData || [];
+      const totalRowsForAnalysis = rawAnalysisCurrentRows.length + rawAnalysisPreviousRows.length;
+
+      let analysisCurrentRows = rawAnalysisCurrentRows;
+      let analysisPreviousRows = rawAnalysisPreviousRows;
+
+      if (totalRowsForAnalysis > WORKER_ANALYSIS_SOFT_ROW_LIMIT) {
+        const currentShare = totalRowsForAnalysis > 0
+          ? rawAnalysisCurrentRows.length / totalRowsForAnalysis
+          : 0.5;
+        const currentMaxRows = Math.max(
+          1000,
+          Math.floor(WORKER_ANALYSIS_SOFT_ROW_LIMIT * currentShare),
+        );
+        const previousMaxRows = Math.max(
+          1000,
+          WORKER_ANALYSIS_SOFT_ROW_LIMIT - currentMaxRows,
+        );
+
+        analysisCurrentRows = trimRowsForAnalysis(rawAnalysisCurrentRows, currentMaxRows);
+        analysisPreviousRows = trimRowsForAnalysis(rawAnalysisPreviousRows, previousMaxRows);
+
+        showWarning(
+          `Propiedad grande detectada: ${totalRowsForAnalysis.toLocaleString()} filas. El panel analizará una muestra optimizada (${(analysisCurrentRows.length + analysisPreviousRows.length).toLocaleString()} filas) para no bloquear la carga; el dataset completo se mantiene para exportación.`,
+        );
+      }
 
       if (totalRowsForAnalysis > WORKER_ANALYSIS_EXTREME_ROW_GUARDRAIL) {
         console.warn(

@@ -11,6 +11,7 @@ interface GSCWorkerContext {
   analysisProjectTypes?: ProjectType[];
   sector?: string;
   geoScope?: string;
+  maxRowsPerInsight?: number;
 }
 
 interface GSCWorkerChunkPayload {
@@ -117,6 +118,7 @@ addEventListener('message', (e: MessageEvent<GSCWorkerMessage>) => {
         analysisProjectTypes: context.analysisProjectTypes,
         sector: context.sector,
         geoScope: context.geoScope,
+        maxRowsPerInsight: context.maxRowsPerInsight,
       });
 
       postMessage({ type: 'SUCCESS', payload: insights } satisfies GSCWorkerResponse);

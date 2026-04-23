@@ -159,4 +159,5 @@ export interface SeoInsightEngineInput {
   sector?: string;
   geoScope?: string;
   analysisProjectTypes?: ProjectType[];
+  maxRowsPerInsight?: number;
 }

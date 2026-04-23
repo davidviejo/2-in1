@@ -74,6 +74,7 @@ import {
 } from '../utils/dashboardContext';
 import { computeHybridGlobalScore } from '../utils/hybridGlobalScore';
 import { getGSCPageDateData } from '../services/googleSearchConsole';
+import { runAnalysisInWorker } from '../utils/workerClient';
 import ContextNoteButton from '@/components/ContextNoteButton';
 import { openContextualNotes } from '@/utils/noteEvents';
 
@@ -577,7 +578,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   const GSC_DATA_DELAY_DAYS = 2;
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { success: showSuccess, error: showError, info: showInfo } = useToast();
+  const { success: showSuccess, error: showError, info: showInfo, warning: showWarning } = useToast();
   const { currentClient, updateCurrentClientProfile, addTask, projectScoreContext, saveClientSnapshot } = useProject();
   const [quickTask, setQuickTask] = useState('');
   const [isRecording, setIsRecording] = useState(false);
@@ -778,21 +779,24 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     [modules],
   );
 
-  const actionableInsights = useMemo(
+  const exportableActionableInsights = useMemo(
     () =>
       insights
         .map((insight) => {
           const visibleRows = insight.relatedRows.filter((row) => !isIgnored(row));
+          const totalRows = visibleRows.length;
           return {
             ...insight,
             status: getInsightStatus(insight),
             relatedRows: visibleRows,
-            affectedCount: visibleRows.length,
+            affectedCount: totalRows,
           };
         })
         .filter((insight) => insight.relatedRows.length > 0),
     [insights, isIgnored, getInsightStatus],
   );
+
+  const actionableInsights = exportableActionableInsights;
 
   const moduleMaturityDetails = useMemo<ModuleMaturityDetail[]>(
     () =>
@@ -1531,13 +1535,47 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     showSuccess('Reporte descargado.');
   };
 
-  const handleExportInsightsWorkbook = () => {
-    if (actionableInsights.length === 0) {
+  const handleExportInsightsWorkbook = async () => {
+    if (exportableActionableInsights.length === 0) {
       showSuccess('No hay puntos para exportar en este momento.');
       return;
     }
 
     const exportDate = new Date().toISOString().slice(0, 10);
+    let insightsForExport = exportableActionableInsights;
+
+    try {
+      showInfo('Reconstruyendo detalle completo por insight para exportación...');
+      const fullInsightsResult = await runAnalysisInWorker({
+        currentRows: queryPageData,
+        previousRows: comparisonQueryPageData,
+        propertyId: selectedSite,
+        periodCurrent: comparisonPeriod?.current,
+        periodPrevious: comparisonPeriod?.previous,
+        brandTerms: currentClient?.brandTerms || [],
+        projectType: activeProjectType,
+        analysisProjectTypes: activeAnalysisProjectTypes,
+        sector: activeSector,
+        geoScope: activeGeoScope,
+        maxRowsPerInsight: Number.MAX_SAFE_INTEGER,
+      });
+
+      insightsForExport = fullInsightsResult.insights
+        .map((insight) => {
+          const visibleRows = insight.relatedRows.filter((row) => !isIgnored(row));
+          return {
+            ...insight,
+            status: getInsightStatus(insight),
+            relatedRows: visibleRows,
+            affectedCount: visibleRows.length,
+          };
+        })
+        .filter((insight) => insight.relatedRows.length > 0);
+    } catch (error) {
+      console.warn('No se pudo reconstruir detalle completo para exportación de insights.', error);
+      showWarning('No se pudo reconstruir todo el detalle por insight. Se exportará la versión resumida disponible en panel.');
+    }
+
     const rawUrlRows = sanitizeRowsForSheets(
       queryPageData.map((row) => ({
         query: row.keys?.[0] || '',
@@ -1549,7 +1587,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       })),
     );
     const allSummaryRows = sanitizeRowsForSheets(
-      actionableInsights.map((insight) => ({
+      insightsForExport.map((insight) => ({
         insightId: insight.id,
         titulo: insight.title,
         categoria: insight.category,
@@ -1563,14 +1601,14 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       })),
     );
     const allDetailRows = sanitizeRowsForSheets(
-      actionableInsights.flatMap((insight) => buildInsightExportRows(insight)),
+      insightsForExport.flatMap((insight) => buildInsightExportRows(insight)),
     );
     const summaryColumnCount = Math.max(1, Object.keys(allSummaryRows[0] || {}).length);
     const detailColumnCount = Math.max(1, Object.keys(allDetailRows[0] || {}).length);
     const summaryCellCount = (allSummaryRows.length + 1) * summaryColumnCount;
     const remainingCellsForDetail = Math.max(1, GOOGLE_SHEETS_SAFE_CELLS - summaryCellCount);
     const maxDetailRowsPerFile = Math.max(1, Math.floor(remainingCellsForDetail / detailColumnCount));
-    const preparedInsights = actionableInsights.map((insight, index) => ({
+    const preparedInsights = insightsForExport.map((insight, index) => ({
       summaryRow: allSummaryRows[index],
       detailRows: sanitizeRowsForSheets(buildInsightExportRows(insight)),
       analysisType: insight.category || 'General',
@@ -2580,6 +2618,11 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
               Del dato GSC al diagnóstico: origen, regla, prioridad y acción quedan trazados en una
               estructura homogénea.
             </p>
+            <div className="mt-2 flex flex-wrap gap-2 text-xs">
+              <Badge variant="outline">
+                Base analizada: {(queryPageData.length + comparisonQueryPageData.length).toLocaleString()} filas
+              </Badge>
+            </div>
           </div>
           <div className="flex flex-col sm:flex-row gap-3">
             <button
