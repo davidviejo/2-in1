@@ -1,13 +1,16 @@
 import Link from 'next/link';
 import { ReactNode } from 'react';
 
+import { LogoutButton } from '@/components/auth/logout-button';
+import { SessionUser } from '@/lib/auth/types';
 import { navItems } from '@/lib/navigation';
 
 type AppShellProps = {
   children: ReactNode;
+  user: SessionUser;
 };
 
-export function AppShell({ children }: AppShellProps) {
+export function AppShell({ children, user }: AppShellProps) {
   return (
     <div className="flex min-h-screen">
       <aside className="w-64 border-r border-slate-200 bg-white px-4 py-6">
@@ -29,7 +32,19 @@ export function AppShell({ children }: AppShellProps) {
         </nav>
       </aside>
 
-      <main className="flex-1 p-8">{children}</main>
+      <main className="flex-1 p-8">
+        <header className="mb-6 flex items-center justify-between rounded-md border border-slate-200 bg-white px-4 py-3">
+          <div>
+            <p className="text-sm font-semibold text-slate-900">{user.name}</p>
+            <p className="text-xs text-slate-500">
+              {user.email} · role: <span className="font-semibold">{user.role}</span>
+            </p>
+          </div>
+          <LogoutButton />
+        </header>
+
+        {children}
+      </main>
     </div>
   );
 }

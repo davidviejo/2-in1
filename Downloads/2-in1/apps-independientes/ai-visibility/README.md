@@ -42,6 +42,42 @@ Copia `.env.example` y ajusta valores si necesitas cambiar puertos/credenciales:
 - `POSTGRES_PASSWORD`
 - `POSTGRES_PORT`
 - `DATABASE_URL`
+- `AUTH_SESSION_SECRET` (recomendado para firmar sesión; si no existe usa fallback local de desarrollo)
+
+## Auth MVP (internal-tool friendly)
+
+La app usa autenticación por cookie HttpOnly firmada y roles básicos para autorización:
+
+- `admin`
+- `editor`
+- `viewer`
+
+### Protección de rutas de app
+
+- Todas las páginas de aplicación (`/`, `/prompts`, `/responses`, etc.) requieren sesión.
+- Usuarios sin sesión son redirigidos a `/login`.
+- `/login` es pública y muestra usuarios seed de desarrollo.
+
+### Usuarios seed para desarrollo local
+
+| Role | Email | Password |
+| --- | --- | --- |
+| admin | `admin@internal.local` | `admin123` |
+| editor | `editor@internal.local` | `editor123` |
+| viewer | `viewer@internal.local` | `viewer123` |
+
+> Estas credenciales son solo para entorno local interno.
+
+### Reutilización de autorización (API/server)
+
+Helpers en `lib/auth/authorization.ts`:
+
+- `hasRole(user, requiredRole)`
+- `requireRole(user, requiredRole)`
+- `canAccessProject(user, { projectId, requiredRole? })`
+- `requireProjectAccess(...)`
+
+El guard de proyecto es intencionalmente simple para MVP (shape listo para evolucionar a memberships reales).
 
 ## Health check
 
@@ -91,3 +127,4 @@ npx prisma generate
 - `/competitors`
 - `/tags`
 - `/settings`
+- `/login`
