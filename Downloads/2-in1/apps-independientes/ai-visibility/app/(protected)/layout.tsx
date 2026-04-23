@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 
 import { AppShell } from '@/components/app-shell';
+import { ProjectProvider } from '@/components/projects/project-context';
 import { getSessionUser } from '@/lib/auth/session';
 
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
@@ -10,5 +11,9 @@ export default async function ProtectedLayout({ children }: { children: React.Re
     redirect('/login');
   }
 
-  return <AppShell user={user}>{children}</AppShell>;
+  return (
+    <ProjectProvider>
+      <AppShell user={user}>{children}</AppShell>
+    </ProjectProvider>
+  );
 }

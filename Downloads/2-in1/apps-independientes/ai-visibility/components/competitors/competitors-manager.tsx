@@ -2,10 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
-type Project = {
-  id: string;
-  name: string;
-};
+import { useProjectContext } from '@/components/projects/project-context';
 
 type Competitor = {
   id: string;
@@ -49,15 +46,13 @@ function toForm(competitor: Competitor | null): CompetitorForm {
 }
 
 export function CompetitorsManager() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState('');
+  const { currentProject, currentProjectId, hasProjects, loading } = useProjectContext();
   const [competitors, setCompetitors] = useState<Competitor[]>([]);
   const [selectedCompetitorId, setSelectedCompetitorId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [form, setForm] = useState<CompetitorForm>(defaultForm);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   const selectedCompetitor = useMemo(
@@ -66,28 +61,9 @@ export function CompetitorsManager() {
   );
 
   useEffect(() => {
-    void loadProjects();
-  }, []);
-
-  useEffect(() => {
     setForm(toForm(selectedCompetitor));
     setFieldErrors({});
   }, [selectedCompetitor]);
-
-  async function loadProjects() {
-    setLoading(true);
-    const response = await fetch('/api/projects', { cache: 'no-store' });
-    const data = (await response.json()) as { projects: Project[] };
-    const nextProjects = data.projects ?? [];
-
-    setProjects(nextProjects);
-
-    if (nextProjects.length > 0) {
-      setSelectedProjectId((current) => current || nextProjects[0].id);
-    }
-
-    setLoading(false);
-  }
 
   const loadCompetitors = useCallback(async (projectId: string, query: string) => {
     const params = new URLSearchParams();
@@ -97,6 +73,13 @@ export function CompetitorsManager() {
     }
 
     const response = await fetch(`/api/projects/${projectId}/competitors?${params.toString()}`, { cache: 'no-store' });
+
+    if (!response.ok) {
+      setCompetitors([]);
+      setStatusMessage('Project data is unavailable. Select another project.');
+      return;
+    }
+
     const data = (await response.json()) as { competitors: Competitor[] };
 
     setCompetitors(data.competitors ?? []);
@@ -107,17 +90,18 @@ export function CompetitorsManager() {
   }, [selectedCompetitorId]);
 
   useEffect(() => {
-    if (!selectedProjectId) {
+    if (!currentProjectId) {
+      setCompetitors([]);
       return;
     }
 
-    void loadCompetitors(selectedProjectId, searchTerm);
-  }, [loadCompetitors, searchTerm, selectedProjectId]);
+    void loadCompetitors(currentProjectId, searchTerm);
+  }, [currentProjectId, loadCompetitors, searchTerm]);
 
   async function submitCompetitor(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!selectedProjectId) {
+    if (!currentProjectId) {
       return;
     }
 
@@ -127,8 +111,8 @@ export function CompetitorsManager() {
 
     const method = selectedCompetitor ? 'PATCH' : 'POST';
     const url = selectedCompetitor
-      ? `/api/projects/${selectedProjectId}/competitors/${selectedCompetitor.id}`
-      : `/api/projects/${selectedProjectId}/competitors`;
+      ? `/api/projects/${currentProjectId}/competitors/${selectedCompetitor.id}`
+      : `/api/projects/${currentProjectId}/competitors`;
 
     const response = await fetch(url, {
       method,
@@ -150,61 +134,46 @@ export function CompetitorsManager() {
 
     setForm(defaultForm);
     setSelectedCompetitorId(null);
-    await loadCompetitors(selectedProjectId, searchTerm);
+    await loadCompetitors(currentProjectId, searchTerm);
     setStatusMessage(selectedCompetitor ? 'Competitor updated.' : 'Competitor created.');
     setBusy(false);
   }
 
   async function deleteCompetitor(competitorId: string) {
-    if (!selectedProjectId) {
+    if (!currentProjectId) {
       return;
     }
 
     setBusy(true);
 
-    await fetch(`/api/projects/${selectedProjectId}/competitors/${competitorId}`, { method: 'DELETE' });
+    await fetch(`/api/projects/${currentProjectId}/competitors/${competitorId}`, { method: 'DELETE' });
 
     if (selectedCompetitorId === competitorId) {
       setSelectedCompetitorId(null);
       setForm(defaultForm);
     }
 
-    await loadCompetitors(selectedProjectId, searchTerm);
+    await loadCompetitors(currentProjectId, searchTerm);
     setStatusMessage('Competitor deleted.');
     setBusy(false);
+  }
+
+  if (loading) {
+    return <p className="text-sm text-slate-600">Loading project…</p>;
+  }
+
+  if (!hasProjects) {
+    return <p className="text-sm text-slate-600">No accessible projects. Create one in Settings or request access.</p>;
   }
 
   return (
     <div className="space-y-4">
       <header className="flex items-center justify-between border-b border-slate-200 pb-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Competitors</h1>
+          <h1 className="text-xl font-semibold text-slate-900">Competitors · {currentProject?.name}</h1>
           <p className="text-xs text-slate-600">Manage competitors by project with aliases for mention detection.</p>
         </div>
       </header>
-
-      {loading ? <p className="text-sm text-slate-600">Loading projects…</p> : null}
-
-      <section className="rounded-md border border-slate-200 bg-white p-3">
-        <label className="space-y-1 text-xs font-medium text-slate-700">
-          Project
-          <select
-            className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
-            onChange={(event) => {
-              setSelectedProjectId(event.target.value);
-              setSelectedCompetitorId(null);
-              setForm(defaultForm);
-            }}
-            value={selectedProjectId}
-          >
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      </section>
 
       <div className="grid gap-4 xl:grid-cols-[1.3fr_1fr]">
         <section className="rounded-md border border-slate-200 bg-white">
@@ -264,7 +233,7 @@ export function CompetitorsManager() {
                 ))}
               </tbody>
             </table>
-            {competitors.length === 0 ? <p className="px-3 py-4 text-xs text-slate-500">No competitors found.</p> : null}
+            {competitors.length === 0 ? <p className="px-3 py-4 text-xs text-slate-500">No competitors found for this project.</p> : null}
           </div>
         </section>
 
@@ -303,43 +272,24 @@ export function CompetitorsManager() {
               {fieldErrors.aliases ? <p className="text-[11px] text-red-700">{fieldErrors.aliases}</p> : null}
             </label>
 
+            <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+              <input checked={form.isActive} onChange={(event) => setForm((current) => ({ ...current, isActive: event.target.checked }))} type="checkbox" />
+              Active competitor
+            </label>
+
             <label className="space-y-1 text-xs font-medium text-slate-700">
               Chart color
               <input
-                className="h-9 w-full rounded border border-slate-300 px-2 py-1 text-sm"
+                className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
                 onChange={(event) => setForm((current) => ({ ...current, chartColor: event.target.value }))}
-                type="color"
                 value={form.chartColor}
               />
               {fieldErrors.chartColor ? <p className="text-[11px] text-red-700">{fieldErrors.chartColor}</p> : null}
             </label>
 
-            <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
-              <input
-                checked={form.isActive}
-                onChange={(event) => setForm((current) => ({ ...current, isActive: event.target.checked }))}
-                type="checkbox"
-              />
-              Active
-            </label>
-
-            <div className="flex gap-2">
-              <button className="rounded bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white" disabled={busy || !selectedProjectId} type="submit">
-                {selectedCompetitor ? 'Save changes' : 'Create competitor'}
-              </button>
-              {selectedCompetitor ? (
-                <button
-                  className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium"
-                  onClick={() => {
-                    setSelectedCompetitorId(null);
-                    setForm(defaultForm);
-                  }}
-                  type="button"
-                >
-                  Cancel edit
-                </button>
-              ) : null}
-            </div>
+            <button className="rounded bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white" disabled={busy || !currentProjectId} type="submit">
+              {selectedCompetitor ? 'Save competitor' : 'Create competitor'}
+            </button>
           </form>
         </section>
       </div>

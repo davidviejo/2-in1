@@ -2,6 +2,8 @@
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 
+import { useProjectContext } from '@/components/projects/project-context';
+
 type BrandAlias = {
   id: string;
   alias: string;
@@ -66,6 +68,7 @@ function toForm(project?: Project | null): ProjectFormState {
 }
 
 export function ProjectSettingsManager() {
+  const { currentProjectId, refreshProjects, setCurrentProjectId } = useProjectContext();
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('new');
   const [form, setForm] = useState<ProjectFormState>(defaultForm);
@@ -83,6 +86,12 @@ export function ProjectSettingsManager() {
   useEffect(() => {
     void loadProjects();
   }, []);
+
+  useEffect(() => {
+    if (currentProjectId && selectedProjectId === 'new') {
+      setSelectedProjectId(currentProjectId);
+    }
+  }, [currentProjectId, selectedProjectId]);
 
   useEffect(() => {
     setForm(toForm(selectedProject));
@@ -131,9 +140,11 @@ export function ProjectSettingsManager() {
     }
 
     await loadProjects();
+    await refreshProjects();
 
     if (data.project?.id) {
       setSelectedProjectId(data.project.id);
+      setCurrentProjectId(data.project.id);
     }
 
     setStatusMessage(selectedProject ? 'Project updated.' : 'Project created.');
@@ -168,6 +179,7 @@ export function ProjectSettingsManager() {
 
     setAliasInput('');
     await loadProjects();
+    await refreshProjects();
     setStatusMessage('Alias added.');
     setBusy(false);
   }
@@ -180,6 +192,7 @@ export function ProjectSettingsManager() {
     setBusy(true);
     await fetch(`/api/projects/${selectedProject.id}/aliases?aliasId=${aliasId}`, { method: 'DELETE' });
     await loadProjects();
+    await refreshProjects();
     setStatusMessage('Alias removed.');
     setBusy(false);
   }
@@ -214,7 +227,10 @@ export function ProjectSettingsManager() {
                   selectedProjectId === project.id ? 'bg-slate-100 font-semibold text-slate-900' : 'text-slate-700'
                 }`}
                 key={project.id}
-                onClick={() => setSelectedProjectId(project.id)}
+                onClick={() => {
+                setSelectedProjectId(project.id);
+                setCurrentProjectId(project.id);
+              }}
                 type="button"
               >
                 <div className="flex items-center justify-between gap-2">

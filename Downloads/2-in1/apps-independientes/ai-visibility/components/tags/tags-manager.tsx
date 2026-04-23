@@ -2,7 +2,8 @@
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 
-type Project = { id: string; name: string };
+import { useProjectContext } from '@/components/projects/project-context';
+
 type Tag = {
   id: string;
   projectId: string;
@@ -21,8 +22,7 @@ const defaultForm: TagForm = {
 };
 
 export function TagsManager() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState('');
+  const { currentProject, currentProjectId, hasProjects, loading } = useProjectContext();
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -34,10 +34,6 @@ export function TagsManager() {
   const selectedTag = useMemo(() => tags.find((tag) => tag.id === selectedTagId) ?? null, [selectedTagId, tags]);
 
   useEffect(() => {
-    void loadProjects();
-  }, []);
-
-  useEffect(() => {
     if (!selectedTag) {
       setForm(defaultForm);
       return;
@@ -47,24 +43,13 @@ export function TagsManager() {
   }, [selectedTag]);
 
   useEffect(() => {
-    if (!selectedProjectId) {
+    if (!currentProjectId) {
+      setTags([]);
       return;
     }
 
-    void loadTags(selectedProjectId, searchTerm);
-  }, [searchTerm, selectedProjectId]);
-
-  async function loadProjects() {
-    const response = await fetch('/api/projects', { cache: 'no-store' });
-    const data = (await response.json()) as { projects: Project[] };
-    const nextProjects = data.projects ?? [];
-
-    setProjects(nextProjects);
-
-    if (nextProjects[0] && !selectedProjectId) {
-      setSelectedProjectId(nextProjects[0].id);
-    }
-  }
+    void loadTags(currentProjectId, searchTerm);
+  }, [currentProjectId, searchTerm]);
 
   async function loadTags(projectId: string, query: string) {
     const params = new URLSearchParams();
@@ -74,15 +59,21 @@ export function TagsManager() {
     }
 
     const response = await fetch(`/api/projects/${projectId}/tags?${params.toString()}`, { cache: 'no-store' });
-    const data = (await response.json()) as { tags: Tag[] };
 
+    if (!response.ok) {
+      setTags([]);
+      setStatusMessage('Project data is unavailable. Select another project.');
+      return;
+    }
+
+    const data = (await response.json()) as { tags: Tag[] };
     setTags(data.tags ?? []);
   }
 
   async function submitTag(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!selectedProjectId) {
+    if (!currentProjectId) {
       return;
     }
 
@@ -91,7 +82,7 @@ export function TagsManager() {
     setStatusMessage(null);
 
     const method = selectedTag ? 'PATCH' : 'POST';
-    const url = selectedTag ? `/api/projects/${selectedProjectId}/tags/${selectedTag.id}` : `/api/projects/${selectedProjectId}/tags`;
+    const url = selectedTag ? `/api/projects/${currentProjectId}/tags/${selectedTag.id}` : `/api/projects/${currentProjectId}/tags`;
 
     const response = await fetch(url, {
       method,
@@ -110,47 +101,34 @@ export function TagsManager() {
 
     setSelectedTagId(null);
     setForm(defaultForm);
-    await loadTags(selectedProjectId, searchTerm);
+    await loadTags(currentProjectId, searchTerm);
     setStatusMessage(selectedTag ? 'Tag updated.' : 'Tag created.');
     setBusy(false);
   }
 
   async function deleteTag(tagId: string) {
-    if (!selectedProjectId) {
+    if (!currentProjectId) {
       return;
     }
 
     setBusy(true);
-    await fetch(`/api/projects/${selectedProjectId}/tags/${tagId}`, { method: 'DELETE' });
-    await loadTags(selectedProjectId, searchTerm);
+    await fetch(`/api/projects/${currentProjectId}/tags/${tagId}`, { method: 'DELETE' });
+    await loadTags(currentProjectId, searchTerm);
     setStatusMessage('Tag deleted.');
     setBusy(false);
   }
 
+  if (loading) {
+    return <p className="text-sm text-slate-600">Loading project…</p>;
+  }
+
+  if (!hasProjects) {
+    return <p className="text-sm text-slate-600">No accessible projects. Create one in Settings or request access.</p>;
+  }
+
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-slate-900">Tags</h1>
-
-      <section className="rounded-md border border-slate-200 bg-white p-3">
-        <label className="space-y-1 text-xs font-medium text-slate-700">
-          Project
-          <select
-            className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
-            onChange={(event) => {
-              setSelectedProjectId(event.target.value);
-              setSelectedTagId(null);
-              setForm(defaultForm);
-            }}
-            value={selectedProjectId}
-          >
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      </section>
+      <h1 className="text-xl font-semibold text-slate-900">Tags · {currentProject?.name}</h1>
 
       <div className="grid gap-4 xl:grid-cols-[1.3fr_1fr]">
         <section className="rounded-md border border-slate-200 bg-white">
@@ -180,6 +158,7 @@ export function TagsManager() {
               </li>
             ))}
           </ul>
+          {tags.length === 0 ? <p className="px-3 py-4 text-xs text-slate-500">No tags found for this project.</p> : null}
         </section>
 
         <section className="rounded-md border border-slate-200 bg-white p-3">
@@ -195,7 +174,7 @@ export function TagsManager() {
               <textarea className="min-h-20 w-full rounded border border-slate-300 px-2 py-1 text-sm" onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} value={form.description} />
               {fieldErrors.description ? <p className="text-[11px] text-red-700">{fieldErrors.description}</p> : null}
             </label>
-            <button className="rounded bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white" disabled={busy || !selectedProjectId} type="submit">
+            <button className="rounded bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white" disabled={busy || !currentProjectId} type="submit">
               {selectedTag ? 'Save tag' : 'Create tag'}
             </button>
           </form>

@@ -1,7 +1,11 @@
+'use client';
+
 import Link from 'next/link';
 import { ReactNode } from 'react';
 
 import { LogoutButton } from '@/components/auth/logout-button';
+import { useProjectContext } from '@/components/projects/project-context';
+import { ProjectSwitcher } from '@/components/projects/project-switcher';
 import { SessionUser } from '@/lib/auth/types';
 import { navItems } from '@/lib/navigation';
 
@@ -9,6 +13,20 @@ type AppShellProps = {
   children: ReactNode;
   user: SessionUser;
 };
+
+function ProjectNotice() {
+  const { hasProjects, loading } = useProjectContext();
+
+  if (loading || hasProjects) {
+    return null;
+  }
+
+  return (
+    <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+      You do not have access to any project yet. Ask an admin to grant access or create a new project in Settings.
+    </p>
+  );
+}
 
 export function AppShell({ children, user }: AppShellProps) {
   return (
@@ -40,9 +58,13 @@ export function AppShell({ children, user }: AppShellProps) {
               {user.email} · role: <span className="font-semibold">{user.role}</span>
             </p>
           </div>
-          <LogoutButton />
+          <div className="flex items-center gap-3">
+            <ProjectSwitcher />
+            <LogoutButton />
+          </div>
         </header>
 
+        <ProjectNotice />
         {children}
       </main>
     </div>
