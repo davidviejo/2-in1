@@ -2,7 +2,8 @@
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 
-type Project = { id: string; name: string };
+import { useProjectContext } from '@/components/projects/project-context';
+
 type Tag = { id: string; name: string; description: string | null };
 type PromptTag = { tag: Tag };
 
@@ -50,8 +51,7 @@ function toForm(prompt: Prompt | null): PromptForm {
 }
 
 export function PromptsManager() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState('');
+  const { currentProject, currentProjectId, hasProjects, loading } = useProjectContext();
   const [tags, setTags] = useState<Tag[]>([]);
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null);
@@ -65,34 +65,27 @@ export function PromptsManager() {
   const selectedPrompt = useMemo(() => prompts.find((prompt) => prompt.id === selectedPromptId) ?? null, [prompts, selectedPromptId]);
 
   useEffect(() => {
-    void loadProjects();
-  }, []);
-
-  useEffect(() => {
     setForm(toForm(selectedPrompt));
   }, [selectedPrompt]);
 
   useEffect(() => {
-    if (!selectedProjectId) {
+    if (!currentProjectId) {
+      setTags([]);
+      setPrompts([]);
       return;
     }
 
-    void Promise.all([loadTags(selectedProjectId), loadPrompts(selectedProjectId, searchTerm, activeTagIds)]);
-  }, [activeTagIds, searchTerm, selectedProjectId]);
-
-  async function loadProjects() {
-    const response = await fetch('/api/projects', { cache: 'no-store' });
-    const data = (await response.json()) as { projects: Project[] };
-    const nextProjects = data.projects ?? [];
-
-    setProjects(nextProjects);
-    if (nextProjects[0] && !selectedProjectId) {
-      setSelectedProjectId(nextProjects[0].id);
-    }
-  }
+    void Promise.all([loadTags(currentProjectId), loadPrompts(currentProjectId, searchTerm, activeTagIds)]);
+  }, [activeTagIds, currentProjectId, searchTerm]);
 
   async function loadTags(projectId: string) {
     const response = await fetch(`/api/projects/${projectId}/tags`, { cache: 'no-store' });
+
+    if (!response.ok) {
+      setTags([]);
+      return;
+    }
+
     const data = (await response.json()) as { tags: Tag[] };
     setTags(data.tags ?? []);
   }
@@ -109,6 +102,13 @@ export function PromptsManager() {
     }
 
     const response = await fetch(`/api/projects/${projectId}/prompts?${params.toString()}`, { cache: 'no-store' });
+
+    if (!response.ok) {
+      setPrompts([]);
+      setStatusMessage('Project data is unavailable. Select another project.');
+      return;
+    }
+
     const data = (await response.json()) as { prompts: Prompt[] };
     setPrompts(data.prompts ?? []);
   }
@@ -116,7 +116,7 @@ export function PromptsManager() {
   async function submitPrompt(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!selectedProjectId) {
+    if (!currentProjectId) {
       return;
     }
 
@@ -126,8 +126,8 @@ export function PromptsManager() {
 
     const method = selectedPrompt ? 'PATCH' : 'POST';
     const url = selectedPrompt
-      ? `/api/projects/${selectedProjectId}/prompts/${selectedPrompt.id}`
-      : `/api/projects/${selectedProjectId}/prompts`;
+      ? `/api/projects/${currentProjectId}/prompts/${selectedPrompt.id}`
+      : `/api/projects/${currentProjectId}/prompts`;
 
     const response = await fetch(url, {
       method,
@@ -146,47 +146,33 @@ export function PromptsManager() {
 
     setSelectedPromptId(null);
     setForm(defaultForm);
-    await loadPrompts(selectedProjectId, searchTerm, activeTagIds);
+    await loadPrompts(currentProjectId, searchTerm, activeTagIds);
     setStatusMessage(selectedPrompt ? 'Prompt updated.' : 'Prompt created.');
     setBusy(false);
   }
 
   async function deletePrompt(promptId: string) {
-    if (!selectedProjectId) {
+    if (!currentProjectId) {
       return;
     }
 
     setBusy(true);
-    await fetch(`/api/projects/${selectedProjectId}/prompts/${promptId}`, { method: 'DELETE' });
-    await loadPrompts(selectedProjectId, searchTerm, activeTagIds);
+    await fetch(`/api/projects/${currentProjectId}/prompts/${promptId}`, { method: 'DELETE' });
+    await loadPrompts(currentProjectId, searchTerm, activeTagIds);
     setBusy(false);
+  }
+
+  if (loading) {
+    return <p className="text-sm text-slate-600">Loading project…</p>;
+  }
+
+  if (!hasProjects) {
+    return <p className="text-sm text-slate-600">No accessible projects. Create one in Settings or request access.</p>;
   }
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-slate-900">Prompts</h1>
-
-      <section className="rounded-md border border-slate-200 bg-white p-3">
-        <label className="space-y-1 text-xs font-medium text-slate-700">
-          Project
-          <select
-            className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
-            onChange={(event) => {
-              setSelectedProjectId(event.target.value);
-              setSelectedPromptId(null);
-              setForm(defaultForm);
-              setActiveTagIds([]);
-            }}
-            value={selectedProjectId}
-          >
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      </section>
+      <h1 className="text-xl font-semibold text-slate-900">Prompts · {currentProject?.name}</h1>
 
       <div className="grid gap-4 xl:grid-cols-[1.3fr_1fr]">
         <section className="rounded-md border border-slate-200 bg-white">
@@ -227,6 +213,7 @@ export function PromptsManager() {
               </li>
             ))}
           </ul>
+          {prompts.length === 0 ? <p className="px-3 py-4 text-xs text-slate-500">No prompts found for this project.</p> : null}
         </section>
 
         <section className="rounded-md border border-slate-200 bg-white p-3">
@@ -279,7 +266,7 @@ export function PromptsManager() {
                 </select>
               </label>
             </div>
-            <button className="rounded bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white" disabled={busy || !selectedProjectId} type="submit">
+            <button className="rounded bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white" disabled={busy || !currentProjectId} type="submit">
               {selectedPrompt ? 'Save prompt' : 'Create prompt'}
             </button>
           </form>
