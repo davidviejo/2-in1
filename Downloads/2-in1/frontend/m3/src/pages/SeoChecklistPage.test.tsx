@@ -21,6 +21,12 @@ vi.mock('../hooks/useSeoChecklist', () => ({
   }),
 }));
 
+vi.mock('../context/ProjectContext', () => ({
+  useProject: () => ({
+    currentClientId: 'project-test',
+  }),
+}));
+
 vi.mock('../utils/seoUtils', () => ({
   processAnalysisResult: (...args: any[]) => mockProcessAnalysisResult(...args),
 }));
@@ -66,7 +72,7 @@ describe('SeoChecklistPage', () => {
     vi.clearAllMocks();
     localStorage.clear();
     localStorage.setItem(
-      'mediaflow_batch_jobs',
+      'mediaflow_batch_jobs_project-test',
       JSON.stringify([
         {
           id: 'job-1',
