@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { SeoInsight, SeoInsightLifecycleStatus } from '../types/seoInsights';
 
 const STORAGE_KEY = 'mediaflow-seo-insight-state-v2';
@@ -58,14 +58,14 @@ export const useSeoInsightState = (scope: string) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
   }, [entries]);
 
-  const getInsightStatus = (insight: SeoInsight): SeoInsightLifecycleStatus => {
+  const getInsightStatus = useCallback((insight: SeoInsight): SeoInsightLifecycleStatus => {
     const byIdKey = `${scope}:${insight.id}`;
     const byFingerprintKey = `${scope}:${FINGERPRINT_PREFIX}:${buildInsightFingerprint(insight)}`;
 
     return entries[byIdKey]?.status || entries[byFingerprintKey]?.status || insight.status || 'new';
-  };
+  }, [entries, scope]);
 
-  const setInsightStatus = (insightOrId: string | SeoInsight, status: SeoInsightLifecycleStatus) => {
+  const setInsightStatus = useCallback((insightOrId: string | SeoInsight, status: SeoInsightLifecycleStatus) => {
     if (!isValidStatus(status)) return;
     const updatedAt = Date.now();
 
@@ -98,7 +98,7 @@ export const useSeoInsightState = (scope: string) => {
         updatedAt,
       },
     }));
-  };
+  }, [scope]);
 
   const scopedEntries = useMemo(() => {
     const prefix = `${scope}:`;

@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import {
   ResponsiveContainer,
   BarChart,
@@ -855,12 +855,19 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     [moduleMaturityDetails, selectedModuleDetailId],
   );
 
+  const consumedInsightParamIdsRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     const insightId = searchParams.get('insightId');
     if (!insightId || actionableInsights.length === 0) return;
+    if (consumedInsightParamIdsRef.current.has(insightId)) return;
+
     const matched = actionableInsights.find((insight) => insight.id === insightId);
     if (!matched) return;
+
+    consumedInsightParamIdsRef.current.add(insightId);
     setSelectedInsight(matched);
+
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete('insightId');
     setSearchParams(nextParams, { replace: true });
