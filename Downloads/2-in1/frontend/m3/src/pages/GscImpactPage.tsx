@@ -245,8 +245,17 @@ const GSC_ANALYSIS_MAX_ROWS = GSC_ANALYSIS_PAGE_SIZE * GSC_ANALYSIS_MAX_PAGES;
 const PORTFOLIO_BATCH_SIZE = 5;
 const DISPLAY_LIMIT_OPTIONS = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000] as const;
 const RESULTS_PAGE_SIZE = 100;
+const MAX_TIMELINE_POINTS = 366;
 
 const splitByLines = (value: string[]) => value.join('\n');
+
+const toErrorMessage = (error: unknown) => (error instanceof Error ? error.message : 'Error desconocido');
+
+const sampleTimelineRows = <T,>(rows: T[], limit: number): T[] => {
+  if (rows.length <= limit) return rows;
+  const step = rows.length / limit;
+  return Array.from({ length: limit }, (_, index) => rows[Math.floor(index * step)]).filter(Boolean);
+};
 
 const toCsvCell = (value: string | number | boolean | null | undefined) => {
   const normalized = value === null || value === undefined ? '' : String(value);
@@ -541,21 +550,7 @@ const GscImpactPage: React.FC = () => {
       setImpactError(null);
 
       try {
-        const [
-          preQuery,
-          rolloutQuery,
-          postQuery,
-          preQueryPage,
-          rolloutQueryPage,
-          postQueryPage,
-          preByDevice,
-          rolloutByDevice,
-          postByDevice,
-          preByCountry,
-          rolloutByCountry,
-          postByCountry,
-          fullSeries,
-        ] = await Promise.all([
+        const requests = [
           getGSCQueryData(gscAccessToken, selectedSite, ranges.pre.start, ranges.pre.end, GSC_ANALYSIS_PAGE_SIZE, {
             searchType: filters.searchType,
             dimensionFilterGroups,
@@ -669,7 +664,43 @@ const GscImpactPage: React.FC = () => {
             searchType: filters.searchType,
             dimensionFilterGroups,
           }).then((data) => data.rows || []),
-        ]);
+        ] as const;
+        const requestLabels = [
+          'queries pre',
+          'queries rollout',
+          'queries post',
+          'urls pre',
+          'urls rollout',
+          'urls post',
+          'device pre',
+          'device rollout',
+          'device post',
+          'country pre',
+          'country rollout',
+          'country post',
+          'serie temporal',
+        ] as const;
+        const settled = await Promise.allSettled(requests);
+        const failedChunks = settled
+          .map((result, index) =>
+            result.status === 'rejected' ? `${requestLabels[index]}: ${toErrorMessage(result.reason)}` : null,
+          )
+          .filter(Boolean);
+        const getRows = (index: number) => (settled[index]?.status === 'fulfilled' ? settled[index].value : []);
+
+        const preQuery = getRows(0);
+        const rolloutQuery = getRows(1);
+        const postQuery = getRows(2);
+        const preQueryPage = getRows(3);
+        const rolloutQueryPage = getRows(4);
+        const postQueryPage = getRows(5);
+        const preByDevice = getRows(6);
+        const rolloutByDevice = getRows(7);
+        const postByDevice = getRows(8);
+        const preByCountry = getRows(9);
+        const rolloutByCountry = getRows(10);
+        const postByCountry = getRows(11);
+        const fullSeries = getRows(12);
 
         const queryMerged = mergePeriods(
           aggregateByKey(preQuery, 0),
@@ -692,11 +723,12 @@ const GscImpactPage: React.FC = () => {
           mergePeriods(aggregateByKey(preByCountry, 0), aggregateByKey(rolloutByCountry, 0), aggregateByKey(postByCountry, 0)),
         );
         setTimeSeriesRows(fullSeries);
+        if (failedChunks.length > 0) {
+          setImpactError(`Análisis parcial: ${failedChunks.join(' | ')}`);
+        }
       } catch (error) {
         setImpactError(
-          error instanceof Error
-            ? error.message
-            : 'No se pudieron cargar los bloques pre/rollout/post desde Search Console.',
+          toErrorMessage(error) || 'No se pudieron cargar los bloques pre/rollout/post desde Search Console.',
         );
         setDeviceRows([]);
         setCountryRows([]);
@@ -927,15 +959,20 @@ const GscImpactPage: React.FC = () => {
     () => [...scoredUrlRows].sort((a, b) => b.ctrDeteriorationScore - a.ctrDeteriorationScore).slice(0, displayLimit),
     [displayLimit, scoredUrlRows],
   );
+  const isQuerySampled = scoredQueryRows.length > displayLimit;
+  const isUrlSampled = scoredUrlRows.length > displayLimit;
 
-  const sampledAffectedUrls = useMemo(
+  const affectedUrlCandidates = useMemo(
     () =>
       filteredUrlRows
         .map(toSampleRow)
         .filter((row) => row.clickDelta < 0 || row.impressionDelta < 0 || row.positionDelta > 0 || row.ctrDelta < 0)
-        .sort((a, b) => b.priorityScore - a.priorityScore)
-        .slice(0, displayLimit),
-    [displayLimit, filteredUrlRows],
+        .sort((a, b) => b.priorityScore - a.priorityScore),
+    [filteredUrlRows],
+  );
+  const sampledAffectedUrls = useMemo(
+    () => affectedUrlCandidates.slice(0, displayLimit),
+    [affectedUrlCandidates, displayLimit],
   );
   const sampledUrlsTotalPages = useMemo(
     () => Math.max(1, Math.ceil(sampledAffectedUrls.length / RESULTS_PAGE_SIZE)),
@@ -1041,6 +1078,10 @@ const GscImpactPage: React.FC = () => {
         }))
         .sort((a, b) => a.date.localeCompare(b.date)),
     [ranges.rollout.end, ranges.rollout.start, timeSeriesRows],
+  );
+  const timelineChartData = useMemo(
+    () => sampleTimelineRows(timelineData, MAX_TIMELINE_POINTS),
+    [timelineData],
   );
 
   const filteredPortfolioRows = useMemo(() => {
@@ -2309,6 +2350,9 @@ const GscImpactPage: React.FC = () => {
               </Button>
               {(isLoadingGsc || loadingImpact) && <Spinner size={18} />}
             </div>
+            <p className="mt-2 text-xs text-muted">
+              El gráfico temporal puede mostrarse muestreado para rendimiento, pero la exportación incluye todos los puntos cargados.
+            </p>
             {impactError && <p className="mt-2 text-sm text-danger">{impactError}</p>}
           </section>
 
@@ -2335,7 +2379,7 @@ const GscImpactPage: React.FC = () => {
             </p>
             <div className="mt-3 h-[320px]">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={timelineData}>
+                <LineChart data={timelineChartData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="date" />
                   <YAxis yAxisId="left" />
@@ -2391,6 +2435,10 @@ const GscImpactPage: React.FC = () => {
             <Card className="p-5">
               <h3 className="text-lg font-semibold">Mayor crecimiento por query</h3>
               <p className="mt-2 text-xs text-muted">Score de oportunidad = delta clicks + delta CTR + mejora de posición ponderada por volumen base.</p>
+              <p className="mt-1 text-xs text-muted">
+                Mostrando {topQueryWinners.length} de {scoredQueryRows.length} queries analizadas
+                {isQuerySampled ? ` (límite ${displayLimit})` : ''}.
+              </p>
               <div className="mt-3 space-y-2">
                 {topQueryWinners.map((row) => (
                   <div key={`qw-${row.key}`} className="surface-subtle p-3 text-sm">
@@ -2408,6 +2456,10 @@ const GscImpactPage: React.FC = () => {
 
             <Card className="p-5">
               <h3 className="text-lg font-semibold">Mayor caída por query</h3>
+              <p className="mt-1 text-xs text-muted">
+                Mostrando {topQueryLosers.length} de {scoredQueryRows.length} queries analizadas
+                {isQuerySampled ? ` (límite ${displayLimit})` : ''}.
+              </p>
               <div className="mt-3 space-y-2">
                 {topQueryLosers.map((row) => (
                   <div key={`ql-${row.key}`} className="surface-subtle p-3 text-sm">
@@ -2425,6 +2477,10 @@ const GscImpactPage: React.FC = () => {
 
             <Card className="p-5">
               <h3 className="text-lg font-semibold">Mayor crecimiento por URL</h3>
+              <p className="mt-1 text-xs text-muted">
+                Mostrando {topUrlWinners.length} de {scoredUrlRows.length} URLs analizadas
+                {isUrlSampled ? ` (límite ${displayLimit})` : ''}.
+              </p>
               <div className="mt-3 space-y-2">
                 {topUrlWinners.map((row) => (
                   <div key={`uw-${row.key}`} className="surface-subtle p-3 text-sm">
@@ -2442,6 +2498,10 @@ const GscImpactPage: React.FC = () => {
 
             <Card className="p-5">
               <h3 className="text-lg font-semibold">Mayor caída por URL</h3>
+              <p className="mt-1 text-xs text-muted">
+                Mostrando {topUrlLosers.length} de {scoredUrlRows.length} URLs analizadas
+                {isUrlSampled ? ` (límite ${displayLimit})` : ''}.
+              </p>
               <div className="mt-3 space-y-2">
                 {topUrlLosers.map((row) => (
                   <div key={`ul-${row.key}`} className="surface-subtle p-3 text-sm">
@@ -2460,6 +2520,10 @@ const GscImpactPage: React.FC = () => {
 
           <section className="surface-panel p-6">
             <h3 className="text-lg font-semibold">Mayor deterioro de CTR (URLs)</h3>
+            <p className="mt-1 text-xs text-muted">
+              Mostrando {topCtrDeterioration.length} de {scoredUrlRows.length} URLs analizadas
+              {isUrlSampled ? ` (límite ${displayLimit})` : ''}.
+            </p>
             <div className="mt-3 space-y-2">
               {topCtrDeterioration.map((row) => (
                 <div key={`ctr-loss-${row.key}`} className="surface-subtle p-3 text-sm">
@@ -2478,6 +2542,10 @@ const GscImpactPage: React.FC = () => {
                 <h3 className="text-lg font-semibold">URLs inspeccionadas (URL Inspection)</h3>
                 <p className="section-subtitle">
                   Priorización por pérdida neta de clicks/impresiones, caída de CTR, empeoramiento de posición y volumen base.
+                </p>
+                <p className="mt-1 text-xs text-muted">
+                  Total URLs afectadas detectadas: {affectedUrlCandidates.length}. Mostrando muestra de {sampledAffectedUrls.length}
+                  {affectedUrlCandidates.length > sampledAffectedUrls.length ? ` (límite ${displayLimit})` : ''}.
                 </p>
               </div>
               <Button onClick={() => void inspectSampledUrls()} disabled={isInspecting || sampledAffectedUrls.length === 0}>
