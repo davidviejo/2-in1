@@ -19,14 +19,6 @@ enum PromptStatus {
   ARCHIVED
 }
 
-enum TagType {
-  TOPIC
-  INTENT
-  MARKET
-  CAMPAIGN
-  CUSTOM
-}
-
 enum RunStatus {
   QUEUED
   RUNNING
@@ -165,18 +157,19 @@ model Competitor {
 }
 
 model Tag {
-  id         String      @id @default(cuid())
-  projectId  String
-  name       String
-  type       TagType
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
-  deletedAt  DateTime?
-  project    Project     @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  promptTags PromptTag[]
+  id             String      @id @default(cuid())
+  projectId      String
+  name           String
+  normalizedName String
+  description    String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  deletedAt      DateTime?
+  project        Project     @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  promptTags     PromptTag[]
 
-  @@unique([projectId, type, name])
-  @@index([projectId, type])
+  @@unique([projectId, normalizedName])
+  @@index([projectId, normalizedName])
   @@index([deletedAt])
   @@map("tag")
 }
@@ -216,7 +209,7 @@ model PromptTag {
   tag        Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@id([promptId, tagId])
-  @@index([tagId])
+  @@index([tagId, promptId])
   @@map("prompt_tag")
 }
 

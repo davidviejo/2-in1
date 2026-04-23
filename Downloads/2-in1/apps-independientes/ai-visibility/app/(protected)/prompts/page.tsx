@@ -1,10 +1,5 @@
-import { PagePlaceholder } from '@/components/page-placeholder';
+import { PromptsManager } from '@/components/prompts/prompts-manager';
 
 export default function PromptsPage() {
-  return (
-    <PagePlaceholder
-      title="Prompts"
-      description="Prompts workspace placeholder."
-    />
-  );
+  return <PromptsManager />;
 }
