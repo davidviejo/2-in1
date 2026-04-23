@@ -87,6 +87,7 @@ const GOOGLE_SHEETS_MAX_CELLS = 10_000_000;
 const GOOGLE_SHEETS_SAFE_CELLS = 9_200_000;
 const GOOGLE_SHEETS_MAX_CELL_CHARACTERS = 50_000;
 const GOOGLE_SHEETS_SAFE_CELL_CHARACTERS = 49_000;
+const DASHBOARD_INSIGHT_TABLE_LIMIT = 200;
 
 interface DashboardProps {
   modules: ModuleData[];
@@ -778,20 +779,30 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     [modules],
   );
 
-  const actionableInsights = useMemo(
+  const exportableActionableInsights = useMemo(
     () =>
       insights
         .map((insight) => {
           const visibleRows = insight.relatedRows.filter((row) => !isIgnored(row));
+          const totalRows = visibleRows.length;
           return {
             ...insight,
             status: getInsightStatus(insight),
             relatedRows: visibleRows,
-            affectedCount: visibleRows.length,
+            affectedCount: totalRows,
           };
         })
         .filter((insight) => insight.relatedRows.length > 0),
     [insights, isIgnored, getInsightStatus],
+  );
+
+  const actionableInsights = useMemo(
+    () =>
+      exportableActionableInsights.map((insight) => ({
+        ...insight,
+        relatedRows: insight.relatedRows.slice(0, DASHBOARD_INSIGHT_TABLE_LIMIT),
+      })),
+    [exportableActionableInsights],
   );
 
   const moduleMaturityDetails = useMemo<ModuleMaturityDetail[]>(
@@ -917,10 +928,11 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
           insights: group.insights
             .map((insight) => {
               const visibleRows = insight.relatedRows.filter((row) => !isIgnored(row));
+              const totalRows = visibleRows.length;
               return {
                 ...insight,
-                relatedRows: visibleRows,
-                affectedCount: visibleRows.length,
+                relatedRows: visibleRows.slice(0, DASHBOARD_INSIGHT_TABLE_LIMIT),
+                affectedCount: totalRows,
               };
             })
             .filter((insight) => insight.relatedRows.length > 0),
@@ -1532,7 +1544,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   };
 
   const handleExportInsightsWorkbook = () => {
-    if (actionableInsights.length === 0) {
+    if (exportableActionableInsights.length === 0) {
       showSuccess('No hay puntos para exportar en este momento.');
       return;
     }
@@ -1563,14 +1575,14 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       })),
     );
     const allDetailRows = sanitizeRowsForSheets(
-      actionableInsights.flatMap((insight) => buildInsightExportRows(insight)),
+      exportableActionableInsights.flatMap((insight) => buildInsightExportRows(insight)),
     );
     const summaryColumnCount = Math.max(1, Object.keys(allSummaryRows[0] || {}).length);
     const detailColumnCount = Math.max(1, Object.keys(allDetailRows[0] || {}).length);
     const summaryCellCount = (allSummaryRows.length + 1) * summaryColumnCount;
     const remainingCellsForDetail = Math.max(1, GOOGLE_SHEETS_SAFE_CELLS - summaryCellCount);
     const maxDetailRowsPerFile = Math.max(1, Math.floor(remainingCellsForDetail / detailColumnCount));
-    const preparedInsights = actionableInsights.map((insight, index) => ({
+    const preparedInsights = exportableActionableInsights.map((insight, index) => ({
       summaryRow: allSummaryRows[index],
       detailRows: sanitizeRowsForSheets(buildInsightExportRows(insight)),
       analysisType: insight.category || 'General',
@@ -2580,6 +2592,14 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
               Del dato GSC al diagnóstico: origen, regla, prioridad y acción quedan trazados en una
               estructura homogénea.
             </p>
+            <div className="mt-2 flex flex-wrap gap-2 text-xs">
+              <Badge variant="outline">
+                Base analizada: {(queryPageData.length + comparisonQueryPageData.length).toLocaleString()} filas
+              </Badge>
+              <Badge variant="outline">
+                Tabla por insight: máx. {DASHBOARD_INSIGHT_TABLE_LIMIT.toLocaleString()} filas
+              </Badge>
+            </div>
           </div>
           <div className="flex flex-col sm:flex-row gap-3">
             <button

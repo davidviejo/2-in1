@@ -8,6 +8,8 @@ import { useToast } from './ui/ToastContext';
 import { useSettings } from '../context/SettingsContext';
 import { useProject } from '../context/ProjectContext';
 
+const INSIGHT_MODAL_TABLE_LIMIT = 200;
+
 interface InsightDetailModalProps {
   insight: SeoInsight;
   onClose: () => void;
@@ -48,6 +50,10 @@ export const InsightDetailModal: React.FC<InsightDetailModalProps> = ({
   const ignoredItems = useMemo(
     () => insight?.relatedRows?.filter((item) => isIgnored(item)) || [],
     [insight?.relatedRows, isIgnored],
+  );
+  const displayedItems = useMemo(
+    () => filteredItems.slice(0, INSIGHT_MODAL_TABLE_LIMIT),
+    [filteredItems],
   );
 
   const findExistingTaskFromInsight = (insightId: string) => {
@@ -366,8 +372,8 @@ export const InsightDetailModal: React.FC<InsightDetailModalProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-            {filteredItems.length > 0 ? (
-              filteredItems.map((item, i) => (
+            {displayedItems.length > 0 ? (
+              displayedItems.map((item, i) => (
                 <tr
                   key={i}
                   className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
@@ -455,7 +461,7 @@ export const InsightDetailModal: React.FC<InsightDetailModalProps> = ({
 
       <div className="p-4 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-400 flex justify-between items-center">
         <span>
-          Mostrando {filteredItems.length} de {insight.affectedCount} items totales.
+          Mostrando {displayedItems.length} de {filteredItems.length} filtrados · {insight.affectedCount} items totales.
         </span>
         <div className="flex gap-2">
           <button
