@@ -1,10 +1,5 @@
-import { PagePlaceholder } from '@/components/page-placeholder';
+import { CompetitorsManager } from '@/components/competitors/competitors-manager';
 
 export default function CompetitorsPage() {
-  return (
-    <PagePlaceholder
-      title="Competitors"
-      description="Competitors workspace placeholder."
-    />
-  );
+  return <CompetitorsManager />;
 }
