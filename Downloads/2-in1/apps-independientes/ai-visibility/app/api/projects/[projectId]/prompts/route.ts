@@ -110,9 +110,11 @@ export async function GET(
           orderBy: { tag: { name: 'asc' } }
         },
         runs: {
+          where: { status: 'SUCCEEDED' },
           orderBy: { executedAt: 'desc' },
           include: {
             responses: {
+              where: { isError: false },
               include: {
                 citations: { select: { id: true } },
                 brandMentions: {

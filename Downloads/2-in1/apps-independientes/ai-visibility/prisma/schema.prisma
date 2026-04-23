@@ -230,6 +230,9 @@ model Run {
   provider          String
   model             String
   environment       String?
+  parserVersion     String?
+  rawRequestMetadata Json?
+  errorMessage      String?
   importBatchKey    String?
   externalRef       String?
   scheduledFor      DateTime?
