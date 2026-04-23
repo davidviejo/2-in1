@@ -1,10 +1,5 @@
-import { PagePlaceholder } from '@/components/page-placeholder';
+import { ProjectSettingsManager } from '@/components/settings/project-settings-manager';
 
 export default function SettingsPage() {
-  return (
-    <PagePlaceholder
-      title="Settings"
-      description="Settings workspace placeholder."
-    />
-  );
+  return <ProjectSettingsManager />;
 }
