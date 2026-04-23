@@ -20,7 +20,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { useGSCAuth } from '@/hooks/useGSCAuth';
 import { useGSCData } from '@/hooks/useGSCData';
 import { GSCDimensionFilterGroup, GSCRow, GSCSearchType } from '@/types';
-import { getGSCQueryData, getGSCQueryPageData, querySearchAnalyticsPaged } from '@/services/googleSearchConsole';
+import { gscDatasetManager } from '@/services/gscDatasetManager';
 import { inspectUrlsBatch, UrlInspectionErrorItem, UrlInspectionRow } from '@/services/gscInspectionService';
 import { GscImpactSegmentationRepository } from '@/services/gscImpactSegmentationRepository';
 import { parseBrandTermsInput, parseTemplateManualMap, parseTemplateRules } from '@/utils/gscFilters';
@@ -550,120 +550,32 @@ const GscImpactPage: React.FC = () => {
       setImpactError(null);
 
       try {
+        const buildQuery = (startDate: string, endDate: string, dimensions: Array<'query' | 'page' | 'device' | 'country' | 'date'>, rowLimit: number) => ({
+          siteUrl: selectedSite,
+          startDate,
+          endDate,
+          dimensions,
+          rowLimit,
+          searchType: filters.searchType,
+          dimensionFilterGroups,
+          maxPages: GSC_ANALYSIS_MAX_PAGES,
+          maxRows: GSC_ANALYSIS_MAX_ROWS,
+          allowHighCardinality: true,
+        });
         const requests = [
-          getGSCQueryData(gscAccessToken, selectedSite, ranges.pre.start, ranges.pre.end, GSC_ANALYSIS_PAGE_SIZE, {
-            searchType: filters.searchType,
-            dimensionFilterGroups,
-            maxPages: GSC_ANALYSIS_MAX_PAGES,
-            maxRows: GSC_ANALYSIS_MAX_ROWS,
-          }),
-          getGSCQueryData(
-            gscAccessToken,
-            selectedSite,
-            ranges.rollout.start,
-            ranges.rollout.end,
-            GSC_ANALYSIS_PAGE_SIZE,
-            {
-              searchType: filters.searchType,
-              dimensionFilterGroups,
-              maxPages: GSC_ANALYSIS_MAX_PAGES,
-              maxRows: GSC_ANALYSIS_MAX_ROWS,
-            },
-          ),
-          getGSCQueryData(gscAccessToken, selectedSite, ranges.post.start, ranges.post.end, GSC_ANALYSIS_PAGE_SIZE, {
-            searchType: filters.searchType,
-            dimensionFilterGroups,
-            maxPages: GSC_ANALYSIS_MAX_PAGES,
-            maxRows: GSC_ANALYSIS_MAX_ROWS,
-          }),
-          getGSCQueryPageData(gscAccessToken, selectedSite, ranges.pre.start, ranges.pre.end, GSC_ANALYSIS_PAGE_SIZE, {
-            searchType: filters.searchType,
-            dimensionFilterGroups,
-            maxPages: GSC_ANALYSIS_MAX_PAGES,
-            maxRows: GSC_ANALYSIS_MAX_ROWS,
-          }),
-          getGSCQueryPageData(
-            gscAccessToken,
-            selectedSite,
-            ranges.rollout.start,
-            ranges.rollout.end,
-            GSC_ANALYSIS_PAGE_SIZE,
-            {
-              searchType: filters.searchType,
-              dimensionFilterGroups,
-              maxPages: GSC_ANALYSIS_MAX_PAGES,
-              maxRows: GSC_ANALYSIS_MAX_ROWS,
-            },
-          ),
-          getGSCQueryPageData(gscAccessToken, selectedSite, ranges.post.start, ranges.post.end, GSC_ANALYSIS_PAGE_SIZE, {
-            searchType: filters.searchType,
-            dimensionFilterGroups,
-            maxPages: GSC_ANALYSIS_MAX_PAGES,
-            maxRows: GSC_ANALYSIS_MAX_ROWS,
-          }),
-          querySearchAnalyticsPaged(gscAccessToken, {
-            siteUrl: selectedSite,
-            startDate: ranges.pre.start,
-            endDate: ranges.pre.end,
-            dimensions: ['device'],
-            rowLimit: 100,
-            searchType: filters.searchType,
-            dimensionFilterGroups,
-          }).then((data) => data.rows || []),
-          querySearchAnalyticsPaged(gscAccessToken, {
-            siteUrl: selectedSite,
-            startDate: ranges.rollout.start,
-            endDate: ranges.rollout.end,
-            dimensions: ['device'],
-            rowLimit: 100,
-            searchType: filters.searchType,
-            dimensionFilterGroups,
-          }).then((data) => data.rows || []),
-          querySearchAnalyticsPaged(gscAccessToken, {
-            siteUrl: selectedSite,
-            startDate: ranges.post.start,
-            endDate: ranges.post.end,
-            dimensions: ['device'],
-            rowLimit: 100,
-            searchType: filters.searchType,
-            dimensionFilterGroups,
-          }).then((data) => data.rows || []),
-          querySearchAnalyticsPaged(gscAccessToken, {
-            siteUrl: selectedSite,
-            startDate: ranges.pre.start,
-            endDate: ranges.pre.end,
-            dimensions: ['country'],
-            rowLimit: 100,
-            searchType: filters.searchType,
-            dimensionFilterGroups,
-          }).then((data) => data.rows || []),
-          querySearchAnalyticsPaged(gscAccessToken, {
-            siteUrl: selectedSite,
-            startDate: ranges.rollout.start,
-            endDate: ranges.rollout.end,
-            dimensions: ['country'],
-            rowLimit: 100,
-            searchType: filters.searchType,
-            dimensionFilterGroups,
-          }).then((data) => data.rows || []),
-          querySearchAnalyticsPaged(gscAccessToken, {
-            siteUrl: selectedSite,
-            startDate: ranges.post.start,
-            endDate: ranges.post.end,
-            dimensions: ['country'],
-            rowLimit: 100,
-            searchType: filters.searchType,
-            dimensionFilterGroups,
-          }).then((data) => data.rows || []),
-          querySearchAnalyticsPaged(gscAccessToken, {
-            siteUrl: selectedSite,
-            startDate: ranges.pre.start,
-            endDate: ranges.post.end,
-            dimensions: ['date'],
-            rowLimit: 1500,
-            searchType: filters.searchType,
-            dimensionFilterGroups,
-          }).then((data) => data.rows || []),
+          { id: 'queries pre', query: buildQuery(ranges.pre.start, ranges.pre.end, ['query'], GSC_ANALYSIS_PAGE_SIZE) },
+          { id: 'queries rollout', query: buildQuery(ranges.rollout.start, ranges.rollout.end, ['query'], GSC_ANALYSIS_PAGE_SIZE) },
+          { id: 'queries post', query: buildQuery(ranges.post.start, ranges.post.end, ['query'], GSC_ANALYSIS_PAGE_SIZE) },
+          { id: 'urls pre', query: buildQuery(ranges.pre.start, ranges.pre.end, ['query', 'page'], GSC_ANALYSIS_PAGE_SIZE) },
+          { id: 'urls rollout', query: buildQuery(ranges.rollout.start, ranges.rollout.end, ['query', 'page'], GSC_ANALYSIS_PAGE_SIZE) },
+          { id: 'urls post', query: buildQuery(ranges.post.start, ranges.post.end, ['query', 'page'], GSC_ANALYSIS_PAGE_SIZE) },
+          { id: 'device pre', query: buildQuery(ranges.pre.start, ranges.pre.end, ['device'], 100) },
+          { id: 'device rollout', query: buildQuery(ranges.rollout.start, ranges.rollout.end, ['device'], 100) },
+          { id: 'device post', query: buildQuery(ranges.post.start, ranges.post.end, ['device'], 100) },
+          { id: 'country pre', query: buildQuery(ranges.pre.start, ranges.pre.end, ['country'], 100) },
+          { id: 'country rollout', query: buildQuery(ranges.rollout.start, ranges.rollout.end, ['country'], 100) },
+          { id: 'country post', query: buildQuery(ranges.post.start, ranges.post.end, ['country'], 100) },
+          { id: 'serie temporal', query: buildQuery(ranges.pre.start, ranges.post.end, ['date'], 1500) },
         ] as const;
         const requestLabels = [
           'queries pre',
@@ -680,7 +592,12 @@ const GscImpactPage: React.FC = () => {
           'country post',
           'serie temporal',
         ] as const;
-        const settled = await Promise.allSettled(requests);
+        const settled = await Promise.allSettled(
+          requests.map(async (request) => {
+            const response = await gscDatasetManager.fetch(gscAccessToken, request.query);
+            return response.rows || [];
+          }),
+        );
         const failedChunks = settled
           .map((result, index) =>
             result.status === 'rejected' ? `${requestLabels[index]}: ${toErrorMessage(result.reason)}` : null,
@@ -788,31 +705,42 @@ const GscImpactPage: React.FC = () => {
             batch.map(async (site) => {
               try {
                 const [preQuery, rolloutQuery, postQuery] = await Promise.all([
-                  getGSCQueryData(gscAccessToken, site.siteUrl, ranges.pre.start, ranges.pre.end, GSC_ANALYSIS_PAGE_SIZE, {
+                  gscDatasetManager.fetch(gscAccessToken, {
+                    siteUrl: site.siteUrl,
+                    startDate: ranges.pre.start,
+                    endDate: ranges.pre.end,
+                    dimensions: ['query'],
+                    rowLimit: GSC_ANALYSIS_PAGE_SIZE,
                     searchType: filters.searchType,
                     dimensionFilterGroups,
                     maxPages: GSC_ANALYSIS_MAX_PAGES,
                     maxRows: GSC_ANALYSIS_MAX_ROWS,
-                  }),
-                  getGSCQueryData(
-                    gscAccessToken,
-                    site.siteUrl,
-                    ranges.rollout.start,
-                    ranges.rollout.end,
-                    GSC_ANALYSIS_PAGE_SIZE,
-                    {
-                      searchType: filters.searchType,
-                      dimensionFilterGroups,
-                      maxPages: GSC_ANALYSIS_MAX_PAGES,
-                      maxRows: GSC_ANALYSIS_MAX_ROWS,
-                    },
-                  ),
-                  getGSCQueryData(gscAccessToken, site.siteUrl, ranges.post.start, ranges.post.end, GSC_ANALYSIS_PAGE_SIZE, {
+                    allowHighCardinality: true,
+                  }).then((result) => result.rows || []),
+                  gscDatasetManager.fetch(gscAccessToken, {
+                    siteUrl: site.siteUrl,
+                    startDate: ranges.rollout.start,
+                    endDate: ranges.rollout.end,
+                    dimensions: ['query'],
+                    rowLimit: GSC_ANALYSIS_PAGE_SIZE,
                     searchType: filters.searchType,
                     dimensionFilterGroups,
                     maxPages: GSC_ANALYSIS_MAX_PAGES,
                     maxRows: GSC_ANALYSIS_MAX_ROWS,
-                  }),
+                    allowHighCardinality: true,
+                  }).then((result) => result.rows || []),
+                  gscDatasetManager.fetch(gscAccessToken, {
+                    siteUrl: site.siteUrl,
+                    startDate: ranges.post.start,
+                    endDate: ranges.post.end,
+                    dimensions: ['query'],
+                    rowLimit: GSC_ANALYSIS_PAGE_SIZE,
+                    searchType: filters.searchType,
+                    dimensionFilterGroups,
+                    maxPages: GSC_ANALYSIS_MAX_PAGES,
+                    maxRows: GSC_ANALYSIS_MAX_ROWS,
+                    allowHighCardinality: true,
+                  }).then((result) => result.rows || []),
                 ]);
 
                 const mergedRows = mergePeriods(

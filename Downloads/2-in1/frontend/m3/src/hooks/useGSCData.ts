@@ -1,11 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  listSites,
-  getSearchAnalytics,
-  getGSCQueryPageData,
-  getGSCPageDateData,
-} from '../services/googleSearchConsole';
+import { listSites } from '../services/googleSearchConsole';
+import { gscDatasetManager } from '@/services/gscDatasetManager';
 import { persistGscUrlKeywordCache } from '../services/gscUrlKeywordCache';
 import { runAnalysisInWorker, type GSCInsights } from '../utils/workerClient';
 import { ProjectType } from '../types';
@@ -285,7 +281,13 @@ export const useGSCData = (
         await Promise.all([
           runStepWithRetry(
             progressSteps[0],
-            () => getSearchAnalytics(accessToken!, resolvedSelectedSite, finalStartDate, finalEndDate),
+            () => gscDatasetManager.fetch(accessToken!, {
+              siteUrl: resolvedSelectedSite,
+              startDate: finalStartDate,
+              endDate: finalEndDate,
+              dimensions: ['date'],
+              rowLimit: 30,
+            }).then((result) => result.rows || []),
             updateCurrentStepLabel,
           ).then((result) => {
             updateProgress(progressSteps[1]);
@@ -293,7 +295,13 @@ export const useGSCData = (
           }),
           runStepWithRetry(
             progressSteps[1],
-            () => getSearchAnalytics(accessToken!, resolvedSelectedSite, previousStartDate, previousEndDate),
+            () => gscDatasetManager.fetch(accessToken!, {
+              siteUrl: resolvedSelectedSite,
+              startDate: previousStartDate,
+              endDate: previousEndDate,
+              dimensions: ['date'],
+              rowLimit: 30,
+            }).then((result) => result.rows || []),
             updateCurrentStepLabel,
           ).then((result) => {
             updateProgress(progressSteps[2]);
@@ -301,7 +309,14 @@ export const useGSCData = (
           }),
           runStepWithRetry(
             progressSteps[2],
-            () => getGSCQueryPageData(accessToken!, resolvedSelectedSite, finalStartDate, finalEndDate),
+            () => gscDatasetManager.fetch(accessToken!, {
+              siteUrl: resolvedSelectedSite,
+              startDate: finalStartDate,
+              endDate: finalEndDate,
+              dimensions: ['query', 'page'],
+              rowLimit: 1000,
+              allowHighCardinality: true,
+            }).then((result) => result.rows || []),
             updateCurrentStepLabel,
           ).then((result) => {
             updateProgress(progressSteps[3]);
@@ -309,7 +324,14 @@ export const useGSCData = (
           }),
           runStepWithRetry(
             progressSteps[3],
-            () => getGSCQueryPageData(accessToken!, resolvedSelectedSite, previousStartDate, previousEndDate),
+            () => gscDatasetManager.fetch(accessToken!, {
+              siteUrl: resolvedSelectedSite,
+              startDate: previousStartDate,
+              endDate: previousEndDate,
+              dimensions: ['query', 'page'],
+              rowLimit: 1000,
+              allowHighCardinality: true,
+            }).then((result) => result.rows || []),
             updateCurrentStepLabel,
           ).then((result) => {
             updateProgress(progressSteps[4]);
@@ -319,18 +341,17 @@ export const useGSCData = (
             progressSteps[4],
             async () => {
               try {
-                return await getGSCPageDateData(
-                  accessToken!,
-                  resolvedSelectedSite,
-                  finalStartDate,
-                  finalEndDate,
-                  25000,
-                  'web',
-                  {
-                    maxPages: GSC_PAGE_DATE_MAX_PAGES,
-                    maxRows: GSC_PAGE_DATE_MAX_ROWS,
-                  },
-                );
+                return await gscDatasetManager.fetch(accessToken!, {
+                  siteUrl: resolvedSelectedSite,
+                  startDate: finalStartDate,
+                  endDate: finalEndDate,
+                  dimensions: ['page', 'date'],
+                  rowLimit: 25000,
+                  searchType: 'web',
+                  maxPages: GSC_PAGE_DATE_MAX_PAGES,
+                  maxRows: GSC_PAGE_DATE_MAX_ROWS,
+                  allowHighCardinality: true,
+                });
               } catch (pageDateError) {
                 evolutionLoadDegraded = true;
                 console.warn(
