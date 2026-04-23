@@ -36,6 +36,35 @@ export type CompetitorValues = {
   chartColor: string;
 };
 
+export type TagInput = {
+  name?: unknown;
+  description?: unknown;
+};
+
+export type TagValues = {
+  name: string;
+  normalizedName: string;
+  description: string | null;
+};
+
+export type PromptInput = {
+  title?: unknown;
+  promptText?: unknown;
+  objective?: unknown;
+  language?: unknown;
+  status?: unknown;
+  tagIds?: unknown;
+};
+
+export type PromptValues = {
+  title: string;
+  promptText: string;
+  objective: string | null;
+  language: string;
+  status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ARCHIVED';
+  tagIds: string[];
+};
+
 const DOMAIN_REGEX = /^(?=.{1,253}$)(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/i;
 const HEX_COLOR_REGEX = /^#(?:[0-9a-fA-F]{3}){1,2}$/;
 
@@ -45,6 +74,10 @@ function readString(value: unknown): string {
 
 export function normalizeAlias(alias: string): string {
   return alias.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+export function normalizeTagName(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 function normalizeAliases(rawAliases: unknown): { aliases: string[]; normalizedAliases: string[] } {
@@ -138,6 +171,98 @@ export function validateCompetitorInput(input: CompetitorInput): {
       aliases,
       isActive,
       chartColor
+    }
+  };
+}
+
+export function validateTagInput(input: TagInput): {
+  values?: TagValues;
+  errors?: Record<string, string>;
+} {
+  const errors: Record<string, string> = {};
+  const name = readString(input.name);
+  const description = readString(input.description);
+
+  if (!name) {
+    errors.name = 'Tag name is required.';
+  } else if (name.length > 80) {
+    errors.name = 'Tag name must be 80 characters or fewer.';
+  }
+
+  if (description.length > 240) {
+    errors.description = 'Description must be 240 characters or fewer.';
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return { errors };
+  }
+
+  return {
+    values: {
+      name,
+      normalizedName: normalizeTagName(name),
+      description: description || null
+    }
+  };
+}
+
+const PROMPT_STATUSES = new Set(['DRAFT', 'ACTIVE', 'PAUSED', 'ARCHIVED']);
+
+export function validatePromptInput(input: PromptInput): {
+  values?: PromptValues;
+  errors?: Record<string, string>;
+} {
+  const errors: Record<string, string> = {};
+  const title = readString(input.title);
+  const promptText = readString(input.promptText);
+  const objective = readString(input.objective);
+  const language = readString(input.language).toLowerCase() || 'es';
+  const status = readString(input.status).toUpperCase() || 'ACTIVE';
+
+  if (!title) {
+    errors.title = 'Prompt title is required.';
+  } else if (title.length > 140) {
+    errors.title = 'Prompt title must be 140 characters or fewer.';
+  }
+
+  if (!promptText) {
+    errors.promptText = 'Prompt text is required.';
+  } else if (promptText.length > 8000) {
+    errors.promptText = 'Prompt text must be 8000 characters or fewer.';
+  }
+
+  if (objective.length > 500) {
+    errors.objective = 'Objective must be 500 characters or fewer.';
+  }
+
+  if (!/^[a-z]{2,5}(?:-[a-z]{2,5})?$/.test(language)) {
+    errors.language = 'Language must be a language code (e.g. en or es-mx).';
+  }
+
+  if (!PROMPT_STATUSES.has(status)) {
+    errors.status = 'Status must be one of DRAFT, ACTIVE, PAUSED, or ARCHIVED.';
+  }
+
+  const tagIds = Array.isArray(input.tagIds)
+    ? input.tagIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+    : [];
+
+  if (tagIds.length > 30) {
+    errors.tagIds = 'A maximum of 30 tags per prompt is allowed.';
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return { errors };
+  }
+
+  return {
+    values: {
+      title,
+      promptText,
+      objective: objective || null,
+      language,
+      status: status as PromptValues['status'],
+      tagIds: Array.from(new Set(tagIds))
     }
   };
 }

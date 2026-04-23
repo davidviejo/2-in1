@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { normalizeAlias, validateAliasInput, validateCompetitorInput, validateProjectSettings } from '@/lib/projects/validation';
+import {
+  normalizeAlias,
+  normalizeTagName,
+  validateAliasInput,
+  validateCompetitorInput,
+  validateProjectSettings,
+  validatePromptInput,
+  validateTagInput
+} from '@/lib/projects/validation';
 
 describe('project settings validation', () => {
   it('accepts valid project payload', () => {
@@ -63,5 +71,47 @@ describe('project settings validation', () => {
     });
 
     expect(result.errors?.domain).toMatch(/valid domain/i);
+  });
+
+  it('normalizes tag names and accepts optional descriptions', () => {
+    const result = validateTagInput({
+      name: '  Editorial   Ideas ',
+      description: 'Useful prompts'
+    });
+
+    expect(result.values?.name).toBe('Editorial   Ideas');
+    expect(result.values?.normalizedName).toBe('editorial ideas');
+    expect(normalizeTagName('  BRAND   Mix ')).toBe('brand mix');
+  });
+
+  it('rejects invalid tag payload', () => {
+    const result = validateTagInput({ name: '', description: 'x'.repeat(241) });
+    expect(result.errors?.name).toMatch(/required/i);
+    expect(result.errors?.description).toMatch(/240/i);
+  });
+
+  it('validates prompt payload with multiple tags', () => {
+    const result = validatePromptInput({
+      title: 'Track LLM ranking for homepage',
+      promptText: 'How visible is Acme in AI overviews?',
+      objective: 'Weekly visibility check',
+      language: 'es-mx',
+      status: 'active',
+      tagIds: ['tag1', 'tag2', 'tag1']
+    });
+
+    expect(result.values).toBeDefined();
+    expect(result.values?.status).toBe('ACTIVE');
+    expect(result.values?.tagIds).toEqual(['tag1', 'tag2']);
+  });
+
+  it('rejects invalid prompt status', () => {
+    const result = validatePromptInput({
+      title: 'Bad status',
+      promptText: 'Prompt text',
+      status: 'invalid'
+    });
+
+    expect(result.errors?.status).toMatch(/must be one of/i);
   });
 });

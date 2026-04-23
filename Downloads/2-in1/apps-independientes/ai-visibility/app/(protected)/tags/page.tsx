@@ -1,10 +1,5 @@
-import { PagePlaceholder } from '@/components/page-placeholder';
+import { TagsManager } from '@/components/tags/tags-manager';
 
 export default function TagsPage() {
-  return (
-    <PagePlaceholder
-      title="Tags"
-      description="Tags workspace placeholder."
-    />
-  );
+  return <TagsManager />;
 }
