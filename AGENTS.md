@@ -6,6 +6,7 @@ Guía rápida para trabajar en este repo **2-in-1** (gestión de cliente + suite
 - Código principal: `Downloads/2-in1/`
   - Frontend SPA (React + Vite + TS): `Downloads/2-in1/frontend/m3`
   - Backend (Flask): `Downloads/2-in1/backend/p2`
+  - Apps independientes: `Downloads/2-in1/apps-independientes/`
   - Scripts de arranque/verificación: `Downloads/2-in1/scripts`
   - Runbook: `Downloads/2-in1/docs/RUNBOOK.md`
 - Nota: en la raíz (`/workspace/2-in1`) casi no hay código de app; entrar siempre a `Downloads/2-in1`.
