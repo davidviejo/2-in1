@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   listSites,
@@ -7,7 +7,7 @@ import {
   getGSCPageDateData,
 } from '../services/googleSearchConsole';
 import { persistGscUrlKeywordCache } from '../services/gscUrlKeywordCache';
-import { runAnalysisInWorker } from '../utils/workerClient';
+import { runAnalysisInWorker, type GSCInsights } from '../utils/workerClient';
 import { ProjectType } from '../types';
 import { useToast } from '../components/ui/ToastContext';
 
@@ -17,12 +17,49 @@ type GscSyncProgress = {
   totalSteps: number;
   currentStepLabel: string;
   startedAt: number | null;
+  analysis: {
+    status: 'idle' | 'running' | 'completed' | 'failed';
+    currentChunk: number;
+    totalChunks: number;
+    percentage: number;
+    label: string;
+  };
 };
 
 const GSC_STEP_MAX_RETRIES = 2;
 const GSC_STEP_RETRY_BASE_DELAY_MS = 1200;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const WORKER_ANALYSIS_CHUNK_SIZE = 20000;
+const WORKER_ANALYSIS_EXTREME_ROW_GUARDRAIL = 2000000;
+
+const buildEmptyInsightResult = (title: string): GSCInsights['quickWins'] => ({
+  title,
+  description: 'Sin señales suficientes para este insight.',
+  count: 0,
+  items: [],
+});
+
+const EMPTY_INSIGHTS: GSCInsights = {
+  insights: [],
+  groupedInsights: [],
+  topOpportunities: [],
+  topRisks: [],
+  quickWinsLayer: [],
+  anomaliesLayer: [],
+  quickWins: buildEmptyInsightResult('Quick wins'),
+  strikingDistance: buildEmptyInsightResult('Striking distance'),
+  lowCtr: buildEmptyInsightResult('CTR bajo'),
+  topQueries: buildEmptyInsightResult('Top queries'),
+  cannibalization: buildEmptyInsightResult('Canibalización'),
+  zeroClicks: buildEmptyInsightResult('URLs con cero clics'),
+  featuredSnippets: buildEmptyInsightResult('Featured snippets'),
+  stagnantTraffic: buildEmptyInsightResult('Tráfico estancado'),
+  seasonality: buildEmptyInsightResult('Estacionalidad'),
+  stableUrls: buildEmptyInsightResult('URLs estables'),
+  internalRedirects: buildEmptyInsightResult('Redirecciones internas'),
+};
 
 const runStepWithRetry = async <T>(
   label: string,
@@ -118,10 +155,20 @@ export const useGSCData = (
     totalSteps: 0,
     currentStepLabel: '',
     startedAt: null,
+    analysis: {
+      status: 'idle',
+      currentChunk: 0,
+      totalChunks: 0,
+      percentage: 0,
+      label: '',
+    },
   });
   const [selectedSite, setSelectedSite] = useState<string>(
     () => localStorage.getItem('mediaflow_gsc_selected_site') || '',
   );
+
+  const lastSitesErrorKeyRef = useRef<string>('');
+  const lastDataErrorKeyRef = useRef<string>('');
 
   useEffect(() => {
     if (selectedSite) {
@@ -141,10 +188,19 @@ export const useGSCData = (
   });
 
   useEffect(() => {
-    if (sitesError) {
-      console.error(sitesError);
-      showError('Error obteniendo la lista de sitios.');
+    if (!sitesError) {
+      lastSitesErrorKeyRef.current = '';
+      return;
     }
+
+    const errorKey = sitesError instanceof Error ? `${sitesError.name}:${sitesError.message}` : String(sitesError);
+    if (lastSitesErrorKeyRef.current === errorKey) {
+      return;
+    }
+
+    lastSitesErrorKeyRef.current = errorKey;
+    console.error(sitesError);
+    showError('Error obteniendo la lista de sitios.');
   }, [sitesError, showError]);
 
   const resolvedSelectedSite =
@@ -185,11 +241,19 @@ export const useGSCData = (
         totalSteps,
         currentStepLabel: progressSteps[0],
         startedAt: Date.now(),
+        analysis: {
+          status: 'idle',
+          currentChunk: 0,
+          totalChunks: 0,
+          percentage: 0,
+          label: '',
+        },
       });
 
       const updateProgress = (nextLabel?: string) => {
         completedSteps += 1;
         setSyncProgress((prev) => ({
+          ...prev,
           completedSteps,
           totalSteps,
           currentStepLabel: nextLabel || prev.currentStepLabel,
@@ -201,6 +265,16 @@ export const useGSCData = (
           ...prev,
           currentStepLabel: nextLabel,
           startedAt: prev.startedAt || Date.now(),
+        }));
+      };
+
+      const updateAnalysisProgress = (next: Partial<GscSyncProgress['analysis']>) => {
+        setSyncProgress((prev) => ({
+          ...prev,
+          analysis: {
+            ...prev.analysis,
+            ...next,
+          },
         }));
       };
 
@@ -248,18 +322,83 @@ export const useGSCData = (
           }),
         ]);
 
-      const insights = await runAnalysisInWorker({
-        currentRows: currentQueryPageData,
-        previousRows: previousQueryPageData,
-        propertyId: context?.propertyId || resolvedSelectedSite,
-        periodCurrent: { startDate: finalStartDate, endDate: finalEndDate },
-        periodPrevious: { startDate: previousStartDate, endDate: previousEndDate },
-        brandTerms: context?.brandTerms || [],
-        projectType: context?.projectType,
-        analysisProjectTypes: context?.analysisProjectTypes || [],
-        sector: context?.sector,
-        geoScope: context?.geoScope,
-      });
+      const analysisCurrentRows = currentQueryPageData || [];
+      const analysisPreviousRows = previousQueryPageData || [];
+      const totalRowsForAnalysis = analysisCurrentRows.length + analysisPreviousRows.length;
+
+      if (totalRowsForAnalysis > WORKER_ANALYSIS_EXTREME_ROW_GUARDRAIL) {
+        console.warn(
+          `[GSC] Dataset extremo (${totalRowsForAnalysis} filas) supera guardarraíl de ${WORKER_ANALYSIS_EXTREME_ROW_GUARDRAIL}; se omite análisis para proteger estabilidad.`,
+        );
+      }
+
+      let insights: GSCInsights;
+      try {
+        if (totalRowsForAnalysis > WORKER_ANALYSIS_EXTREME_ROW_GUARDRAIL) {
+          updateAnalysisProgress({
+            status: 'failed',
+            label: 'Dataset demasiado grande para análisis seguro',
+          });
+          insights = EMPTY_INSIGHTS;
+        } else {
+          const totalChunks = Math.max(
+            1,
+            Math.ceil(analysisCurrentRows.length / WORKER_ANALYSIS_CHUNK_SIZE) +
+              Math.ceil(analysisPreviousRows.length / WORKER_ANALYSIS_CHUNK_SIZE),
+          );
+          updateAnalysisProgress({
+            status: 'running',
+            currentChunk: 0,
+            totalChunks,
+            percentage: 0,
+            label: 'Analizando chunks SEO (0%)',
+          });
+
+          insights = await runAnalysisInWorker(
+            {
+              currentRows: analysisCurrentRows,
+              previousRows: analysisPreviousRows,
+              propertyId: context?.propertyId || resolvedSelectedSite,
+              periodCurrent: { startDate: finalStartDate, endDate: finalEndDate },
+              periodPrevious: { startDate: previousStartDate, endDate: previousEndDate },
+              brandTerms: context?.brandTerms || [],
+              projectType: context?.projectType,
+              analysisProjectTypes: context?.analysisProjectTypes || [],
+              sector: context?.sector,
+              geoScope: context?.geoScope,
+            },
+            {
+              chunkSize: WORKER_ANALYSIS_CHUNK_SIZE,
+              onProgress: ({ chunkIndex, totalChunks: workerTotalChunks }) => {
+                const safeTotalChunks = Math.max(workerTotalChunks, totalChunks, 1);
+                const percentage = Math.min(100, Math.round((chunkIndex / safeTotalChunks) * 100));
+                updateAnalysisProgress({
+                  status: 'running',
+                  currentChunk: chunkIndex,
+                  totalChunks: safeTotalChunks,
+                  percentage,
+                  label: `Analizando chunks SEO (${percentage}%)`,
+                });
+              },
+            },
+          );
+
+          updateAnalysisProgress({
+            status: 'completed',
+            currentChunk: totalChunks,
+            totalChunks,
+            percentage: 100,
+            label: 'Análisis SEO completado',
+          });
+        }
+      } catch (analysisError) {
+        console.error('[GSC] Worker analysis failed, returning EMPTY_INSIGHTS fallback.', analysisError);
+        updateAnalysisProgress({
+          status: 'failed',
+          label: 'Falló el análisis SEO incremental',
+        });
+        insights = EMPTY_INSIGHTS;
+      }
       updateProgress();
 
       persistGscUrlKeywordCache(
@@ -299,14 +438,30 @@ export const useGSCData = (
       totalSteps: 0,
       currentStepLabel: '',
       startedAt: null,
+      analysis: {
+        status: 'idle',
+        currentChunk: 0,
+        totalChunks: 0,
+        percentage: 0,
+        label: '',
+      },
     });
   }, [isLoadingData]);
 
   useEffect(() => {
-    if (dataError) {
-      console.error(dataError);
-      showError('Error obteniendo datos de analítica.');
+    if (!dataError) {
+      lastDataErrorKeyRef.current = '';
+      return;
     }
+
+    const errorKey = dataError instanceof Error ? `${dataError.name}:${dataError.message}` : String(dataError);
+    if (lastDataErrorKeyRef.current === errorKey) {
+      return;
+    }
+
+    lastDataErrorKeyRef.current = errorKey;
+    console.error(dataError);
+    showError('Error obteniendo datos de analítica.');
   }, [dataError, showError]);
 
   const clearData = () => {
@@ -327,27 +482,7 @@ export const useGSCData = (
     comparisonPeriod: siteData?.comparisonPeriod || null,
     isLoadingGsc: isLoadingSites || isLoadingData,
     syncProgress,
-    insights:
-      siteData?.insights ||
-      ({
-        insights: [],
-        groupedInsights: [],
-        topOpportunities: [],
-        topRisks: [],
-        quickWinsLayer: [],
-        anomaliesLayer: [],
-        quickWins: null,
-        strikingDistance: null,
-        lowCtr: null,
-        topQueries: null,
-        cannibalization: null,
-        zeroClicks: null,
-        featuredSnippets: null,
-        stagnantTraffic: null,
-        seasonality: null,
-        stableUrls: null,
-        internalRedirects: null,
-      } as const),
+    insights: siteData?.insights || EMPTY_INSIGHTS,
     fetchSites: () => queryClient.invalidateQueries({ queryKey: ['gscSites'] }),
     clearData,
   };

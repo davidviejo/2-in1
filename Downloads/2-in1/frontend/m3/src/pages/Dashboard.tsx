@@ -856,33 +856,39 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   );
 
   const consumedInsightParamIdsRef = useRef<Set<string>>(new Set());
+  const insightIdParam = searchParams.get('insightId') || '';
 
   useEffect(() => {
-    const insightId = searchParams.get('insightId');
-    if (!insightId || actionableInsights.length === 0) return;
-    if (consumedInsightParamIdsRef.current.has(insightId)) return;
+    if (!insightIdParam || actionableInsights.length === 0) return;
+    if (consumedInsightParamIdsRef.current.has(insightIdParam)) return;
 
-    const matched = actionableInsights.find((insight) => insight.id === insightId);
+    const matched = actionableInsights.find((insight) => insight.id === insightIdParam);
     if (!matched) return;
 
-    consumedInsightParamIdsRef.current.add(insightId);
+    consumedInsightParamIdsRef.current.add(insightIdParam);
     setSelectedInsight(matched);
 
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.delete('insightId');
-    setSearchParams(nextParams, { replace: true });
-  }, [actionableInsights, searchParams, setSearchParams]);
+    setSearchParams((prev) => {
+      const nextParams = new URLSearchParams(prev);
+      nextParams.delete('insightId');
+      return nextParams;
+    }, { replace: true });
+  }, [actionableInsights, insightIdParam, setSearchParams]);
 
   useEffect(() => {
-    if (moduleMaturityDetails.length === 0) {
-      setSelectedModuleDetailId(null);
-      return;
-    }
+    setSelectedModuleDetailId((prev) => {
+      if (moduleMaturityDetails.length === 0) {
+        return prev === null ? prev : null;
+      }
 
-    if (!selectedModuleDetailId || !moduleMaturityDetails.some((item) => item.moduleId === selectedModuleDetailId)) {
-      setSelectedModuleDetailId(moduleMaturityDetails[0].moduleId);
-    }
-  }, [moduleMaturityDetails, selectedModuleDetailId]);
+      if (prev && moduleMaturityDetails.some((item) => item.moduleId === prev)) {
+        return prev;
+      }
+
+      const firstModuleId = moduleMaturityDetails[0].moduleId;
+      return prev === firstModuleId ? prev : firstModuleId;
+    });
+  }, [moduleMaturityDetails]);
 
   const segmentFilteredInsights = useMemo(
     () =>

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import { X, CheckCircle2, AlertTriangle, Info, AlertCircle } from 'lucide-react';
 import i18n from '../../i18n';
 
@@ -54,31 +54,36 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     [removeToast],
   );
 
-  const success = (message: string, duration?: number) => addToast(message, 'success', duration);
-  const error = (message: string, duration?: number) => addToast(message, 'error', duration);
-  const warning = (message: string, duration?: number) => addToast(message, 'warning', duration);
-  const info = (message: string, duration?: number) => addToast(message, 'info', duration);
+  const success = useCallback((message: string, duration?: number) => addToast(message, 'success', duration), [addToast]);
+  const error = useCallback((message: string, duration?: number) => addToast(message, 'error', duration), [addToast]);
+  const warning = useCallback((message: string, duration?: number) => addToast(message, 'warning', duration), [addToast]);
+  const info = useCallback((message: string, duration?: number) => addToast(message, 'info', duration), [addToast]);
 
-  const successAction = (action: string, duration?: number) =>
-    success(i18n.t('feedback.toast.success_action', { action }), duration);
-  const errorAction = (action: string, duration?: number) =>
-    error(i18n.t('feedback.toast.error_action', { action }), duration);
-  const warningAction = (action: string, duration?: number) =>
-    warning(i18n.t('feedback.toast.warning_action', { action }), duration);
+  const successAction = useCallback((action: string, duration?: number) =>
+    success(i18n.t('feedback.toast.success_action', { action }), duration), [success]);
+  const errorAction = useCallback((action: string, duration?: number) =>
+    error(i18n.t('feedback.toast.error_action', { action }), duration), [error]);
+  const warningAction = useCallback((action: string, duration?: number) =>
+    warning(i18n.t('feedback.toast.warning_action', { action }), duration), [warning]);
+
+  const providerValue = useMemo(
+    () => ({
+      addToast,
+      removeToast,
+      success,
+      error,
+      warning,
+      info,
+      successAction,
+      errorAction,
+      warningAction,
+    }),
+    [addToast, removeToast, success, error, warning, info, successAction, errorAction, warningAction],
+  );
 
   return (
     <ToastContext.Provider
-      value={{
-        addToast,
-        removeToast,
-        success,
-        error,
-        warning,
-        info,
-        successAction,
-        errorAction,
-        warningAction,
-      }}
+      value={providerValue}
     >
       {children}
       <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
