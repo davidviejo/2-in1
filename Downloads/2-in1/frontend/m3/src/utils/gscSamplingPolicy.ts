@@ -7,6 +7,11 @@ export interface DashboardGscFetchPlan {
   evolutionDateChunkSizeDays: number;
 }
 
+export interface DashboardGscFetchPlanOverrides {
+  analysisMaxRows?: number;
+  evolutionMaxRows?: number;
+}
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_ROW_LIMIT = 25000;
 
@@ -39,16 +44,20 @@ const pickEvolutionMaxRows = (rangeDays: number): number => {
   return 280_000;
 };
 
-export const buildDashboardGscFetchPlan = (startDate: string, endDate: string): DashboardGscFetchPlan => {
+export const buildDashboardGscFetchPlan = (
+  startDate: string,
+  endDate: string,
+  overrides?: DashboardGscFetchPlanOverrides,
+): DashboardGscFetchPlan => {
   const rangeDays = daysBetweenInclusive(startDate, endDate);
   const chunkSizeDays = pickChunkSizeDays(rangeDays);
 
   return {
     analysisRowLimit: DEFAULT_ROW_LIMIT,
-    analysisMaxRows: pickAnalysisMaxRows(rangeDays),
+    analysisMaxRows: overrides?.analysisMaxRows || pickAnalysisMaxRows(rangeDays),
     analysisDateChunkSizeDays: chunkSizeDays,
     evolutionRowLimit: DEFAULT_ROW_LIMIT,
-    evolutionMaxRows: pickEvolutionMaxRows(rangeDays),
+    evolutionMaxRows: overrides?.evolutionMaxRows || pickEvolutionMaxRows(rangeDays),
     evolutionDateChunkSizeDays: Math.max(chunkSizeDays, 7),
   };
 };
