@@ -151,6 +151,20 @@ export interface SeoInsightEngineInput {
     ctr: number;
     position: number;
   }>;
+  currentDailyRows?: Array<{
+    keys: string[];
+    clicks: number;
+    impressions: number;
+    ctr: number;
+    position: number;
+  }>;
+  previousDailyRows?: Array<{
+    keys: string[];
+    clicks: number;
+    impressions: number;
+    ctr: number;
+    position: number;
+  }>;
   propertyId?: string;
   periodCurrent?: SeoInsightDateRange;
   periodPrevious?: SeoInsightDateRange;

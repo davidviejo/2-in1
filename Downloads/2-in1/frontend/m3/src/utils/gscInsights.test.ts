@@ -66,4 +66,51 @@ describe('GSC Insights Engine', () => {
     expect(quickWinIds.some((id) => id.startsWith('mediaLowCtrTop10-'))).toBe(false);
     expect(result.quickWinsLayer.every((insight) => insight.applicableProjectTypes?.includes('ECOM'))).toBe(true);
   });
+
+  it('detects real daily anomalies with z-score and seasonal baseline', () => {
+    const currentDailyRows: GSCRow[] = [
+      { keys: ['2026-02-25'], clicks: 116, impressions: 1000, ctr: 0.116, position: 1 },
+      { keys: ['2026-02-26'], clicks: 121, impressions: 1000, ctr: 0.121, position: 1 },
+      { keys: ['2026-02-27'], clicks: 118, impressions: 1000, ctr: 0.118, position: 1 },
+      { keys: ['2026-02-28'], clicks: 122, impressions: 1000, ctr: 0.122, position: 1 },
+      { keys: ['2026-03-01'], clicks: 110, impressions: 1000, ctr: 0.11, position: 1 },
+      { keys: ['2026-03-02'], clicks: 120, impressions: 1000, ctr: 0.12, position: 1 },
+      { keys: ['2026-03-03'], clicks: 115, impressions: 1000, ctr: 0.115, position: 1 },
+      { keys: ['2026-03-04'], clicks: 118, impressions: 1000, ctr: 0.118, position: 1 },
+      { keys: ['2026-03-05'], clicks: 122, impressions: 1000, ctr: 0.122, position: 1 },
+      { keys: ['2026-03-06'], clicks: 119, impressions: 1000, ctr: 0.119, position: 1 },
+      { keys: ['2026-03-07'], clicks: 121, impressions: 1000, ctr: 0.121, position: 1 },
+      { keys: ['2026-03-08'], clicks: 116, impressions: 1000, ctr: 0.116, position: 1 },
+      { keys: ['2026-03-09'], clicks: 117, impressions: 1000, ctr: 0.117, position: 1 },
+      { keys: ['2026-03-10'], clicks: 18, impressions: 1000, ctr: 0.018, position: 1 },
+    ];
+    const previousDailyRows: GSCRow[] = [
+      { keys: ['2026-02-15'], clicks: 108, impressions: 950, ctr: 0.113, position: 1 },
+      { keys: ['2026-02-16'], clicks: 122, impressions: 980, ctr: 0.124, position: 1 },
+      { keys: ['2026-02-17'], clicks: 116, impressions: 990, ctr: 0.117, position: 1 },
+      { keys: ['2026-02-18'], clicks: 120, impressions: 995, ctr: 0.121, position: 1 },
+      { keys: ['2026-02-19'], clicks: 124, impressions: 998, ctr: 0.124, position: 1 },
+      { keys: ['2026-02-20'], clicks: 118, impressions: 1001, ctr: 0.118, position: 1 },
+      { keys: ['2026-02-21'], clicks: 122, impressions: 1003, ctr: 0.122, position: 1 },
+      { keys: ['2026-02-22'], clicks: 112, impressions: 1000, ctr: 0.112, position: 1 },
+      { keys: ['2026-02-23'], clicks: 121, impressions: 980, ctr: 0.123, position: 1 },
+      { keys: ['2026-02-24'], clicks: 117, impressions: 980, ctr: 0.119, position: 1 },
+      { keys: ['2026-02-25'], clicks: 119, impressions: 980, ctr: 0.121, position: 1 },
+      { keys: ['2026-02-26'], clicks: 123, impressions: 980, ctr: 0.125, position: 1 },
+      { keys: ['2026-02-27'], clicks: 120, impressions: 980, ctr: 0.122, position: 1 },
+      { keys: ['2026-02-28'], clicks: 124, impressions: 980, ctr: 0.126, position: 1 },
+    ];
+
+    const result = analyzeGSCInsights({
+      currentRows,
+      previousRows,
+      currentDailyRows,
+      previousDailyRows,
+      projectType: 'MEDIA',
+    });
+
+    expect(result.insights.some((insight) => insight.id.startsWith('dailyClickAnomaly-'))).toBe(true);
+    expect(result.insights.some((insight) => insight.id.startsWith('seasonalDropAnomaly-'))).toBe(true);
+    expect(result.seasonality.count).toBeGreaterThan(0);
+  });
 });

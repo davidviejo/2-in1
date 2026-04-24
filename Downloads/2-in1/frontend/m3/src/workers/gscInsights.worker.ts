@@ -4,6 +4,8 @@ import { SeoInsightDateRange } from '../types/seoInsights';
 
 interface GSCWorkerContext {
   propertyId?: string;
+  currentDailyRows?: GSCRow[];
+  previousDailyRows?: GSCRow[];
   periodCurrent?: SeoInsightDateRange;
   periodPrevious?: SeoInsightDateRange;
   brandTerms?: string[];
@@ -109,6 +111,8 @@ addEventListener('message', (e: MessageEvent<GSCWorkerMessage>) => {
       const insights = analyzeGSCInsights({
         currentRows: Array.from(currentRowsMap.values()),
         previousRows: Array.from(previousRowsMap.values()),
+        currentDailyRows: context.currentDailyRows || [],
+        previousDailyRows: context.previousDailyRows || [],
         propertyId: context.propertyId,
         periodCurrent: context.periodCurrent,
         periodPrevious: context.periodPrevious,

@@ -80,6 +80,40 @@ const clamp = (value: number, min = 0, max = 100) => Math.max(min, Math.min(max,
 const normalize = (value: number, max: number) => clamp((value / Math.max(max, 1)) * 100);
 const average = (values: number[]) =>
   values.length === 0 ? 0 : values.reduce((sum, value) => sum + value, 0) / values.length;
+const stdDev = (values: number[]) => {
+  if (values.length <= 1) return 0;
+  const mean = average(values);
+  const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length;
+  return Math.sqrt(variance);
+};
+
+const toUtcDate = (rawDate: string) => new Date(`${rawDate}T00:00:00Z`);
+
+interface DailyPoint {
+  date: string;
+  clicks: number;
+  impressions: number;
+}
+
+const buildDailySeries = (rows: GSCRow[]) => {
+  const grouped = new Map<string, DailyPoint>();
+  rows.forEach((row) => {
+    const date = row.keys?.[0] || '';
+    if (!date) return;
+    const existing = grouped.get(date);
+    if (!existing) {
+      grouped.set(date, { date, clicks: row.clicks, impressions: row.impressions });
+      return;
+    }
+    grouped.set(date, {
+      date,
+      clicks: existing.clicks + row.clicks,
+      impressions: existing.impressions + row.impressions,
+    });
+  });
+
+  return Array.from(grouped.values()).sort((a, b) => toUtcDate(a.date).getTime() - toUtcDate(b.date).getTime());
+};
 
 const buildAggregateMaps = (rows: GSCRow[]) => {
   const byKey = new Map<string, GSCRow>();
@@ -275,6 +309,8 @@ export interface GSCInsightsEngineResult {
 export const analyzeGSCInsights = ({
   currentRows,
   previousRows = [],
+  currentDailyRows = [],
+  previousDailyRows = [],
   propertyId = 'sc-property',
   periodCurrent = { startDate: '', endDate: '' },
   periodPrevious,
@@ -295,6 +331,149 @@ export const analyzeGSCInsights = ({
   const opportunityThresholds = resolveGscOpportunityThresholds(projectType, sector);
 
   const candidates: InsightCandidate[] = [];
+  const currentDailySeries = buildDailySeries(currentDailyRows);
+  const previousDailySeries = buildDailySeries(previousDailyRows);
+
+  if (currentDailySeries.length >= 7) {
+    const dailyClicks = currentDailySeries.map((point) => point.clicks);
+    const baselineWindow = dailyClicks.slice(0, Math.max(1, dailyClicks.length - 3));
+    const baselineMean = average(baselineWindow);
+    const baselineStd = stdDev(baselineWindow);
+    const minStd = Math.max(1, baselineMean * 0.08);
+    const guardStd = Math.max(baselineStd, minStd);
+    const recentWindow = currentDailySeries.slice(-3);
+    const zScoreAlerts = recentWindow
+      .map((point) => {
+        const zScore = guardStd > 0 ? (point.clicks - baselineMean) / guardStd : 0;
+        return {
+          ...point,
+          zScore,
+          dropRatio: baselineMean > 0 ? (baselineMean - point.clicks) / baselineMean : 0,
+        };
+      })
+      .filter((point) => point.zScore <= -2 && point.dropRatio >= 0.12);
+
+    if (zScoreAlerts.length > 0) {
+      const worstDay = [...zScoreAlerts].sort((a, b) => a.zScore - b.zScore)[0];
+      candidates.push({
+        id: 'dailyClickAnomaly',
+        ruleKey: 'daily_zscore_negative_outlier',
+        sourceType: 'property',
+        sourceId: propertyId,
+        title: 'Alerta temprana: anomalía diaria de clics',
+        summary: `${zScoreAlerts.length} días recientes quedaron fuera de rango esperado (z-score ≤ -2).`,
+        reason: 'El modelo diario detecta una caída estadísticamente anómala frente al patrón reciente.',
+        recommendation: 'Revisa cobertura/indexación, cambios de snippet y estado técnico en las últimas 24-72h.',
+        category: 'risk',
+        severity: 'high',
+        priority: 'high',
+        status: 'new',
+        opportunity: clamp(Math.round((zScoreAlerts.length / 3) * 100)),
+        impact: normalize(
+          zScoreAlerts.reduce((sum, day) => sum + Math.max(0, baselineMean - day.clicks), 0),
+          baselineMean * 3 || 1,
+        ),
+        urgency: 94,
+        confidence: 88,
+        implementationEase: 58,
+        businessValue: 93,
+        moduleId: 1,
+        effort: 45,
+        evidence: zScoreAlerts.slice(0, 3).map((day) => ({
+          label: day.date,
+          value: `${Math.round(day.clicks)} clics · z=${day.zScore.toFixed(2)}`,
+          context: `Baseline ${Math.round(baselineMean)} clics/día`,
+          metricKey: 'clicks',
+        })),
+        relatedRows: zScoreAlerts.map((day) => ({
+          keys: [day.date, propertyId],
+          clicks: day.clicks,
+          impressions: day.impressions,
+          ctr: day.impressions > 0 ? day.clicks / day.impressions : 0,
+          position: 0,
+        })),
+        affectedCount: zScoreAlerts.length,
+        brandType: 'mixed',
+        findingFamily: 'anomaly',
+        traceQuery: worstDay.date,
+        traceUrl: propertyId,
+        ruleScope: 'generic',
+        appliesBecause: getContextReason('generic', projectType, sector),
+        applicableProjectTypes: activeProjectTypes,
+      });
+    }
+  }
+
+  if (currentDailySeries.length >= 14 && previousDailySeries.length >= 14) {
+    const previousWeekdayClicks = new Map<number, number[]>();
+    previousDailySeries.forEach((point) => {
+      const weekDay = toUtcDate(point.date).getUTCDay();
+      previousWeekdayClicks.set(weekDay, [...(previousWeekdayClicks.get(weekDay) || []), point.clicks]);
+    });
+
+    const seasonalAlerts = currentDailySeries
+      .map((point) => {
+        const weekDay = toUtcDate(point.date).getUTCDay();
+        const weekdaySamples = previousWeekdayClicks.get(weekDay) || [];
+        if (weekdaySamples.length < 2) return null;
+        const expected = average(weekdaySamples);
+        const deviation = point.clicks - expected;
+        const deviationRatio = expected > 0 ? deviation / expected : 0;
+        return { ...point, expected, deviation, deviationRatio };
+      })
+      .filter((point): point is NonNullable<typeof point> => !!point)
+      .filter((point) => point.deviationRatio <= -0.25);
+
+    if (seasonalAlerts.length > 0) {
+      const latestSeasonalAlert = seasonalAlerts[seasonalAlerts.length - 1];
+      candidates.push({
+        id: 'seasonalDropAnomaly',
+        ruleKey: 'weekday_seasonal_decomposition_drop',
+        sourceType: 'property',
+        sourceId: propertyId,
+        title: 'Desviación estacional negativa',
+        summary: `${seasonalAlerts.length} días están por debajo del patrón esperado por estacionalidad semanal.`,
+        reason: 'El componente estacional (día de semana) no explica la caída reciente y se considera señal real.',
+        recommendation: 'Activa monitor diario y abre investigación temprana para evitar acumulación de pérdida semanal.',
+        category: 'performance',
+        severity: 'high',
+        priority: 'high',
+        status: 'new',
+        opportunity: 78,
+        impact: normalize(
+          seasonalAlerts.reduce((sum, point) => sum + Math.max(0, point.expected - point.clicks), 0),
+          seasonalAlerts.reduce((sum, point) => sum + point.expected, 0) || 1,
+        ),
+        urgency: 89,
+        confidence: 82,
+        implementationEase: 62,
+        businessValue: 87,
+        moduleId: 4,
+        effort: 42,
+        evidence: seasonalAlerts.slice(-3).map((point) => ({
+          label: point.date,
+          value: `${Math.round(point.clicks)} vs esp. ${Math.round(point.expected)} clics`,
+          context: `Δ ${(point.deviationRatio * 100).toFixed(1)}%`,
+          metricKey: 'clicks',
+        })),
+        relatedRows: seasonalAlerts.map((point) => ({
+          keys: [point.date, propertyId],
+          clicks: point.clicks,
+          impressions: point.impressions,
+          ctr: point.impressions > 0 ? point.clicks / point.impressions : 0,
+          position: 0,
+        })),
+        affectedCount: seasonalAlerts.length,
+        brandType: 'mixed',
+        findingFamily: 'anomaly',
+        traceQuery: latestSeasonalAlert.date,
+        traceUrl: propertyId,
+        ruleScope: 'project_type',
+        appliesBecause: getContextReason('project_type', projectType, sector),
+        applicableProjectTypes: activeProjectTypes,
+      });
+    }
+  }
 
   const quickWins = comparableRows.filter(({ current }) => current.position >= opportunityThresholds.quickWinPositionMin && current.position <= opportunityThresholds.quickWinPositionMax && current.impressions >= opportunityThresholds.quickWinMinImpressions);
   if (quickWins.length) {
@@ -1323,7 +1502,7 @@ export const analyzeGSCInsights = ({
     zeroClicks: legacyCard(sortedInsights.find((insight) => insight.id.startsWith('zeroClicks')), 'Impresiones sin captación'),
     featuredSnippets: legacyCard(sortedInsights.find((insight) => insight.id.startsWith('featuredSnippets')), 'Query emergente detectada'),
     stagnantTraffic: legacyCard(sortedInsights.find((insight) => insight.id.startsWith('stagnantTraffic')), 'Crecen impresiones sin crecer clics'),
-    seasonality: { title: 'Estacionalidad', description: 'Sin señal suficiente.', count: 0, items: [] },
+    seasonality: legacyCard(sortedInsights.find((insight) => insight.id.startsWith('seasonalDropAnomaly')), 'Estacionalidad'),
     stableUrls: { title: 'URLs estables', description: 'Sin señal suficiente.', count: 0, items: [] },
     internalRedirects: legacyCard(sortedInsights.find((insight) => insight.id.startsWith('internalRedirects')), 'URLs con señales de limpieza técnica'),
   };

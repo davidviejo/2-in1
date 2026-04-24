@@ -361,7 +361,7 @@ export const useGSCData = (
               startDate: finalStartDate,
               endDate: finalEndDate,
               dimensions: ['date'],
-              rowLimit: 30,
+              rowLimit: 400,
             }).then((result) => result.rows || []),
             updateCurrentStepLabel,
           ).then((result) => {
@@ -375,7 +375,7 @@ export const useGSCData = (
               startDate: previousStartDate,
               endDate: previousEndDate,
               dimensions: ['date'],
-              rowLimit: 30,
+              rowLimit: 400,
             }).then((result) => result.rows || []),
             updateCurrentStepLabel,
           ).then((result) => {
@@ -515,6 +515,8 @@ export const useGSCData = (
             {
               currentRows: analysisCurrentRows,
               previousRows: analysisPreviousRows,
+              currentDailyRows: dateData,
+              previousDailyRows: comparisonDateData,
               propertyId: context?.propertyId || resolvedSelectedSite,
               periodCurrent: { startDate: finalStartDate, endDate: finalEndDate },
               periodPrevious: { startDate: previousStartDate, endDate: previousEndDate },
