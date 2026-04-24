@@ -24,6 +24,7 @@ import { gscDatasetManager } from '@/services/gscDatasetManager';
 import { inspectUrlsBatch, UrlInspectionErrorItem, UrlInspectionRow } from '@/services/gscInspectionService';
 import { GscImpactSegmentationRepository } from '@/services/gscImpactSegmentationRepository';
 import { parseBrandTermsInput, parseTemplateManualMap, parseTemplateRules } from '@/utils/gscFilters';
+import { buildClusterHealthScores } from '@/features/gsc-impact/clusterHealthScore';
 import { QuerySegmentFilter } from '@/features/gsc-impact/segmentation/coreEngine';
 import {
   collectAvailableTemplates,
@@ -977,6 +978,11 @@ const GscImpactPage: React.FC = () => {
   const templateBreakdown = useMemo(() => breakdownFromRows(filteredUrlRows, (row) => row.template || 'Sin template'), [filteredUrlRows, windowDays]);
   const languageBreakdown = useMemo(() => breakdownFromRows(filteredUrlRows, (row) => inferLanguagePrefix(row.key)), [filteredUrlRows, windowDays]);
   const pageTypeBreakdown = useMemo(() => breakdownFromRows(filteredUrlRows, (row) => inferPageType(row.key)), [filteredUrlRows, windowDays]);
+  const clusterHealthScores = useMemo(
+    () => buildClusterHealthScores(filteredUrlRows, windowDays),
+    [filteredUrlRows, windowDays],
+  );
+
   const deviceBreakdown = useMemo(() => breakdownFromRows(deviceRows, (row) => row.key), [deviceRows, windowDays]);
   const countryBreakdown = useMemo(() => breakdownFromRows(countryRows, (row) => row.key), [countryRows, windowDays]);
 
@@ -2368,6 +2374,52 @@ const GscImpactPage: React.FC = () => {
                   </div>
                 </Card>
               ))}
+            </div>
+          </section>
+
+          <section className="surface-panel p-6">
+            <h3 className="text-lg font-semibold">Score de salud SEO por clúster de URLs</h3>
+            <p className="section-subtitle">
+              Score compuesto por sección (visibilidad, CTR gap, volatilidad y riesgo de caída) para priorizar roadmap trimestral.
+            </p>
+            <div className="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-2">
+              {clusterHealthScores.slice(0, 12).map((cluster) => {
+                const tone =
+                  cluster.healthScore < 45
+                    ? 'border-red-200 bg-red-50'
+                    : cluster.healthScore < 65
+                      ? 'border-amber-200 bg-amber-50'
+                      : 'border-emerald-200 bg-emerald-50';
+
+                return (
+                  <Card key={`cluster-health-${cluster.cluster}`} className={`p-4 border ${tone}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold">{cluster.cluster}</p>
+                        <p className="text-xs text-muted">{cluster.urlCount} URLs analizadas</p>
+                      </div>
+                      <Badge variant={cluster.healthScore < 45 ? 'danger' : cluster.healthScore < 65 ? 'warning' : 'success'}>
+                        Salud {cluster.healthScore.toFixed(1)}
+                      </Badge>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                      <div className="surface-subtle p-2">Visibilidad: <strong>{cluster.visibilityScore.toFixed(1)}</strong></div>
+                      <div className="surface-subtle p-2">CTR gap: <strong>{cluster.ctrGapScore.toFixed(1)}</strong></div>
+                      <div className="surface-subtle p-2">Volatilidad: <strong>{cluster.volatilityScore.toFixed(1)}</strong></div>
+                      <div className="surface-subtle p-2">Riesgo caída: <strong>{cluster.dropRiskScore.toFixed(1)}</strong></div>
+                    </div>
+
+                    <p className="mt-3 text-xs text-muted">
+                      Clicks/día pre {cluster.preClicksPerDay.toFixed(1)} → post {cluster.postClicksPerDay.toFixed(1)} ·
+                      Δ CTR {cluster.deltaCtrPp.toFixed(2)}pp · Δ posición {cluster.deltaPosition.toFixed(2)}
+                    </p>
+                  </Card>
+                );
+              })}
+              {clusterHealthScores.length === 0 && (
+                <div className="text-sm text-muted">Sin datos suficientes para calcular score por clúster.</div>
+              )}
             </div>
           </section>
 
