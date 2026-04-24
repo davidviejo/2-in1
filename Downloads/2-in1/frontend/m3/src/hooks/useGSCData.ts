@@ -4,6 +4,7 @@ import { listSites } from '../services/googleSearchConsole';
 import { gscDatasetManager } from '@/services/gscDatasetManager';
 import { persistGscUrlKeywordCache } from '../services/gscUrlKeywordCache';
 import { runAnalysisInWorker, type GSCInsights } from '../utils/workerClient';
+import { buildDashboardGscFetchPlan } from '@/utils/gscSamplingPolicy';
 import { ProjectType } from '../types';
 import { useToast } from '../components/ui/ToastContext';
 
@@ -245,6 +246,7 @@ export const useGSCData = (
         finalStartDate,
         finalEndDate,
       );
+      const fetchPlan = buildDashboardGscFetchPlan(finalStartDate, finalEndDate);
       const progressSteps = [
         'Consultando rendimiento del periodo actual',
         'Consultando rendimiento del periodo comparado',
@@ -342,7 +344,9 @@ export const useGSCData = (
               startDate: finalStartDate,
               endDate: finalEndDate,
               dimensions: ['query', 'page'],
-              rowLimit: 1000,
+              rowLimit: fetchPlan.analysisRowLimit,
+              maxRows: fetchPlan.analysisMaxRows,
+              dateChunkSizeDays: fetchPlan.analysisDateChunkSizeDays,
               allowHighCardinality: true,
             }),
             updateCurrentStepLabel,
@@ -357,7 +361,9 @@ export const useGSCData = (
               startDate: previousStartDate,
               endDate: previousEndDate,
               dimensions: ['query', 'page'],
-              rowLimit: 1000,
+              rowLimit: fetchPlan.analysisRowLimit,
+              maxRows: fetchPlan.analysisMaxRows,
+              dateChunkSizeDays: fetchPlan.analysisDateChunkSizeDays,
               allowHighCardinality: true,
             }),
             updateCurrentStepLabel,
@@ -374,7 +380,9 @@ export const useGSCData = (
                   startDate: finalStartDate,
                   endDate: finalEndDate,
                   dimensions: ['page', 'date'],
-                  rowLimit: 25000,
+                  rowLimit: fetchPlan.evolutionRowLimit,
+                  maxRows: fetchPlan.evolutionMaxRows,
+                  dateChunkSizeDays: fetchPlan.evolutionDateChunkSizeDays,
                   searchType: 'web',
                   allowHighCardinality: true,
                 });
@@ -414,7 +422,7 @@ export const useGSCData = (
       if (currentQueryPageResponse.metadata?.isPartial || previousQueryPageResponse.metadata?.isPartial) {
         const reasons = [currentPartialReason, previousPartialReason].filter(Boolean).join(', ');
         showWarning(
-          `GSC devolvió un dataset parcial para query+page (${reasons || 'sin motivo detallado'}). Los insights pueden ser incompletos.`,
+          `GSC devolvió un dataset parcial para query+page (${reasons || 'sin motivo detallado'}). Se priorizaron filas de mayor impacto (clics/impresiones) para mantener estabilidad.`,
         );
       }
       const totalRowsForAnalysis = analysisCurrentRows.length + analysisPreviousRows.length;
