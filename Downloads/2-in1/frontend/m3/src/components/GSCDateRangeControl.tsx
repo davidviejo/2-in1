@@ -17,6 +17,16 @@ const getDelayedToday = () => {
   return end;
 };
 
+const isRecentRange = (endDate: string) => {
+  const delayedToday = getDelayedToday();
+  const selectedEndDate = new Date(`${endDate}T00:00:00`);
+  const diffDays = Math.abs(
+    Math.ceil((delayedToday.getTime() - selectedEndDate.getTime()) / (1000 * 60 * 60 * 24)),
+  );
+
+  return diffDays <= 2;
+};
+
 const getMonthRange = (monthsBackFromCurrent: number) => {
   const delayedToday = getDelayedToday();
   const targetYear = delayedToday.getFullYear();
@@ -85,6 +95,10 @@ export const GSCDateRangeControl: React.FC<GSCDateRangeControlProps> = ({
   const currentLabel = useMemo(
     () =>
       ranges.find((r) => {
+        if (!isRecentRange(endDate)) {
+          return false;
+        }
+
         const start = new Date(startDate);
         const end = new Date(endDate);
         const diff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
