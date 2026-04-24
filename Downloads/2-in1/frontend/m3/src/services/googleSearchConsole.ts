@@ -740,6 +740,7 @@ export const getGSCPageDateData = async (
   rowLimit: number = 25000,
   searchType: GSCSearchType = 'web',
   options?: {
+    dimensionFilterGroups?: GSCDimensionFilterGroup[];
     maxPages?: number;
     maxRows?: number;
   },
@@ -751,6 +752,7 @@ export const getGSCPageDateData = async (
     dimensions: ['page', 'date'],
     rowLimit,
     searchType,
+    dimensionFilterGroups: options?.dimensionFilterGroups,
     maxPages: options?.maxPages,
     maxRows: options?.maxRows,
   });

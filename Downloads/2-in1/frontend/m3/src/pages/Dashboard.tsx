@@ -18,7 +18,7 @@ import {
   ReferenceLine,
   Legend,
 } from 'recharts';
-import { GSCRow, ModuleData, SeoPerformanceSnapshot } from '../types';
+import { GSCDimensionFilterGroup, GSCRow, ModuleData, SeoPerformanceSnapshot } from '../types';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowRight,
@@ -88,6 +88,8 @@ const GOOGLE_SHEETS_SAFE_CELLS = 9_200_000;
 const GOOGLE_SHEETS_MAX_CELL_CHARACTERS = 50_000;
 const GOOGLE_SHEETS_SAFE_CELL_CHARACTERS = 49_000;
 const DASHBOARD_INSIGHT_TABLE_LIMIT = 200;
+const TRENDING_ANALYSIS_MAX_ROWS_DEFAULT = 25000;
+const TRENDING_ANALYSIS_MAX_ROWS_HARD_LIMIT = 200000;
 
 interface DashboardProps {
   modules: ModuleData[];
@@ -137,6 +139,47 @@ interface UrlTrendWindowReport {
 
 type PerformanceMetric = 'clicks' | 'impressions' | 'ctr' | 'position';
 type QueryCategoryFilter = 'all' | 'informational' | 'commercial' | 'navigational' | 'local' | 'other';
+
+const parseUrlConditionLines = (rawValue: string) =>
+  Array.from(
+    new Set(
+      rawValue
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean),
+    ),
+  );
+
+const buildUrlConditionFilterGroups = (
+  includeTerms: string[],
+  excludeTerms: string[],
+): GSCDimensionFilterGroup[] | undefined => {
+  const groups: GSCDimensionFilterGroup[] = [];
+
+  if (includeTerms.length > 0) {
+    groups.push({
+      groupType: 'or',
+      filters: includeTerms.map((term) => ({
+        dimension: 'page',
+        operator: 'contains',
+        expression: term,
+      })),
+    });
+  }
+
+  if (excludeTerms.length > 0) {
+    groups.push({
+      groupType: 'and',
+      filters: excludeTerms.map((term) => ({
+        dimension: 'page',
+        operator: 'notContains',
+        expression: term,
+      })),
+    });
+  }
+
+  return groups.length ? groups : undefined;
+};
 
 interface NormalizedQueryRow {
   query: string;
@@ -607,6 +650,16 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   const [historyScopeFilter, setHistoryScopeFilter] = useState<'all' | 'client' | 'property' | 'module'>('all');
   const [syncClock, setSyncClock] = useState(() => Date.now());
   const [isExportingTrendingUrls, setIsExportingTrendingUrls] = useState(false);
+  const [isRunningTrendingAnalysis, setIsRunningTrendingAnalysis] = useState(false);
+  const [trendingIncludeRaw, setTrendingIncludeRaw] = useState('');
+  const [trendingExcludeRaw, setTrendingExcludeRaw] = useState('');
+  const [trendingMaxRows, setTrendingMaxRows] = useState<number>(TRENDING_ANALYSIS_MAX_ROWS_DEFAULT);
+  const [trendingAnalysisRows, setTrendingAnalysisRows] = useState<GSCRow[] | null>(null);
+  const [trendingAnalysisScope, setTrendingAnalysisScope] = useState<{
+    includeTerms: string[];
+    excludeTerms: string[];
+    rowsLoaded: number;
+  } | null>(null);
 
   const [startDate, setStartDate] = useState<string>(() => {
     const d = new Date();
@@ -639,7 +692,6 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     comparisonGscData,
     queryPageData,
     comparisonQueryPageData,
-    pageDateData,
     comparisonPeriod,
     isLoadingGsc,
     syncProgress,
@@ -652,6 +704,11 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     sector: currentClient?.sector || 'Generico',
     geoScope: currentClient?.geoScope || 'global',
   });
+
+  useEffect(() => {
+    setTrendingAnalysisRows(null);
+    setTrendingAnalysisScope(null);
+  }, [selectedSite, startDate, endDate, comparisonMode]);
 
   const {
     entries: ignoredEntries,
@@ -1019,7 +1076,8 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       .slice(0, 20);
   }, [comparisonQueryPageData, currentClient?.brandTerms, queryCategoryFilter, queryPageData, trafficSegmentFilter]);
 
-  const trendingUrls = useMemo(() => detectTrendingUrls(pageDateData), [pageDateData]);
+  const trendingSourceRows = useMemo(() => trendingAnalysisRows || [], [trendingAnalysisRows]);
+  const trendingUrls = useMemo(() => detectTrendingUrls(trendingSourceRows), [trendingSourceRows]);
 
   const trendingWindows = useMemo<UrlTrendWindowReport[]>(() => {
     const windowConfig: Array<{ key: UrlTrendWindowKey; label: string; statusLabel: string; days: number }> = [
@@ -1031,7 +1089,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       { key: '12m', label: 'Últimos 12 meses', statusLabel: 'patrón anual', days: 365 },
     ];
 
-    const dates = Array.from(new Set((pageDateData || []).map((row) => row.keys?.[1]).filter(Boolean)));
+    const dates = Array.from(new Set(trendingSourceRows.map((row) => row.keys?.[1]).filter(Boolean)));
     const availableDays = dates.length;
     const newestDate = dates.sort((a, b) => a!.localeCompare(b!))[dates.length - 1];
     const latest = newestDate ? new Date(`${newestDate}T00:00:00Z`) : null;
@@ -1066,7 +1124,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
         rows: trendingUrls.filter((trend) => trend.periodKey === windowDef.key),
       };
     });
-  }, [pageDateData, trendingUrls]);
+  }, [trendingSourceRows, trendingUrls]);
 
   const trendingSummary = useMemo(() => {
     const countsByWindow = trendingWindows.reduce<Record<string, number>>((acc, window) => {
@@ -1661,51 +1719,81 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     showSuccess(`Se exportaron ${totalFiles} archivos optimizados para Google Sheets con el menor número de pestañas posible.`);
   };
 
-  const handleExportTrendingUrls = () => {
+  const runTrendingAnalysis = () => {
     if (!gscAccessToken || !selectedSite) {
-      showError('Conecta Search Console y selecciona una propiedad antes de exportar.');
+      showError('Conecta Search Console y selecciona una propiedad antes de ejecutar el análisis.');
       return;
     }
 
-    showInfo('Preparando exportación completa para Sheets. Puede tardar en propiedades grandes.');
-    setIsExportingTrendingUrls(true);
+    const includeTerms = parseUrlConditionLines(trendingIncludeRaw);
+    const excludeTerms = parseUrlConditionLines(trendingExcludeRaw);
+    const dimensionFilterGroups = buildUrlConditionFilterGroups(includeTerms, excludeTerms);
+    const normalizedMaxRows = Math.min(
+      TRENDING_ANALYSIS_MAX_ROWS_HARD_LIMIT,
+      Math.max(1000, Number.isFinite(trendingMaxRows) ? Math.floor(trendingMaxRows) : TRENDING_ANALYSIS_MAX_ROWS_DEFAULT),
+    );
 
-    getGSCPageDateData(gscAccessToken, selectedSite, startDate, endDate)
-      .then((fullPageDateData) => {
-        const fullTrendingSignals = detectTrendingUrls(fullPageDateData.rows || []);
-        const rows = fullTrendingSignals.map((trend) => ({
-          ventana: trend.periodLabel,
-          rangoPico: trend.peakRange,
-          url: trend.url,
-          clicksActuales: Math.round(trend.currentClicks),
-          clicksBaseline: Math.round(Math.max(0, trend.baselineClicks)),
-          incrementoClicksAbs: Math.round(trend.clickIncrease),
-          incrementoClicksPct: Number(trend.clickChangePct.toFixed(1)),
-          multiplicador: Number(trend.surgeRatio.toFixed(2)),
-          impresiones: Math.round(trend.impressions),
-          ctrPct: Number(trend.ctr.toFixed(2)),
-          posicion: Number(trend.position.toFixed(2)),
-          estado: trend.statusLabel,
-        }));
-
-        if (rows.length === 0) {
-          showSuccess('No hay URLs con pico para exportar en esta selección.');
-          return;
-        }
-
-        const worksheet = XLSX.utils.json_to_sheet(rows);
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, 'URLs en tendencia');
-        XLSX.writeFile(workbook, `URLs_Tendencia_${new Date().toISOString().slice(0, 10)}.xlsx`);
-        showSuccess(`Exportación completa finalizada con ${rows.length} filas.`);
+    showInfo('Ejecutando análisis GSC con filtros de URL. Puede tardar en propiedades grandes.');
+    setIsRunningTrendingAnalysis(true);
+    getGSCPageDateData(gscAccessToken, selectedSite, startDate, endDate, 25000, 'web', {
+      dimensionFilterGroups,
+      maxRows: normalizedMaxRows,
+    })
+      .then((response) => {
+        setTrendingAnalysisRows(response.rows || []);
+        setTrendingAnalysisScope({
+          includeTerms,
+          excludeTerms,
+          rowsLoaded: response.rows?.length || 0,
+        });
+        showSuccess(`Análisis completado con ${response.rows?.length || 0} filas cargadas.`);
       })
       .catch((error) => {
-        console.error('Trending export error:', error);
-        showError('No se pudo exportar el dataset completo de tendencias. Reintenta en unos minutos.');
+        console.error('Trending analysis error:', error);
+        showError('No se pudo ejecutar el análisis filtrado. Reintenta en unos minutos.');
       })
       .finally(() => {
-        setIsExportingTrendingUrls(false);
+        setIsRunningTrendingAnalysis(false);
       });
+  };
+
+  const handleExportTrendingUrls = () => {
+    if (!trendingAnalysisRows || trendingAnalysisRows.length === 0) {
+      showError('Primero ejecuta el análisis con las condiciones de URL para poder exportar.');
+      return;
+    }
+
+    setIsExportingTrendingUrls(true);
+    try {
+      const fullTrendingSignals = detectTrendingUrls(trendingAnalysisRows);
+      const rows = fullTrendingSignals.map((trend) => ({
+        ventana: trend.periodLabel,
+        rangoPico: trend.peakRange,
+        url: trend.url,
+        clicksActuales: Math.round(trend.currentClicks),
+        clicksBaseline: Math.round(Math.max(0, trend.baselineClicks)),
+        incrementoClicksAbs: Math.round(trend.clickIncrease),
+        incrementoClicksPct: Number(trend.clickChangePct.toFixed(1)),
+        multiplicador: Number(trend.surgeRatio.toFixed(2)),
+        impresiones: Math.round(trend.impressions),
+        ctrPct: Number(trend.ctr.toFixed(2)),
+        posicion: Number(trend.position.toFixed(2)),
+        estado: trend.statusLabel,
+      }));
+
+      if (rows.length === 0) {
+        showSuccess('No hay URLs con pico para exportar con las condiciones aplicadas.');
+        return;
+      }
+
+      const worksheet = XLSX.utils.json_to_sheet(rows);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'URLs en tendencia');
+      XLSX.writeFile(workbook, `URLs_Tendencia_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      showSuccess(`Exportación completada con ${rows.length} filas filtradas.`);
+    } finally {
+      setIsExportingTrendingUrls(false);
+    }
   };
 
   const simulateVoiceRecording = () => {
@@ -3437,12 +3525,70 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
             </div>
           )}
 
-          {hasTrendingReport ? (
+          <div className="bg-surface p-5 rounded-2xl shadow-sm border border-border">
+            <h3 className="font-bold mb-4 flex items-center gap-2">
+              <TrendingUp className="text-primary" size={20} /> URLs en tendencia
+              <span className="text-[10px] bg-primary-soft text-primary px-1.5 py-0.5 rounded font-bold uppercase">Panel dedicado</span>
+            </h3>
+            <div className="rounded-xl border border-border bg-surface-alt/30 p-3 text-xs space-y-3">
+              <div>
+                <div className="font-semibold text-foreground">Configura condiciones antes del análisis</div>
+                <div className="mt-1 text-muted">
+                  Define patrones de URL para incluir/excluir y ejecutar el análisis por lotes o tipologías.
+                </div>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="block">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">Incluir URL contiene (1 por línea)</span>
+                  <textarea
+                    value={trendingIncludeRaw}
+                    onChange={(e) => setTrendingIncludeRaw(e.target.value)}
+                    placeholder="/categoria/\n/producto/\n/blog/"
+                    className="mt-1 h-24 w-full rounded-lg border border-border bg-surface px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">Excluir URL contiene (1 por línea)</span>
+                  <textarea
+                    value={trendingExcludeRaw}
+                    onChange={(e) => setTrendingExcludeRaw(e.target.value)}
+                    placeholder="/tag/\n?utm_\n/filtro/"
+                    className="mt-1 h-24 w-full rounded-lg border border-border bg-surface px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </label>
+              </div>
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="block w-full max-w-[220px]">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">Máx. filas por corrida</span>
+                  <Input
+                    type="number"
+                    min={1000}
+                    max={TRENDING_ANALYSIS_MAX_ROWS_HARD_LIMIT}
+                    value={trendingMaxRows}
+                    onChange={(e) => setTrendingMaxRows(Number(e.target.value || TRENDING_ANALYSIS_MAX_ROWS_DEFAULT))}
+                  />
+                </label>
+                <Button variant="secondary" onClick={runTrendingAnalysis} disabled={isRunningTrendingAnalysis}>
+                  <TrendingUp size={16} /> {isRunningTrendingAnalysis ? 'Analizando…' : 'Ejecutar análisis con filtros'}
+                </Button>
+                <Button variant="ghost" onClick={handleExportTrendingUrls} disabled={isExportingTrendingUrls || !trendingAnalysisScope}>
+                  <Download size={16} /> {isExportingTrendingUrls ? 'Exportando…' : 'Exportar URLs en tendencia'}
+                </Button>
+              </div>
+              {trendingAnalysisScope ? (
+                <div className="rounded-lg border border-border bg-surface px-3 py-2 text-[11px] text-muted">
+                  Última corrida: {trendingAnalysisScope.rowsLoaded.toLocaleString('es-ES')} filas · incluir {trendingAnalysisScope.includeTerms.length} patrón(es) · excluir {trendingAnalysisScope.excludeTerms.length} patrón(es).
+                </div>
+              ) : (
+                <div className="rounded-lg border border-border bg-surface px-3 py-2 text-[11px] text-muted">
+                  Aún no se ejecutó el análisis filtrado. El resumen no se calcula automáticamente.
+                </div>
+              )}
+            </div>
+          </div>
+
+          {trendingAnalysisScope ? hasTrendingReport ? (
             <div className="bg-surface p-5 rounded-2xl shadow-sm border border-border">
-              <h3 className="font-bold mb-4 flex items-center gap-2">
-                <TrendingUp className="text-primary" size={20} /> URLs en tendencia
-                <span className="text-[10px] bg-primary-soft text-primary px-1.5 py-0.5 rounded font-bold uppercase">Panel dedicado</span>
-              </h3>
               <div className="rounded-xl border border-border bg-surface-alt/30 p-3 text-xs">
                 <div className="font-semibold text-foreground">Resumen de detección</div>
                 <div className="mt-1 text-muted">
@@ -3464,9 +3610,6 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button variant="secondary" onClick={() => setShowTrendingPanel(true)}>
                   <TrendingUp size={16} /> Abrir panel URLs en tendencia
-                </Button>
-                <Button variant="ghost" onClick={handleExportTrendingUrls} disabled={isExportingTrendingUrls}>
-                  <Download size={16} /> {isExportingTrendingUrls ? 'Exportando completo…' : 'Exportar URLs en tendencia'}
                 </Button>
               </div>
               {trendingSummary.topRelevant.length > 0 && (
@@ -3491,10 +3634,10 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                 <TrendingUp className="text-muted" size={20} /> URLs en tendencia
               </h3>
               <div className="text-sm text-muted text-center py-4">
-                No se detectaron picos considerables con el periodo actual.
+                No se detectaron picos considerables con las condiciones actuales.
               </div>
             </div>
-          )}
+          ) : null}
 
           <Modal
             isOpen={showTrendingPanel}
@@ -3507,8 +3650,12 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                 <div className="text-muted">
                   URLs con pico por periodo: día {trendingSummary.countsByWindow['24h'] || 0} · semana {trendingSummary.countsByWindow['7d'] || 0} · mes {trendingSummary.countsByWindow['30d'] || 0} · 3m {trendingSummary.countsByWindow['3m'] || 0} · 6m {trendingSummary.countsByWindow['6m'] || 0} · 12m {trendingSummary.countsByWindow['12m'] || 0}
                 </div>
-                <Button variant="secondary" onClick={handleExportTrendingUrls} disabled={isExportingTrendingUrls}>
-                  <Download size={16} /> {isExportingTrendingUrls ? 'Exportando completo…' : 'Exportar datos'}
+                <Button
+                  variant="secondary"
+                  onClick={handleExportTrendingUrls}
+                  disabled={isExportingTrendingUrls || !trendingAnalysisScope}
+                >
+                  <Download size={16} /> {isExportingTrendingUrls ? 'Exportando…' : 'Exportar datos filtrados'}
                 </Button>
               </div>
               <div className="space-y-4">
