@@ -45,6 +45,14 @@ import {
 import { buildContextualRoadmap } from '@/config/projectContextualRoadmap';
 import { computeProjectScoreContext } from '@/config/projectScoreWeights';
 
+const createEntityId = () => {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `id-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+};
+
 interface ProjectContextType {
   clients: Client[];
   currentClientId: string;
@@ -373,7 +381,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
     }));
 
     const newClient: Client = {
-      id: crypto.randomUUID(),
+      id: createEntityId(),
       name: input.name,
       vertical,
       projectType,
@@ -491,7 +499,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
             seoSnapshots: [
               {
                 ...snapshot,
-                id: crypto.randomUUID(),
+                id: createEntityId(),
                 timestamp: Date.now(),
               },
               ...filtered,
@@ -610,7 +618,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
               tasksByModule.set(task.moduleId, []);
             }
             const newTask = {
-              id: crypto.randomUUID(),
+              id: createEntityId(),
               title: task.title,
               description: task.description,
               impact: task.impact,
@@ -734,7 +742,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
             c.kanbanColumns && c.kanbanColumns.length > 0
               ? c.kanbanColumns
               : DEFAULT_KANBAN_COLUMNS;
-          const newColumn = { id: crypto.randomUUID(), title };
+          const newColumn = { id: createEntityId(), title };
           return { ...c, kanbanColumns: [...currentColumns, newColumn] };
         }),
       );
@@ -832,7 +840,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
     ) => {
       const persistedRecord: AIRoadmapGenerationRecord = {
         ...record,
-        id: record.id || crypto.randomUUID(),
+        id: record.id || createEntityId(),
         timestamp: record.timestamp || Date.now(),
       };
       setClients((prev) =>
@@ -956,7 +964,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
           let newLog = c.completedTasksLog || [];
           if (isNowComplete) {
             const logEntry: CompletedTask = {
-              id: crypto.randomUUID(),
+              id: createEntityId(),
               taskId: taskId,
               title: taskToToggle.title,
               description: taskToToggle.description,
@@ -1031,7 +1039,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
           let newLog = c.completedTasksLog || [];
           if (newStatus === 'completed' && taskToUpdate.status !== 'completed') {
             const logEntry: CompletedTask = {
-              id: crypto.randomUUID(),
+              id: createEntityId(),
               taskId: taskId,
               title: taskToUpdate.title,
               description: taskToUpdate.description,
@@ -1082,7 +1090,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
         prev.map((c) => {
           if (c.id !== currentClientId) return c;
           const newEntry: CompletedTask = {
-            id: crypto.randomUUID(),
+            id: createEntityId(),
             title,
             description,
             completedAt: Date.now(),
@@ -1159,7 +1167,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       options?: Partial<Pick<Note, 'scopeType' | 'scopeId' | 'author' | 'tags' | 'isInternal' | 'isPinned' | 'trace'>>,
     ) => {
       const newNote: Note = {
-        id: crypto.randomUUID(),
+        id: createEntityId(),
         content,
         scopeType: options?.scopeType || (type === 'general' ? 'global' : 'client'),
         scopeId: options?.scopeId || (type === 'general' ? 'global' : currentClientId),
