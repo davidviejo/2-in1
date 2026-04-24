@@ -757,6 +757,32 @@ export const getGSCPageDateData = async (
     maxRows: options?.maxRows,
   });
 
+export const getGSCDimensionDateData = async (
+  accessToken: string,
+  siteUrl: string,
+  startDate: string,
+  endDate: string,
+  primaryDimension: 'query' | 'page',
+  rowLimit: number = 25000,
+  searchType: GSCSearchType = 'web',
+  options?: {
+    dimensionFilterGroups?: GSCDimensionFilterGroup[];
+    maxPages?: number;
+    maxRows?: number;
+  },
+) =>
+  querySearchAnalyticsPaged(accessToken, {
+    siteUrl,
+    startDate,
+    endDate,
+    dimensions: [primaryDimension, 'date'],
+    rowLimit,
+    searchType,
+    dimensionFilterGroups: options?.dimensionFilterGroups,
+    maxPages: options?.maxPages,
+    maxRows: options?.maxRows,
+  });
+
 export const getGSCAggregateMetrics = async (
   accessToken: string,
   siteUrl: string,

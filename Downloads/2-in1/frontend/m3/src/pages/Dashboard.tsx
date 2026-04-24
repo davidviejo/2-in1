@@ -73,7 +73,7 @@ import {
   rankInsightsByProjectContext,
 } from '../utils/dashboardContext';
 import { computeHybridGlobalScore } from '../utils/hybridGlobalScore';
-import { getGSCPageDateData } from '../services/googleSearchConsole';
+import { getGSCDimensionDateData, getGSCPageDateData } from '../services/googleSearchConsole';
 import ContextNoteButton from '@/components/ContextNoteButton';
 import { openContextualNotes } from '@/utils/noteEvents';
 
@@ -142,6 +142,24 @@ interface UrlTrendWindowReport {
 
 type PerformanceMetric = 'clicks' | 'impressions' | 'ctr' | 'position';
 type QueryCategoryFilter = 'all' | 'informational' | 'commercial' | 'navigational' | 'local' | 'other';
+type ForecastEntityType = 'url' | 'query';
+
+interface ForecastSeriesPoint {
+  date: string;
+  clicks: number;
+}
+
+interface ForecastResult {
+  points: Array<{
+    label: string;
+    actualClicks: number | null;
+    forecastBase: number | null;
+    forecastOptimized: number | null;
+  }>;
+  totalBase: number;
+  totalOptimized: number;
+  growthPct: number;
+}
 
 const parseUrlConditionLines = (rawValue: string) =>
   Array.from(
@@ -159,6 +177,76 @@ const parseBoundedInteger = (rawValue: string, fallback: number, maxAllowed: num
     return fallback;
   }
   return Math.min(parsed, maxAllowed);
+};
+
+const toIsoDate = (date: Date) => date.toISOString().slice(0, 10);
+
+const addDays = (dateString: string, deltaDays: number) => {
+  const baseDate = new Date(`${dateString}T00:00:00Z`);
+  baseDate.setUTCDate(baseDate.getUTCDate() + deltaDays);
+  return toIsoDate(baseDate);
+};
+
+const buildForecast = (
+  series: ForecastSeriesPoint[],
+  horizonDays: number,
+  upliftPct: number,
+): ForecastResult => {
+  const safeSeries = [...series]
+    .filter((point) => Boolean(point.date))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  if (safeSeries.length === 0) {
+    return { points: [], totalBase: 0, totalOptimized: 0, growthPct: 0 };
+  }
+
+  const values = safeSeries.map((point) => Math.max(0, Number(point.clicks || 0)));
+  const count = values.length;
+  const xMean = (count - 1) / 2;
+  const yMean = values.reduce((sum, value) => sum + value, 0) / count;
+  let numerator = 0;
+  let denominator = 0;
+  values.forEach((value, index) => {
+    const centered = index - xMean;
+    numerator += centered * (value - yMean);
+    denominator += centered * centered;
+  });
+
+  const slope = denominator === 0 ? 0 : numerator / denominator;
+  const intercept = yMean - slope * xMean;
+  const upliftMultiplier = 1 + upliftPct / 100;
+  const lastDate = safeSeries[safeSeries.length - 1].date;
+
+  const actualPoints = safeSeries.map((point) => ({
+    label: point.date,
+    actualClicks: Number(point.clicks || 0),
+    forecastBase: null,
+    forecastOptimized: null,
+  }));
+
+  const forecastPoints = Array.from({ length: Math.max(0, horizonDays) }, (_, offset) => {
+    const nextIndex = count + offset;
+    const baseForecast = Math.max(0, intercept + slope * nextIndex);
+    const optimizedForecast = baseForecast * upliftMultiplier;
+    return {
+      label: addDays(lastDate, offset + 1),
+      actualClicks: null,
+      forecastBase: Number(baseForecast.toFixed(2)),
+      forecastOptimized: Number(optimizedForecast.toFixed(2)),
+    };
+  });
+
+  const totalBase = forecastPoints.reduce((sum, point) => sum + (point.forecastBase || 0), 0);
+  const totalOptimized = forecastPoints.reduce((sum, point) => sum + (point.forecastOptimized || 0), 0);
+  const recentWindow = values.slice(Math.max(0, values.length - 14));
+  const baselineRecentTotal = recentWindow.reduce((sum, value) => sum + value, 0);
+  const growthPct = baselineRecentTotal > 0 ? ((totalBase - baselineRecentTotal) / baselineRecentTotal) * 100 : 0;
+
+  return {
+    points: [...actualPoints, ...forecastPoints],
+    totalBase,
+    totalOptimized,
+    growthPct,
+  };
 };
 
 const buildUrlConditionFilterGroups = (
@@ -654,6 +742,13 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   const [showInsightsHelp, setShowInsightsHelp] = useState(false);
   const [showBrandConfigModal, setShowBrandConfigModal] = useState(false);
   const [showTrendingPanel, setShowTrendingPanel] = useState(false);
+  const [forecastEntityType, setForecastEntityType] = useState<ForecastEntityType>('url');
+  const [selectedForecastEntity, setSelectedForecastEntity] = useState('');
+  const [forecastWeeks, setForecastWeeks] = useState<4 | 6 | 8>(6);
+  const [forecastUpliftPct, setForecastUpliftPct] = useState(15);
+  const [forecastSeriesCurrent, setForecastSeriesCurrent] = useState<ForecastSeriesPoint[]>([]);
+  const [forecastSeriesPrevious, setForecastSeriesPrevious] = useState<ForecastSeriesPoint[]>([]);
+  const [isLoadingForecastSeries, setIsLoadingForecastSeries] = useState(false);
   const [selectedModuleDetailId, setSelectedModuleDetailId] = useState<number | null>(null);
   const [projectSectorDraft, setProjectSectorDraft] = useState('');
   const [brandTermsDraft, setBrandTermsDraft] = useState('');
@@ -1180,6 +1275,100 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       .slice(0, 20);
   }, [comparisonQueryPageData, currentClient?.brandTerms, queryCategoryFilter, queryPageData, trafficSegmentFilter]);
 
+  const forecastEntityOptions = useMemo(() => {
+    if (forecastEntityType === 'query') {
+      return topQueriesNormalized.map((row) => row.query).filter(Boolean).slice(0, 25);
+    }
+
+    const byUrl = (queryPageData || []).reduce((acc, row) => {
+      const url = row.keys?.[1] || '';
+      if (!url) return acc;
+      const previous = acc.get(url) || 0;
+      acc.set(url, previous + Number(row.clicks || 0));
+      return acc;
+    }, new Map<string, number>());
+
+    return Array.from(byUrl.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([url]) => url)
+      .slice(0, 25);
+  }, [forecastEntityType, queryPageData, topQueriesNormalized]);
+
+  useEffect(() => {
+    if (!forecastEntityOptions.includes(selectedForecastEntity)) {
+      setSelectedForecastEntity(forecastEntityOptions[0] || '');
+    }
+  }, [forecastEntityOptions, selectedForecastEntity]);
+
+  useEffect(() => {
+    if (!gscAccessToken || !selectedSite || !selectedForecastEntity || !hasTriggeredGscRun) {
+      setForecastSeriesCurrent([]);
+      setForecastSeriesPrevious([]);
+      return;
+    }
+
+    const dimension = forecastEntityType === 'url' ? 'page' : 'query';
+    const dimensionFilterGroups: GSCDimensionFilterGroup[] = [
+      {
+        groupType: 'and',
+        filters: [{ dimension, operator: 'equals', expression: selectedForecastEntity }],
+      },
+    ];
+
+    setIsLoadingForecastSeries(true);
+    Promise.all([
+      getGSCDimensionDateData(
+        gscAccessToken,
+        selectedSite,
+        startDate,
+        endDate,
+        dimension,
+        25000,
+        'web',
+        { dimensionFilterGroups, maxRows: 50000 },
+      ),
+      comparisonPeriod
+        ? getGSCDimensionDateData(
+          gscAccessToken,
+          selectedSite,
+          comparisonPeriod.previous.startDate,
+          comparisonPeriod.previous.endDate,
+          dimension,
+          25000,
+          'web',
+          { dimensionFilterGroups, maxRows: 50000 },
+        )
+        : Promise.resolve({ rows: [] as GSCRow[] }),
+    ])
+      .then(([currentResponse, previousResponse]) => {
+        const normalize = (rows: GSCRow[]): ForecastSeriesPoint[] =>
+          rows
+            .map((row) => ({
+              date: row.keys?.[1] || '',
+              clicks: Number(row.clicks || 0),
+            }))
+            .filter((row) => row.date)
+            .sort((a, b) => a.date.localeCompare(b.date));
+        setForecastSeriesCurrent(normalize(currentResponse.rows || []));
+        setForecastSeriesPrevious(normalize(previousResponse.rows || []));
+      })
+      .catch((error) => {
+        console.error('Forecast series error:', error);
+        setForecastSeriesCurrent([]);
+        setForecastSeriesPrevious([]);
+      })
+      .finally(() => setIsLoadingForecastSeries(false));
+  }, [
+    comparisonPeriod,
+    endDate,
+    forecastEntityType,
+    gscAccessToken,
+    hasTriggeredGscRun,
+    selectedForecastEntity,
+    selectedSite,
+    startDate,
+  ]);
+
   const trendingSourceRows = useMemo(() => trendingAnalysisRows || [], [trendingAnalysisRows]);
   const trendingUrls = useMemo(() => detectTrendingUrls(trendingSourceRows), [trendingSourceRows]);
 
@@ -1337,6 +1526,16 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       },
     );
   }, [topQueriesNormalized]);
+
+  const forecastHorizonDays = forecastWeeks * 7;
+  const forecastResult = useMemo(
+    () => buildForecast(forecastSeriesCurrent, forecastHorizonDays, forecastUpliftPct),
+    [forecastHorizonDays, forecastSeriesCurrent, forecastUpliftPct],
+  );
+  const previousSeriesTotalClicks = useMemo(
+    () => forecastSeriesPrevious.reduce((sum, point) => sum + point.clicks, 0),
+    [forecastSeriesPrevious],
+  );
 
   const performanceSummary = useMemo(() => {
     const current = gscData.reduce(
@@ -3743,6 +3942,109 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
               </div>
             </div>
           )}
+
+          <div className="bg-surface p-5 rounded-2xl shadow-sm border border-border">
+            <h3 className="font-bold mb-4">Forecast de clicks por URL/Query</h3>
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="text-xs">
+                <span className="font-semibold text-muted">Entidad</span>
+                <select
+                  className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+                  value={forecastEntityType}
+                  onChange={(event) => setForecastEntityType(event.target.value as ForecastEntityType)}
+                >
+                  <option value="url">URL</option>
+                  <option value="query">Query</option>
+                </select>
+              </label>
+              <label className="text-xs">
+                <span className="font-semibold text-muted">{forecastEntityType === 'url' ? 'URL objetivo' : 'Query objetivo'}</span>
+                <select
+                  className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+                  value={selectedForecastEntity}
+                  onChange={(event) => setSelectedForecastEntity(event.target.value)}
+                  disabled={forecastEntityOptions.length === 0}
+                >
+                  {forecastEntityOptions.length === 0 ? (
+                    <option value="">Sin opciones</option>
+                  ) : (
+                    forecastEntityOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </label>
+              <label className="text-xs">
+                <span className="font-semibold text-muted">Horizonte</span>
+                <select
+                  className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+                  value={forecastWeeks}
+                  onChange={(event) => setForecastWeeks(Number(event.target.value) as 4 | 6 | 8)}
+                >
+                  <option value={4}>4 semanas</option>
+                  <option value={6}>6 semanas</option>
+                  <option value={8}>8 semanas</option>
+                </select>
+              </label>
+              <label className="text-xs">
+                <span className="font-semibold text-muted">Impacto mejora escenario optimizado (%)</span>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={forecastUpliftPct}
+                  onChange={(event) => setForecastUpliftPct(Math.max(0, Math.min(100, Number(event.target.value || 0))))}
+                />
+              </label>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <div className="rounded-xl border border-border bg-surface-alt p-3">
+                <div className="text-[11px] uppercase tracking-wide text-muted">Forecast base ({forecastWeeks} semanas)</div>
+                <div className="mt-1 text-lg font-bold text-foreground">{Math.round(forecastResult.totalBase).toLocaleString('es-ES')} clics</div>
+              </div>
+              <div className="rounded-xl border border-border bg-surface-alt p-3">
+                <div className="text-[11px] uppercase tracking-wide text-muted">Forecast optimizado</div>
+                <div className="mt-1 text-lg font-bold text-foreground">{Math.round(forecastResult.totalOptimized).toLocaleString('es-ES')} clics</div>
+              </div>
+              <div className="rounded-xl border border-border bg-surface-alt p-3">
+                <div className="text-[11px] uppercase tracking-wide text-muted">Comparativa periodo anterior</div>
+                <div className="mt-1 text-lg font-bold text-foreground">{Math.round(previousSeriesTotalClicks).toLocaleString('es-ES')} clics</div>
+              </div>
+            </div>
+
+            <div className="mt-2 text-xs text-muted">
+              Tendencia esperada en escenario base: {forecastResult.growthPct >= 0 ? '+' : ''}
+              {forecastResult.growthPct.toFixed(1)}% vs los últimos 14 días observados del objetivo seleccionado.
+            </div>
+
+            <div className="mt-4 h-64 w-full">
+              {isLoadingForecastSeries ? (
+                <div className="h-full flex items-center justify-center text-muted">
+                  <Spinner size={24} />
+                </div>
+              ) : forecastResult.points.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={forecastResult.points} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.5} />
+                    <XAxis dataKey="label" tick={{ fontSize: 10 }} tickLine={false} />
+                    <YAxis tick={{ fontSize: 10 }} tickLine={false} width={56} />
+                    <Tooltip />
+                    <Legend wrapperStyle={{ fontSize: '11px' }} />
+                    <Area type="monotone" dataKey="actualClicks" stroke="#2563eb" strokeWidth={2.5} fillOpacity={0.08} fill="#2563eb" name="Real (actual)" />
+                    <Area type="monotone" dataKey="forecastBase" stroke="#0f766e" strokeWidth={2} strokeDasharray="5 5" fillOpacity={0} name="Forecast base" />
+                    <Area type="monotone" dataKey="forecastOptimized" stroke="#a16207" strokeWidth={2} strokeDasharray="3 4" fillOpacity={0} name="Forecast optimizado" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center rounded-xl border border-dashed border-border text-sm text-muted">
+                  Selecciona una URL/query con datos para generar la proyección.
+                </div>
+              )}
+            </div>
+          </div>
 
           <div className="bg-surface p-5 rounded-2xl shadow-sm border border-border">
             <h3 className="font-bold mb-4 flex items-center gap-2">
