@@ -89,8 +89,10 @@ const GOOGLE_SHEETS_MAX_CELL_CHARACTERS = 50_000;
 const GOOGLE_SHEETS_SAFE_CELL_CHARACTERS = 49_000;
 const DASHBOARD_INSIGHT_TABLE_LIMIT_DEFAULT = 200;
 const DASHBOARD_INSIGHT_TABLE_LIMIT_HARD_LIMIT = 5000;
+const DASHBOARD_INSIGHT_TABLE_LIMIT_MIN = 50;
 const DASHBOARD_GSC_ANALYSIS_MAX_ROWS_DEFAULT = 320000;
 const DASHBOARD_GSC_ANALYSIS_MAX_ROWS_HARD_LIMIT = 2000000;
+const DASHBOARD_GSC_ANALYSIS_MAX_ROWS_MIN = 25000;
 const TRENDING_ANALYSIS_MAX_ROWS_DEFAULT = 25000;
 const TRENDING_ANALYSIS_MAX_ROWS_HARD_LIMIT = 200000;
 
@@ -171,12 +173,17 @@ const parseUrlConditionLines = (rawValue: string) =>
     ),
   );
 
-const parseBoundedInteger = (rawValue: string, fallback: number, maxAllowed: number) => {
-  const parsed = Number.parseInt(rawValue, 10);
+const parseBoundedInteger = (rawValue: string, fallback: number, minAllowed: number, maxAllowed: number) => {
+  const normalized = rawValue.trim().replace(/[.,\s]/g, '');
+  if (!/^\d+$/.test(normalized)) {
+    return fallback;
+  }
+  const parsed = Number(normalized);
   if (!Number.isFinite(parsed) || parsed <= 0) {
     return fallback;
   }
-  return Math.min(parsed, maxAllowed);
+  const bounded = Math.min(Math.floor(parsed), maxAllowed);
+  return Math.max(bounded, minAllowed);
 };
 
 const toIsoDate = (date: Date) => date.toISOString().slice(0, 10);
@@ -777,6 +784,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       const parsed = parseBoundedInteger(
         persisted,
         DASHBOARD_GSC_ANALYSIS_MAX_ROWS_DEFAULT,
+        DASHBOARD_GSC_ANALYSIS_MAX_ROWS_MIN,
         DASHBOARD_GSC_ANALYSIS_MAX_ROWS_HARD_LIMIT,
       );
       return String(parsed);
@@ -794,6 +802,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       const parsed = parseBoundedInteger(
         persisted,
         DASHBOARD_INSIGHT_TABLE_LIMIT_DEFAULT,
+        DASHBOARD_INSIGHT_TABLE_LIMIT_MIN,
         DASHBOARD_INSIGHT_TABLE_LIMIT_HARD_LIMIT,
       );
       return String(parsed);
@@ -812,6 +821,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       parseBoundedInteger(
         gscAnalysisMaxRowsInput,
         DASHBOARD_GSC_ANALYSIS_MAX_ROWS_DEFAULT,
+        DASHBOARD_GSC_ANALYSIS_MAX_ROWS_MIN,
         DASHBOARD_GSC_ANALYSIS_MAX_ROWS_HARD_LIMIT,
       ),
     [gscAnalysisMaxRowsInput],
@@ -821,6 +831,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       parseBoundedInteger(
         insightTableLimitInput,
         DASHBOARD_INSIGHT_TABLE_LIMIT_DEFAULT,
+        DASHBOARD_INSIGHT_TABLE_LIMIT_MIN,
         DASHBOARD_INSIGHT_TABLE_LIMIT_HARD_LIMIT,
       ),
     [insightTableLimitInput],
@@ -3346,9 +3357,9 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                     <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">Base analizada máx. (filas)</span>
                     <input
                       type="number"
-                      min={25000}
+                      min={DASHBOARD_GSC_ANALYSIS_MAX_ROWS_MIN}
                       max={DASHBOARD_GSC_ANALYSIS_MAX_ROWS_HARD_LIMIT}
-                      step={5000}
+                      step={1}
                       value={gscAnalysisMaxRowsInput}
                       onChange={(e) => setGscAnalysisMaxRowsInput(e.target.value)}
                       className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
@@ -3361,9 +3372,9 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                     <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">Tabla por insight máx. (filas)</span>
                     <input
                       type="number"
-                      min={50}
+                      min={DASHBOARD_INSIGHT_TABLE_LIMIT_MIN}
                       max={DASHBOARD_INSIGHT_TABLE_LIMIT_HARD_LIMIT}
-                      step={50}
+                      step={1}
                       value={insightTableLimitInput}
                       onChange={(e) => setInsightTableLimitInput(e.target.value)}
                       className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
