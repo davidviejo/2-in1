@@ -29,7 +29,7 @@ const GSC_STEP_RETRY_BASE_DELAY_MS = 1200;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const WORKER_ANALYSIS_CHUNK_SIZE = 20000;
-const WORKER_ANALYSIS_EXTREME_ROW_GUARDRAIL = 2000000;
+const WORKER_ANALYSIS_EXTREME_ROW_GUARDRAIL = 4000000;
 
 const buildEmptyInsightResult = (title: string): GSCInsights['quickWins'] => ({
   title,
