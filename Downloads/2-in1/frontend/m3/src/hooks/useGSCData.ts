@@ -58,6 +58,39 @@ const EMPTY_INSIGHTS: GSCInsights = {
   internalRedirects: buildEmptyInsightResult('Redirecciones internas'),
 };
 
+const normalizeTerm = (value: string) => value.trim().toLowerCase();
+
+const applyUrlTermsFilter = (
+  rows: Array<{ keys?: string[]; page?: string; url?: string }>,
+  includeTerms: string[],
+  excludeTerms: string[],
+) => {
+  if (includeTerms.length === 0 && excludeTerms.length === 0) {
+    return rows;
+  }
+
+  const normalizedIncludeTerms = includeTerms.map(normalizeTerm).filter(Boolean);
+  const normalizedExcludeTerms = excludeTerms.map(normalizeTerm).filter(Boolean);
+
+  return rows.filter((row) => {
+    const urlCandidate = `${row.keys?.[1] || row.page || row.url || ''}`.toLowerCase();
+
+    if (!urlCandidate) {
+      return false;
+    }
+
+    if (normalizedIncludeTerms.length > 0 && !normalizedIncludeTerms.some((term) => urlCandidate.includes(term))) {
+      return false;
+    }
+
+    if (normalizedExcludeTerms.length > 0 && normalizedExcludeTerms.some((term) => urlCandidate.includes(term))) {
+      return false;
+    }
+
+    return true;
+  });
+};
+
 const runStepWithRetry = async <T>(
   label: string,
   runStep: () => Promise<T>,
@@ -144,6 +177,10 @@ export const useGSCData = (
     sector?: string;
     geoScope?: string;
     deferTrendPageDateFetch?: boolean;
+    urlIncludeTerms?: string[];
+    urlExcludeTerms?: string[];
+    autoRun?: boolean;
+    runKey?: number;
   },
 ) => {
   const { error: showError, warning: showWarning } = useToast();
@@ -237,7 +274,7 @@ export const useGSCData = (
     isLoading: isLoadingData,
     error: dataError,
   } = useQuery({
-    queryKey: ['gscData', accessToken, resolvedSelectedSite, startDate, endDate, comparisonMode, context?.propertyId, context?.projectType, (context?.analysisProjectTypes || []).join('|'), context?.sector, context?.geoScope, (context?.brandTerms || []).join('|'), context?.deferTrendPageDateFetch ? 'defer_page_date' : 'with_page_date'],
+    queryKey: ['gscData', accessToken, resolvedSelectedSite, startDate, endDate, comparisonMode, context?.propertyId, context?.projectType, (context?.analysisProjectTypes || []).join('|'), context?.sector, context?.geoScope, (context?.brandTerms || []).join('|'), (context?.urlIncludeTerms || []).join('|'), (context?.urlExcludeTerms || []).join('|'), context?.runKey || 0, context?.deferTrendPageDateFetch ? 'defer_page_date' : 'with_page_date'],
     queryFn: async () => {
       const finalEndDate = endDate || new Date().toISOString().split('T')[0];
       const finalStartDate =
@@ -426,8 +463,10 @@ export const useGSCData = (
         showWarning('No se pudo cargar toda la evolución por URL en esta propiedad grande. Se mostrará el resto del panel.');
       }
 
-      const analysisCurrentRows = currentQueryPageResponse.rows || [];
-      const analysisPreviousRows = previousQueryPageResponse.rows || [];
+      const includeTerms = context?.urlIncludeTerms || [];
+      const excludeTerms = context?.urlExcludeTerms || [];
+      const analysisCurrentRows = applyUrlTermsFilter(currentQueryPageResponse.rows || [], includeTerms, excludeTerms);
+      const analysisPreviousRows = applyUrlTermsFilter(previousQueryPageResponse.rows || [], includeTerms, excludeTerms);
       const currentPartialReason = currentQueryPageResponse.metadata?.truncatedReason;
       const previousPartialReason = previousQueryPageResponse.metadata?.truncatedReason;
 
@@ -535,7 +574,7 @@ export const useGSCData = (
         },
       };
     },
-    enabled: !!accessToken && !!resolvedSelectedSite,
+    enabled: !!accessToken && !!resolvedSelectedSite && ((context?.autoRun ?? true) || ((context?.runKey || 0) > 0)),
     staleTime: 1000 * 60 * 5,
     retry: false,
     refetchOnWindowFocus: false,

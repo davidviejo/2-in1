@@ -655,6 +655,13 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   const [trendingExcludeRaw, setTrendingExcludeRaw] = useState('');
   const [trendingMaxRows, setTrendingMaxRows] = useState<number>(TRENDING_ANALYSIS_MAX_ROWS_DEFAULT);
   const [trendingAnalysisRows, setTrendingAnalysisRows] = useState<GSCRow[] | null>(null);
+  const [gscIncludeRaw, setGscIncludeRaw] = useState('');
+  const [gscExcludeRaw, setGscExcludeRaw] = useState('');
+  const [gscRunKey, setGscRunKey] = useState(0);
+  const [hasTriggeredGscRun, setHasTriggeredGscRun] = useState(false);
+  const [gscRunAnalysisProjectTypes, setGscRunAnalysisProjectTypes] = useState<ProjectType[]>([]);
+  const [gscRunIncludeTerms, setGscRunIncludeTerms] = useState<string[]>([]);
+  const [gscRunExcludeTerms, setGscRunExcludeTerms] = useState<string[]>([]);
   const [trendingAnalysisScope, setTrendingAnalysisScope] = useState<{
     includeTerms: string[];
     excludeTerms: string[];
@@ -700,16 +707,31 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     propertyId: currentClient?.id,
     brandTerms: currentClient?.brandTerms || [],
     projectType: currentClient?.projectType,
-    analysisProjectTypes: currentClient?.analysisProjectTypes || (currentClient?.projectType ? [currentClient.projectType] : ['MEDIA']),
+    analysisProjectTypes: gscRunAnalysisProjectTypes,
     sector: currentClient?.sector || 'Generico',
     geoScope: currentClient?.geoScope || 'global',
     deferTrendPageDateFetch: true,
+    urlIncludeTerms: gscRunIncludeTerms,
+    urlExcludeTerms: gscRunExcludeTerms,
+    autoRun: false,
+    runKey: gscRunKey,
   });
 
   useEffect(() => {
     setTrendingAnalysisRows(null);
     setTrendingAnalysisScope(null);
   }, [selectedSite, startDate, endDate, comparisonMode]);
+
+  useEffect(() => {
+    setHasTriggeredGscRun(false);
+    setGscRunKey(0);
+  }, [selectedSite, startDate, endDate, comparisonMode, gscAccessToken]);
+
+  useEffect(() => {
+    setGscRunAnalysisProjectTypes(
+      currentClient?.analysisProjectTypes || (currentClient?.projectType ? [currentClient.projectType] : ['MEDIA']),
+    );
+  }, [currentClient?.analysisProjectTypes, currentClient?.projectType]);
 
   const {
     entries: ignoredEntries,
@@ -1756,6 +1778,22 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       .finally(() => {
         setIsRunningTrendingAnalysis(false);
       });
+  };
+
+  const runMainGscSearch = () => {
+    if (!gscAccessToken || !selectedSite) {
+      showError('Conecta Search Console y selecciona una propiedad antes de iniciar la búsqueda.');
+      return;
+    }
+
+    const includeTerms = parseUrlConditionLines(gscIncludeRaw);
+    const excludeTerms = parseUrlConditionLines(gscExcludeRaw);
+
+    setGscRunIncludeTerms(includeTerms);
+    setGscRunExcludeTerms(excludeTerms);
+    setHasTriggeredGscRun(true);
+    setGscRunKey((prev) => prev + 1);
+    showInfo('Iniciando análisis de Search Console con filtros y tipologías seleccionadas.');
   };
 
   const handleExportTrendingUrls = () => {
@@ -2996,6 +3034,64 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                 {' '}· Propiedad activa: <strong>{(selectedSite || '').replace('sc-domain:', '') || 'Sin propiedad'}</strong> · Segmento: <strong>{trafficSegmentFilter}</strong> · Categoría: <strong>{queryCategoryFilter}</strong>
               </div>
 
+              <div className="mb-4 rounded-xl border border-border bg-surface-alt/40 p-3 text-xs space-y-3">
+                <div className="font-semibold text-foreground">
+                  La búsqueda no se ejecuta automáticamente. Define filtros y pulsa “Iniciar búsqueda”.
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="block">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">Incluir URL contiene</span>
+                    <textarea
+                      value={gscIncludeRaw}
+                      onChange={(e) => setGscIncludeRaw(e.target.value)}
+                      placeholder="/servicios/\n/blog/"
+                      className="mt-1 h-20 w-full rounded-lg border border-border bg-surface px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">Excluir URL contiene</span>
+                    <textarea
+                      value={gscExcludeRaw}
+                      onChange={(e) => setGscExcludeRaw(e.target.value)}
+                      placeholder="/tag/\n?utm_"
+                      className="mt-1 h-20 w-full rounded-lg border border-border bg-surface px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  </label>
+                </div>
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-muted mb-2">Tipologías para esta corrida</div>
+                  <div className="flex flex-wrap gap-2">
+                    {(['MEDIA', 'ECOM', 'LOCAL', 'NATIONAL', 'INTERNATIONAL'] as ProjectType[]).map((type) => (
+                      <label key={`gsc-run-type-${type}`} className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface px-2 py-1 text-[11px] font-medium text-foreground">
+                        <input
+                          type="checkbox"
+                          checked={gscRunAnalysisProjectTypes.includes(type)}
+                          onChange={() =>
+                            setGscRunAnalysisProjectTypes((prev) => {
+                              if (prev.includes(type)) {
+                                return prev.filter((value) => value !== type);
+                              }
+                              return [...prev, type];
+                            })
+                          }
+                        />
+                        {type}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button size="sm" variant="secondary" onClick={runMainGscSearch} disabled={isLoadingGsc || !selectedSite}>
+                    <Search size={14} /> {isLoadingGsc ? 'Ejecutando…' : 'Iniciar búsqueda'}
+                  </Button>
+                  <span className="text-[11px] text-muted">
+                    {hasTriggeredGscRun
+                      ? `Última corrida: incluir ${gscRunIncludeTerms.length} patrón(es), excluir ${gscRunExcludeTerms.length} patrón(es), ${gscRunAnalysisProjectTypes.length} tipología(s).`
+                      : 'Aún no hay corrida. Los insights se generan solo al iniciar manualmente.'}
+                  </span>
+                </div>
+              </div>
+
               <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-4">
                 <div className="rounded-xl border border-border bg-surface-alt p-3">
                   <div className="text-[11px] uppercase tracking-wide text-muted">Δ Clics</div>
@@ -3063,7 +3159,13 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
               </div>
 
               <div className="h-72 w-full">
-                {isLoadingGsc ? (
+                {!hasTriggeredGscRun ? (
+                  <div className="h-full flex flex-col items-center justify-center text-muted bg-surface-alt/50 rounded-xl border border-dashed border-border">
+                    <Search size={30} className="mb-2 opacity-50" />
+                    <p className="text-sm">Pulsa “Iniciar búsqueda” para cargar Search Console.</p>
+                    <p className="text-xs opacity-70">Puedes definir patrones de URL y tipologías antes de ejecutar.</p>
+                  </div>
+                ) : isLoadingGsc ? (
                   <div className="h-full flex flex-col items-center justify-center text-muted gap-4">
                     <Spinner size={32} />
                     <Skeleton width="60%" height="20px" />
