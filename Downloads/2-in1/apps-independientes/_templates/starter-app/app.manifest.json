@@ -1,0 +1,23 @@
+{
+  "id": "__APP_ID__",
+  "name": "__APP_NAME__",
+  "description": "Starter independiente con integración base de Tools Hub.",
+  "section": "apps-integradas",
+  "path": "http://localhost:__PORT__",
+  "status": "beta",
+  "workdir": "apps-independientes/__APP_SLUG__",
+  "install_cmd": "npm install",
+  "start_cmd": "npm run dev",
+  "healthcheck": {
+    "type": "http",
+    "target": "http://localhost:__PORT__"
+  },
+  "runtime": {
+    "enabled": true,
+    "requires_credentials": false,
+    "degraded": false,
+    "start": {
+      "port": __PORT__
+    }
+  }
+}
