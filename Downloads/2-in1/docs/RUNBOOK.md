@@ -243,6 +243,24 @@ Campos recomendados:
 5. Reiniciar o recargar Tools Hub para forzar nueva detección.
 6. Validar en UI que la app aparece en estado `enabled` y permite acciones de runtime.
 
+#### Opción rápida: clonar starter oficial
+
+Para bootstrap de nuevas apps independientes existe un starter base en:
+
+- `apps-independientes/_templates/starter-app`
+
+Y un script para clonar/parametrizar:
+
+```bash
+python scripts/clone_starter_app.py \
+  --name "Mi Nueva App" \
+  --id "integrada-mi-nueva-app" \
+  --slug "mi-nueva-app" \
+  --port 3200
+```
+
+Este flujo crea la estructura mínima (`app`, `src`, `README`, `.env.example`, `app.manifest.json`) y deja scripts estándar de desarrollo/build/lint/test listos para adaptar.
+
 ### 7.3 Uso desde Tools Hub (instalar / iniciar / parar / logs)
 
 Flujo sugerido dentro de Tools Hub:
