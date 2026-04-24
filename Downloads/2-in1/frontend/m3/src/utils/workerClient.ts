@@ -5,6 +5,8 @@ import { GSCInsightsEngineResult } from './gscInsights';
 export interface GSCWorkerPayload {
   currentRows: GSCRow[];
   previousRows?: GSCRow[];
+  currentDailyRows?: GSCRow[];
+  previousDailyRows?: GSCRow[];
   propertyId?: string;
   periodCurrent?: SeoInsightDateRange;
   periodPrevious?: SeoInsightDateRange;
@@ -103,6 +105,8 @@ export const runAnalysisInWorker = (
       type: 'INIT',
       payload: {
         propertyId: payload.propertyId,
+        currentDailyRows: payload.currentDailyRows,
+        previousDailyRows: payload.previousDailyRows,
         periodCurrent: payload.periodCurrent,
         periodPrevious: payload.periodPrevious,
         brandTerms: payload.brandTerms,
