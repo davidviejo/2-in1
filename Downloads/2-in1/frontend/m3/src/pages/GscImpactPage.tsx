@@ -244,6 +244,8 @@ const GSC_ANALYSIS_MAX_PAGES = 40;
 const GSC_ANALYSIS_MAX_ROWS = GSC_ANALYSIS_PAGE_SIZE * GSC_ANALYSIS_MAX_PAGES;
 const PORTFOLIO_BATCH_SIZE = 5;
 const DISPLAY_LIMIT_OPTIONS = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000] as const;
+const DISPLAY_LIMIT_DEFAULT = 1000;
+const DISPLAY_LIMIT_HARD_LIMIT = 2_000_000;
 const RESULTS_PAGE_SIZE = 100;
 const MAX_TIMELINE_POINTS = 366;
 
@@ -278,6 +280,12 @@ const safePctString = (value: number | null | undefined) => (value === null || v
 const safePctDelta = (current: number, previous: number) => {
   if (previous === 0) return current === 0 ? 0 : null;
   return (current - previous) / Math.abs(previous);
+};
+
+const parseDisplayLimit = (value: string | null, fallback = DISPLAY_LIMIT_DEFAULT): number => {
+  const parsed = Number.parseInt(value || '', 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.min(parsed, DISPLAY_LIMIT_HARD_LIMIT);
 };
 
 const buildFilterState = (
@@ -345,7 +353,7 @@ const GscImpactPage: React.FC = () => {
   const [filters, setFilters] = useState<FilterState>(initialFilters);
   const [loadingImpact, setLoadingImpact] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
-  const [displayLimit, setDisplayLimit] = useState<number>(Number(searchParams.get('topN') || 1000) || 1000);
+  const [displayLimit, setDisplayLimit] = useState<number>(() => parseDisplayLimit(searchParams.get('topN')));
   const [sampledUrlsPage, setSampledUrlsPage] = useState(1);
   const [portfolioTablePage, setPortfolioTablePage] = useState(1);
   const [impactError, setImpactError] = useState<string | null>(null);
@@ -449,7 +457,7 @@ const GscImpactPage: React.FC = () => {
   }, [searchParams, viewMode]);
 
   useEffect(() => {
-    const nextTopN = Number(searchParams.get('topN') || 1000) || 1000;
+    const nextTopN = parseDisplayLimit(searchParams.get('topN'));
     if (nextTopN !== displayLimit) {
       setDisplayLimit(nextTopN);
     }
@@ -1512,17 +1520,21 @@ const GscImpactPage: React.FC = () => {
             <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
               <div>
                 <label className="metric-label">Resultados visibles (Top N)</label>
-                <select
+                <input
                   className="form-control"
+                  type="number"
+                  min={1}
+                  max={DISPLAY_LIMIT_HARD_LIMIT}
+                  step={1}
                   value={displayLimit}
-                  onChange={(e) => setDisplayLimit(Number(e.target.value) || 1000)}
-                >
+                  list="gsc-impact-top-n-options"
+                  onChange={(e) => setDisplayLimit(parseDisplayLimit(e.target.value))}
+                />
+                <datalist id="gsc-impact-top-n-options">
                   {DISPLAY_LIMIT_OPTIONS.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
+                    <option key={option} value={option} />
                   ))}
-                </select>
+                </datalist>
               </div>
               <div className="surface-subtle p-2 text-sm md:col-span-2">
                 <p>
