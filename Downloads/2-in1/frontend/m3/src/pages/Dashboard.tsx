@@ -87,7 +87,10 @@ const GOOGLE_SHEETS_MAX_CELLS = 10_000_000;
 const GOOGLE_SHEETS_SAFE_CELLS = 9_200_000;
 const GOOGLE_SHEETS_MAX_CELL_CHARACTERS = 50_000;
 const GOOGLE_SHEETS_SAFE_CELL_CHARACTERS = 49_000;
-const DASHBOARD_INSIGHT_TABLE_LIMIT = 200;
+const DASHBOARD_INSIGHT_TABLE_LIMIT_DEFAULT = 200;
+const DASHBOARD_INSIGHT_TABLE_LIMIT_HARD_LIMIT = 5000;
+const DASHBOARD_GSC_ANALYSIS_MAX_ROWS_DEFAULT = 320000;
+const DASHBOARD_GSC_ANALYSIS_MAX_ROWS_HARD_LIMIT = 2000000;
 const TRENDING_ANALYSIS_MAX_ROWS_DEFAULT = 25000;
 const TRENDING_ANALYSIS_MAX_ROWS_HARD_LIMIT = 200000;
 
@@ -149,6 +152,14 @@ const parseUrlConditionLines = (rawValue: string) =>
         .filter(Boolean),
     ),
   );
+
+const parseBoundedInteger = (rawValue: string, fallback: number, maxAllowed: number) => {
+  const parsed = Number.parseInt(rawValue, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return Math.min(parsed, maxAllowed);
+};
 
 const buildUrlConditionFilterGroups = (
   includeTerms: string[],
@@ -662,11 +673,63 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   const [gscRunAnalysisProjectTypes, setGscRunAnalysisProjectTypes] = useState<ProjectType[]>([]);
   const [gscRunIncludeTerms, setGscRunIncludeTerms] = useState<string[]>([]);
   const [gscRunExcludeTerms, setGscRunExcludeTerms] = useState<string[]>([]);
+  const [gscAnalysisMaxRowsInput, setGscAnalysisMaxRowsInput] = useState<string>(() => {
+    try {
+      const persisted = localStorage.getItem('mediaflow_gsc_analysis_max_rows');
+      if (!persisted) {
+        return String(DASHBOARD_GSC_ANALYSIS_MAX_ROWS_DEFAULT);
+      }
+      const parsed = parseBoundedInteger(
+        persisted,
+        DASHBOARD_GSC_ANALYSIS_MAX_ROWS_DEFAULT,
+        DASHBOARD_GSC_ANALYSIS_MAX_ROWS_HARD_LIMIT,
+      );
+      return String(parsed);
+    } catch (error) {
+      console.warn('[Dashboard] No se pudo leer mediaflow_gsc_analysis_max_rows.', error);
+      return String(DASHBOARD_GSC_ANALYSIS_MAX_ROWS_DEFAULT);
+    }
+  });
+  const [insightTableLimitInput, setInsightTableLimitInput] = useState<string>(() => {
+    try {
+      const persisted = localStorage.getItem('mediaflow_gsc_insight_table_limit');
+      if (!persisted) {
+        return String(DASHBOARD_INSIGHT_TABLE_LIMIT_DEFAULT);
+      }
+      const parsed = parseBoundedInteger(
+        persisted,
+        DASHBOARD_INSIGHT_TABLE_LIMIT_DEFAULT,
+        DASHBOARD_INSIGHT_TABLE_LIMIT_HARD_LIMIT,
+      );
+      return String(parsed);
+    } catch (error) {
+      console.warn('[Dashboard] No se pudo leer mediaflow_gsc_insight_table_limit.', error);
+      return String(DASHBOARD_INSIGHT_TABLE_LIMIT_DEFAULT);
+    }
+  });
   const [trendingAnalysisScope, setTrendingAnalysisScope] = useState<{
     includeTerms: string[];
     excludeTerms: string[];
     rowsLoaded: number;
   } | null>(null);
+  const gscAnalysisMaxRows = useMemo(
+    () =>
+      parseBoundedInteger(
+        gscAnalysisMaxRowsInput,
+        DASHBOARD_GSC_ANALYSIS_MAX_ROWS_DEFAULT,
+        DASHBOARD_GSC_ANALYSIS_MAX_ROWS_HARD_LIMIT,
+      ),
+    [gscAnalysisMaxRowsInput],
+  );
+  const insightTableLimit = useMemo(
+    () =>
+      parseBoundedInteger(
+        insightTableLimitInput,
+        DASHBOARD_INSIGHT_TABLE_LIMIT_DEFAULT,
+        DASHBOARD_INSIGHT_TABLE_LIMIT_HARD_LIMIT,
+      ),
+    [insightTableLimitInput],
+  );
 
   const [startDate, setStartDate] = useState<string>(() => {
     const d = new Date();
@@ -713,9 +776,27 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     deferTrendPageDateFetch: true,
     urlIncludeTerms: gscRunIncludeTerms,
     urlExcludeTerms: gscRunExcludeTerms,
+    analysisMaxRows: gscAnalysisMaxRows,
+    evolutionMaxRows: gscAnalysisMaxRows,
     autoRun: false,
     runKey: gscRunKey,
   });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('mediaflow_gsc_analysis_max_rows', String(gscAnalysisMaxRows));
+    } catch (error) {
+      console.warn('[Dashboard] No se pudo guardar mediaflow_gsc_analysis_max_rows.', error);
+    }
+  }, [gscAnalysisMaxRows]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('mediaflow_gsc_insight_table_limit', String(insightTableLimit));
+    } catch (error) {
+      console.warn('[Dashboard] No se pudo guardar mediaflow_gsc_insight_table_limit.', error);
+    }
+  }, [insightTableLimit]);
 
   useEffect(() => {
     setTrendingAnalysisRows(null);
@@ -880,9 +961,9 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     () =>
       exportableActionableInsights.map((insight) => ({
         ...insight,
-        relatedRows: insight.relatedRows.slice(0, DASHBOARD_INSIGHT_TABLE_LIMIT),
+        relatedRows: insight.relatedRows.slice(0, insightTableLimit),
       })),
-    [exportableActionableInsights],
+    [exportableActionableInsights, insightTableLimit],
   );
 
   const moduleMaturityDetails = useMemo<ModuleMaturityDetail[]>(
@@ -1011,14 +1092,14 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
               const totalRows = visibleRows.length;
               return {
                 ...insight,
-                relatedRows: visibleRows.slice(0, DASHBOARD_INSIGHT_TABLE_LIMIT),
+                relatedRows: visibleRows.slice(0, insightTableLimit),
                 affectedCount: totalRows,
               };
             })
             .filter((insight) => insight.relatedRows.length > 0),
         }))
         .filter((group) => group.insights.length > 0),
-    [groupedInsights, isIgnored],
+    [groupedInsights, insightTableLimit, isIgnored],
   );
 
   const actionableTopOpportunities = useMemo(
@@ -2724,7 +2805,10 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                 Base analizada: {(queryPageData.length + comparisonQueryPageData.length).toLocaleString()} filas
               </Badge>
               <Badge variant="outline">
-                Tabla por insight: máx. {DASHBOARD_INSIGHT_TABLE_LIMIT.toLocaleString()} filas
+                Base objetivo máx.: {gscAnalysisMaxRows.toLocaleString()} filas
+              </Badge>
+              <Badge variant="outline">
+                Tabla por insight: máx. {insightTableLimit.toLocaleString()} filas
               </Badge>
             </div>
           </div>
@@ -3058,6 +3142,38 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                     />
                   </label>
                 </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="block">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">Base analizada máx. (filas)</span>
+                    <input
+                      type="number"
+                      min={25000}
+                      max={DASHBOARD_GSC_ANALYSIS_MAX_ROWS_HARD_LIMIT}
+                      step={5000}
+                      value={gscAnalysisMaxRowsInput}
+                      onChange={(e) => setGscAnalysisMaxRowsInput(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                    <span className="mt-1 block text-[10px] text-muted">
+                      Rango: 25.000 a {DASHBOARD_GSC_ANALYSIS_MAX_ROWS_HARD_LIMIT.toLocaleString('es-ES')} filas.
+                    </span>
+                  </label>
+                  <label className="block">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">Tabla por insight máx. (filas)</span>
+                    <input
+                      type="number"
+                      min={50}
+                      max={DASHBOARD_INSIGHT_TABLE_LIMIT_HARD_LIMIT}
+                      step={50}
+                      value={insightTableLimitInput}
+                      onChange={(e) => setInsightTableLimitInput(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                    <span className="mt-1 block text-[10px] text-muted">
+                      Rango: 50 a {DASHBOARD_INSIGHT_TABLE_LIMIT_HARD_LIMIT.toLocaleString('es-ES')} filas.
+                    </span>
+                  </label>
+                </div>
                 <div>
                   <div className="text-[11px] font-semibold uppercase tracking-wide text-muted mb-2">Tipologías para esta corrida</div>
                   <div className="flex flex-wrap gap-2">
@@ -3086,7 +3202,7 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                   </Button>
                   <span className="text-[11px] text-muted">
                     {hasTriggeredGscRun
-                      ? `Última corrida: incluir ${gscRunIncludeTerms.length} patrón(es), excluir ${gscRunExcludeTerms.length} patrón(es), ${gscRunAnalysisProjectTypes.length} tipología(s).`
+                      ? `Última corrida: incluir ${gscRunIncludeTerms.length} patrón(es), excluir ${gscRunExcludeTerms.length} patrón(es), ${gscRunAnalysisProjectTypes.length} tipología(s), base máx. ${gscAnalysisMaxRows.toLocaleString('es-ES')} filas, tabla insight máx. ${insightTableLimit.toLocaleString('es-ES')} filas.`
                       : 'Aún no hay corrida. Los insights se generan solo al iniciar manualmente.'}
                   </span>
                 </div>

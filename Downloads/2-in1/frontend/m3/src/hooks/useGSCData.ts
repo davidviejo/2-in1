@@ -179,6 +179,8 @@ export const useGSCData = (
     deferTrendPageDateFetch?: boolean;
     urlIncludeTerms?: string[];
     urlExcludeTerms?: string[];
+    analysisMaxRows?: number;
+    evolutionMaxRows?: number;
     autoRun?: boolean;
     runKey?: number;
   },
@@ -274,7 +276,7 @@ export const useGSCData = (
     isLoading: isLoadingData,
     error: dataError,
   } = useQuery({
-    queryKey: ['gscData', accessToken, resolvedSelectedSite, startDate, endDate, comparisonMode, context?.propertyId, context?.projectType, (context?.analysisProjectTypes || []).join('|'), context?.sector, context?.geoScope, (context?.brandTerms || []).join('|'), (context?.urlIncludeTerms || []).join('|'), (context?.urlExcludeTerms || []).join('|'), context?.runKey || 0, context?.deferTrendPageDateFetch ? 'defer_page_date' : 'with_page_date'],
+    queryKey: ['gscData', accessToken, resolvedSelectedSite, startDate, endDate, comparisonMode, context?.propertyId, context?.projectType, (context?.analysisProjectTypes || []).join('|'), context?.sector, context?.geoScope, (context?.brandTerms || []).join('|'), (context?.urlIncludeTerms || []).join('|'), (context?.urlExcludeTerms || []).join('|'), context?.analysisMaxRows || 0, context?.evolutionMaxRows || 0, context?.runKey || 0, context?.deferTrendPageDateFetch ? 'defer_page_date' : 'with_page_date'],
     queryFn: async () => {
       const finalEndDate = endDate || new Date().toISOString().split('T')[0];
       const finalStartDate =
@@ -285,7 +287,10 @@ export const useGSCData = (
         finalEndDate,
       );
       const shouldFetchPageDate = !context?.deferTrendPageDateFetch;
-      const fetchPlan = buildDashboardGscFetchPlan(finalStartDate, finalEndDate);
+      const fetchPlan = buildDashboardGscFetchPlan(finalStartDate, finalEndDate, {
+        analysisMaxRows: context?.analysisMaxRows,
+        evolutionMaxRows: context?.evolutionMaxRows,
+      });
       const progressSteps = [
         'Consultando rendimiento del periodo actual',
         'Consultando rendimiento del periodo comparado',
