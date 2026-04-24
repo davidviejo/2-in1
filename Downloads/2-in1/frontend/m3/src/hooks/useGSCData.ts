@@ -146,6 +146,30 @@ export const useGSCData = (
 ) => {
   const { error: showError, warning: showWarning } = useToast();
   const queryClient = useQueryClient();
+  const getStorageItem = (key: string): string | null => {
+    try {
+      return localStorage.getItem(key);
+    } catch (error) {
+      console.warn(`[useGSCData] No se pudo leer localStorage para la clave "${key}".`, error);
+      return null;
+    }
+  };
+
+  const setStorageItem = (key: string, value: string): void => {
+    try {
+      localStorage.setItem(key, value);
+    } catch (error) {
+      console.warn(`[useGSCData] No se pudo guardar localStorage para la clave "${key}".`, error);
+    }
+  };
+
+  const removeStorageItem = (key: string): void => {
+    try {
+      localStorage.removeItem(key);
+    } catch (error) {
+      console.warn(`[useGSCData] No se pudo eliminar localStorage para la clave "${key}".`, error);
+    }
+  };
   const [syncProgress, setSyncProgress] = useState<GscSyncProgress>({
     completedSteps: 0,
     totalSteps: 0,
@@ -160,7 +184,7 @@ export const useGSCData = (
     },
   });
   const [selectedSite, setSelectedSite] = useState<string>(
-    () => localStorage.getItem('mediaflow_gsc_selected_site') || '',
+    () => getStorageItem('mediaflow_gsc_selected_site') || '',
   );
 
   const lastSitesErrorKeyRef = useRef<string>('');
@@ -168,7 +192,7 @@ export const useGSCData = (
 
   useEffect(() => {
     if (selectedSite) {
-      localStorage.setItem('mediaflow_gsc_selected_site', selectedSite);
+      setStorageItem('mediaflow_gsc_selected_site', selectedSite);
     }
   }, [selectedSite]);
 
@@ -535,7 +559,7 @@ export const useGSCData = (
 
   const clearData = () => {
     setSelectedSite('');
-    localStorage.removeItem('mediaflow_gsc_selected_site');
+    removeStorageItem('mediaflow_gsc_selected_site');
     queryClient.removeQueries({ queryKey: ['gscData'] });
   };
 

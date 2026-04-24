@@ -5,16 +5,38 @@ import { useToast } from '../components/ui/ToastContext';
 
 export const useGSCAuth = () => {
   const { error: showError, success: showSuccess } = useToast();
-  const [gscAccessToken, setGscAccessToken] = useState<string | null>(() =>
-    localStorage.getItem('mediaflow_gsc_token'),
-  );
+  const getStorageItem = (key: string): string | null => {
+    try {
+      return localStorage.getItem(key);
+    } catch (error) {
+      console.warn(`[useGSCAuth] No se pudo leer localStorage para la clave "${key}".`, error);
+      return null;
+    }
+  };
+
+  const setStorageItem = (key: string, value: string): boolean => {
+    try {
+      localStorage.setItem(key, value);
+      return true;
+    } catch (error) {
+      console.warn(`[useGSCAuth] No se pudo guardar localStorage para la clave "${key}".`, error);
+      return false;
+    }
+  };
+
+  const removeStorageItem = (key: string): void => {
+    try {
+      localStorage.removeItem(key);
+    } catch (error) {
+      console.warn(`[useGSCAuth] No se pudo eliminar localStorage para la clave "${key}".`, error);
+    }
+  };
+
+  const [gscAccessToken, setGscAccessToken] = useState<string | null>(() => getStorageItem('mediaflow_gsc_token'));
   const [googleUser, setGoogleUser] = useState<GoogleUser | null>(null);
   const [showGscConfig, setShowGscConfig] = useState(false);
   const [clientId, setClientId] = useState(
-    () =>
-      localStorage.getItem('mediaflow_gsc_client_id') ||
-      import.meta.env.VITE_GOOGLE_CLIENT_ID ||
-      '',
+    () => getStorageItem('mediaflow_gsc_client_id') || import.meta.env.VITE_GOOGLE_CLIENT_ID || '',
   );
 
   const handleSaveClientId = (id: string) => {
@@ -23,7 +45,7 @@ export const useGSCAuth = () => {
       return;
     }
     setClientId(id);
-    localStorage.setItem('mediaflow_gsc_client_id', id);
+    setStorageItem('mediaflow_gsc_client_id', id);
     setShowGscConfig(false);
     showSuccess('Configuración guardada correctamente.');
   };
@@ -31,7 +53,7 @@ export const useGSCAuth = () => {
   const handleLogoutGsc = () => {
     setGscAccessToken(null);
     setGoogleUser(null);
-    localStorage.removeItem('mediaflow_gsc_token');
+    removeStorageItem('mediaflow_gsc_token');
     showSuccess('Sesión cerrada.');
   };
 
@@ -75,7 +97,7 @@ export const useGSCAuth = () => {
             if (tokenResponse.access_token) {
               const token = tokenResponse.access_token;
               setGscAccessToken(token);
-              localStorage.setItem('mediaflow_gsc_token', token);
+              setStorageItem('mediaflow_gsc_token', token);
 
               try {
                 const userInfo = await getUserInfo(token);
@@ -86,7 +108,7 @@ export const useGSCAuth = () => {
                 console.error(e);
                 setGscAccessToken(null);
                 setGoogleUser(null);
-                localStorage.removeItem('mediaflow_gsc_token');
+                removeStorageItem('mediaflow_gsc_token');
                 showError(
                   'No se pudo validar tu cuenta de Google Search Console. Intenta iniciar sesión nuevamente.',
                 );
