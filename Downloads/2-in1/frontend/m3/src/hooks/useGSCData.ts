@@ -143,6 +143,7 @@ export const useGSCData = (
     analysisProjectTypes?: ProjectType[];
     sector?: string;
     geoScope?: string;
+    deferTrendPageDateFetch?: boolean;
   },
 ) => {
   const { error: showError, warning: showWarning } = useToast();
@@ -236,7 +237,7 @@ export const useGSCData = (
     isLoading: isLoadingData,
     error: dataError,
   } = useQuery({
-    queryKey: ['gscData', accessToken, resolvedSelectedSite, startDate, endDate, comparisonMode, context?.propertyId, context?.projectType, (context?.analysisProjectTypes || []).join('|'), context?.sector, context?.geoScope, (context?.brandTerms || []).join('|')],
+    queryKey: ['gscData', accessToken, resolvedSelectedSite, startDate, endDate, comparisonMode, context?.propertyId, context?.projectType, (context?.analysisProjectTypes || []).join('|'), context?.sector, context?.geoScope, (context?.brandTerms || []).join('|'), context?.deferTrendPageDateFetch ? 'defer_page_date' : 'with_page_date'],
     queryFn: async () => {
       const finalEndDate = endDate || new Date().toISOString().split('T')[0];
       const finalStartDate =
@@ -246,13 +247,14 @@ export const useGSCData = (
         finalStartDate,
         finalEndDate,
       );
+      const shouldFetchPageDate = !context?.deferTrendPageDateFetch;
       const fetchPlan = buildDashboardGscFetchPlan(finalStartDate, finalEndDate);
       const progressSteps = [
         'Consultando rendimiento del periodo actual',
         'Consultando rendimiento del periodo comparado',
         'Cargando queries y páginas del periodo actual',
         'Cargando queries y páginas del periodo comparado',
-        'Cargando evolución por URL',
+        ...(shouldFetchPageDate ? ['Cargando evolución por URL'] : []),
         'Analizando patrones SEO',
       ];
       const totalSteps = progressSteps.length;
@@ -301,6 +303,7 @@ export const useGSCData = (
       };
 
       let evolutionLoadDegraded = false;
+      const pageDateProgressLabel = shouldFetchPageDate ? 'Cargando evolución por URL' : 'Analizando patrones SEO';
       const [
         dateData,
         comparisonDateData,
@@ -368,46 +371,55 @@ export const useGSCData = (
             }),
             updateCurrentStepLabel,
           ).then((result) => {
-            updateProgress(progressSteps[4]);
+            updateProgress(pageDateProgressLabel);
             return result;
           }),
-          runStepWithRetry(
-            progressSteps[4],
-            async () => {
-              try {
-                return await gscDatasetManager.fetch(accessToken!, {
-                  siteUrl: resolvedSelectedSite,
-                  startDate: finalStartDate,
-                  endDate: finalEndDate,
-                  dimensions: ['page', 'date'],
-                  rowLimit: fetchPlan.evolutionRowLimit,
-                  maxRows: fetchPlan.evolutionMaxRows,
-                  dateChunkSizeDays: fetchPlan.evolutionDateChunkSizeDays,
-                  searchType: 'web',
-                  allowHighCardinality: true,
-                });
-              } catch (pageDateError) {
-                evolutionLoadDegraded = true;
-                console.warn(
-                  '[GSC] No se pudo cargar evolución por URL completa; se continúa sin ese bloque para evitar fallo total.',
-                  pageDateError,
-                );
-                return {
-                  rows: [],
-                  metadata: {
-                    isPartial: true,
-                    pagesFetched: 0,
-                    rowsFetched: 0,
-                    truncatedReason: 'max_rows_reached' as const,
-                  },
-                };
-              }
-            },
-            updateCurrentStepLabel,
-          ).then((result) => {
-            updateProgress(progressSteps[5]);
-            return result;
-          }),
+          shouldFetchPageDate
+            ? runStepWithRetry(
+              pageDateProgressLabel,
+              async () => {
+                try {
+                  return await gscDatasetManager.fetch(accessToken!, {
+                    siteUrl: resolvedSelectedSite,
+                    startDate: finalStartDate,
+                    endDate: finalEndDate,
+                    dimensions: ['page', 'date'],
+                    rowLimit: fetchPlan.evolutionRowLimit,
+                    maxRows: fetchPlan.evolutionMaxRows,
+                    dateChunkSizeDays: fetchPlan.evolutionDateChunkSizeDays,
+                    searchType: 'web',
+                    allowHighCardinality: true,
+                  });
+                } catch (pageDateError) {
+                  evolutionLoadDegraded = true;
+                  console.warn(
+                    '[GSC] No se pudo cargar evolución por URL completa; se continúa sin ese bloque para evitar fallo total.',
+                    pageDateError,
+                  );
+                  return {
+                    rows: [],
+                    metadata: {
+                      isPartial: true,
+                      pagesFetched: 0,
+                      rowsFetched: 0,
+                      truncatedReason: 'max_rows_reached' as const,
+                    },
+                  };
+                }
+              },
+              updateCurrentStepLabel,
+            ).then((result) => {
+              updateProgress(progressSteps[progressSteps.length - 1]);
+              return result;
+            })
+            : Promise.resolve({
+              rows: [],
+              metadata: {
+                isPartial: false,
+                pagesFetched: 0,
+                rowsFetched: 0,
+              },
+            }),
         ]);
 
       if (evolutionLoadDegraded) {

@@ -703,6 +703,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     analysisProjectTypes: currentClient?.analysisProjectTypes || (currentClient?.projectType ? [currentClient.projectType] : ['MEDIA']),
     sector: currentClient?.sector || 'Generico',
     geoScope: currentClient?.geoScope || 'global',
+    deferTrendPageDateFetch: true,
   });
 
   useEffect(() => {
