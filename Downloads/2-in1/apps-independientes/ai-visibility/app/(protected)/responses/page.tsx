@@ -1,10 +1,5 @@
-import { PagePlaceholder } from '@/components/page-placeholder';
+import { ResponsesManager } from '@/components/responses/responses-manager';
 
 export default function ResponsesPage() {
-  return (
-    <PagePlaceholder
-      title="Responses"
-      description="Responses workspace placeholder."
-    />
-  );
+  return <ResponsesManager />;
 }

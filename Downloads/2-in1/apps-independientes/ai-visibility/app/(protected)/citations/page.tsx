@@ -1,10 +1,5 @@
-import { PagePlaceholder } from '@/components/page-placeholder';
+import { CitationsManager } from '@/components/citations/citations-manager';
 
 export default function CitationsPage() {
-  return (
-    <PagePlaceholder
-      title="Citations"
-      description="Citations workspace placeholder."
-    />
-  );
+  return <CitationsManager />;
 }
