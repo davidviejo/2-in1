@@ -139,3 +139,21 @@ export async function listRuns(filters: RunListFilters) {
     }
   };
 }
+
+export async function getRun(projectId: string, runId: string) {
+  return prisma.run.findFirst({
+    where: {
+      id: runId,
+      projectId
+    },
+    include: {
+      prompt: {
+        select: {
+          id: true,
+          title: true,
+          promptText: true
+        }
+      }
+    }
+  });
+}
