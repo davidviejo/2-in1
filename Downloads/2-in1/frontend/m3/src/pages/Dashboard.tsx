@@ -3332,6 +3332,27 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                 <div className="font-semibold text-foreground">
                   La búsqueda no se ejecuta automáticamente. Define filtros y pulsa “Iniciar búsqueda”.
                 </div>
+                <div className="rounded-lg border border-primary/20 bg-primary-soft/40 p-3 text-[11px] text-muted">
+                  <p className="font-semibold text-foreground">Control de gran migración con datos GSC</p>
+                  <ol className="mt-2 list-decimal space-y-1 pl-4">
+                    <li>
+                      Define el periodo <strong>pre-migración</strong> y compara con periodo pasado/año pasado
+                      para tener una línea base de clics, impresiones, CTR y posición.
+                    </li>
+                    <li>
+                      Usa filtros de <strong>Incluir/Excluir URL</strong> para monitorizar solo carpetas
+                      migradas, plantillas críticas o grupos de landing pages.
+                    </li>
+                    <li>
+                      Activa <strong>Hitos roadmap</strong> para cruzar despliegues con variaciones del
+                      gráfico y validar impacto real tras cada release.
+                    </li>
+                    <li>
+                      Repite la corrida por oleadas (por tipología) y sigue los insights para detectar
+                      caídas, canibalizaciones o pérdidas de cobertura rápidamente.
+                    </li>
+                  </ol>
+                </div>
                 <div className="grid gap-3 md:grid-cols-2">
                   <label className="block">
                     <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">Incluir URL contiene</span>
