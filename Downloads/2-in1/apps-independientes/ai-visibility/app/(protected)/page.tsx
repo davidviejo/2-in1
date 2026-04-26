@@ -1,10 +1,5 @@
-import { PagePlaceholder } from '@/components/page-placeholder';
+import { OverviewManager } from '@/components/overview/overview-manager';
 
 export default function OverviewPage() {
-  return (
-    <PagePlaceholder
-      title="Overview"
-      description="Landing view for KPIs, trend snapshots, and top-level AI visibility metrics."
-    />
-  );
+  return <OverviewManager />;
 }
