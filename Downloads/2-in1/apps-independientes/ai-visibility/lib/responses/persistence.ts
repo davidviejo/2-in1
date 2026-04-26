@@ -99,3 +99,73 @@ export async function listResponses(projectId: string, page: number, pageSize: n
     }
   };
 }
+
+
+export async function listCitations(projectId: string, page: number, pageSize: number) {
+  const skip = (page - 1) * pageSize;
+
+  const where = {
+    response: {
+      run: {
+        projectId
+      }
+    }
+  };
+
+  const [total, rows] = await Promise.all([
+    prisma.citation.count({ where }),
+    prisma.citation.findMany({
+      where,
+      include: {
+        response: {
+          select: {
+            id: true,
+            run: {
+              select: {
+                id: true,
+                model: true,
+                executedAt: true,
+                prompt: {
+                  select: {
+                    id: true,
+                    title: true,
+                    promptText: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      orderBy: [{ createdAt: 'desc' }],
+      skip,
+      take: pageSize
+    })
+  ]);
+
+  return {
+    citations: rows.map((row: (typeof rows)[number]) => ({
+      id: row.id,
+      sourceUrl: row.sourceUrl,
+      sourceDomain: row.sourceDomain,
+      title: row.title,
+      snippet: row.snippet,
+      position: row.position,
+      createdAt: row.createdAt,
+      publishedAt: row.publishedAt,
+      responseId: row.responseId,
+      runId: row.response.run.id,
+      model: row.response.run.model,
+      promptId: row.response.run.prompt.id,
+      promptTitle: row.response.run.prompt.title,
+      promptText: row.response.run.prompt.promptText,
+      runExecutedAt: row.response.run.executedAt
+    })),
+    pagination: {
+      page,
+      pageSize,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / pageSize))
+    }
+  };
+}

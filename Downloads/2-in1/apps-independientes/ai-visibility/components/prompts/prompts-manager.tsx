@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 
+import { HistoricalImporter } from '@/components/imports/historical-importer';
 import { useProjectContext } from '@/components/projects/project-context';
 
 type Tag = { id: string; name: string; description: string | null };
@@ -134,6 +135,16 @@ export function PromptsManager() {
     void loadPrompts(currentProjectId, 1);
   }, [activeFilter, activeTagIds, countryFilter, currentProjectId, intentFilter, languageFilter, searchTerm]);
 
+
+
+  async function refreshPromptWorkspace() {
+    if (!currentProjectId) {
+      return;
+    }
+
+    await Promise.all([loadTags(currentProjectId), loadPrompts(currentProjectId, 1)]);
+  }
+
   async function loadTags(projectId: string) {
     const response = await fetch(`/api/projects/${projectId}/tags`, { cache: 'no-store' });
 
@@ -249,6 +260,8 @@ export function PromptsManager() {
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold text-slate-900">Prompts · {currentProject?.name}</h1>
+
+      <HistoricalImporter onImported={refreshPromptWorkspace} />
 
       <div className="grid gap-4 xl:grid-cols-[1.6fr_1fr]">
         <section className="rounded-md border border-slate-200 bg-white">
