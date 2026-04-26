@@ -100,6 +100,111 @@ export async function listResponses(projectId: string, page: number, pageSize: n
   };
 }
 
+export async function getResponseAudit(projectId: string, responseId: string) {
+  const row = await prisma.response.findFirst({
+    where: {
+      id: responseId,
+      run: {
+        projectId
+      }
+    },
+    include: {
+      run: {
+        select: {
+          id: true,
+          projectId: true,
+          prompt: {
+            select: {
+              id: true,
+              title: true,
+              promptText: true
+            }
+          },
+          model: true,
+          status: true,
+          parserVersion: true,
+          executedAt: true,
+          startedAt: true,
+          completedAt: true,
+          createdAt: true,
+          updatedAt: true
+        }
+      },
+      brandMentions: {
+        orderBy: [{ mentionCount: 'desc' }, { createdAt: 'asc' }],
+        select: {
+          id: true,
+          mentionType: true,
+          mentionText: true,
+          mentionCount: true,
+          competitor: {
+            select: {
+              id: true,
+              name: true,
+              domain: true
+            }
+          },
+          brandAlias: {
+            select: {
+              id: true,
+              alias: true
+            }
+          }
+        }
+      },
+      citations: {
+        orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
+        select: {
+          id: true,
+          sourceUrl: true,
+          sourceDomain: true,
+          title: true,
+          snippet: true,
+          position: true,
+          publishedAt: true,
+          confidence: true
+        }
+      }
+    }
+  });
+
+  if (!row) {
+    return null;
+  }
+
+  const clientMention = row.brandMentions.find((mention) => mention.mentionType === 'OWN_BRAND') ?? null;
+  const competitorMentions = row.brandMentions.filter((mention) => mention.mentionType === 'COMPETITOR');
+
+  return {
+    id: row.id,
+    runId: row.runId,
+    projectId: row.run.projectId,
+    promptId: row.run.prompt.id,
+    promptTitle: row.run.prompt.title,
+    promptText: row.run.prompt.promptText,
+    model: row.run.model,
+    runStatus: row.run.status,
+    parserVersion: row.run.parserVersion,
+    runTimestamps: {
+      executedAt: row.run.executedAt,
+      startedAt: row.run.startedAt,
+      completedAt: row.run.completedAt,
+      createdAt: row.run.createdAt,
+      updatedAt: row.run.updatedAt
+    },
+    responseStatus: row.status,
+    rawText: row.rawText,
+    cleanedText: row.cleanedText,
+    mentionDetected: row.mentionDetected,
+    mentionType: row.mentionType,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    clientMention,
+    competitorMentions,
+    citations: row.citations
+  };
+}
+
 
 export async function listCitations(projectId: string, page: number, pageSize: number) {
   const skip = (page - 1) * pageSize;
