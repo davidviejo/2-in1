@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { normalizeModelLabel } from '@/lib/filters/normalization';
 import { persistRunResponse } from '@/lib/responses/persistence';
 
 import type { CreateRunInput, RunListFilters, UpdateRunStatusInput } from './validation';
@@ -24,7 +25,7 @@ export async function createRun(projectId: string, triggeredByUserId: string | n
       triggeredByUserId,
       status: 'QUEUED',
       provider: payload.provider,
-      model: payload.model,
+      model: normalizeModelLabel(payload.model) ?? payload.model,
       source: payload.source,
       triggerType: payload.triggerType,
       environment: payload.environment,

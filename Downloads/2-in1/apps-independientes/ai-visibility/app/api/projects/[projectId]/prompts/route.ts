@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { canAccessProject, hasRole } from '@/lib/auth/authorization';
 import { getRequestUser } from '@/lib/auth/session';
 import { prisma } from '@/lib/db';
+import { normalizeCountry, normalizeLanguage, normalizeSearchTerm, parseDateRange, safeTrim } from '@/lib/filters/normalization';
 import { validatePromptInput } from '@/lib/projects/validation';
 
 function canReadProject(request: NextRequest, projectId: string): boolean {
@@ -34,7 +35,7 @@ function parseTagIds(raw: string | null): string[] {
     new Set(
       raw
         .split(',')
-        .map((value) => value.trim())
+        .map((value) => safeTrim(value))
         .filter(Boolean)
     )
   );
@@ -63,14 +64,19 @@ export async function GET(
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
-  const query = request.nextUrl.searchParams.get('q')?.trim() ?? '';
-  const country = request.nextUrl.searchParams.get('country')?.trim().toUpperCase() ?? '';
-  const language = request.nextUrl.searchParams.get('language')?.trim().toLowerCase() ?? '';
-  const intentClassification = request.nextUrl.searchParams.get('intentClassification')?.trim() ?? '';
+  const query = normalizeSearchTerm(request.nextUrl.searchParams.get('q'));
+  const country = normalizeCountry(request.nextUrl.searchParams.get('country')) ?? '';
+  const language = normalizeLanguage(request.nextUrl.searchParams.get('language')) ?? '';
+  const intentClassification = normalizeSearchTerm(request.nextUrl.searchParams.get('intentClassification'));
   const activeFilter = request.nextUrl.searchParams.get('active');
   const tagIds = parseTagIds(request.nextUrl.searchParams.get('tagIds'));
+  const lastRunRange = parseDateRange(request.nextUrl.searchParams.get('lastRunFrom'), request.nextUrl.searchParams.get('lastRunTo'));
   const page = parsePositiveInt(request.nextUrl.searchParams.get('page'), 1);
   const pageSize = Math.min(parsePositiveInt(request.nextUrl.searchParams.get('pageSize'), 20), 100);
+
+  if (lastRunRange.errors) {
+    return NextResponse.json({ error: 'validation_failed', fieldErrors: { lastRunFrom: 'Invalid last run date range.' } }, { status: 422 });
+  }
 
   const where = {
     projectId,
@@ -95,6 +101,18 @@ export async function GET(
               }
             }
           }))
+        }
+      : {}),
+    ...(lastRunRange.from || lastRunRange.to
+      ? {
+          runs: {
+            some: {
+              executedAt: {
+                ...(lastRunRange.from ? { gte: lastRunRange.from } : {}),
+                ...(lastRunRange.to ? { lte: lastRunRange.to } : {})
+              }
+            }
+          }
         }
       : {})
   };

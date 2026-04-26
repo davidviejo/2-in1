@@ -1,3 +1,5 @@
+import { normalizeCountry, normalizeLanguage, safeTrim } from '@/lib/filters/normalization';
+
 export type ProjectSettingsInput = {
   name?: unknown;
   primaryDomain?: unknown;
@@ -73,7 +75,7 @@ const DOMAIN_REGEX = /^(?=.{1,253}$)(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{
 const HEX_COLOR_REGEX = /^#(?:[0-9a-fA-F]{3}){1,2}$/;
 
 function readString(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : '';
+  return safeTrim(value);
 }
 
 export function normalizeAlias(alias: string): string {
@@ -216,8 +218,8 @@ export function validatePromptInput(input: PromptInput): {
 } {
   const errors: Record<string, string> = {};
   const promptText = readString(input.promptText);
-  const country = readString(input.country).toUpperCase();
-  const language = readString(input.language).toLowerCase() || 'es';
+  const country = normalizeCountry(input.country) ?? '';
+  const language = normalizeLanguage(input.language) ?? 'es';
   const notes = readString(input.notes);
   const intentClassification = readString(input.intentClassification);
   const parsedPriority =
@@ -243,11 +245,11 @@ export function validatePromptInput(input: PromptInput): {
 
   if (!country) {
     errors.country = 'Country is required.';
-  } else if (!/^[A-Z]{2}$/.test(country)) {
+  } else if (!normalizeCountry(country)) {
     errors.country = 'Country must be a 2-letter ISO code (e.g. US, ES).';
   }
 
-  if (!/^[a-z]{2,5}(?:-[a-z]{2,5})?$/.test(language)) {
+  if (!normalizeLanguage(language)) {
     errors.language = 'Language must be a language code (e.g. en or es-mx).';
   }
 
@@ -309,17 +311,17 @@ export function validateProjectSettings(input: ProjectSettingsInput): {
     errors.primaryDomain = 'Primary domain must be a valid domain (e.g. example.com).';
   }
 
-  const mainCountry = readString(input.mainCountry).toUpperCase();
+  const mainCountry = normalizeCountry(input.mainCountry) ?? '';
   if (!mainCountry) {
     errors.mainCountry = 'Main country is required.';
-  } else if (!/^[A-Z]{2}$/.test(mainCountry)) {
+  } else if (!normalizeCountry(mainCountry)) {
     errors.mainCountry = 'Main country must use ISO 3166-1 alpha-2 format (e.g. US).';
   }
 
-  const mainLanguage = readString(input.mainLanguage).toLowerCase();
+  const mainLanguage = normalizeLanguage(input.mainLanguage) ?? '';
   if (!mainLanguage) {
     errors.mainLanguage = 'Main language is required.';
-  } else if (!/^[a-z]{2,5}(?:-[a-z]{2,5})?$/.test(mainLanguage)) {
+  } else if (!normalizeLanguage(mainLanguage)) {
     errors.mainLanguage = 'Main language must be a language code (e.g. en or es-mx).';
   }
 
