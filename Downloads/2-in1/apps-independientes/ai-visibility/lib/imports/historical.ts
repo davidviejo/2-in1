@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 
 import { prisma } from '@/lib/db';
+import { normalizeModelLabel } from '@/lib/filters/normalization';
 import { normalizeRootDomain } from '@/lib/responses/citations';
 
 export type ImportFileType = 'csv' | 'json';
@@ -268,7 +269,7 @@ function validateAndNormalizeRows(projectId: string, parsedRows: ParsedRow[], ma
 
   for (const row of parsedRows) {
     const promptText = toTextValue(row.values[mapping.promptColumn]);
-    const model = toTextValue(row.values[mapping.modelColumn]);
+    const model = normalizeModelLabel(toTextValue(row.values[mapping.modelColumn])) ?? '';
     const responseText = toTextValue(row.values[mapping.responseColumn]);
 
     if (mapping.projectColumn) {

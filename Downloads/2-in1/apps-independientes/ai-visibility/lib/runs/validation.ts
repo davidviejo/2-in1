@@ -1,3 +1,5 @@
+import { normalizeModelLabel, normalizeSearchTerm, parseDateRange, safeTrim } from '@/lib/filters/normalization';
+
 export type RunStatusValue = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELED';
 export type RunSourceValue = 'UI' | 'API' | 'BACKFILL' | 'IMPORT_FILE';
 export type RunTriggerTypeValue = 'MANUAL' | 'SCHEDULED' | 'IMPORT' | 'API';
@@ -64,14 +66,10 @@ const RESPONSE_STATUS_VALUES = new Set<ResponseStatusValue>(['SUCCEEDED', 'FAILE
 const MENTION_TYPE_VALUES = new Set<MentionTypeValue>(['OWN_BRAND', 'COMPETITOR']);
 
 function asTrimmedString(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : '';
+  return safeTrim(value);
 }
 
-function parseDate(raw: string | null | undefined): Date | undefined {
-  if (!raw) {
-    return undefined;
-  }
-
+function parseDate(raw: string): Date | undefined {
   const parsed = new Date(raw);
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
@@ -82,7 +80,7 @@ export function validateCreateRunInput(payload: unknown): ValidationResult<Creat
 
   const promptId = asTrimmedString(body.promptId);
   const provider = asTrimmedString(body.provider);
-  const model = asTrimmedString(body.model);
+  const model = normalizeModelLabel(body.model) ?? '';
   const environmentRaw = body.environment;
   const parserVersionRaw = body.parserVersion;
   const rawRequestMetadataRaw = body.rawRequestMetadata;
@@ -286,8 +284,8 @@ export function parseRunListFilters(projectId: string, searchParams: URLSearchPa
     errors.pageSize = 'pageSize must be between 1 and 100.';
   }
 
-  const statusRaw = searchParams.get('status')?.trim().toUpperCase();
-  const sourceRaw = searchParams.get('source')?.trim().toUpperCase();
+  const statusRaw = safeTrim(searchParams.get('status')).toUpperCase();
+  const sourceRaw = safeTrim(searchParams.get('source')).toUpperCase();
 
   const status = statusRaw as RunStatusValue | undefined;
   const source = sourceRaw as RunSourceValue | undefined;
@@ -300,32 +298,30 @@ export function parseRunListFilters(projectId: string, searchParams: URLSearchPa
     errors.source = `source must be one of: ${Array.from(RUN_SOURCE_VALUES).join(', ')}.`;
   }
 
-  const startedFrom = parseDate(searchParams.get('startedFrom'));
-  const startedTo = parseDate(searchParams.get('startedTo'));
-  const completedFrom = parseDate(searchParams.get('completedFrom'));
-  const completedTo = parseDate(searchParams.get('completedTo'));
+  const startedRange = parseDateRange(searchParams.get('startedFrom'), searchParams.get('startedTo'));
+  const completedRange = parseDateRange(searchParams.get('completedFrom'), searchParams.get('completedTo'));
 
-  if (searchParams.get('startedFrom') && !startedFrom) {
-    errors.startedFrom = 'startedFrom must be a valid date.';
+  if (startedRange.errors?.from) {
+    errors.startedFrom = `startedFrom ${startedRange.errors.from}`;
   }
 
-  if (searchParams.get('startedTo') && !startedTo) {
-    errors.startedTo = 'startedTo must be a valid date.';
+  if (startedRange.errors?.to) {
+    errors.startedTo = `startedTo ${startedRange.errors.to}`;
   }
 
-  if (searchParams.get('completedFrom') && !completedFrom) {
-    errors.completedFrom = 'completedFrom must be a valid date.';
+  if (completedRange.errors?.from) {
+    errors.completedFrom = `completedFrom ${completedRange.errors.from}`;
   }
 
-  if (searchParams.get('completedTo') && !completedTo) {
-    errors.completedTo = 'completedTo must be a valid date.';
+  if (completedRange.errors?.to) {
+    errors.completedTo = `completedTo ${completedRange.errors.to}`;
   }
 
-  if (startedFrom && startedTo && startedFrom > startedTo) {
+  if (startedRange.errors?.range) {
     errors.startedFrom = 'startedFrom must be before startedTo.';
   }
 
-  if (completedFrom && completedTo && completedFrom > completedTo) {
+  if (completedRange.errors?.range) {
     errors.completedFrom = 'completedFrom must be before completedTo.';
   }
 
@@ -336,16 +332,16 @@ export function parseRunListFilters(projectId: string, searchParams: URLSearchPa
   return {
     values: {
       projectId,
-      promptId: searchParams.get('promptId')?.trim() || undefined,
+      promptId: safeTrim(searchParams.get('promptId')) || undefined,
       status,
-      provider: searchParams.get('provider')?.trim() || undefined,
-      model: searchParams.get('model')?.trim() || undefined,
+      provider: normalizeSearchTerm(searchParams.get('provider')) || undefined,
+      model: normalizeModelLabel(searchParams.get('model')),
       source,
-      environment: searchParams.get('environment')?.trim() || undefined,
-      startedFrom,
-      startedTo,
-      completedFrom,
-      completedTo,
+      environment: normalizeSearchTerm(searchParams.get('environment')) || undefined,
+      startedFrom: startedRange.from,
+      startedTo: startedRange.to,
+      completedFrom: completedRange.from,
+      completedTo: completedRange.to,
       page,
       pageSize
     }

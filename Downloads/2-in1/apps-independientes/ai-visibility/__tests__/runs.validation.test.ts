@@ -67,6 +67,7 @@ describe('run tracking validation', () => {
     const params = new URLSearchParams({
       status: 'running',
       source: 'ui',
+      model: ' GPT-4.1-MINI ',
       page: '2',
       pageSize: '30',
       startedFrom: '2026-04-01T00:00:00.000Z',
@@ -78,6 +79,7 @@ describe('run tracking validation', () => {
     expect(result.values).toBeDefined();
     expect(result.values?.status).toBe('RUNNING');
     expect(result.values?.source).toBe('UI');
+    expect(result.values?.model).toBe('gpt-4.1-mini');
     expect(result.values?.page).toBe(2);
     expect(result.values?.pageSize).toBe(30);
   });

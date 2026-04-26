@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 
 import { HistoricalImporter } from '@/components/imports/historical-importer';
 import { useProjectContext } from '@/components/projects/project-context';
+import { normalizeCountry, normalizeLanguage, normalizeSearchTerm } from '@/lib/filters/normalization';
 
 type Tag = { id: string; name: string; description: string | null };
 type PromptTag = { tag: Tag };
@@ -160,24 +161,28 @@ export function PromptsManager() {
   async function loadPrompts(projectId: string, page: number) {
     const params = new URLSearchParams();
 
-    if (searchTerm.trim()) {
-      params.set('q', searchTerm.trim());
+    const normalizedSearch = normalizeSearchTerm(searchTerm);
+    if (normalizedSearch) {
+      params.set('q', normalizedSearch);
     }
 
-    if (countryFilter.trim()) {
-      params.set('country', countryFilter.trim().toUpperCase());
+    const normalizedCountry = normalizeCountry(countryFilter);
+    if (normalizedCountry) {
+      params.set('country', normalizedCountry);
     }
 
-    if (languageFilter.trim()) {
-      params.set('language', languageFilter.trim().toLowerCase());
+    const normalizedLanguage = normalizeLanguage(languageFilter);
+    if (normalizedLanguage) {
+      params.set('language', normalizedLanguage);
     }
 
     if (activeFilter !== 'all') {
       params.set('active', activeFilter);
     }
 
-    if (intentFilter.trim()) {
-      params.set('intentClassification', intentFilter.trim());
+    const normalizedIntent = normalizeSearchTerm(intentFilter);
+    if (normalizedIntent) {
+      params.set('intentClassification', normalizedIntent);
     }
 
     if (activeTagIds.length > 0) {
