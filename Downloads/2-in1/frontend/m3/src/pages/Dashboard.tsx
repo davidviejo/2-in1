@@ -94,7 +94,8 @@ const DASHBOARD_GSC_ANALYSIS_MAX_ROWS_DEFAULT = 320000;
 const DASHBOARD_GSC_ANALYSIS_MAX_ROWS_HARD_LIMIT = 4000000;
 const DASHBOARD_GSC_ANALYSIS_MAX_ROWS_MIN = 25000;
 const TRENDING_ANALYSIS_MAX_ROWS_DEFAULT = 25000;
-const TRENDING_ANALYSIS_MAX_ROWS_HARD_LIMIT = 200000;
+const TRENDING_ANALYSIS_MAX_ROWS_HARD_LIMIT = 4000000;
+const TRENDING_ANALYSIS_MAX_ROWS_MIN = 1000;
 
 interface DashboardProps {
   modules: ModuleData[];
@@ -767,6 +768,9 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   const [trendingIncludeRaw, setTrendingIncludeRaw] = useState('');
   const [trendingExcludeRaw, setTrendingExcludeRaw] = useState('');
   const [trendingMaxRows, setTrendingMaxRows] = useState<number>(TRENDING_ANALYSIS_MAX_ROWS_DEFAULT);
+  const [trendingUseCustomPeriod, setTrendingUseCustomPeriod] = useState(false);
+  const [trendingStartDate, setTrendingStartDate] = useState('');
+  const [trendingEndDate, setTrendingEndDate] = useState('');
   const [trendingAnalysisRows, setTrendingAnalysisRows] = useState<GSCRow[] | null>(null);
   const [gscIncludeRaw, setGscIncludeRaw] = useState('');
   const [gscExcludeRaw, setGscExcludeRaw] = useState('');
@@ -815,6 +819,9 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     includeTerms: string[];
     excludeTerms: string[];
     rowsLoaded: number;
+    periodStart: string;
+    periodEnd: string;
+    maxRowsRequested: number;
   } | null>(null);
   const gscAnalysisMaxRows = useMemo(
     () =>
@@ -908,6 +915,12 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     setTrendingAnalysisRows(null);
     setTrendingAnalysisScope(null);
   }, [selectedSite, startDate, endDate, comparisonMode]);
+
+  useEffect(() => {
+    if (trendingUseCustomPeriod) return;
+    setTrendingStartDate(startDate);
+    setTrendingEndDate(endDate);
+  }, [startDate, endDate, trendingUseCustomPeriod]);
 
   useEffect(() => {
     setHasTriggeredGscRun(false);
@@ -2044,12 +2057,19 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     const dimensionFilterGroups = buildUrlConditionFilterGroups(includeTerms, excludeTerms);
     const normalizedMaxRows = Math.min(
       TRENDING_ANALYSIS_MAX_ROWS_HARD_LIMIT,
-      Math.max(1000, Number.isFinite(trendingMaxRows) ? Math.floor(trendingMaxRows) : TRENDING_ANALYSIS_MAX_ROWS_DEFAULT),
+      Math.max(TRENDING_ANALYSIS_MAX_ROWS_MIN, Number.isFinite(trendingMaxRows) ? Math.floor(trendingMaxRows) : TRENDING_ANALYSIS_MAX_ROWS_DEFAULT),
     );
+    const analysisStartDate = trendingUseCustomPeriod ? trendingStartDate : startDate;
+    const analysisEndDate = trendingUseCustomPeriod ? trendingEndDate : endDate;
+
+    if (!analysisStartDate || !analysisEndDate || analysisStartDate > analysisEndDate) {
+      showError('Define un rango válido para el análisis de URLs en tendencia.');
+      return;
+    }
 
     showInfo('Ejecutando análisis GSC con filtros de URL. Puede tardar en propiedades grandes.');
     setIsRunningTrendingAnalysis(true);
-    getGSCPageDateData(gscAccessToken, selectedSite, startDate, endDate, 25000, 'web', {
+    getGSCPageDateData(gscAccessToken, selectedSite, analysisStartDate, analysisEndDate, 25000, 'web', {
       dimensionFilterGroups,
       maxRows: normalizedMaxRows,
     })
@@ -2059,6 +2079,9 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
           includeTerms,
           excludeTerms,
           rowsLoaded: response.rows?.length || 0,
+          periodStart: analysisStartDate,
+          periodEnd: analysisEndDate,
+          maxRowsRequested: normalizedMaxRows,
         });
         showSuccess(`Análisis completado con ${response.rows?.length || 0} filas cargadas.`);
       })
@@ -4090,6 +4113,66 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                   Define patrones de URL para incluir/excluir y ejecutar el análisis por lotes o tipologías.
                 </div>
               </div>
+              <div className="rounded-lg border border-border bg-surface px-3 py-3 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant={trendingUseCustomPeriod ? 'ghost' : 'secondary'}
+                    size="sm"
+                    onClick={() => setTrendingUseCustomPeriod(false)}
+                  >
+                    Usar periodo global
+                  </Button>
+                  <Button
+                    variant={trendingUseCustomPeriod ? 'secondary' : 'ghost'}
+                    size="sm"
+                    onClick={() => setTrendingUseCustomPeriod(true)}
+                  >
+                    Periodo personalizado
+                  </Button>
+                </div>
+                {trendingUseCustomPeriod ? (
+                  <div className="space-y-2">
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <label className="block">
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">Desde</span>
+                        <Input type="date" value={trendingStartDate} max={trendingEndDate || undefined} onChange={(e) => setTrendingStartDate(e.target.value)} />
+                      </label>
+                      <label className="block">
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">Hasta</span>
+                        <Input type="date" value={trendingEndDate} min={trendingStartDate || undefined} onChange={(e) => setTrendingEndDate(e.target.value)} />
+                      </label>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { label: '12 meses', days: 365 },
+                        { label: '6 meses', days: 180 },
+                        { label: '3 meses', days: 90 },
+                        { label: '30 días', days: 30 },
+                      ].map((preset) => (
+                        <Button
+                          key={preset.label}
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            const end = new Date();
+                            end.setDate(end.getDate() - GSC_DATA_DELAY_DAYS);
+                            const start = new Date(end);
+                            start.setDate(end.getDate() - preset.days);
+                            setTrendingStartDate(start.toISOString().split('T')[0]);
+                            setTrendingEndDate(end.toISOString().split('T')[0]);
+                          }}
+                        >
+                          {preset.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-muted">
+                    Se usará el rango global del dashboard: {startDate} → {endDate}.
+                  </div>
+                )}
+              </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="block">
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">Incluir URL contiene (1 por línea)</span>
@@ -4115,12 +4198,19 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">Máx. filas por corrida</span>
                   <Input
                     type="number"
-                    min={1000}
+                    min={TRENDING_ANALYSIS_MAX_ROWS_MIN}
                     max={TRENDING_ANALYSIS_MAX_ROWS_HARD_LIMIT}
                     value={trendingMaxRows}
                     onChange={(e) => setTrendingMaxRows(Number(e.target.value || TRENDING_ANALYSIS_MAX_ROWS_DEFAULT))}
                   />
                 </label>
+                <div className="flex flex-wrap gap-2">
+                  {[100000, 500000, 1000000, 2000000, 4000000].map((rows) => (
+                    <Button key={rows} variant="ghost" size="sm" onClick={() => setTrendingMaxRows(rows)}>
+                      {rows >= 1000000 ? `${rows / 1000000}M` : `${Math.round(rows / 1000)}k`} filas
+                    </Button>
+                  ))}
+                </div>
                 <Button variant="secondary" onClick={runTrendingAnalysis} disabled={isRunningTrendingAnalysis}>
                   <TrendingUp size={16} /> {isRunningTrendingAnalysis ? 'Analizando…' : 'Ejecutar análisis con filtros'}
                 </Button>
@@ -4130,7 +4220,7 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
               </div>
               {trendingAnalysisScope ? (
                 <div className="rounded-lg border border-border bg-surface px-3 py-2 text-[11px] text-muted">
-                  Última corrida: {trendingAnalysisScope.rowsLoaded.toLocaleString('es-ES')} filas · incluir {trendingAnalysisScope.includeTerms.length} patrón(es) · excluir {trendingAnalysisScope.excludeTerms.length} patrón(es).
+                  Última corrida: {trendingAnalysisScope.rowsLoaded.toLocaleString('es-ES')} filas cargadas de un máximo solicitado de {trendingAnalysisScope.maxRowsRequested.toLocaleString('es-ES')} · periodo {trendingAnalysisScope.periodStart} → {trendingAnalysisScope.periodEnd} · incluir {trendingAnalysisScope.includeTerms.length} patrón(es) · excluir {trendingAnalysisScope.excludeTerms.length} patrón(es).
                 </div>
               ) : (
                 <div className="rounded-lg border border-border bg-surface px-3 py-2 text-[11px] text-muted">
