@@ -1,7 +1,7 @@
 import os
 import json
 import logging
-from flask import jsonify, request, Blueprint
+from flask import jsonify, request, Blueprint, current_app
 from apps.tools.utils import safe_get_json
 from apps.core.database import (
     create_job, get_job, get_job_items, get_job_item_result,
@@ -12,7 +12,7 @@ from apps.web.blueprints.api_error_utils import api_error
 from . import api_engine_bp
 
 # Hard limits
-MAX_URLS_PER_BATCH = int(os.environ.get('ENGINE_MAX_URLS_PER_BATCH', 5000))
+DEFAULT_MAX_URLS_PER_BATCH = int(os.environ.get('ENGINE_MAX_URLS_PER_BATCH', 10000))
 
 JOB_STATUS_ENUM = ('pending', 'processing', 'paused', 'done', 'error', 'cancelled')
 
@@ -76,8 +76,9 @@ def create_analysis_job():
     if not items:
         return api_error('validation_error', 'No URLs provided', 400)
 
-    if len(items) > MAX_URLS_PER_BATCH:
-        return api_error('validation_error', f'Batch size exceeds limit of {MAX_URLS_PER_BATCH}', 400)
+    max_urls_per_batch = int(current_app.config.get('ENGINE_MAX_URLS_PER_BATCH', DEFAULT_MAX_URLS_PER_BATCH))
+    if len(items) > max_urls_per_batch:
+        return api_error('validation_error', f'Batch size exceeds limit of {max_urls_per_batch}', 400)
 
     # Store gscQueries in analysis_config so runner can access it
     analysis_config['gscQueriesByUrl'] = gsc_queries_map
