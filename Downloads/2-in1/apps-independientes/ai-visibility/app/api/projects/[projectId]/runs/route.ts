@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { canAccessProject, hasRole } from '@/lib/auth/authorization';
+import { ensureDbUser } from '@/lib/auth/db-user';
 import { getRequestUser } from '@/lib/auth/session';
 import { createRun, listRuns } from '@/lib/runs/tracking';
 import { parseRunListFilters, validateCreateRunInput } from '@/lib/runs/validation';
@@ -71,7 +72,8 @@ export async function POST(
   }
 
   const user = getRequestUser(request);
-  const run = await createRun(projectId, user?.id ?? null, validation.values);
+  const dbUser = user ? await ensureDbUser(user) : null;
+  const run = await createRun(projectId, dbUser?.id ?? null, validation.values);
 
   if (!run) {
     return NextResponse.json({ error: 'prompt_not_found' }, { status: 404 });
