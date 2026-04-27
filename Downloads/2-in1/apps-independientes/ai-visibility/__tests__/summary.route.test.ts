@@ -58,6 +58,7 @@ describe('project summary endpoint', () => {
       projectId: string;
       currentRange: { from: Date; to: Date };
       previousRange: { from: Date; to: Date };
+      useDailySnapshots: boolean;
     };
 
     expect(call.projectId).toBe('p1');
@@ -65,6 +66,20 @@ describe('project summary endpoint', () => {
     expect(call.currentRange.to.toISOString()).toBe('2026-04-14T23:59:59.999Z');
     expect(call.previousRange.from.toISOString()).toBe('2026-04-05T00:00:00.000Z');
     expect(call.previousRange.to.toISOString()).toBe('2026-04-09T23:59:59.999Z');
+    expect(call.useDailySnapshots).toBe(false);
+  });
+
+
+  it('enables snapshot mode when useSnapshots=1', async () => {
+    mockBuildProjectSummary.mockResolvedValue({ ok: true });
+
+    const request = new NextRequest('http://localhost:3000/api/projects/p1/summary?from=2026-04-10&to=2026-04-14&useSnapshots=1');
+
+    const response = await GET(request, { params: { projectId: 'p1' } });
+
+    expect(response.status).toBe(200);
+    const call = mockBuildProjectSummary.mock.calls[0]?.[0] as { useDailySnapshots: boolean };
+    expect(call.useDailySnapshots).toBe(true);
   });
 
   it('returns 403 when user cannot access the project', async () => {

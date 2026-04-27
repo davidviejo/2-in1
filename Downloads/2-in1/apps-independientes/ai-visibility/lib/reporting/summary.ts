@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db';
 import { computeKpis, ComputedKpis } from '@/lib/kpi/calculations';
 
+import { combineDailySnapshotPayloads } from './kpi-snapshots';
 import type { SummaryDateRange } from './summary-validation';
 
 type ScalarDelta = {
@@ -46,10 +47,25 @@ export type ProjectSummaryResponse = {
   generatedAt: string;
 };
 
+
+type PromptRow = {
+  id: string;
+  title: string;
+  isActive: boolean;
+};
+
+type SnapshotRow = {
+  periodStart: Date;
+  periodEnd: Date;
+  generatedAt: Date;
+  metricsJson: unknown;
+};
+
 type BuildSummaryInput = {
   projectId: string;
   currentRange: SummaryDateRange;
   previousRange: SummaryDateRange;
+  useDailySnapshots?: boolean;
 };
 
 function toIso(value: Date): string {
@@ -78,7 +94,7 @@ function computeDelta(current: number | null, previous: number | null): ScalarDe
 }
 
 async function loadKpiInputs(projectId: string, range: SummaryDateRange) {
-  const prompts = await prisma.prompt.findMany({
+  const prompts: PromptRow[] = await prisma.prompt.findMany({
     where: {
       projectId,
       deletedAt: null
@@ -167,6 +183,163 @@ async function loadKpiInputs(projectId: string, range: SummaryDateRange) {
   return { prompts, runs, responses, citations, mentions };
 }
 
+function startOfUtcDay(value: Date): Date {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate(), 0, 0, 0, 0));
+}
+
+function endOfUtcDay(value: Date): Date {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate(), 23, 59, 59, 999));
+}
+
+function isWholeDayRange(range: SummaryDateRange): boolean {
+  return range.from.getTime() === startOfUtcDay(range.from).getTime() && range.to.getTime() === endOfUtcDay(range.to).getTime();
+}
+
+function countDaysInRange(range: SummaryDateRange): number {
+  return Math.floor((range.to.getTime() - range.from.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+}
+
+async function getLatestSourceMutation(projectId: string, range: SummaryDateRange): Promise<Date | null> {
+  const [latestRun, latestResponse, latestCitation, latestMention] = await Promise.all([
+    prisma.run.findFirst({
+      where: {
+        projectId,
+        executedAt: {
+          gte: range.from,
+          lte: range.to
+        }
+      },
+      select: { updatedAt: true },
+      orderBy: { updatedAt: 'desc' }
+    }),
+    prisma.response.findFirst({
+      where: {
+        run: {
+          projectId,
+          executedAt: {
+            gte: range.from,
+            lte: range.to
+          }
+        }
+      },
+      select: { updatedAt: true },
+      orderBy: { updatedAt: 'desc' }
+    }),
+    prisma.citation.findFirst({
+      where: {
+        response: {
+          run: {
+            projectId,
+            executedAt: {
+              gte: range.from,
+              lte: range.to
+            }
+          }
+        }
+      },
+      select: { createdAt: true },
+      orderBy: { createdAt: 'desc' }
+    }),
+    prisma.responseBrandMention.findFirst({
+      where: {
+        projectId,
+        response: {
+          run: {
+            projectId,
+            executedAt: {
+              gte: range.from,
+              lte: range.to
+            }
+          }
+        }
+      },
+      select: { createdAt: true },
+      orderBy: { createdAt: 'desc' }
+    })
+  ]);
+
+  const candidates = [
+    latestRun?.updatedAt,
+    latestResponse?.updatedAt,
+    latestCitation?.createdAt,
+    latestMention?.createdAt
+  ].filter((value): value is Date => Boolean(value));
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  return new Date(Math.max(...candidates.map((value) => value.getTime())));
+}
+
+async function loadKpisFromSnapshots(projectId: string, range: SummaryDateRange, totalPrompts: number): Promise<ComputedKpis | null> {
+  if (!isWholeDayRange(range)) {
+    return null;
+  }
+
+  const snapshots: SnapshotRow[] = await prisma.kpiSnapshot.findMany({
+    where: {
+      projectId,
+      granularity: 'DAY',
+      promptId: null,
+      competitorId: null,
+      sourceDomain: null,
+      model: null,
+      periodStart: {
+        gte: range.from,
+        lte: range.to
+      },
+      periodEnd: {
+        gte: range.from,
+        lte: range.to
+      }
+    },
+    select: {
+      periodStart: true,
+      periodEnd: true,
+      generatedAt: true,
+      metricsJson: true
+    },
+    orderBy: {
+      periodStart: 'asc'
+    }
+  });
+
+  if (snapshots.length !== countDaysInRange(range)) {
+    return null;
+  }
+
+  for (const snapshot of snapshots) {
+    if (snapshot.periodStart.getTime() !== startOfUtcDay(snapshot.periodStart).getTime()) {
+      return null;
+    }
+
+    if (snapshot.periodEnd.getTime() !== endOfUtcDay(snapshot.periodStart).getTime()) {
+      return null;
+    }
+  }
+
+  const latestMutation = await getLatestSourceMutation(projectId, range);
+  const earliestSnapshot = snapshots.reduce((earliest: Date | null, snapshot: SnapshotRow) => {
+    if (!earliest || snapshot.generatedAt < earliest) {
+      return snapshot.generatedAt;
+    }
+
+    return earliest;
+  }, null as Date | null);
+
+  if (latestMutation && earliestSnapshot && latestMutation > earliestSnapshot) {
+    return null;
+  }
+
+  return combineDailySnapshotPayloads(
+    snapshots.map((snapshot: SnapshotRow) => snapshot.metricsJson),
+    {
+      totalPrompts
+    }
+  );
+}
+
 function mapToSummaryPeriod(totalPrompts: number, kpis: ComputedKpis): SummaryPeriod {
   const promptsExecuted = kpis.prompt_coverage.numerator;
 
@@ -185,17 +358,49 @@ function mapToSummaryPeriod(totalPrompts: number, kpis: ComputedKpis): SummaryPe
   };
 }
 
+async function resolveRangeKpis(projectId: string, range: SummaryDateRange, useDailySnapshots: boolean) {
+  const prompts: PromptRow[] = await prisma.prompt.findMany({
+    where: {
+      projectId,
+      deletedAt: null
+    },
+    select: {
+      id: true,
+      title: true,
+      isActive: true
+    }
+  });
+
+  if (useDailySnapshots) {
+    const snapshotKpis = await loadKpisFromSnapshots(projectId, range, prompts.filter((prompt: PromptRow) => prompt.isActive !== false).length);
+    if (snapshotKpis) {
+      return {
+        prompts,
+        kpis: snapshotKpis,
+        source: 'snapshot' as const
+      };
+    }
+  }
+
+  const details = await loadKpiInputs(projectId, range);
+
+  return {
+    prompts: details.prompts,
+    kpis: computeKpis(details),
+    source: 'direct' as const
+  };
+}
+
 export async function buildProjectSummary(input: BuildSummaryInput): Promise<ProjectSummaryResponse> {
+  const useDailySnapshots = input.useDailySnapshots ?? false;
+
   const [currentData, previousData] = await Promise.all([
-    loadKpiInputs(input.projectId, input.currentRange),
-    loadKpiInputs(input.projectId, input.previousRange)
+    resolveRangeKpis(input.projectId, input.currentRange, useDailySnapshots),
+    resolveRangeKpis(input.projectId, input.previousRange, useDailySnapshots)
   ]);
 
-  const currentKpis = computeKpis(currentData);
-  const previousKpis = computeKpis(previousData);
-
-  const summary = mapToSummaryPeriod(currentData.prompts.length, currentKpis);
-  const previousSummary = mapToSummaryPeriod(previousData.prompts.length, previousKpis);
+  const summary = mapToSummaryPeriod(currentData.prompts.length, currentData.kpis);
+  const previousSummary = mapToSummaryPeriod(previousData.prompts.length, previousData.kpis);
 
   return {
     projectId: input.projectId,
