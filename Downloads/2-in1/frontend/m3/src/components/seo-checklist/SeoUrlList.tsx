@@ -53,6 +53,7 @@ export const SeoUrlList: React.FC<Props> = ({
   allowKwAutoSelectInBasic,
   onAllowKwAutoSelectInBasicChange,
 }) => {
+  const MAX_URLS_PER_BATCH = 1000;
   const [filter, setFilter] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -276,7 +277,13 @@ export const SeoUrlList: React.FC<Props> = ({
     if (selectedIds.size === filteredPages.length && filteredPages.length > 0) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(filteredPages.map((p) => p.id)));
+      const nextSelected = filteredPages.slice(0, MAX_URLS_PER_BATCH).map((p) => p.id);
+      if (filteredPages.length > MAX_URLS_PER_BATCH) {
+        window.alert(
+          `Solo puedes analizar hasta ${MAX_URLS_PER_BATCH} URLs por ejecución. Se seleccionaron las primeras ${MAX_URLS_PER_BATCH}.`,
+        );
+      }
+      setSelectedIds(new Set(nextSelected));
     }
   };
 
@@ -291,13 +298,25 @@ export const SeoUrlList: React.FC<Props> = ({
   };
 
   // Bulk Actions
+  const getPagesToAnalyze = (idsToAnalyze: Set<string>) => {
+    const selectedPages = pages.filter((p) => idsToAnalyze.has(p.id));
+    if (selectedPages.length <= MAX_URLS_PER_BATCH) {
+      return selectedPages;
+    }
+
+    window.alert(
+      `Seleccionaste ${selectedPages.length} URLs. Solo se enviarán las primeras ${MAX_URLS_PER_BATCH}.`,
+    );
+    return selectedPages.slice(0, MAX_URLS_PER_BATCH);
+  };
+
   const executeBatch = async (forcedIds?: Set<string>) => {
     setIsConfirmModalOpen(false);
     setIsAnalyzing(true);
     setBatchProgress(null);
 
     const idsToAnalyze = forcedIds ?? selectedIds;
-    const pagesToAnalyze = pages.filter((p) => idsToAnalyze.has(p.id));
+    const pagesToAnalyze = getPagesToAnalyze(idsToAnalyze);
 
     // Default concurrency or derived from somewhere? Using 3 as safe default
     const concurrency = 3;
@@ -351,7 +370,7 @@ export const SeoUrlList: React.FC<Props> = ({
     const idsToAnalyze = forcedIds ?? selectedIds;
     if (idsToAnalyze.size === 0) return false;
 
-    const pagesToAnalyze = pages.filter((p) => idsToAnalyze.has(p.id));
+    const pagesToAnalyze = getPagesToAnalyze(idsToAnalyze);
     const analysisConfig = buildAnalysisConfig();
 
     onRunBatch(pagesToAnalyze, analysisConfig);
@@ -379,7 +398,13 @@ export const SeoUrlList: React.FC<Props> = ({
 
   const handleAnalyzeAll = () => {
     if (filteredPages.length === 0) return;
-    const allIds = new Set(filteredPages.map((p) => p.id));
+    const limitedPages = filteredPages.slice(0, MAX_URLS_PER_BATCH);
+    if (filteredPages.length > MAX_URLS_PER_BATCH) {
+      window.alert(
+        `Solo puedes analizar hasta ${MAX_URLS_PER_BATCH} URLs por ejecución. Se usarán las primeras ${MAX_URLS_PER_BATCH}.`,
+      );
+    }
+    const allIds = new Set(limitedPages.map((p) => p.id));
     setSelectedIds(allIds);
 
     if (analysisMode === 'basic') {

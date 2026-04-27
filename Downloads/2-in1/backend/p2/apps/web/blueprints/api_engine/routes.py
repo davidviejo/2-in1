@@ -9,6 +9,8 @@ from apps.web.blueprints.api_error_utils import api_error
 from . import api_engine_bp
 from .seo_checklist_orchestrator import run_orchestrated_checklist
 
+DEFAULT_MAX_URLS_PER_BATCH = int(os.environ.get('ENGINE_MAX_URLS_PER_BATCH', 10000))
+
 ALLOWED_CHECKLIST_AI_DECISIONS = {"si_ia", "error_claro_ia", "no_decidir"}
 CHECKLIST_AI_SYSTEM_PROMPT = (
     "Devuelve SOLO JSON válido (sin markdown) con {\"results\":[...]}. "
@@ -249,7 +251,7 @@ def capabilities():
     # Hard limits from Config
     max_kw = current_app.config.get('ENGINE_MAX_KEYWORDS_PER_URL', 20)
     max_comp = current_app.config.get('ENGINE_MAX_COMPETITORS_PER_KEYWORD', 5)
-    max_urls = current_app.config.get('ENGINE_MAX_URLS_PER_BATCH', 100)
+    max_urls = current_app.config.get('ENGINE_MAX_URLS_PER_BATCH', DEFAULT_MAX_URLS_PER_BATCH)
 
     limits = {
         "maxKeywordsPerUrl": max_kw,

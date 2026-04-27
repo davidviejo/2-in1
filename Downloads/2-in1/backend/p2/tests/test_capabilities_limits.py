@@ -44,7 +44,7 @@ class TestCapabilitiesAndLimits(unittest.TestCase):
         # Check default limits
         self.assertEqual(data['limits']['maxKeywordsPerUrl'], 20)
         self.assertEqual(data['limits']['maxCompetitorsPerKeyword'], 5)
-        self.assertEqual(data['limits']['maxUrlsPerBatch'], 100)
+        self.assertEqual(data['limits']['maxUrlsPerBatch'], 10000)
 
     @patch('apps.web.blueprints.api_engine.routes.get_user_settings')
     @patch.dict(os.environ, {

@@ -48,7 +48,7 @@ class Config:
     # API Engine Limits
     ENGINE_MAX_KEYWORDS_PER_URL = int(os.environ.get('ENGINE_MAX_KEYWORDS_PER_URL', 20))
     ENGINE_MAX_COMPETITORS_PER_KEYWORD = int(os.environ.get('ENGINE_MAX_COMPETITORS_PER_KEYWORD', 5))
-    ENGINE_MAX_URLS_PER_BATCH = int(os.environ.get('ENGINE_MAX_URLS_PER_BATCH', 100))
+    ENGINE_MAX_URLS_PER_BATCH = int(os.environ.get('ENGINE_MAX_URLS_PER_BATCH', 10000))
 
     # Google scraping fallback controls (conservative by default)
     GOOGLE_SCRAPING_AUTO_FALLBACK = os.environ.get('GOOGLE_SCRAPING_AUTO_FALLBACK', 'false').lower() == 'true'
