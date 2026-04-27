@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { hasRole } from '@/lib/auth/authorization';
+import { ensureDbUser } from '@/lib/auth/db-user';
 import { getRequestUser } from '@/lib/auth/session';
 import { prisma } from '@/lib/db';
 import { validateProjectSettings } from '@/lib/projects/validation';
@@ -62,11 +63,13 @@ export async function POST(request: NextRequest) {
     slug = `${baseSlug}-${index}`;
   }
 
+  const dbUser = await ensureDbUser(user);
+
   const project = await prisma.project.create({
     data: {
       ...validation.values,
       slug,
-      ownerUserId: user.id
+      ownerUserId: dbUser.id
     },
     include: {
       brandAliases: { orderBy: { alias: 'asc' } }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { canAccessProject, hasRole } from '@/lib/auth/authorization';
+import { ensureDbUser } from '@/lib/auth/db-user';
 import { getRequestUser } from '@/lib/auth/session';
 import {
   commitHistoricalImport,
@@ -104,7 +105,8 @@ export async function POST(
     }
 
     const user = getRequestUser(request);
-    const committed = await commitHistoricalImport(projectId, user?.id ?? null, validation.values);
+    const dbUser = user ? await ensureDbUser(user) : null;
+    const committed = await commitHistoricalImport(projectId, dbUser?.id ?? null, validation.values);
 
     if (committed.issues.length > 0) {
       return NextResponse.json({ error: 'validation_failed', preview: committed }, { status: 422 });
