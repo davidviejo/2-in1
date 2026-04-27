@@ -238,6 +238,14 @@ function guessSourceType(rootDomain: string | null, isClientDomain: boolean, isC
   return 'other';
 }
 
+export function classifyCitationSource(input: {
+  rootDomain: string | null;
+  isClientDomain: boolean;
+  isCompetitorDomain: boolean;
+}): CitationSourceType {
+  return guessSourceType(input.rootDomain, input.isClientDomain, input.isCompetitorDomain);
+}
+
 export function extractAndNormalizeCitations(input: ExtractCitationsInput): NormalizedCitation[] {
   const clientRootDomains = new Set((input.clientDomains ?? []).map((domain) => normalizeRootDomain(domain)).filter((value): value is string => Boolean(value)));
   const competitorRootDomains = new Set((input.competitorDomains ?? []).map((domain) => normalizeRootDomain(domain)).filter((value): value is string => Boolean(value)));

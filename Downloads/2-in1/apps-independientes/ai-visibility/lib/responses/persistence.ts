@@ -1,5 +1,7 @@
 import { prisma } from '@/lib/db';
 import type { UpdateRunStatusInput } from '@/lib/runs/validation';
+import { CitationGrouping } from '@/lib/responses/citations';
+import { buildCitationExplorerGroups, CitationExplorerSortBy } from '@/lib/responses/citations-explorer';
 
 import { buildDisplaySnippet, normalizeResponseText } from './snippets';
 
@@ -272,5 +274,83 @@ export async function listCitations(projectId: string, page: number, pageSize: n
       total,
       totalPages: Math.max(1, Math.ceil(total / pageSize))
     }
+  };
+}
+
+export type ExploreCitationsInput = {
+  from?: Date;
+  to?: Date;
+  models?: string[];
+  tags?: string[];
+  country?: string;
+  language?: string;
+  groupBy: CitationGrouping;
+  sortBy: CitationExplorerSortBy;
+};
+
+export async function exploreCitations(projectId: string, input: ExploreCitationsInput) {
+  const where = {
+    response: {
+      run: {
+        projectId,
+        ...(input.from || input.to
+          ? {
+              executedAt: {
+                ...(input.from ? { gte: input.from } : {}),
+                ...(input.to ? { lte: input.to } : {})
+              }
+            }
+          : {}),
+        ...(input.models && input.models.length > 0 ? { model: { in: input.models } } : {}),
+        prompt: {
+          ...(input.country ? { country: input.country } : {}),
+          ...(input.language ? { language: input.language } : {}),
+          ...(input.tags && input.tags.length > 0
+            ? {
+                promptTags: {
+                  some: {
+                    tag: {
+                      normalizedName: { in: input.tags }
+                    }
+                  }
+                }
+              }
+            : {})
+        }
+      }
+    }
+  };
+
+  const [project, competitors, rows] = await Promise.all([
+    prisma.project.findUnique({
+      where: { id: projectId },
+      select: { primaryDomain: true }
+    }),
+    prisma.competitor.findMany({
+      where: { projectId, isActive: true, deletedAt: null },
+      select: { domain: true }
+    }),
+    prisma.citation.findMany({
+      where,
+      select: {
+        sourceUrl: true,
+        sourceDomain: true
+      }
+    })
+  ]);
+
+  const grouped = buildCitationExplorerGroups({
+    rows,
+    groupBy: input.groupBy,
+    sortBy: input.sortBy,
+    clientDomains: project?.primaryDomain ? [project.primaryDomain] : [],
+    competitorDomains: competitors.map((item: { domain: string }) => item.domain)
+  });
+
+  return {
+    groupBy: input.groupBy,
+    sortBy: input.sortBy,
+    totalCitations: grouped.total,
+    groups: grouped.groups
   };
 }
