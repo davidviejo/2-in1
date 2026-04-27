@@ -53,6 +53,12 @@ const createEntityId = () => {
   return `id-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 };
 
+const normalizeTextValue = (value: unknown): string => {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return '';
+};
+
 interface ProjectContextType {
   clients: Client[];
   currentClientId: string;
@@ -963,6 +969,17 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
 
           let newLog = c.completedTasksLog || [];
           if (isNowComplete) {
+            const normalizedProperty = normalizeTextValue(
+              taskToToggle.impactLink?.property || taskToToggle.insightSourceMeta?.property,
+            );
+            const normalizedQuery = normalizeTextValue(
+              taskToToggle.impactLink?.query || taskToToggle.insightSourceMeta?.query,
+            );
+            const normalizedUrl = normalizeTextValue(
+              taskToToggle.impactLink?.url || taskToToggle.insightSourceMeta?.url,
+            );
+            const moduleTitle =
+              c.modules.find((module) => module.id === moduleId)?.title || `Módulo ${moduleId}`;
             const logEntry: CompletedTask = {
               id: createEntityId(),
               taskId: taskId,
@@ -973,10 +990,10 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
               moduleId: moduleId,
               beforeAfter: {
                 link: {
-                  property: taskToToggle.impactLink?.property || taskToToggle.insightSourceMeta?.property || '',
-                  query: taskToToggle.impactLink?.query || taskToToggle.insightSourceMeta?.query || '',
-                  url: taskToToggle.impactLink?.url || taskToToggle.insightSourceMeta?.url || '',
-                  module: c.modules.find((module) => module.id === moduleId)?.title || `Módulo ${moduleId}`,
+                  property: normalizedProperty,
+                  query: normalizedQuery,
+                  url: normalizedUrl,
+                  module: moduleTitle,
                 },
                 postWindowDays: taskToToggle.impactPostWindowDays || 28,
                 minimumValidationDays: 14,
@@ -984,10 +1001,10 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
                 insight: 'Completa el baseline y el periodo post para evaluar impacto real.',
                 trace: {
                   source: 'gsc',
-                  property: taskToToggle.impactLink?.property || taskToToggle.insightSourceMeta?.property || '',
-                  query: taskToToggle.impactLink?.query || taskToToggle.insightSourceMeta?.query,
-                  url: taskToToggle.impactLink?.url || taskToToggle.insightSourceMeta?.url,
-                  module: c.modules.find((module) => module.id === moduleId)?.title || `Módulo ${moduleId}`,
+                  property: normalizedProperty,
+                  query: normalizedQuery,
+                  url: normalizedUrl,
+                  module: moduleTitle,
                   projectType: c.projectType,
                   sector: c.sector,
                   geoScope: c.geoScope,
@@ -1038,6 +1055,17 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
 
           let newLog = c.completedTasksLog || [];
           if (newStatus === 'completed' && taskToUpdate.status !== 'completed') {
+            const normalizedProperty = normalizeTextValue(
+              taskToUpdate.impactLink?.property || taskToUpdate.insightSourceMeta?.property,
+            );
+            const normalizedQuery = normalizeTextValue(
+              taskToUpdate.impactLink?.query || taskToUpdate.insightSourceMeta?.query,
+            );
+            const normalizedUrl = normalizeTextValue(
+              taskToUpdate.impactLink?.url || taskToUpdate.insightSourceMeta?.url,
+            );
+            const moduleTitle =
+              c.modules.find((module) => module.id === moduleId)?.title || `Módulo ${moduleId}`;
             const logEntry: CompletedTask = {
               id: createEntityId(),
               taskId: taskId,
@@ -1048,10 +1076,10 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
               moduleId: moduleId,
               beforeAfter: {
                 link: {
-                  property: taskToUpdate.impactLink?.property || taskToUpdate.insightSourceMeta?.property || '',
-                  query: taskToUpdate.impactLink?.query || taskToUpdate.insightSourceMeta?.query || '',
-                  url: taskToUpdate.impactLink?.url || taskToUpdate.insightSourceMeta?.url || '',
-                  module: c.modules.find((module) => module.id === moduleId)?.title || `Módulo ${moduleId}`,
+                  property: normalizedProperty,
+                  query: normalizedQuery,
+                  url: normalizedUrl,
+                  module: moduleTitle,
                 },
                 postWindowDays: taskToUpdate.impactPostWindowDays || 28,
                 minimumValidationDays: 14,
@@ -1059,10 +1087,10 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
                 insight: 'Completa el baseline y el periodo post para evaluar impacto real.',
                 trace: {
                   source: 'gsc',
-                  property: taskToUpdate.impactLink?.property || taskToUpdate.insightSourceMeta?.property || '',
-                  query: taskToUpdate.impactLink?.query || taskToUpdate.insightSourceMeta?.query,
-                  url: taskToUpdate.impactLink?.url || taskToUpdate.insightSourceMeta?.url,
-                  module: c.modules.find((module) => module.id === moduleId)?.title || `Módulo ${moduleId}`,
+                  property: normalizedProperty,
+                  query: normalizedQuery,
+                  url: normalizedUrl,
+                  module: moduleTitle,
                   projectType: c.projectType,
                   sector: c.sector,
                   geoScope: c.geoScope,

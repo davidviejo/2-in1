@@ -185,4 +185,53 @@ describe('ProjectContext', () => {
     expect(result.current.currentClient?.iaVisibility?.history).toEqual([]);
   });
 
+  it('should sanitize link fields when completing tasks with malformed impact metadata', () => {
+    (ClientRepository.getClients as any).mockReturnValue([
+      {
+        id: '1',
+        name: 'Test Project',
+        vertical: 'media',
+        createdAt: 12345,
+        notes: [],
+        completedTasksLog: [],
+        customRoadmapOrder: [],
+        modules: [
+          {
+            id: 1,
+            title: 'Módulo 1',
+            subtitle: '',
+            levelRange: '',
+            description: '',
+            iconName: '',
+            tasks: [
+              {
+                id: 'task-1',
+                title: 'Task 1',
+                description: 'Task 1 description',
+                impact: 'High',
+                status: 'pending',
+                impactLink: {
+                  property: 12345,
+                  query: { invalid: true },
+                  url: null,
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const { result } = renderHook(() => useProject(), { wrapper });
+
+    act(() => {
+      result.current.toggleTask(1, 'task-1');
+    });
+
+    const entry = result.current.currentClient?.completedTasksLog?.[0];
+    expect(entry?.beforeAfter?.link.property).toBe('12345');
+    expect(entry?.beforeAfter?.link.query).toBe('');
+    expect(entry?.beforeAfter?.link.url).toBe('');
+  });
+
 });
