@@ -95,8 +95,7 @@ function formatDelta(delta: DeltaValue, valueType: 'count' | 'ratio'): string {
   }
 
   if (valueType === 'ratio') {
-    const points = (delta.absolute * 100).toFixed(1);
-    return `Δ ${points}pp`;
+    return `Δ ${(delta.absolute * 100).toFixed(1)}pp`;
   }
 
   const sign = delta.absolute > 0 ? '+' : '';
@@ -121,8 +120,9 @@ function formatPeriodLabel(value: string): string {
   return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-function buildApiPath(projectId: string, path: string, range: { from: string; to: string }): string {
-  return `/api/projects/${projectId}/${path}?from=${range.from}&to=${range.to}`;
+function buildApiPath(projectId: string, path: string, range: { from: string; to: string }, extra = ''): string {
+  const suffix = extra ? `&${extra}` : '';
+  return `/api/projects/${projectId}/${path}?from=${range.from}&to=${range.to}${suffix}`;
 }
 
 export function OverviewManager() {
@@ -141,46 +141,57 @@ export function OverviewManager() {
       return;
     }
 
-    void loadOverview(currentProjectId, range.from, range.to);
+    const abortController = new AbortController();
+    void loadOverview(currentProjectId, range.from, range.to, abortController.signal);
+
+    return () => {
+      abortController.abort();
+    };
   }, [currentProjectId, range.from, range.to]);
 
-  async function loadOverview(projectId: string, from: string, to: string) {
+  async function loadOverview(projectId: string, from: string, to: string, signal: AbortSignal) {
     setIsLoading(true);
     setError(null);
 
-    const [summaryResponse, timeseriesResponse] = await Promise.all([
-      fetch(`/api/projects/${projectId}/summary?from=${from}&to=${to}`, { cache: 'no-store' }),
-      fetch(`/api/projects/${projectId}/timeseries?from=${from}&to=${to}&granularity=day`, { cache: 'no-store' })
-    ]);
+    try {
+      const [summaryResponse, timeseriesResponse] = await Promise.all([
+        fetch(`/api/projects/${projectId}/summary?from=${from}&to=${to}`, { cache: 'no-store', signal }),
+        fetch(`/api/projects/${projectId}/timeseries?from=${from}&to=${to}&granularity=day`, { cache: 'no-store', signal })
+      ]);
 
-    if (!summaryResponse.ok || !timeseriesResponse.ok) {
-      const fallbackError = summaryResponse.status === 400 || timeseriesResponse.status === 400
-        ? 'Invalid date range.'
-        : 'Unable to load overview reporting.';
+      if (!summaryResponse.ok || !timeseriesResponse.ok) {
+        const fallbackError =
+          summaryResponse.status === 400 || timeseriesResponse.status === 400
+            ? 'Invalid date range.'
+            : 'Unable to load overview reporting.';
+        setSummary(null);
+        setTimeseries(null);
+        setError(fallbackError);
+        setIsLoading(false);
+        return;
+      }
+
+      const summaryData = (await summaryResponse.json()) as SummaryPayload;
+      const timeseriesData = (await timeseriesResponse.json()) as TimeseriesPayload;
+
+      setSummary(summaryData);
+      setTimeseries(timeseriesData);
+      setIsLoading(false);
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        return;
+      }
       setSummary(null);
       setTimeseries(null);
-      setError(fallbackError);
+      setError('Unable to load overview reporting. Please retry.');
       setIsLoading(false);
-      return;
     }
-
-    const summaryData = (await summaryResponse.json()) as SummaryPayload;
-    const timeseriesData = (await timeseriesResponse.json()) as TimeseriesPayload;
-
-    setSummary(summaryData);
-    setTimeseries(timeseriesData);
-    setIsLoading(false);
   }
 
   const trendRows = useMemo(() => timeseries?.series ?? [], [timeseries]);
   const domainRows = useMemo(() => summary?.summary.topCitedDomains ?? [], [summary]);
   const strongestPrompts = useMemo(() => summary?.summary.strongestPrompts ?? [], [summary]);
   const weakestPrompts = useMemo(() => summary?.summary.weakestPrompts ?? [], [summary]);
-
-  const maxMentions = useMemo(() => {
-    const values = trendRows.map((row) => row.values.brand_mentions);
-    return values.length > 0 ? Math.max(...values, 1) : 1;
-  }, [trendRows]);
 
   const topDomain = summary?.summary.sourceShare.byDomain[0] ?? null;
 
@@ -195,11 +206,15 @@ export function OverviewManager() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title={`Overview · ${currentProject?.name ?? 'Project'}`}
-        description="Analyst scan view of KPI health, trend movement, source quality, and prompt performance."
+        title="Overview"
+        description="Fast analyst scan: KPI health, trends, source quality, and prompt performance with drill-down links."
       />
 
       <FilterBar>
+        <div className="rounded border border-slate-200 bg-white px-3 py-2 text-sm">
+          <p className="text-xs uppercase tracking-wide text-slate-500">Project</p>
+          <p className="font-semibold text-slate-900">{currentProject?.name ?? 'Unknown project'}</p>
+        </div>
         <label className="flex items-center gap-2 text-sm text-slate-700">
           From
           <input
@@ -221,14 +236,14 @@ export function OverviewManager() {
         {currentProjectId ? (
           <div className="ml-auto flex flex-wrap items-center gap-2 text-xs text-slate-600">
             <span className="font-medium">Quick links:</span>
-            <Link className="rounded border border-slate-300 px-2 py-1 hover:bg-white" href="/responses">
+            <Link className="rounded border border-slate-300 bg-white px-2 py-1 hover:bg-slate-100" href="/responses">
               Responses
             </Link>
-            <Link className="rounded border border-slate-300 px-2 py-1 hover:bg-white" href="/citations">
+            <Link className="rounded border border-slate-300 bg-white px-2 py-1 hover:bg-slate-100" href="/citations">
               Citations
             </Link>
             <a
-              className="rounded border border-slate-300 px-2 py-1 hover:bg-white"
+              className="rounded border border-slate-300 bg-white px-2 py-1 hover:bg-slate-100"
               href={buildApiPath(currentProjectId, 'summary', range)}
               rel="noreferrer"
               target="_blank"
@@ -246,93 +261,96 @@ export function OverviewManager() {
         <>
           <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
             <KpiCard
+              href={buildApiPath(summary.projectId, 'responses', range)}
               label="Valid responses"
+              sourceLabel="source: responses endpoint"
               trend={formatDelta(summary.deltaVsPrevious.validResponses, 'count')}
               value={formatCount(summary.summary.validResponses)}
             />
             <KpiCard
+              href={buildApiPath(summary.projectId, 'summary', range)}
               label="Mention rate"
+              sourceLabel="source: summary endpoint"
               trend={formatDelta(summary.deltaVsPrevious.mentionRate, 'ratio')}
               value={formatPercent(summary.summary.mentionRate.value)}
             />
             <KpiCard
+              href={buildApiPath(summary.projectId, 'citations', range)}
               label="Citation rate"
+              sourceLabel="source: citations endpoint"
               trend={formatDelta(summary.deltaVsPrevious.citationRate, 'ratio')}
               value={formatPercent(summary.summary.citationRate.value)}
             />
             <KpiCard
+              href={buildApiPath(summary.projectId, 'summary', range)}
               label="Share of voice"
+              sourceLabel="source: summary endpoint"
               trend={formatDelta(summary.deltaVsPrevious.shareOfVoice, 'ratio')}
               value={formatPercent(summary.summary.shareOfVoice.value)}
             />
             <KpiCard
+              href={buildApiPath(summary.projectId, 'citations', range, 'groupBy=domain&sort=share')}
               label="Source share"
-              trend={topDomain ? `${topDomain.domain}` : 'No citation mix'}
+              sourceLabel="source: citations explorer"
+              trend={topDomain ? `top domain: ${topDomain.domain}` : 'No citation mix'}
               value={topDomain ? formatPercent(topDomain.share) : '—'}
             />
           </section>
 
           <section className="grid gap-4 xl:grid-cols-2">
-            <SectionCard title="KPI strip drill-down" description="Every metric links to source data for auditability.">
-              <ul className="space-y-2 text-sm text-slate-700">
-                <li className="flex items-center justify-between gap-3">
-                  <span>Valid responses</span>
-                  <a className="text-blue-700 underline" href={buildApiPath(summary.projectId, 'summary', range)} rel="noreferrer" target="_blank">Summary API source</a>
-                </li>
-                <li className="flex items-center justify-between gap-3">
-                  <span>Mention rate</span>
-                  <a className="text-blue-700 underline" href={buildApiPath(summary.projectId, 'timeseries', range) + '&granularity=day'} rel="noreferrer" target="_blank">Timeseries API source</a>
-                </li>
-                <li className="flex items-center justify-between gap-3">
-                  <span>Citation rate</span>
-                  <a className="text-blue-700 underline" href={buildApiPath(summary.projectId, 'citations', range)} rel="noreferrer" target="_blank">Citation records</a>
-                </li>
-                <li className="flex items-center justify-between gap-3">
-                  <span>Share of voice</span>
-                  <a className="text-blue-700 underline" href={buildApiPath(summary.projectId, 'summary', range)} rel="noreferrer" target="_blank">Summary formula source</a>
-                </li>
-                <li className="flex items-center justify-between gap-3">
-                  <span>Source share</span>
-                  <a className="text-blue-700 underline" href={buildApiPath(summary.projectId, 'citations', range)} rel="noreferrer" target="_blank">Citation drill-down</a>
-                </li>
-              </ul>
-            </SectionCard>
-
-            <SectionCard title="Quick links" description="Jump from summary to row-level inspections.">
-              <div className="grid gap-2 text-sm">
-                <Link className="rounded border border-slate-200 px-3 py-2 hover:bg-slate-50" href="/responses">Open Responses explorer</Link>
-                <Link className="rounded border border-slate-200 px-3 py-2 hover:bg-slate-50" href="/citations">Open Citations explorer</Link>
-                <a className="rounded border border-slate-200 px-3 py-2 hover:bg-slate-50" href={buildApiPath(summary.projectId, 'responses', range)} rel="noreferrer" target="_blank">Response API ({range.from} → {range.to})</a>
-                <a className="rounded border border-slate-200 px-3 py-2 hover:bg-slate-50" href={buildApiPath(summary.projectId, 'citations', range)} rel="noreferrer" target="_blank">Citation API ({range.from} → {range.to})</a>
-              </div>
-            </SectionCard>
-          </section>
-
-          <section className="grid gap-4 xl:grid-cols-2">
-            <SectionCard title="Trends" description="Mentions over time and citation rate by day (UTC).">
+            <SectionCard title="Trends · mentions over time" description="Daily mentions with API drill-down for each row.">
               {trendRows.length === 0 ? (
-                <EmptyState title="No trend data" description="No reporting activity found for the selected range." />
+                <EmptyState title="No mention trend data" description="No reporting activity found for the selected range." />
               ) : (
-                <DataTableShell columns={['Period', 'Mentions', 'Citation rate']}>
+                <DataTableShell columns={['Period', 'Mentions', 'Source']}>
                   {trendRows.map((point) => (
-                    <tr className="border-t border-slate-100" key={point.periodStart}>
+                    <tr className="border-t border-slate-100" key={`mentions-${point.periodStart}`}>
                       <td className="px-3 py-2">{formatPeriodLabel(point.periodStart)}</td>
+                      <td className="px-3 py-2 font-medium text-slate-900">{point.values.brand_mentions.toLocaleString()}</td>
                       <td className="px-3 py-2">
-                        <div className="flex items-center gap-2">
-                          <span className="w-8 text-right">{point.values.brand_mentions}</span>
-                          <div className="h-2 w-24 rounded bg-slate-100">
-                            <div className="h-2 rounded bg-slate-500" style={{ width: `${Math.max((point.values.brand_mentions / maxMentions) * 100, 4)}%` }} />
-                          </div>
-                        </div>
+                        <a
+                          className="text-blue-700 underline"
+                          href={buildApiPath(summary.projectId, 'timeseries', range, 'granularity=day')}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          timeseries endpoint
+                        </a>
                       </td>
-                      <td className="px-3 py-2">{formatPercent(point.values.citation_rate)}</td>
                     </tr>
                   ))}
                 </DataTableShell>
               )}
             </SectionCard>
 
-            <SectionCard title="Source intelligence" description="Top cited domains in selected range.">
+            <SectionCard title="Trends · citation rate over time" description="Daily citation rate rows linked to source endpoint.">
+              {trendRows.length === 0 ? (
+                <EmptyState title="No citation trend data" description="No reporting activity found for the selected range." />
+              ) : (
+                <DataTableShell columns={['Period', 'Citation rate', 'Source']}>
+                  {trendRows.map((point) => (
+                    <tr className="border-t border-slate-100" key={`citation-rate-${point.periodStart}`}>
+                      <td className="px-3 py-2">{formatPeriodLabel(point.periodStart)}</td>
+                      <td className="px-3 py-2 font-medium text-slate-900">{formatPercent(point.values.citation_rate)}</td>
+                      <td className="px-3 py-2">
+                        <a
+                          className="text-blue-700 underline"
+                          href={buildApiPath(summary.projectId, 'timeseries', range, 'granularity=day')}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          timeseries endpoint
+                        </a>
+                      </td>
+                    </tr>
+                  ))}
+                </DataTableShell>
+              )}
+            </SectionCard>
+          </section>
+
+          <section className="grid gap-4 xl:grid-cols-2">
+            <SectionCard title="Source intelligence" description="Top cited domains with citation and share context.">
               {domainRows.length === 0 ? (
                 <EmptyState title="No domains" description="No cited domains available for this period." />
               ) : (
@@ -340,15 +358,49 @@ export function OverviewManager() {
                   {domainRows.map((row) => (
                     <tr className="border-t border-slate-100" key={row.domain}>
                       <td className="px-3 py-2">{row.domain}</td>
-                      <td className="px-3 py-2">{row.citations}</td>
-                      <td className="px-3 py-2">{formatPercent(row.share)}</td>
+                      <td className="px-3 py-2 font-medium text-slate-900">{row.citations.toLocaleString()}</td>
+                      <td className="px-3 py-2 font-medium text-slate-900">{formatPercent(row.share)}</td>
                       <td className="px-3 py-2">
-                        <Link className="text-blue-700 underline" href="/citations">View citations</Link>
+                        <a
+                          className="text-blue-700 underline"
+                          href={buildApiPath(summary.projectId, 'citations', range, 'groupBy=domain&sort=count')}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          citations endpoint
+                        </a>
                       </td>
                     </tr>
                   ))}
                 </DataTableShell>
               )}
+            </SectionCard>
+
+            <SectionCard title="Quick links" description="Move from summary KPIs to row-level explorers quickly.">
+              <div className="grid gap-2 text-sm">
+                <Link className="rounded border border-slate-200 px-3 py-2 hover:bg-slate-50" href="/responses">
+                  Open Responses explorer
+                </Link>
+                <Link className="rounded border border-slate-200 px-3 py-2 hover:bg-slate-50" href="/citations">
+                  Open Citations explorer
+                </Link>
+                <a
+                  className="rounded border border-slate-200 px-3 py-2 hover:bg-slate-50"
+                  href={buildApiPath(summary.projectId, 'responses', range)}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Response API ({range.from} → {range.to})
+                </a>
+                <a
+                  className="rounded border border-slate-200 px-3 py-2 hover:bg-slate-50"
+                  href={buildApiPath(summary.projectId, 'citations', range)}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Citation API ({range.from} → {range.to})
+                </a>
+              </div>
             </SectionCard>
           </section>
 
@@ -361,10 +413,17 @@ export function OverviewManager() {
                   {strongestPrompts.map((prompt) => (
                     <tr className="border-t border-slate-100" key={prompt.promptId}>
                       <td className="px-3 py-2">{prompt.promptTitle}</td>
-                      <td className="px-3 py-2">{prompt.validResponseCount}</td>
-                      <td className="px-3 py-2">{formatPercent(prompt.mentionRate)}</td>
+                      <td className="px-3 py-2 font-medium text-slate-900">{prompt.validResponseCount.toLocaleString()}</td>
+                      <td className="px-3 py-2 font-medium text-slate-900">{formatPercent(prompt.mentionRate)}</td>
                       <td className="px-3 py-2">
-                        <a className="text-blue-700 underline" href={buildApiPath(summary.projectId, 'by-prompt', range) + '&sortBy=mentionRate&sortDir=desc'} rel="noreferrer" target="_blank">By-prompt API</a>
+                        <a
+                          className="text-blue-700 underline"
+                          href={buildApiPath(summary.projectId, 'by-prompt', range, 'sortBy=mentionRate&sortDir=desc')}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          by-prompt endpoint
+                        </a>
                       </td>
                     </tr>
                   ))}
@@ -380,10 +439,17 @@ export function OverviewManager() {
                   {weakestPrompts.map((prompt) => (
                     <tr className="border-t border-slate-100" key={prompt.promptId}>
                       <td className="px-3 py-2">{prompt.promptTitle}</td>
-                      <td className="px-3 py-2">{prompt.validResponseCount}</td>
-                      <td className="px-3 py-2">{formatPercent(prompt.mentionRate)}</td>
+                      <td className="px-3 py-2 font-medium text-slate-900">{prompt.validResponseCount.toLocaleString()}</td>
+                      <td className="px-3 py-2 font-medium text-slate-900">{formatPercent(prompt.mentionRate)}</td>
                       <td className="px-3 py-2">
-                        <a className="text-blue-700 underline" href={buildApiPath(summary.projectId, 'by-prompt', range) + '&sortBy=mentionRate&sortDir=asc'} rel="noreferrer" target="_blank">By-prompt API</a>
+                        <a
+                          className="text-blue-700 underline"
+                          href={buildApiPath(summary.projectId, 'by-prompt', range, 'sortBy=mentionRate&sortDir=asc')}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          by-prompt endpoint
+                        </a>
                       </td>
                     </tr>
                   ))}

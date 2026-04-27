@@ -37,14 +37,28 @@ type KpiCardProps = {
   label: string;
   value: string;
   trend?: string;
+  sourceLabel?: string;
+  href?: string;
 };
 
-export function KpiCard({ label, value, trend }: KpiCardProps) {
+export function KpiCard({ label, value, trend, sourceLabel, href }: KpiCardProps) {
   return (
     <article className="rounded-md border border-slate-200 bg-white p-3">
       <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-1 text-2xl font-semibold leading-none text-slate-900">{value}</p>
+      {href ? (
+        <a
+          className="mt-1 inline-flex text-2xl font-semibold leading-none text-slate-900 underline decoration-slate-300 underline-offset-4 hover:text-blue-700 hover:decoration-blue-300"
+          href={href}
+          rel="noreferrer"
+          target="_blank"
+        >
+          {value}
+        </a>
+      ) : (
+        <p className="mt-1 text-2xl font-semibold leading-none text-slate-900">{value}</p>
+      )}
       {trend ? <p className="mt-2 text-xs text-slate-600">{trend}</p> : null}
+      {sourceLabel ? <p className="mt-1 text-xs text-slate-500">{sourceLabel}</p> : null}
     </article>
   );
 }
