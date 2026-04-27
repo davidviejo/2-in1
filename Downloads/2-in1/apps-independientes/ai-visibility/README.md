@@ -43,6 +43,9 @@ Copia `.env.example` y ajusta valores si necesitas cambiar puertos/credenciales:
 - `POSTGRES_PORT`
 - `DATABASE_URL`
 - `AUTH_SESSION_SECRET` (recomendado para firmar sesión; si no existe usa fallback local de desarrollo)
+- `OPENAI_API_KEY` / `OPENAI_DEFAULT_MODEL` (ChatGPT real API)
+- `GEMINI_API_KEY` / `GEMINI_DEFAULT_MODEL` (Gemini real API)
+- `DATAFORSEO_LOGIN` / `DATAFORSEO_PASSWORD` / `DATAFORSEO_LOCATION_CODE` (Google AI Mode + AI Overview vía DataForSEO)
 
 ## Auth MVP (internal-tool friendly)
 
@@ -140,3 +143,13 @@ La app soporta como modos de análisis de primer nivel:
 - `ai_overview`
 
 `provider`, `surface`, `analysisMode`, `model`(model_label), `captureMethod`, `country` y `language` se almacenan en `run` y pueden usarse para reporting y filtros.
+
+## Live analysis (real provider APIs)
+
+- Desde **Prompts**, cada prompt incluye acción **Run live**.
+- El selector **Live analysis mode** permite elegir `chatgpt`, `gemini`, `ai_mode` o `ai_overview`.
+- El backend ejecuta:
+  - OpenAI official API (`/v1/responses`) para `chatgpt`.
+  - Gemini official API (`models.generateContent`) para `gemini`.
+  - DataForSEO API (`/v3/serp/google/ai_mode/live/advanced`) para `ai_mode` y `ai_overview`.
+- Cada ejecución persiste `run`, `response`, `citations` y detección de `brand_mentions` para alimentar dashboard y reportes.

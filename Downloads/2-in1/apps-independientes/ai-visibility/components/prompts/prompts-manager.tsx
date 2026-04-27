@@ -114,6 +114,8 @@ export function PromptsManager() {
   const [form, setForm] = useState<PromptForm>(defaultForm);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const [runMode, setRunMode] = useState<'chatgpt' | 'gemini' | 'ai_mode' | 'ai_overview'>('chatgpt');
+  const [runMessage, setRunMessage] = useState<string | null>(null);
 
   const selectedPrompt = useMemo(() => prompts.find((prompt) => prompt.id === selectedPromptId) ?? null, [prompts, selectedPromptId]);
 
@@ -189,6 +191,36 @@ export function PromptsManager() {
     setBusy(false);
   }
 
+  async function runLiveAnalysis(promptId: string, country: string, language: string) {
+    if (!currentProjectId) return;
+    setBusy(true);
+    setRunMessage(null);
+
+    const response = await fetch(`/api/projects/${currentProjectId}/analyses/live`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        promptId,
+        analysisMode: runMode,
+        country,
+        language,
+        environment: 'live-api'
+      })
+    });
+
+    const data = (await response.json()) as { runId?: string; message?: string; fieldErrors?: Record<string, string> };
+
+    if (!response.ok) {
+      setRunMessage(data.message ?? data.fieldErrors?.analysisMode ?? 'Analysis failed. Check API credentials in env.');
+      setBusy(false);
+      return;
+    }
+
+    setRunMessage(`Live run completed (${runMode}) · Run ID: ${data.runId ?? 'n/a'}`);
+    await Promise.all([loadPrompts(currentProjectId, pagination.page), loadPromptMetrics(currentProjectId)]);
+    setBusy(false);
+  }
+
   if (loading) return <p className="text-sm text-slate-600">Loading project…</p>;
   if (!hasProjects) return <p className="text-sm text-slate-600">No accessible projects.</p>;
 
@@ -212,7 +244,7 @@ export function PromptsManager() {
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full table-fixed text-left text-xs"><thead className="border-b border-slate-200 bg-slate-50 text-slate-600"><tr>
-              <th className="w-[28%] px-2 py-1 font-medium">Prompt text</th><th className="px-2 py-1 font-medium">Tags</th><th className="px-2 py-1 font-medium">Country</th><th className="px-2 py-1 font-medium">Lang</th><th className="px-2 py-1 font-medium">Responses</th><th className="px-2 py-1 font-medium">Mention rate</th><th className="px-2 py-1 font-medium">Citation rate</th><th className="px-2 py-1 font-medium">Last run</th><th className="px-2 py-1 font-medium">Best/Worst mode</th><th className="px-2 py-1 font-medium">Actions</th>
+              <th className="w-[28%] px-2 py-1 font-medium">Prompt text</th><th className="px-2 py-1 font-medium">Tags</th><th className="px-2 py-1 font-medium">Country</th><th className="px-2 py-1 font-medium">Lang</th><th className="px-2 py-1 font-medium">Responses</th><th className="px-2 py-1 font-medium">Mention rate</th><th className="px-2 py-1 font-medium">Citation rate</th><th className="px-2 py-1 font-medium">Last run</th><th className="px-2 py-1 font-medium">Best/Worst mode</th><th className="px-2 py-1 font-medium">Actions</th><th className="px-2 py-1 font-medium">Live</th>
             </tr></thead><tbody className="divide-y divide-slate-100">
               {prompts.map((prompt) => { const metric = promptMetrics[prompt.id]; return <tr className="align-top" key={prompt.id}>
                 <td className="px-2 py-1"><button className="line-clamp-2 text-left text-slate-900 hover:underline" onClick={() => setSelectedPromptId(prompt.id)} type="button">{prompt.promptText}</button></td>
@@ -224,6 +256,11 @@ export function PromptsManager() {
                 <td className="px-2 py-1 text-slate-700">{formatDate(prompt.lastRunDate)}</td>
                 <td className="px-2 py-1 text-slate-700">{metric?.bestAnalysisMode ?? '—'} / {metric?.worstAnalysisMode ?? '—'}</td>
                 <td className="px-2 py-1"><div className="flex gap-1"><button className="rounded border border-slate-300 bg-white px-2 py-0.5" onClick={() => setSelectedPromptId(prompt.id)} type="button">Edit</button><button className="rounded border border-red-300 bg-white px-2 py-0.5 text-red-700" onClick={() => void deletePrompt(prompt.id)} type="button">Archive</button></div></td>
+                <td className="px-2 py-1">
+                  <button className="rounded border border-blue-300 bg-white px-2 py-0.5 text-blue-700" onClick={() => void runLiveAnalysis(prompt.id, prompt.country, prompt.language)} type="button">
+                    Run live
+                  </button>
+                </td>
               </tr>; })}
             </tbody></table>
           </div>
@@ -233,8 +270,18 @@ export function PromptsManager() {
           <form className="space-y-3" onSubmit={submitPrompt}><h2 className="text-sm font-semibold text-slate-900">{selectedPrompt ? 'Edit prompt' : 'Create prompt'}</h2>
             <textarea className="min-h-24 w-full rounded border border-slate-300 px-2 py-1 text-sm" onChange={(event) => setForm((current) => ({ ...current, promptText: event.target.value }))} value={form.promptText} />
             <div className="grid grid-cols-2 gap-2"><input className="w-full rounded border border-slate-300 px-2 py-1 text-sm" maxLength={2} onChange={(event) => setForm((current) => ({ ...current, country: event.target.value.toUpperCase() }))} value={form.country} /><input className="w-full rounded border border-slate-300 px-2 py-1 text-sm" onChange={(event) => setForm((current) => ({ ...current, language: event.target.value }))} value={form.language} /></div>
+            <label className="space-y-1 text-xs font-medium text-slate-700">
+              Live analysis mode
+              <select className="w-full rounded border border-slate-300 px-2 py-1 text-sm" onChange={(event) => setRunMode(event.target.value as 'chatgpt' | 'gemini' | 'ai_mode' | 'ai_overview')} value={runMode}>
+                <option value="chatgpt">ChatGPT</option>
+                <option value="gemini">Gemini</option>
+                <option value="ai_mode">Google AI Mode</option>
+                <option value="ai_overview">Google AI Overview</option>
+              </select>
+            </label>
             <button className="rounded bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white" disabled={busy || !currentProjectId} type="submit">{selectedPrompt ? 'Save prompt' : 'Create prompt'}</button>
             {fieldErrors.promptText ? <p className="text-[11px] text-red-700">{fieldErrors.promptText}</p> : null}
+            {runMessage ? <p className="text-[11px] text-slate-700">{runMessage}</p> : null}
           </form>
         </section>
       </div>
