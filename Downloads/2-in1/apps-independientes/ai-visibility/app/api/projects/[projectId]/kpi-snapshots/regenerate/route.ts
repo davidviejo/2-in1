@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { canAccessProject } from '@/lib/auth/authorization';
 import { getRequestUser } from '@/lib/auth/session';
-import { buildProjectSummary } from '@/lib/reporting/summary';
-import { getPreviousComparableRange, validateSummaryDateRange } from '@/lib/reporting/summary-validation';
+import { regenerateDailyKpiSnapshots } from '@/lib/reporting/kpi-snapshot-job';
+import { validateSummaryDateRange } from '@/lib/reporting/summary-validation';
 
-function canReadProject(request: NextRequest, projectId: string): boolean {
+function canManageProject(request: NextRequest, projectId: string): boolean {
   const user = getRequestUser(request);
 
   if (!user) {
@@ -15,7 +15,7 @@ function canReadProject(request: NextRequest, projectId: string): boolean {
   return canAccessProject(user, { projectId });
 }
 
-export async function GET(
+export async function POST(
   request: NextRequest,
   context: {
     params: {
@@ -25,7 +25,7 @@ export async function GET(
 ) {
   const { projectId } = context.params;
 
-  if (!canReadProject(request, projectId)) {
+  if (!canManageProject(request, projectId)) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
@@ -44,15 +44,17 @@ export async function GET(
     );
   }
 
-  const previousRange = getPreviousComparableRange(validation.values);
-  const useDailySnapshots = request.nextUrl.searchParams.get('useSnapshots') === '1';
-
-  const payload = await buildProjectSummary({
+  const result = await regenerateDailyKpiSnapshots({
     projectId,
-    currentRange: validation.values,
-    previousRange,
-    useDailySnapshots
+    range: validation.values
   });
 
-  return NextResponse.json(payload);
+  return NextResponse.json({
+    projectId,
+    range: {
+      from: validation.values.from.toISOString(),
+      to: validation.values.to.toISOString()
+    },
+    daysProcessed: result.daysProcessed
+  });
 }

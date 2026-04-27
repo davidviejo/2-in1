@@ -10,6 +10,7 @@ Returns report-ready top-level metrics for the selected project and date range.
 
 - `from` (required): start day (UTC) in `YYYY-MM-DD`.
 - `to` (required): end day (UTC) in `YYYY-MM-DD`.
+- `useSnapshots` (optional): set to `1` to prefer daily KPI snapshots when they are complete and valid for the range.
 
 Validation rules:
 
@@ -109,3 +110,20 @@ Validation rules:
 curl "http://localhost:3000/api/projects/proj_123/summary?from=2026-04-01&to=2026-04-07" \
   -H "Cookie: ai_visibility_session=..."
 ```
+
+
+## KPI snapshot regeneration job
+
+`POST /api/projects/:projectId/kpi-snapshots/regenerate?from=YYYY-MM-DD&to=YYYY-MM-DD`
+
+Generates (or replaces) project-level daily snapshots (`granularity=DAY`) for each day in the range. Snapshot payloads are computed with the same KPI formulas used by direct reporting (`computeKpis`) so they never become a second source of truth.
+
+### Invalidation strategy
+
+When `useSnapshots=1`, summary reads snapshots only if all checks pass:
+
+1. there is exactly one daily project snapshot for each day in the requested range;
+2. all snapshots use schema version `1` and a full-day UTC period;
+3. no source mutation in the range is newer than the snapshot set (latest mutation from `run.updatedAt`, `response.updatedAt`, `citation.createdAt`, `response_brand_mention.createdAt`).
+
+If any check fails, the endpoint transparently falls back to direct calculation from source tables.
