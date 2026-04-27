@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db';
 
 import { buildTimeseriesFromRecords, SUPPORTED_METRICS } from '@/lib/reporting/timeseries-core';
+import { toRunWhereFilters, type ReportingFilters } from '@/lib/reporting/report-filters';
 
 import type { SummaryDateRange } from '@/lib/reporting/summary-validation';
 import type { TimeseriesGranularity } from '@/lib/reporting/timeseries-validation';
@@ -9,6 +10,7 @@ type BuildTimeseriesInput = {
   projectId: string;
   range: SummaryDateRange;
   granularity: TimeseriesGranularity;
+  filters?: ReportingFilters;
 };
 
 export type ProjectTimeseriesResponse = {
@@ -55,6 +57,9 @@ export async function buildProjectTimeseries(input: BuildTimeseriesInput): Promi
         response: {
           run: {
             projectId: input.projectId,
+            ...toRunWhereFilters(input.filters ?? {}),
+            ...toRunWhereFilters(input.filters ?? {}),
+            ...toRunWhereFilters(input.filters ?? {}),
             executedAt: {
               gte: input.range.from,
               lte: input.range.to
@@ -72,6 +77,8 @@ export async function buildProjectTimeseries(input: BuildTimeseriesInput): Promi
         response: {
           run: {
             projectId: input.projectId,
+            ...toRunWhereFilters(input.filters ?? {}),
+            ...toRunWhereFilters(input.filters ?? {}),
             executedAt: {
               gte: input.range.from,
               lte: input.range.to

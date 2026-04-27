@@ -25,10 +25,15 @@ export async function createRun(projectId: string, triggeredByUserId: string | n
       triggeredByUserId,
       status: 'QUEUED',
       provider: payload.provider,
+      surface: payload.surface,
+      analysisMode: payload.analysisMode,
       model: normalizeModelLabel(payload.model) ?? payload.model,
+      captureMethod: payload.captureMethod,
       source: payload.source,
       triggerType: payload.triggerType,
       environment: payload.environment,
+      country: payload.country,
+      language: payload.language,
       parserVersion: payload.parserVersion,
       rawRequestMetadata: payload.rawRequestMetadata
     },
@@ -85,9 +90,14 @@ function getRunWhere(filters: RunListFilters) {
     ...(filters.promptId ? { promptId: filters.promptId } : {}),
     ...(filters.status ? { status: filters.status } : {}),
     ...(filters.provider ? { provider: filters.provider } : {}),
+    ...(filters.surface ? { surface: filters.surface } : {}),
+    ...(filters.analysisMode ? { analysisMode: filters.analysisMode } : {}),
     ...(filters.model ? { model: filters.model } : {}),
+    ...(filters.captureMethod ? { captureMethod: filters.captureMethod } : {}),
     ...(filters.source ? { source: filters.source } : {}),
     ...(filters.environment ? { environment: filters.environment } : {}),
+    ...(filters.country ? { country: filters.country } : {}),
+    ...(filters.language ? { language: filters.language } : {}),
     ...(filters.startedFrom || filters.startedTo
       ? {
           startedAt: {

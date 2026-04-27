@@ -1,11 +1,13 @@
 import { prisma } from '@/lib/db';
 
 import { buildCompetitorComparison, type CompetitorComparisonResult } from '@/lib/reporting/competitor-comparison-core';
+import { toRunWhereFilters, type ReportingFilters } from '@/lib/reporting/report-filters';
 import type { SummaryDateRange } from '@/lib/reporting/summary-validation';
 
 type BuildCompetitorComparisonInput = {
   projectId: string;
   range: SummaryDateRange;
+  filters?: ReportingFilters;
 };
 
 export type ProjectCompetitorComparisonResponse = {
@@ -32,6 +34,7 @@ export async function buildProjectCompetitorComparison(
     prisma.competitor.findMany({
       where: {
         projectId: input.projectId,
+        ...toRunWhereFilters(input.filters ?? {}),
         deletedAt: null,
         isActive: true
       },
@@ -44,6 +47,7 @@ export async function buildProjectCompetitorComparison(
     prisma.prompt.findMany({
       where: {
         projectId: input.projectId,
+        ...toRunWhereFilters(input.filters ?? {}),
         deletedAt: null
       },
       select: {
@@ -54,6 +58,7 @@ export async function buildProjectCompetitorComparison(
     prisma.run.findMany({
       where: {
         projectId: input.projectId,
+        ...toRunWhereFilters(input.filters ?? {}),
         executedAt: {
           gte: input.range.from,
           lte: input.range.to
@@ -69,6 +74,7 @@ export async function buildProjectCompetitorComparison(
       where: {
         run: {
           projectId: input.projectId,
+          ...toRunWhereFilters(input.filters ?? {}),
           executedAt: {
             gte: input.range.from,
             lte: input.range.to
@@ -85,9 +91,12 @@ export async function buildProjectCompetitorComparison(
     prisma.responseBrandMention.findMany({
       where: {
         projectId: input.projectId,
+        ...toRunWhereFilters(input.filters ?? {}),
         response: {
           run: {
             projectId: input.projectId,
+            ...toRunWhereFilters(input.filters ?? {}),
+            ...toRunWhereFilters(input.filters ?? {}),
             executedAt: {
               gte: input.range.from,
               lte: input.range.to
@@ -107,6 +116,7 @@ export async function buildProjectCompetitorComparison(
         response: {
           run: {
             projectId: input.projectId,
+            ...toRunWhereFilters(input.filters ?? {}),
             executedAt: {
               gte: input.range.from,
               lte: input.range.to

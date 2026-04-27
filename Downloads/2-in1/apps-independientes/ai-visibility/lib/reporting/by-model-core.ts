@@ -13,12 +13,15 @@ type ByModelPeriod = {
 };
 
 export type ModelReportRow = {
-  model: string;
+  provider: string;
+  surface: string;
+  analysisMode: string;
+  modelLabel: string;
   summary: ByModelPeriod;
 };
 
 export type KpiInputsWithModel = Omit<ComputeKpisInput, 'runs'> & {
-  runs: Array<ComputeKpisInput['runs'][number] & { model: string }>;
+  runs: Array<ComputeKpisInput['runs'][number] & { model: string; provider?: string | null; surface?: string | null; analysisMode?: string | null }>;
 };
 
 function toModelSummary(kpis: ComputedKpis): ByModelPeriod {
@@ -39,10 +42,14 @@ export function buildByModelFromInputs(data: KpiInputsWithModel): ModelReportRow
   const modelBuckets = new Map<string, KpiInputsWithModel>();
 
   for (const run of data.runs) {
-    const model = normalizeModelLabel(run.model) ?? 'unknown';
-    runModelById.set(run.id, model);
+    const modelLabel = normalizeModelLabel(run.model) ?? 'unknown';
+    const provider = (run.provider ?? 'other').toLowerCase();
+    const surface = (run.surface ?? 'other').toLowerCase();
+    const analysisMode = (run.analysisMode ?? 'other').toLowerCase();
+    const bucketKey = `${provider}::${surface}::${analysisMode}::${modelLabel}`;
+    runModelById.set(run.id, bucketKey);
 
-    const bucket = modelBuckets.get(model) ?? {
+    const bucket = modelBuckets.get(bucketKey) ?? {
       prompts: data.prompts,
       runs: [],
       responses: [],
@@ -51,7 +58,7 @@ export function buildByModelFromInputs(data: KpiInputsWithModel): ModelReportRow
     };
 
     bucket.runs.push(run);
-    modelBuckets.set(model, bucket);
+    modelBuckets.set(bucketKey, bucket);
   }
 
   const responseIdsByModel = new Map<string, Set<string>>();
@@ -103,6 +110,9 @@ export function buildByModelFromInputs(data: KpiInputsWithModel): ModelReportRow
   }
 
   return Array.from(modelBuckets.entries())
-    .map(([model, bucket]) => ({ model, summary: toModelSummary(computeKpis(bucket)) }))
-    .sort((a, b) => a.model.localeCompare(b.model));
+    .map(([bucketKey, bucket]) => {
+      const [provider, surface, analysisMode, modelLabel] = bucketKey.split('::');
+      return { provider, surface, analysisMode, modelLabel, summary: toModelSummary(computeKpis(bucket)) };
+    })
+    .sort((a, b) => a.analysisMode.localeCompare(b.analysisMode) || a.modelLabel.localeCompare(b.modelLabel));
 }

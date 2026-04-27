@@ -7,7 +7,10 @@ describe('run tracking validation', () => {
     const result = validateCreateRunInput({
       promptId: 'prompt_1',
       provider: 'openai',
+      surface: 'chatgpt',
+      analysisMode: 'chatgpt',
       model: 'gpt-4.1-mini',
+      captureMethod: 'api',
       source: 'api',
       triggerType: 'manual',
       environment: 'staging',

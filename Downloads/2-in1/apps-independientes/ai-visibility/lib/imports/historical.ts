@@ -1,7 +1,8 @@
 import type { Prisma } from '@prisma/client';
 
 import { prisma } from '@/lib/db';
-import { normalizeModelLabel } from '@/lib/filters/normalization';
+import { normalizeLanguage, normalizeModelLabel } from '@/lib/filters/normalization';
+import { normalizeAnalysisMode, normalizeCaptureMethod, normalizeProvider, normalizeSurface } from '@/lib/reporting/dimensions';
 import { normalizeRootDomain } from '@/lib/responses/citations';
 
 export type ImportFileType = 'csv' | 'json';
@@ -12,6 +13,12 @@ export type HistoricalImportMapping = {
   modelColumn: string;
   responseColumn: string;
   citationsColumn: string | null;
+  providerColumn?: string | null;
+  surfaceColumn?: string | null;
+  analysisModeColumn?: string | null;
+  captureMethodColumn?: string | null;
+  countryColumn?: string | null;
+  languageColumn?: string | null;
 };
 
 export type HistoricalImportPayload = {
@@ -42,7 +49,13 @@ type NormalizedCitation = {
 type ValidImportRow = {
   rowNumber: number;
   promptText: string;
+  provider: string;
+  surface: string;
+  analysisMode: string;
   model: string;
+  captureMethod: string;
+  country: string | null;
+  language: string | null;
   responseText: string;
   citations: NormalizedCitation[];
 };
@@ -269,7 +282,13 @@ function validateAndNormalizeRows(projectId: string, parsedRows: ParsedRow[], ma
 
   for (const row of parsedRows) {
     const promptText = toTextValue(row.values[mapping.promptColumn]);
-    const model = normalizeModelLabel(toTextValue(row.values[mapping.modelColumn])) ?? '';
+    const analysisMode = normalizeAnalysisMode(mapping.analysisModeColumn ? toTextValue(row.values[mapping.analysisModeColumn]) : '') ?? 'other';
+    const provider = normalizeProvider(mapping.providerColumn ? toTextValue(row.values[mapping.providerColumn]) : '') ?? (analysisMode === 'chatgpt' ? 'openai' : analysisMode === 'gemini' || analysisMode === 'ai_mode' || analysisMode === 'ai_overview' ? 'google' : 'other');
+    const surface = normalizeSurface(mapping.surfaceColumn ? toTextValue(row.values[mapping.surfaceColumn]) : '') ?? (analysisMode === 'chatgpt' ? 'chatgpt' : analysisMode === 'gemini' ? 'gemini' : analysisMode === 'ai_mode' || analysisMode === 'ai_overview' ? 'google_search' : 'other');
+    const model = normalizeModelLabel(toTextValue(row.values[mapping.modelColumn])) ?? (analysisMode === 'ai_mode' || analysisMode === 'ai_overview' ? 'unknown' : '');
+    const captureMethod = normalizeCaptureMethod(mapping.captureMethodColumn ? toTextValue(row.values[mapping.captureMethodColumn]) : '') ?? 'manual_import';
+    const country = (mapping.countryColumn ? toTextValue(row.values[mapping.countryColumn]).toUpperCase() : 'US') || null;
+    const language = normalizeLanguage(mapping.languageColumn ? toTextValue(row.values[mapping.languageColumn]) : 'en') ?? 'en';
     const responseText = toTextValue(row.values[mapping.responseColumn]);
 
     if (mapping.projectColumn) {
@@ -295,14 +314,20 @@ function validateAndNormalizeRows(projectId: string, parsedRows: ParsedRow[], ma
 
     const citations = mapping.citationsColumn ? parseCitations(row.values[mapping.citationsColumn], row.rowNumber, issues) : [];
 
-    if (!promptText || !model || !responseText) {
+    if (!promptText || !model || !responseText || !analysisMode) {
       continue;
     }
 
     rows.push({
       rowNumber: row.rowNumber,
       promptText,
+      provider,
+      surface,
+      analysisMode,
       model,
+      captureMethod,
+      country,
+      language,
       responseText,
       citations
     });
@@ -394,9 +419,14 @@ export async function commitHistoricalImport(projectId: string, userId: string |
           status: 'SUCCEEDED',
           triggerType: 'IMPORT',
           source: 'IMPORT_FILE',
-          provider: 'historical-import',
+          provider: row.provider,
+          surface: row.surface,
+          analysisMode: row.analysisMode,
           model: row.model,
+          captureMethod: row.captureMethod,
           environment: 'import',
+          country: row.country,
+          language: row.language,
           parserVersion: 'v1',
           importBatchKey: `import-${Date.now()}`,
           executedAt: new Date(),

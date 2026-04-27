@@ -114,3 +114,19 @@ Unless explicitly stated otherwise:
 ## Reproducibility requirement
 
 Every KPI output must expose numerators/denominators or grouped detail counts needed to recompute it exactly from detail rows.
+
+## Segmentación por superficies AI
+
+Todos los KPIs pueden agruparse o filtrarse por dimensiones de run:
+
+- `provider`
+- `surface`
+- `analysis_mode`
+- `model_label` (campo `run.model` normalizado)
+- `capture_method`
+- `country`
+- `language`
+
+Modos soportados contractualmente: `chatgpt`, `gemini`, `ai_mode`, `ai_overview`.
+
+Para `ai_mode` y `ai_overview`, cuando Google no expone el modelo exacto, `model_label` debe persistirse como `unknown` (nunca forzar `gemini` automáticamente).

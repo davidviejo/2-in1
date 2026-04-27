@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { toRunWhereFilters, type ReportingFilters } from '@/lib/reporting/report-filters';
 import { getPreviousComparableRange, type SummaryDateRange } from '@/lib/reporting/summary-validation';
 
 import {
@@ -15,6 +16,11 @@ type BuildByPromptInput = {
     tagIds: string[];
     country?: string;
     language?: string;
+    provider?: string;
+    surface?: string;
+    analysisMode?: string;
+    modelLabel?: string;
+    captureMethod?: string;
   };
   sortBy: PromptSortField;
   sortDir: PromptSortDirection;
@@ -34,6 +40,11 @@ export type ProjectByPromptResponse = {
     tagIds: string[];
     country?: string;
     language?: string;
+    provider?: string;
+    surface?: string;
+    analysisMode?: string;
+    modelLabel?: string;
+    captureMethod?: string;
   };
   sort: {
     by: PromptSortField;
@@ -96,12 +107,13 @@ async function loadPeriodData(projectId: string, range: SummaryDateRange, filter
     };
   }
 
-  const promptIds = prompts.map((prompt) => prompt.id);
+  const promptIds = prompts.map((prompt: (typeof prompts)[number]) => prompt.id);
 
   const [runs, responses, citations, mentions] = await Promise.all([
     prisma.run.findMany({
       where: {
         projectId,
+        ...toRunWhereFilters(filters as ReportingFilters),
         promptId: { in: promptIds },
         executedAt: {
           gte: range.from,
@@ -112,13 +124,17 @@ async function loadPeriodData(projectId: string, range: SummaryDateRange, filter
         id: true,
         promptId: true,
         status: true,
-        model: true
+        model: true,
+        provider: true,
+        surface: true,
+        analysisMode: true
       }
     }),
     prisma.response.findMany({
       where: {
         run: {
           projectId,
+          ...toRunWhereFilters(filters as ReportingFilters),
           promptId: { in: promptIds },
           executedAt: {
             gte: range.from,
@@ -139,6 +155,7 @@ async function loadPeriodData(projectId: string, range: SummaryDateRange, filter
         response: {
           run: {
             projectId,
+            ...toRunWhereFilters(filters as ReportingFilters),
             promptId: { in: promptIds },
             executedAt: {
               gte: range.from,
@@ -159,6 +176,7 @@ async function loadPeriodData(projectId: string, range: SummaryDateRange, filter
         response: {
           run: {
             projectId,
+            ...toRunWhereFilters(filters as ReportingFilters),
             promptId: { in: promptIds },
             executedAt: {
               gte: range.from,
@@ -177,9 +195,9 @@ async function loadPeriodData(projectId: string, range: SummaryDateRange, filter
   ]);
 
   return {
-    prompts: prompts.map((prompt) => ({
+    prompts: prompts.map((prompt: (typeof prompts)[number]) => ({
       ...prompt,
-      tags: prompt.promptTags.map((item) => item.tag)
+      tags: prompt.promptTags.map((item: (typeof prompt.promptTags)[number]) => item.tag)
     })),
     runs,
     responses,

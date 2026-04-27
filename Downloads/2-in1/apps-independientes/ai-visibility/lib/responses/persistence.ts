@@ -174,8 +174,8 @@ export async function getResponseAudit(projectId: string, responseId: string) {
     return null;
   }
 
-  const clientMention = row.brandMentions.find((mention) => mention.mentionType === 'OWN_BRAND') ?? null;
-  const competitorMentions = row.brandMentions.filter((mention) => mention.mentionType === 'COMPETITOR');
+  const clientMention = row.brandMentions.find((mention: (typeof row.brandMentions)[number]) => mention.mentionType === 'OWN_BRAND') ?? null;
+  const competitorMentions = row.brandMentions.filter((mention: (typeof row.brandMentions)[number]) => mention.mentionType === 'COMPETITOR');
 
   return {
     id: row.id,
@@ -281,6 +281,10 @@ export type ExploreCitationsInput = {
   from?: Date;
   to?: Date;
   models?: string[];
+  provider?: string;
+  surface?: string;
+  analysisMode?: string;
+  captureMethod?: string;
   tags?: string[];
   country?: string;
   language?: string;
@@ -302,6 +306,10 @@ export async function exploreCitations(projectId: string, input: ExploreCitation
             }
           : {}),
         ...(input.models && input.models.length > 0 ? { model: { in: input.models } } : {}),
+        ...(input.provider ? { provider: input.provider } : {}),
+        ...(input.surface ? { surface: input.surface } : {}),
+        ...(input.analysisMode ? { analysisMode: input.analysisMode } : {}),
+        ...(input.captureMethod ? { captureMethod: input.captureMethod } : {}),
         prompt: {
           ...(input.country ? { country: input.country } : {}),
           ...(input.language ? { language: input.language } : {}),

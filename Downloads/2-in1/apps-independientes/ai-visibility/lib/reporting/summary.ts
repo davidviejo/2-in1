@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db';
 import { computeKpis, ComputedKpis } from '@/lib/kpi/calculations';
 
 import { combineDailySnapshotPayloads } from './kpi-snapshots';
+import { toRunWhereFilters, type ReportingFilters } from './report-filters';
 import type { SummaryDateRange } from './summary-validation';
 
 type ScalarDelta = {
@@ -66,6 +67,7 @@ type BuildSummaryInput = {
   currentRange: SummaryDateRange;
   previousRange: SummaryDateRange;
   useDailySnapshots?: boolean;
+  filters?: ReportingFilters;
 };
 
 function toIso(value: Date): string {
@@ -93,7 +95,7 @@ function computeDelta(current: number | null, previous: number | null): ScalarDe
   };
 }
 
-async function loadKpiInputs(projectId: string, range: SummaryDateRange) {
+async function loadKpiInputs(projectId: string, range: SummaryDateRange, filters: ReportingFilters = {}) {
   const prompts: PromptRow[] = await prisma.prompt.findMany({
     where: {
       projectId,
@@ -109,6 +111,7 @@ async function loadKpiInputs(projectId: string, range: SummaryDateRange) {
   const runs = await prisma.run.findMany({
     where: {
       projectId,
+      ...toRunWhereFilters(filters),
       executedAt: {
         gte: range.from,
         lte: range.to
@@ -125,6 +128,7 @@ async function loadKpiInputs(projectId: string, range: SummaryDateRange) {
     where: {
       run: {
         projectId,
+        ...toRunWhereFilters(filters),
         executedAt: {
           gte: range.from,
           lte: range.to
@@ -145,6 +149,7 @@ async function loadKpiInputs(projectId: string, range: SummaryDateRange) {
       response: {
         run: {
           projectId,
+          ...toRunWhereFilters(filters),
           executedAt: {
             gte: range.from,
             lte: range.to
@@ -165,6 +170,7 @@ async function loadKpiInputs(projectId: string, range: SummaryDateRange) {
       response: {
         run: {
           projectId,
+          ...toRunWhereFilters(filters),
           executedAt: {
             gte: range.from,
             lte: range.to
@@ -199,7 +205,7 @@ function countDaysInRange(range: SummaryDateRange): number {
   return Math.floor((range.to.getTime() - range.from.getTime()) / (24 * 60 * 60 * 1000)) + 1;
 }
 
-async function getLatestSourceMutation(projectId: string, range: SummaryDateRange): Promise<Date | null> {
+async function getLatestSourceMutation(projectId: string, range: SummaryDateRange, filters: ReportingFilters = {}): Promise<Date | null> {
   const [latestRun, latestResponse, latestCitation, latestMention] = await Promise.all([
     prisma.run.findFirst({
       where: {
@@ -216,6 +222,7 @@ async function getLatestSourceMutation(projectId: string, range: SummaryDateRang
       where: {
         run: {
           projectId,
+          ...toRunWhereFilters(filters),
           executedAt: {
             gte: range.from,
             lte: range.to
@@ -230,6 +237,8 @@ async function getLatestSourceMutation(projectId: string, range: SummaryDateRang
         response: {
           run: {
             projectId,
+            ...toRunWhereFilters(filters),
+            ...toRunWhereFilters(filters),
             executedAt: {
               gte: range.from,
               lte: range.to
@@ -246,6 +255,7 @@ async function getLatestSourceMutation(projectId: string, range: SummaryDateRang
         response: {
           run: {
             projectId,
+            ...toRunWhereFilters(filters),
             executedAt: {
               gte: range.from,
               lte: range.to

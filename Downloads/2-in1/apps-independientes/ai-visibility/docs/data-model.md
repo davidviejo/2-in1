@@ -156,3 +156,17 @@ No se aplica en hechos transaccionales (`run`, `response`, `citation`, `kpi_snap
 - Todas las tablas principales incluyen timestamps de auditoría (`created_at`, `updated_at` donde aplica).
 - FKs usan `on delete restrict` en entidades maestras para evitar pérdida accidental de historia.
 - `on delete set null` se usa en relaciones opcionales (autor/trigger/competidor puntual) para preservar hechos.
+
+## Dimensiones de análisis AI (P401 correction)
+
+En `run` la app distingue explícitamente:
+
+- `provider`: propietario del sistema (`openai`, `google`, `other`).
+- `surface`: superficie de respuesta (`chatgpt`, `gemini`, `google_search`, `other`).
+- `analysis_mode`: modo analítico de reporte (`chatgpt`, `gemini`, `ai_mode`, `ai_overview`, `other`).
+- `model` (`model_label` lógico): etiqueta de modelo cuando se conoce; para AI Mode/AI Overview puede ir `unknown`.
+- `capture_method`: cómo se capturó (`manual_import`, `api`, `browser_capture`, `other`).
+- `environment`: entorno de captura (ej. `web-logged-in`, `web-incognito`).
+- `country` y `language`: contexto geo/idioma del run.
+
+Estas dimensiones son aditivas y no reemplazan reglas KPI existentes.
