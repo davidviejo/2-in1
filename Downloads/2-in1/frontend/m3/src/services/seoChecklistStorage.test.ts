@@ -123,4 +123,25 @@ describe('seoChecklistStorage', () => {
     expect(localStorage.getItem(markerKey)).toBe('idb');
     await expect(loadSeoChecklistPages(storageKey)).resolves.toEqual(pages);
   });
+
+  it('prioritizes IndexedDB when marker indicates idb even if localStorage has stale data', async () => {
+    const pages = [{ id: 'fresh' }] as unknown as SeoPage[];
+    const stalePages = [{ id: 'stale' }] as unknown as SeoPage[];
+    const originalSetItem = Storage.prototype.setItem;
+    const setItemSpy = vi
+      .spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(function (key: string, value: string) {
+        if (key === storageKey) {
+          throw new DOMException('Quota exceeded', 'QuotaExceededError');
+        }
+
+        return originalSetItem.call(this, key, value);
+      });
+
+    await persistSeoChecklistPages(storageKey, pages);
+    setItemSpy.mockRestore();
+    localStorage.setItem(storageKey, JSON.stringify(stalePages));
+
+    await expect(loadSeoChecklistPages(storageKey)).resolves.toEqual(pages);
+  });
 });
