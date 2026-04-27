@@ -10,6 +10,7 @@ import {
 } from '../types/seoChecklist';
 import { isBrandTermMatch } from '../utils/brandTerms';
 import { useSeoChecklistSettings } from './useSeoChecklistSettings';
+import { loadSeoChecklistPages, persistSeoChecklistPages } from '../services/seoChecklistStorage';
 
 const normalizeKeyword = (keyword?: string) => (keyword || '').trim().toLowerCase();
 const isUsableKeyword = (keyword?: string) => {
@@ -93,15 +94,7 @@ const normalizeSeoPages = (pages: SeoPage[]) => pages.map(normalizeSeoPage);
 const LEGACY_SEO_CHECKLIST_STORAGE_KEY = 'mediaflow_seo_checklist';
 
 const persistSeoPages = (storageKey: string, nextPages: SeoPage[]) => {
-  try {
-    localStorage.setItem(storageKey, JSON.stringify(nextPages));
-  } catch (error) {
-    console.warn('No se pudo persistir SEO Checklist en localStorage.', {
-      storageKey,
-      pages: nextPages.length,
-      error,
-    });
-  }
+  void persistSeoChecklistPages(storageKey, nextPages);
 };
 const AI_DRIVEN_STATUSES = new Set<ChecklistStatus>(['SI_IA', 'ERROR_CLARO_IA']);
 
@@ -212,53 +205,48 @@ export const useSeoChecklist = () => {
   const storageKey = currentClientId
     ? `mediaflow_seo_checklist_${currentClientId}`
     : LEGACY_SEO_CHECKLIST_STORAGE_KEY;
-  const [pages, setPages] = useState<SeoPage[]>(() => {
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (!saved) return [];
-
-      const parsed = JSON.parse(saved) as SeoPage[];
-      const normalized = normalizeSeoPages(parsed);
-      if (JSON.stringify(parsed) !== JSON.stringify(normalized)) {
-        persistSeoPages(storageKey, normalized);
-      }
-
-      return normalized;
-    } catch (e) {
-      console.error('Failed to parse SEO Checklist data', e);
-      return [];
-    }
-  });
+  const [pages, setPages] = useState<SeoPage[]>([]);
 
   useEffect(() => {
     const hasScopedKey = Boolean(currentClientId);
+    let cancelled = false;
 
-    try {
-      let saved = localStorage.getItem(storageKey);
-      if (!saved && hasScopedKey) {
-        const legacySaved = localStorage.getItem(LEGACY_SEO_CHECKLIST_STORAGE_KEY);
-        if (legacySaved) {
-          saved = legacySaved;
+    const loadPages = async () => {
+      try {
+        let loadedPages = await loadSeoChecklistPages(storageKey);
+
+        if (!loadedPages && hasScopedKey) {
+          const legacyPages = await loadSeoChecklistPages(LEGACY_SEO_CHECKLIST_STORAGE_KEY);
+          if (legacyPages?.length) {
+            loadedPages = legacyPages;
+            persistSeoPages(storageKey, legacyPages);
+          }
         }
-      }
-      if (!saved) {
-        setPages([]);
-        return;
-      }
 
-      const parsed = JSON.parse(saved) as SeoPage[];
-      const normalized = normalizeSeoPages(parsed);
-      if (JSON.stringify(parsed) !== JSON.stringify(normalized)) {
-        persistSeoPages(storageKey, normalized);
+        if (!loadedPages) {
+          if (!cancelled) setPages([]);
+          return;
+        }
+
+        const normalized = normalizeSeoPages(loadedPages);
+        if (JSON.stringify(loadedPages) !== JSON.stringify(normalized)) {
+          persistSeoPages(storageKey, normalized);
+        }
+
+        if (!cancelled) {
+          setPages(normalized);
+        }
+      } catch (e) {
+        console.error('Failed to parse SEO Checklist data', e);
+        if (!cancelled) setPages([]);
       }
-      if (hasScopedKey) {
-        persistSeoPages(storageKey, normalized);
-      }
-      setPages(normalized);
-    } catch (e) {
-      console.error('Failed to parse SEO Checklist data', e);
-      setPages([]);
-    }
+    };
+
+    void loadPages();
+
+    return () => {
+      cancelled = true;
+    };
   }, [currentClientId, storageKey]);
 
   const addPages = useCallback(
