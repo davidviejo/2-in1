@@ -53,6 +53,12 @@ const createEntityId = () => {
   return `id-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 };
 
+const normalizeModulesForNewClient = (modules: ModuleData[]): ModuleData[] =>
+  modules.map((module) => ({
+    ...module,
+    tasks: Array.isArray(module.tasks) ? module.tasks : [],
+  }));
+
 const normalizeTextValue = (value: unknown): string => {
   if (typeof value === 'string') return value;
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
@@ -355,7 +361,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
   const addClient = useCallback((input: NewClientInput) => {
     const vertical = input.vertical;
     const strategy = StrategyFactory.getStrategy(vertical);
-    const initialModules = strategy.getModules();
+    const initialModules = normalizeModulesForNewClient(strategy.getModules());
     const templateVersion = strategy.getTemplateVersion();
     const projectType = input.projectType || getProjectTypeFromVertical(vertical);
 
