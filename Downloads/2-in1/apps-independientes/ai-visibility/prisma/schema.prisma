@@ -234,8 +234,13 @@ model Run {
   triggerType       RunTriggerType @default(MANUAL)
   source            RunSource      @default(UI)
   provider          String
+  surface           String?        @default("other")
+  analysisMode      String?        @default("other")
   model             String
+  captureMethod     String?        @default("other")
   environment       String?
+  country           String?
+  language          String?
   parserVersion     String?
   rawRequestMetadata Json?
   errorMessage      String?
@@ -254,6 +259,8 @@ model Run {
 
   @@index([projectId, executedAt])
   @@index([projectId, model, executedAt])
+  @@index([projectId, analysisMode, executedAt])
+  @@index([projectId, provider, surface, executedAt])
   @@index([promptId, executedAt])
   @@index([triggerType, scheduledFor])
   @@index([importBatchKey])

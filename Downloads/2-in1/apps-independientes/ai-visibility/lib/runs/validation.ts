@@ -1,4 +1,5 @@
-import { normalizeModelLabel, normalizeSearchTerm, parseDateRange, safeTrim } from '@/lib/filters/normalization';
+import { normalizeCountry, normalizeLanguage, normalizeModelLabel, normalizeSearchTerm, parseDateRange, safeTrim } from '@/lib/filters/normalization';
+import { ANALYSIS_MODES, PROVIDERS, SURFACES, normalizeAnalysisMode, normalizeCaptureMethod, normalizeProvider, normalizeSurface } from '@/lib/reporting/dimensions';
 
 export type RunStatusValue = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELED';
 export type RunSourceValue = 'UI' | 'API' | 'BACKFILL' | 'IMPORT_FILE';
@@ -14,10 +15,15 @@ export type ValidationResult<T> = {
 export type CreateRunInput = {
   promptId: string;
   provider: string;
+  surface: string;
+  analysisMode: string;
   model: string;
+  captureMethod: string;
   source: RunSourceValue;
   triggerType: RunTriggerTypeValue;
   environment: string | null;
+  country: string | null;
+  language: string | null;
   parserVersion: string | null;
   rawRequestMetadata: Record<string, unknown> | null;
 };
@@ -43,9 +49,14 @@ export type RunListFilters = {
   promptId?: string;
   status?: RunStatusValue;
   provider?: string;
+  surface?: string;
+  analysisMode?: string;
   model?: string;
+  captureMethod?: string;
   source?: RunSourceValue;
   environment?: string;
+  country?: string;
+  language?: string;
   startedFrom?: Date;
   startedTo?: Date;
   completedFrom?: Date;
@@ -79,11 +90,16 @@ export function validateCreateRunInput(payload: unknown): ValidationResult<Creat
   const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
 
   const promptId = asTrimmedString(body.promptId);
-  const provider = asTrimmedString(body.provider);
+  const provider = normalizeProvider(body.provider) ?? '';
+  const surface = normalizeSurface(body.surface) ?? '';
+  const analysisMode = normalizeAnalysisMode(body.analysisMode) ?? '';
   const model = normalizeModelLabel(body.model) ?? '';
+  const captureMethod = normalizeCaptureMethod(body.captureMethod) ?? 'other';
   const environmentRaw = body.environment;
   const parserVersionRaw = body.parserVersion;
   const rawRequestMetadataRaw = body.rawRequestMetadata;
+  const country = normalizeCountry(body.country) ?? null;
+  const language = normalizeLanguage(body.language) ?? null;
 
   const sourceRaw = asTrimmedString(body.source).toUpperCase();
   const source = sourceRaw as RunSourceValue;
@@ -96,11 +112,19 @@ export function validateCreateRunInput(payload: unknown): ValidationResult<Creat
   }
 
   if (!provider) {
-    errors.provider = 'Provider is required.';
+    errors.provider = `Provider is required and must be one of: ${PROVIDERS.join(', ')}.`;
   }
 
-  if (!model) {
-    errors.model = 'Model is required.';
+  if (!surface) {
+    errors.surface = `Surface is required and must be one of: ${SURFACES.join(', ')}.`;
+  }
+
+  if (!analysisMode) {
+    errors.analysisMode = `analysisMode is required and must be one of: ${ANALYSIS_MODES.join(', ')}.`;
+  }
+
+  if (!model && analysisMode !== 'ai_mode' && analysisMode !== 'ai_overview') {
+    errors.model = 'Model is required for this analysis mode.';
   }
 
   if (!RUN_SOURCE_VALUES.has(source)) {
@@ -131,10 +155,15 @@ export function validateCreateRunInput(payload: unknown): ValidationResult<Creat
     values: {
       promptId,
       provider,
-      model,
+      surface,
+      analysisMode,
+      model: model || 'unknown',
+      captureMethod,
       source,
       triggerType,
       environment: typeof environmentRaw === 'string' ? environmentRaw.trim() || null : null,
+      country,
+      language,
       parserVersion: typeof parserVersionRaw === 'string' ? parserVersionRaw.trim() || null : null,
       rawRequestMetadata: rawRequestMetadataRaw && typeof rawRequestMetadataRaw === 'object' ? (rawRequestMetadataRaw as Record<string, unknown>) : null
     }
@@ -334,10 +363,15 @@ export function parseRunListFilters(projectId: string, searchParams: URLSearchPa
       projectId,
       promptId: safeTrim(searchParams.get('promptId')) || undefined,
       status,
-      provider: normalizeSearchTerm(searchParams.get('provider')) || undefined,
+      provider: normalizeProvider(searchParams.get('provider')),
+      surface: normalizeSurface(searchParams.get('surface')),
+      analysisMode: normalizeAnalysisMode(searchParams.get('analysisMode')),
       model: normalizeModelLabel(searchParams.get('model')),
+      captureMethod: normalizeCaptureMethod(searchParams.get('captureMethod')),
       source,
       environment: normalizeSearchTerm(searchParams.get('environment')) || undefined,
+      country: normalizeCountry(searchParams.get('country')),
+      language: normalizeLanguage(searchParams.get('language')),
       startedFrom: startedRange.from,
       startedTo: startedRange.to,
       completedFrom: completedRange.from,

@@ -41,7 +41,7 @@ describe('project by-prompt endpoint', () => {
     mockBuildProjectByPromptReport.mockResolvedValue({ ok: true });
 
     const request = new NextRequest(
-      'http://localhost:3000/api/projects/p1/by-prompt?from=2026-04-10&to=2026-04-14&country=us&language=EN&tagIds=t1,t2&sortBy=mentionRate&sortDir=asc'
+      'http://localhost:3000/api/projects/p1/by-prompt?from=2026-04-10&to=2026-04-14&country=us&language=EN&tagIds=t1,t2&sortBy=mentionRate&sortDir=asc&analysisMode=ai_overview&provider=google&surface=google_search&modelLabel=unknown&captureMethod=browser_capture'
     );
 
     const response = await GET(request, { params: { projectId: 'p1' } });
@@ -52,7 +52,7 @@ describe('project by-prompt endpoint', () => {
     const call = mockBuildProjectByPromptReport.mock.calls[0]?.[0] as {
       projectId: string;
       range: { from: Date; to: Date };
-      filters: { tagIds: string[]; country?: string; language?: string };
+      filters: { tagIds: string[]; country?: string; language?: string; analysisMode?: string };
       sortBy: string;
       sortDir: string;
     };
@@ -60,7 +60,7 @@ describe('project by-prompt endpoint', () => {
     expect(call.projectId).toBe('p1');
     expect(call.range.from.toISOString()).toBe('2026-04-10T00:00:00.000Z');
     expect(call.range.to.toISOString()).toBe('2026-04-14T23:59:59.999Z');
-    expect(call.filters).toEqual({ tagIds: ['t1', 't2'], country: 'US', language: 'en' });
+    expect(call.filters).toEqual({ tagIds: ['t1', 't2'], country: 'US', language: 'en', analysisMode: 'ai_overview', provider: 'google', surface: 'google_search', modelLabel: 'unknown', captureMethod: 'browser_capture' });
     expect(call.sortBy).toBe('mentionRate');
     expect(call.sortDir).toBe('asc');
   });

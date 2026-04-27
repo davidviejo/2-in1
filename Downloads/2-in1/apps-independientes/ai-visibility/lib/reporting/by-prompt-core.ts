@@ -10,7 +10,7 @@ type PromptRecord = {
   tags: Array<{ id: string; name: string }>;
 };
 
-type RunWithModel = KpiRunRecord & { model: string };
+type RunWithModel = KpiRunRecord & { model: string; provider?: string | null; surface?: string | null; analysisMode?: string | null };
 
 type PromptPeriodInput = {
   prompts: PromptRecord[];
@@ -46,6 +46,8 @@ export type PromptReportRow = {
   citationRate: Rate;
   topCitedDomains: Array<{ domain: string; citations: number; share: number }>;
   topModels: Array<{ model: string; executions: number; share: number }>;
+  bestAnalysisMode: string | null;
+  worstAnalysisMode: string | null;
   competitorPresence: Rate;
   sentimentSummary: {
     denominator: number;
@@ -122,6 +124,8 @@ function buildPeriodRows(input: PromptPeriodInput): Map<string, Omit<PromptRepor
       citationRate: { value: null, numerator: 0, denominator: 0 },
       topCitedDomains: [],
       topModels: [],
+      bestAnalysisMode: null,
+      worstAnalysisMode: null,
       competitorPresence: { value: null, numerator: 0, denominator: 0 },
       sentimentSummary: {
         denominator: 0,
@@ -137,6 +141,7 @@ function buildPeriodRows(input: PromptPeriodInput): Map<string, Omit<PromptRepor
 
   const modelCounts = new Map<string, Map<string, number>>();
   const domainCounts = new Map<string, Map<string, number>>();
+  const analysisModeTotals = new Map<string, Map<string, { mentions: number; total: number }>>();
 
   for (const run of input.runs) {
     const row = rows.get(run.promptId);
@@ -146,9 +151,15 @@ function buildPeriodRows(input: PromptPeriodInput): Map<string, Omit<PromptRepor
 
     row.executions += 1;
     const normalizedModel = normalizeModelLabel(run.model) ?? 'unknown';
+    const analysisMode = (run.analysisMode ?? 'other').toLowerCase();
     const perPrompt = modelCounts.get(run.promptId) ?? new Map<string, number>();
     perPrompt.set(normalizedModel, (perPrompt.get(normalizedModel) ?? 0) + 1);
     modelCounts.set(run.promptId, perPrompt);
+    const modeMap = analysisModeTotals.get(run.promptId) ?? new Map<string, { mentions: number; total: number }>();
+    if (!modeMap.has(analysisMode)) {
+      modeMap.set(analysisMode, { mentions: 0, total: 0 });
+    }
+    analysisModeTotals.set(run.promptId, modeMap);
   }
 
   for (const response of input.responses) {
@@ -168,9 +179,18 @@ function buildPeriodRows(input: PromptPeriodInput): Map<string, Omit<PromptRepor
     row.competitorPresence.denominator += 1;
     row.sentimentSummary.denominator += 1;
 
+    const mode = (run.analysisMode ?? 'other').toLowerCase();
+    const modeMap = analysisModeTotals.get(run.promptId) ?? new Map<string, { mentions: number; total: number }>();
+    const modeEntry = modeMap.get(mode) ?? { mentions: 0, total: 0 };
+    modeEntry.total += 1;
+
     if (response.mentionDetected) {
       row.mentionRate.numerator += 1;
+      modeEntry.mentions += 1;
     }
+
+    modeMap.set(mode, modeEntry);
+    analysisModeTotals.set(run.promptId, modeMap);
 
     const sentimentBucket = normalizeSentiment(response.sentiment);
     row.sentimentSummary.buckets[sentimentBucket].count += 1;
@@ -250,6 +270,13 @@ function buildPeriodRows(input: PromptPeriodInput): Map<string, Omit<PromptRepor
     for (const bucket of Object.values(row.sentimentSummary.buckets)) {
       bucket.share = safeRate(bucket.count, row.sentimentSummary.denominator);
     }
+
+    const modeRows = Array.from((analysisModeTotals.get(promptId) ?? new Map()).entries())
+      .map(([analysisMode, stats]) => ({ analysisMode, value: safeRate(stats.mentions, stats.total) ?? -1 }))
+      .sort((a, b) => b.value - a.value || a.analysisMode.localeCompare(b.analysisMode));
+
+    row.bestAnalysisMode = modeRows[0]?.analysisMode ?? null;
+    row.worstAnalysisMode = modeRows.length > 0 ? modeRows[modeRows.length - 1].analysisMode : null;
   }
 
   for (const run of input.runs) {

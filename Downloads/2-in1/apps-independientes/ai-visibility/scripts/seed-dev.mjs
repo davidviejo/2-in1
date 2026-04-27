@@ -83,9 +83,10 @@ const promptDefinitions = [
 ];
 
 const modelMatrix = [
-  { provider: 'openai', model: 'gpt-4.1-mini' },
-  { provider: 'anthropic', model: 'claude-3-5-sonnet' },
-  { provider: 'google', model: 'gemini-1.5-pro' }
+  { provider: 'openai', surface: 'chatgpt', analysisMode: 'chatgpt', model: 'gpt-4.1-mini' },
+  { provider: 'google', surface: 'gemini', analysisMode: 'gemini', model: 'gemini-1.5-pro' },
+  { provider: 'google', surface: 'google_search', analysisMode: 'ai_mode', model: 'unknown' },
+  { provider: 'google', surface: 'google_search', analysisMode: 'ai_overview', model: 'unknown' }
 ];
 
 function normalize(value) {
@@ -240,8 +241,13 @@ async function main() {
           triggerType: promptIndex % 3 === 0 ? RunTriggerType.SCHEDULED : RunTriggerType.MANUAL,
           source: promptIndex % 5 === 0 ? RunSource.API : RunSource.UI,
           provider: matrix.provider,
+          surface: matrix.surface,
+          analysisMode: matrix.analysisMode,
           model: matrix.model,
-          environment: 'staging',
+          captureMethod: 'browser_capture',
+          environment: promptIndex % 2 === 0 ? 'web-logged-in' : 'web-incognito',
+          country: prompt.country,
+          language: prompt.language,
           executedAt,
           startedAt: new Date(executedAt.getTime() + 5_000),
           completedAt: new Date(executedAt.getTime() + 80_000)

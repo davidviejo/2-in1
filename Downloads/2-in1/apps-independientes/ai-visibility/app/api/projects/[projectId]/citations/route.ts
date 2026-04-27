@@ -4,6 +4,7 @@ import { canAccessProject } from '@/lib/auth/authorization';
 import { getRequestUser } from '@/lib/auth/session';
 import { exploreCitations, listCitations } from '@/lib/responses/persistence';
 import { normalizeCountry, normalizeLanguage, normalizeModelLabel, safeTrim } from '@/lib/filters/normalization';
+import { normalizeAnalysisMode, normalizeCaptureMethod, normalizeProvider, normalizeSurface } from '@/lib/reporting/dimensions';
 import { CitationGrouping } from '@/lib/responses/citations';
 import { CitationExplorerSortBy } from '@/lib/responses/citations-explorer';
 
@@ -82,7 +83,11 @@ export async function GET(
     request.nextUrl.searchParams.has('model') ||
     request.nextUrl.searchParams.has('tag') ||
     request.nextUrl.searchParams.has('country') ||
-    request.nextUrl.searchParams.has('language');
+    request.nextUrl.searchParams.has('language') ||
+    request.nextUrl.searchParams.has('provider') ||
+    request.nextUrl.searchParams.has('surface') ||
+    request.nextUrl.searchParams.has('analysisMode') ||
+    request.nextUrl.searchParams.has('captureMethod');
 
   if (hasExplorerParams) {
     const from = parseDate(request.nextUrl.searchParams.get('from'), 'start');
@@ -111,6 +116,10 @@ export async function GET(
       tags: splitCsv(request.nextUrl.searchParams.get('tag')).map((value) => safeTrim(value).toLowerCase()).filter(Boolean),
       country: normalizeCountry(request.nextUrl.searchParams.get('country')),
       language: normalizeLanguage(request.nextUrl.searchParams.get('language')),
+      provider: normalizeProvider(request.nextUrl.searchParams.get('provider')),
+      surface: normalizeSurface(request.nextUrl.searchParams.get('surface')),
+      analysisMode: normalizeAnalysisMode(request.nextUrl.searchParams.get('analysisMode')),
+      captureMethod: normalizeCaptureMethod(request.nextUrl.searchParams.get('captureMethod')),
       groupBy: parseGrouping(request.nextUrl.searchParams.get('groupBy')),
       sortBy: parseSort(request.nextUrl.searchParams.get('sort'))
     });

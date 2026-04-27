@@ -127,3 +127,18 @@ When `useSnapshots=1`, summary reads snapshots only if all checks pass:
 3. no source mutation in the range is newer than the snapshot set (latest mutation from `run.updatedAt`, `response.updatedAt`, `citation.createdAt`, `response_brand_mention.createdAt`).
 
 If any check fails, the endpoint transparently falls back to direct calculation from source tables.
+
+## Filtros de dimensión soportados
+
+Además de `from` y `to`, la API acepta filtros opcionales para segmentación:
+
+- `provider`
+- `surface`
+- `analysisMode`
+- `modelLabel` (o `model` como alias)
+- `captureMethod`
+- `country`
+- `language`
+- `promptId`
+
+Los filtros aplican al cálculo del bloque `summary` manteniendo los mismos denominadores/formulas definidas en KPI.

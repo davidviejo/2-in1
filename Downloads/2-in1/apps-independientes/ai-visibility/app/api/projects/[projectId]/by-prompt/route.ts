@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { canAccessProject } from '@/lib/auth/authorization';
 import { getRequestUser } from '@/lib/auth/session';
-import { normalizeCountry, normalizeLanguage, safeTrim } from '@/lib/filters/normalization';
+import { normalizeCountry, normalizeLanguage, normalizeModelLabel, safeTrim } from '@/lib/filters/normalization';
+import { normalizeAnalysisMode, normalizeCaptureMethod, normalizeProvider, normalizeSurface } from '@/lib/reporting/dimensions';
 import { buildProjectByPromptReport } from '@/lib/reporting/by-prompt';
 import { type PromptSortDirection, type PromptSortField } from '@/lib/reporting/by-prompt-core';
 import { validateSummaryDateRange } from '@/lib/reporting/summary-validation';
@@ -93,7 +94,12 @@ export async function GET(
     filters: {
       tagIds: parseTagIds(request.nextUrl.searchParams.get('tagIds')),
       country: normalizeCountry(request.nextUrl.searchParams.get('country')),
-      language: normalizeLanguage(request.nextUrl.searchParams.get('language'))
+      language: normalizeLanguage(request.nextUrl.searchParams.get('language')),
+      provider: normalizeProvider(request.nextUrl.searchParams.get('provider')),
+      surface: normalizeSurface(request.nextUrl.searchParams.get('surface')),
+      analysisMode: normalizeAnalysisMode(request.nextUrl.searchParams.get('analysisMode')),
+      modelLabel: normalizeModelLabel(request.nextUrl.searchParams.get('modelLabel') ?? request.nextUrl.searchParams.get('model')),
+      captureMethod: normalizeCaptureMethod(request.nextUrl.searchParams.get('captureMethod'))
     },
     sortBy: parseSortBy(request.nextUrl.searchParams.get('sortBy')),
     sortDir: parseSortDir(request.nextUrl.searchParams.get('sortDir'))

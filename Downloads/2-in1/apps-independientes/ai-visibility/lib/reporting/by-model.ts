@@ -1,11 +1,13 @@
 import { prisma } from '@/lib/db';
 
 import { buildByModelFromInputs, type KpiInputsWithModel, type ModelReportRow } from '@/lib/reporting/by-model-core';
+import { toRunWhereFilters, type ReportingFilters } from '@/lib/reporting/report-filters';
 import type { SummaryDateRange } from '@/lib/reporting/summary-validation';
 
 type BuildByModelInput = {
   projectId: string;
   range: SummaryDateRange;
+  filters?: ReportingFilters;
 };
 
 export type ProjectByModelResponse = {
@@ -18,7 +20,7 @@ export type ProjectByModelResponse = {
   generatedAt: string;
 };
 
-async function loadKpiInputs(projectId: string, range: SummaryDateRange): Promise<KpiInputsWithModel> {
+async function loadKpiInputs(projectId: string, range: SummaryDateRange, filters: ReportingFilters = {}): Promise<KpiInputsWithModel> {
   const [prompts, runs, responses, citations, mentions] = await Promise.all([
     prisma.prompt.findMany({
       where: {
@@ -34,6 +36,7 @@ async function loadKpiInputs(projectId: string, range: SummaryDateRange): Promis
     prisma.run.findMany({
       where: {
         projectId,
+        ...toRunWhereFilters(filters),
         executedAt: {
           gte: range.from,
           lte: range.to
@@ -43,13 +46,17 @@ async function loadKpiInputs(projectId: string, range: SummaryDateRange): Promis
         id: true,
         promptId: true,
         status: true,
-        model: true
+        model: true,
+        provider: true,
+        surface: true,
+        analysisMode: true
       }
     }),
     prisma.response.findMany({
       where: {
         run: {
           projectId,
+          ...toRunWhereFilters(filters),
           executedAt: {
             gte: range.from,
             lte: range.to
@@ -69,6 +76,7 @@ async function loadKpiInputs(projectId: string, range: SummaryDateRange): Promis
         response: {
           run: {
             projectId,
+            ...toRunWhereFilters(filters),
             executedAt: {
               gte: range.from,
               lte: range.to
@@ -88,6 +96,7 @@ async function loadKpiInputs(projectId: string, range: SummaryDateRange): Promis
         response: {
           run: {
             projectId,
+            ...toRunWhereFilters(filters),
             executedAt: {
               gte: range.from,
               lte: range.to
@@ -108,7 +117,7 @@ async function loadKpiInputs(projectId: string, range: SummaryDateRange): Promis
 }
 
 export async function buildProjectByModelReport(input: BuildByModelInput): Promise<ProjectByModelResponse> {
-  const records = await loadKpiInputs(input.projectId, input.range);
+  const records = await loadKpiInputs(input.projectId, input.range, input.filters ?? {});
 
   return {
     projectId: input.projectId,

@@ -129,3 +129,14 @@ npx prisma generate
 - `/tags`
 - `/settings`
 - `/login`
+
+## Analysis modes first-class
+
+La app soporta como modos de análisis de primer nivel:
+
+- `chatgpt`
+- `gemini`
+- `ai_mode`
+- `ai_overview`
+
+`provider`, `surface`, `analysisMode`, `model`(model_label), `captureMethod`, `country` y `language` se almacenan en `run` y pueden usarse para reporting y filtros.
