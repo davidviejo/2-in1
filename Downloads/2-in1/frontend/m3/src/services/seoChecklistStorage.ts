@@ -79,6 +79,17 @@ export const getStorageBackend = (storageKey: string): 'idb' | 'local' => {
 };
 
 export const loadSeoChecklistPages = async (storageKey: string): Promise<SeoPage[] | null> => {
+  const backend = getStorageBackend(storageKey);
+
+  if (backend === 'idb' && canUseIndexedDb()) {
+    try {
+      const indexedDbPages = await readFromIndexedDb(storageKey);
+      if (indexedDbPages) return indexedDbPages;
+    } catch (error) {
+      console.warn('No se pudo leer SEO checklist en IndexedDB.', { storageKey, error });
+    }
+  }
+
   try {
     const localRaw = localStorage.getItem(storageKey);
     if (localRaw) {
@@ -89,7 +100,7 @@ export const loadSeoChecklistPages = async (storageKey: string): Promise<SeoPage
     console.warn('No se pudo leer SEO checklist en localStorage.', { storageKey, error });
   }
 
-  if (getStorageBackend(storageKey) !== 'idb') return null;
+  if (backend !== 'idb') return null;
   if (!canUseIndexedDb()) return null;
 
   try {
