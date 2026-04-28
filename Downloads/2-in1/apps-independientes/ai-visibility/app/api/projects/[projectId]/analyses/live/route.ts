@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { canAccessProject, hasRole } from '@/lib/auth/authorization';
 import { ensureDbUser } from '@/lib/auth/db-user';
 import { getRequestUser } from '@/lib/auth/session';
+import { resolveAnalysisDefaults, resolveLiveModel } from '@/lib/runs/analysis-defaults';
 import { executeLiveAnalysis } from '@/lib/runs/live-analysis';
 import { normalizeAnalysisMode } from '@/lib/reporting/dimensions';
 import { validateCreateRunInput } from '@/lib/runs/validation';
@@ -19,27 +20,11 @@ function canWriteProject(request: NextRequest, projectId: string): boolean {
 
 function enrichPayload(input: Record<string, unknown>) {
   const analysisMode = normalizeAnalysisMode(typeof input.analysisMode === 'string' ? input.analysisMode : '') ?? '';
-
-  if (analysisMode === 'chatgpt') {
-    return {
-      provider: 'openai',
-      surface: 'chatgpt',
-      model: typeof input.model === 'string' ? input.model : process.env.OPENAI_DEFAULT_MODEL ?? 'gpt-4.1-mini'
-    };
-  }
-
-  if (analysisMode === 'gemini') {
-    return {
-      provider: 'google',
-      surface: 'gemini',
-      model: typeof input.model === 'string' ? input.model : process.env.GEMINI_DEFAULT_MODEL ?? 'gemini-2.5-pro'
-    };
-  }
-
+  const defaults = resolveAnalysisDefaults(analysisMode);
   return {
-    provider: 'google',
-    surface: 'google_search',
-    model: 'unknown'
+    provider: defaults.provider,
+    surface: defaults.surface,
+    model: resolveLiveModel(analysisMode, input.model)
   };
 }
 
@@ -67,7 +52,13 @@ export async function POST(
     model: defaults.model,
     source: 'API',
     triggerType: 'MANUAL',
-    captureMethod: 'api'
+    captureMethod: 'api',
+    rawRequestMetadata: {
+      ...(payload.rawRequestMetadata && typeof payload.rawRequestMetadata === 'object' ? payload.rawRequestMetadata : {}),
+      collectionChannel: 'live_analysis_api',
+      collectionProvider: defaults.provider,
+      collectionSurface: defaults.surface
+    }
   });
 
   if (!validation.values) {
