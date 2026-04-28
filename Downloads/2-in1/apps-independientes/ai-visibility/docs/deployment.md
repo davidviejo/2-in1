@@ -54,6 +54,30 @@ Optional provider variables (needed only for live analysis modes):
    ```
 5. Promote artifact to target environment.
 
+## 3.1) Docker Compose (local/staging quickstart)
+
+For containerized execution of the app:
+
+1. Create env file from template:
+   ```bash
+   cp .env.docker.example .env.docker
+   ```
+2. Review secrets (`AUTH_SESSION_SECRET`, provider keys).
+3. Build and start services:
+   ```bash
+   docker compose up --build
+   ```
+4. Stop services:
+   ```bash
+   docker compose down
+   ```
+
+By default, Compose runs:
+- `ai-visibility` app on `http://localhost:3000`
+- `postgres` on `localhost:5434`
+
+The app container executes `npm run db:migrate:deploy` before `npm run start`.
+
 ## 4) Database migration process
 
 Use Prisma migrations from `prisma/migrations`.

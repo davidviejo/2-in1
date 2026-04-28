@@ -1,0 +1,37 @@
+services:
+  ai-visibility:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-visibility-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env.docker
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: ai-visibility-db
+    environment:
+      POSTGRES_USER: ai_visibility
+      POSTGRES_PASSWORD: ai_visibility
+      POSTGRES_DB: ai_visibility
+    ports:
+      - "5434:5432"
+    volumes:
+      - ai_visibility_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ai_visibility -d ai_visibility"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  ai_visibility_postgres_data:

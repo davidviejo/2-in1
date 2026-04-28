@@ -27,6 +27,20 @@ Este comando:
 
 > Requiere `DATABASE_URL`/`DIRECT_URL` apuntando a Supabase antes de iniciar.
 
+## Setup con Docker
+
+```bash
+cp .env.docker.example .env.docker
+# editar variables sensibles (AUTH_SESSION_SECRET y llaves de providers)
+docker compose up --build
+```
+
+Esto levanta:
+- App Next.js en `http://localhost:3000`
+- PostgreSQL local en `localhost:5434`
+
+La app ejecuta `prisma migrate deploy` al iniciar el contenedor para aplicar migraciones pendientes.
+
 ## Variables de entorno
 
 Copia `.env.example` y ajusta valores si necesitas cambiar puertos/credenciales:
@@ -39,7 +53,7 @@ Copia `.env.example` y ajusta valores si necesitas cambiar puertos/credenciales:
 - `GEMINI_API_KEY` / `GEMINI_DEFAULT_MODEL` (Gemini real API)
 - `DATAFORSEO_LOGIN` / `DATAFORSEO_PASSWORD` / `DATAFORSEO_LOCATION_CODE` (Google AI Mode + AI Overview vía DataForSEO)
 
-> Nota: la app **no** crea fallback local ni usa Docker; `DATABASE_URL` es obligatoria y debe apuntar a Supabase.
+> Nota: sin Docker, `DATABASE_URL` sigue siendo obligatoria y normalmente apunta a Supabase. Con Docker Compose puedes usar PostgreSQL local (`postgres`).
 
 ## Auth MVP (internal-tool friendly)
 
