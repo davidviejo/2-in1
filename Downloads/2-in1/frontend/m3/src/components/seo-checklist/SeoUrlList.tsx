@@ -39,7 +39,7 @@ interface Props {
   onBulkUpdate: (updates: { id: string; changes: Partial<SeoPage> }[]) => void;
   onBulkDelete: (ids: string[]) => void;
   capabilities: Capabilities | null;
-  onRunBatch?: (pages: SeoPage[], config: AnalysisConfigPayload) => void;
+  onRunBatch?: (pages: SeoPage[], config: AnalysisConfigPayload) => Promise<void> | void;
   allowKwAutoSelectInBasic: boolean;
   onAllowKwAutoSelectInBasicChange: (enabled: boolean) => void;
 }
@@ -55,7 +55,7 @@ export const SeoUrlList: React.FC<Props> = ({
   allowKwAutoSelectInBasic,
   onAllowKwAutoSelectInBasicChange,
 }) => {
-  const MAX_URLS_PER_BATCH = 1000;
+  const PROCESSING_BATCH_SIZE = 1000;
   const [filter, setFilter] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -85,6 +85,7 @@ export const SeoUrlList: React.FC<Props> = ({
   const [isLoadingGscSites, setIsLoadingGscSites] = useState(false);
   const [isSyncingGscMetrics, setIsSyncingGscMetrics] = useState(false);
   const [gscSyncStatus, setGscSyncStatus] = useState<string | null>(null);
+  const [gscPropertySearch, setGscPropertySearch] = useState('');
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -122,6 +123,11 @@ export const SeoUrlList: React.FC<Props> = ({
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage,
   );
+  const filteredGscSites = useMemo(() => {
+    const normalizedSearch = gscPropertySearch.trim().toLowerCase();
+    if (!normalizedSearch) return gscSites;
+    return gscSites.filter((site) => site.siteUrl.toLowerCase().includes(normalizedSearch));
+  }, [gscPropertySearch, gscSites]);
 
   useEffect(() => {
     if (gscAccessToken) {
@@ -298,12 +304,7 @@ export const SeoUrlList: React.FC<Props> = ({
     if (selectedIds.size === filteredPages.length && filteredPages.length > 0) {
       setSelectedIds(new Set());
     } else {
-      const nextSelected = filteredPages.slice(0, MAX_URLS_PER_BATCH).map((p) => p.id);
-      if (filteredPages.length > MAX_URLS_PER_BATCH) {
-        window.alert(
-          `Solo puedes analizar hasta ${MAX_URLS_PER_BATCH} URLs por ejecución. Se seleccionaron las primeras ${MAX_URLS_PER_BATCH}.`,
-        );
-      }
+      const nextSelected = filteredPages.map((p) => p.id);
       setSelectedIds(new Set(nextSelected));
     }
   };
@@ -320,15 +321,15 @@ export const SeoUrlList: React.FC<Props> = ({
 
   // Bulk Actions
   const getPagesToAnalyze = (idsToAnalyze: Set<string>) => {
-    const selectedPages = pages.filter((p) => idsToAnalyze.has(p.id));
-    if (selectedPages.length <= MAX_URLS_PER_BATCH) {
-      return selectedPages;
-    }
+    return pages.filter((p) => idsToAnalyze.has(p.id));
+  };
 
-    window.alert(
-      `Seleccionaste ${selectedPages.length} URLs. Solo se enviarán las primeras ${MAX_URLS_PER_BATCH}.`,
-    );
-    return selectedPages.slice(0, MAX_URLS_PER_BATCH);
+  const createBatches = <T,>(items: T[], batchSize: number) => {
+    const batches: T[][] = [];
+    for (let i = 0; i < items.length; i += batchSize) {
+      batches.push(items.slice(i, i + batchSize));
+    }
+    return batches;
   };
 
   const executeBatch = async (forcedIds?: Set<string>) => {
@@ -338,6 +339,7 @@ export const SeoUrlList: React.FC<Props> = ({
 
     const idsToAnalyze = forcedIds ?? selectedIds;
     const pagesToAnalyze = getPagesToAnalyze(idsToAnalyze);
+    const pageBatches = createBatches(pagesToAnalyze, PROCESSING_BATCH_SIZE);
 
     // Default concurrency or derived from somewhere? Using 3 as safe default
     const concurrency = 3;
@@ -345,38 +347,67 @@ export const SeoUrlList: React.FC<Props> = ({
     const analysisConfig = buildAnalysisConfig();
 
     try {
-      await runBatchWithConcurrency(
-        pagesToAnalyze,
-        async (page) => {
-          const effectiveSettings =
-            analysisMode === 'basic'
-              ? { ...settings, allowKwPrincipalUpdate: allowKwAutoSelectInBasic }
-              : settings;
-          const update = await runPageAnalysis(page, analysisConfig, effectiveSettings);
-          onBulkUpdate([{ id: page.id, changes: update }]);
-          return update;
-        },
-        concurrency,
-        (progress) => setBatchProgress(progress),
-        // Cost estimator for batch processor (optional, heuristic)
-        () => {
-          if (settings.serp.enabled && analysisMode === 'advanced') {
-            let cost = 0;
-            if (
-              capabilities &&
-              capabilities.costModel &&
-              capabilities.costModel[settings.serp.provider]
-            ) {
-              cost = capabilities.costModel[settings.serp.provider].estimatedCostPerQuery;
-            } else {
-              // Fallback
-              cost = settings.serp.provider === 'dataforseo' ? 0.002 : 0.01;
+      let aggregatedProcessed = 0;
+      let aggregatedSucceeded = 0;
+      let aggregatedFailed = 0;
+      let aggregatedCost = 0;
+
+      for (const [batchIndex, batch] of pageBatches.entries()) {
+        let lastBatchSnapshot: BatchProgress | null = null;
+        setGscSyncStatus(
+          `Análisis SEO por bloques: procesando lote ${batchIndex + 1}/${pageBatches.length} (${batch.length} URL${batch.length === 1 ? '' : 's'}).`,
+        );
+        await runBatchWithConcurrency(
+          batch,
+          async (page) => {
+            const effectiveSettings =
+              analysisMode === 'basic'
+                ? { ...settings, allowKwPrincipalUpdate: allowKwAutoSelectInBasic }
+                : settings;
+            const update = await runPageAnalysis(page, analysisConfig, effectiveSettings);
+            onBulkUpdate([{ id: page.id, changes: update }]);
+            return update;
+          },
+          concurrency,
+          (progress) => {
+            lastBatchSnapshot = progress;
+            setBatchProgress({
+              ...progress,
+              total: pagesToAnalyze.length,
+              processed: aggregatedProcessed + progress.processed,
+              succeeded: aggregatedSucceeded + progress.succeeded,
+              failed: aggregatedFailed + progress.failed,
+              estimatedCost: aggregatedCost + progress.estimatedCost,
+              isRunning: true,
+            });
+          },
+          // Cost estimator for batch processor (optional, heuristic)
+          () => {
+            if (settings.serp.enabled && analysisMode === 'advanced') {
+              let cost = 0;
+              if (
+                capabilities &&
+                capabilities.costModel &&
+                capabilities.costModel[settings.serp.provider]
+              ) {
+                cost = capabilities.costModel[settings.serp.provider].estimatedCostPerQuery;
+              } else {
+                // Fallback
+                cost = settings.serp.provider === 'dataforseo' ? 0.002 : 0.01;
+              }
+              return settings.serp.maxKeywordsPerUrl * cost;
             }
-            return settings.serp.maxKeywordsPerUrl * cost;
-          }
-          return 0;
-        },
-      );
+            return 0;
+          },
+        );
+        if (lastBatchSnapshot) {
+          aggregatedProcessed += lastBatchSnapshot.processed;
+          aggregatedSucceeded += lastBatchSnapshot.succeeded;
+          aggregatedFailed += lastBatchSnapshot.failed;
+          aggregatedCost += lastBatchSnapshot.estimatedCost;
+        }
+      }
+      setGscSyncStatus(`Análisis SEO completado en ${pageBatches.length} lote(s).`);
     } catch (e) {
       console.error('Batch execution error', e);
     } finally {
@@ -392,9 +423,17 @@ export const SeoUrlList: React.FC<Props> = ({
     if (idsToAnalyze.size === 0) return false;
 
     const pagesToAnalyze = getPagesToAnalyze(idsToAnalyze);
+    const pageBatches = createBatches(pagesToAnalyze, PROCESSING_BATCH_SIZE);
     const analysisConfig = buildAnalysisConfig();
-
-    onRunBatch(pagesToAnalyze, analysisConfig);
+    void (async () => {
+      for (const [batchIndex, batch] of pageBatches.entries()) {
+        setGscSyncStatus(
+          `Análisis en servidor por bloques: enviando lote ${batchIndex + 1}/${pageBatches.length} (${batch.length} URL${batch.length === 1 ? '' : 's'}).`,
+        );
+        await onRunBatch(batch, analysisConfig);
+      }
+      setGscSyncStatus(`Análisis en servidor lanzado en ${pageBatches.length} lote(s).`);
+    })();
     setIsConfirmModalOpen(false);
     setSelectedIds(new Set());
     return true;
@@ -419,13 +458,7 @@ export const SeoUrlList: React.FC<Props> = ({
 
   const handleAnalyzeAll = () => {
     if (filteredPages.length === 0) return;
-    const limitedPages = filteredPages.slice(0, MAX_URLS_PER_BATCH);
-    if (filteredPages.length > MAX_URLS_PER_BATCH) {
-      window.alert(
-        `Solo puedes analizar hasta ${MAX_URLS_PER_BATCH} URLs por ejecución. Se usarán las primeras ${MAX_URLS_PER_BATCH}.`,
-      );
-    }
-    const allIds = new Set(limitedPages.map((p) => p.id));
+    const allIds = new Set(filteredPages.map((p) => p.id));
     setSelectedIds(allIds);
 
     if (analysisMode === 'basic') {
@@ -546,7 +579,7 @@ export const SeoUrlList: React.FC<Props> = ({
     }
 
     const targetIds = selectedIds.size > 0 ? selectedIds : new Set(filteredPages.map((p) => p.id));
-    const targetPages = pages.filter((page) => targetIds.has(page.id)).slice(0, MAX_URLS_PER_BATCH);
+    const targetPages = pages.filter((page) => targetIds.has(page.id));
     if (targetPages.length === 0) {
       setGscSyncStatus('No hay URLs disponibles para sincronizar.');
       return;
@@ -561,28 +594,34 @@ export const SeoUrlList: React.FC<Props> = ({
     let processed = 0;
 
     try {
-      for (const page of targetPages) {
-        try {
-          const row = await getPageMetrics(gscAccessToken, selectedGscSite, page.url, startDate, endDate);
-          if (!row) continue;
+      const pageBatches = createBatches(targetPages, PROCESSING_BATCH_SIZE);
+      for (const [batchIndex, batch] of pageBatches.entries()) {
+        setGscSyncStatus(
+          `Sincronizando bloque ${batchIndex + 1}/${pageBatches.length} (${batch.length} URL${batch.length === 1 ? '' : 's'}).`,
+        );
+        for (const page of batch) {
+          try {
+            const row = await getPageMetrics(gscAccessToken, selectedGscSite, page.url, startDate, endDate);
+            if (!row) continue;
 
-          updates.push({
-            id: page.id,
-            changes: {
-              gscMetrics: {
-                clicks: Number(row.clicks || 0),
-                impressions: Number(row.impressions || 0),
-                ctr: Number(row.ctr || 0),
-                position: Number(row.position || 0) || undefined,
-                source: 'page',
-                updatedAt: Date.now(),
-                queryCount: page.gscMetrics?.queryCount,
+            updates.push({
+              id: page.id,
+              changes: {
+                gscMetrics: {
+                  clicks: Number(row.clicks || 0),
+                  impressions: Number(row.impressions || 0),
+                  ctr: Number(row.ctr || 0),
+                  position: Number(row.position || 0) || undefined,
+                  source: 'page',
+                  updatedAt: Date.now(),
+                  queryCount: page.gscMetrics?.queryCount,
+                },
               },
-            },
-          });
-          processed += 1;
-        } catch (error) {
-          console.warn('No se pudieron sincronizar métricas para URL', page.url, error);
+            });
+            processed += 1;
+          } catch (error) {
+            console.warn('No se pudieron sincronizar métricas para URL', page.url, error);
+          }
         }
       }
 
@@ -670,6 +709,16 @@ export const SeoUrlList: React.FC<Props> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <div className="relative min-w-[260px] flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+            <input
+              type="text"
+              value={gscPropertySearch}
+              onChange={(e) => setGscPropertySearch(e.target.value)}
+              placeholder="Buscar propiedad GSC..."
+              className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs"
+            />
+          </div>
           <select
             value={selectedGscSite}
             onChange={(e) => {
@@ -679,10 +728,10 @@ export const SeoUrlList: React.FC<Props> = ({
             disabled={!gscAccessToken || gscSites.length === 0}
             className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs min-w-[260px] disabled:opacity-60"
           >
-            {gscSites.length === 0 ? (
+            {filteredGscSites.length === 0 ? (
               <option value="">Sin propiedades cargadas</option>
             ) : (
-              gscSites.map((site) => (
+              filteredGscSites.map((site) => (
                 <option key={site.siteUrl} value={site.siteUrl}>
                   {site.siteUrl}
                 </option>
