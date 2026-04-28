@@ -1,0 +1,95 @@
+name: ai-visibility-ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  quality-and-tests:
+    name: Quality, tests, and migration checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: ai_visibility_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d ai_visibility_ci"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=8
+
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ai_visibility_ci?schema=public
+      NEXT_PUBLIC_APP_NAME: AI Visibility CI
+      AUTH_SESSION_SECRET: ci-local-secret
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Verify migration integrity (schema <-> migrations)
+        run: npm run db:check:migrations
+
+      - name: Apply migrations in CI database
+        run: npm run db:migrate:deploy
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit + integration tests
+        run: npm run test
+
+      - name: E2E smoke (lightweight)
+        run: npm run test:smoke
+
+      - name: Upload coverage/debug artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-debug-artifacts
+          path: |
+            .next
+            coverage
+          if-no-files-found: ignore
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## CI checks";
+            echo "- install: npm ci";
+            echo "- migration integrity: prisma migrate diff";
+            echo "- migration deploy: prisma migrate deploy";
+            echo "- lint: npm run lint";
+            echo "- typecheck: npm run typecheck";
+            echo "- unit/integration: npm run test";
+            echo "- e2e smoke: npm run test:smoke";
+          } >> "$GITHUB_STEP_SUMMARY"
