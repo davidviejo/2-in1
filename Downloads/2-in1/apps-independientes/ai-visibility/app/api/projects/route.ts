@@ -22,18 +22,23 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
-  const projects = await prisma.project.findMany({
-    where: {
-      deletedAt: null,
-      ...(user.role === 'admin' || !user.projectIds?.length ? {} : { id: { in: user.projectIds } })
-    },
-    orderBy: { updatedAt: 'desc' },
-    include: {
-      brandAliases: { orderBy: { alias: 'asc' } }
-    }
-  });
+  try {
+    const projects = await prisma.project.findMany({
+      where: {
+        deletedAt: null,
+        ...(user.role === 'admin' || !user.projectIds?.length ? {} : { id: { in: user.projectIds } })
+      },
+      orderBy: { updatedAt: 'desc' },
+      include: {
+        brandAliases: { orderBy: { alias: 'asc' } }
+      }
+    });
 
-  return NextResponse.json({ projects });
+    return NextResponse.json({ projects });
+  } catch (error) {
+    console.error('[api/projects][GET] failed', error);
+    return NextResponse.json({ error: 'projects_unavailable' }, { status: 503 });
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -54,27 +59,32 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'validation_failed', fieldErrors: validation.errors }, { status: 422 });
   }
 
-  const baseSlug = slugify(validation.values.name) || 'project';
-  let slug = baseSlug;
-  let index = 1;
+  try {
+    const baseSlug = slugify(validation.values.name) || 'project';
+    let slug = baseSlug;
+    let index = 1;
 
-  while (await prisma.project.findUnique({ where: { slug } })) {
-    index += 1;
-    slug = `${baseSlug}-${index}`;
-  }
-
-  const dbUser = await ensureDbUser(user);
-
-  const project = await prisma.project.create({
-    data: {
-      ...validation.values,
-      slug,
-      ownerUserId: dbUser.id
-    },
-    include: {
-      brandAliases: { orderBy: { alias: 'asc' } }
+    while (await prisma.project.findUnique({ where: { slug } })) {
+      index += 1;
+      slug = `${baseSlug}-${index}`;
     }
-  });
 
-  return NextResponse.json({ project }, { status: 201 });
+    const dbUser = await ensureDbUser(user);
+
+    const project = await prisma.project.create({
+      data: {
+        ...validation.values,
+        slug,
+        ownerUserId: dbUser.id
+      },
+      include: {
+        brandAliases: { orderBy: { alias: 'asc' } }
+      }
+    });
+
+    return NextResponse.json({ project }, { status: 201 });
+  } catch (error) {
+    console.error('[api/projects][POST] failed', error);
+    return NextResponse.json({ error: 'project_create_failed' }, { status: 503 });
+  }
 }
