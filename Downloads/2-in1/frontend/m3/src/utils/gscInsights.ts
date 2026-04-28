@@ -748,7 +748,16 @@ export const analyzeGSCInsights = ({
       isLikelyReal,
     });
   });
-  const cannibalizedRows = cannibalizedAssessments.map((assessment) => assessment.currentRows[0]);
+  const cannibalizedRows = cannibalizedAssessments.flatMap((assessment) => {
+    const queryTotalImpressions = assessment.currentRows.reduce((sum, row) => sum + row.impressions, 0);
+    return assessment.currentRows.map((row, index) => ({
+      ...row,
+      cannibalizationRole: index === 0 ? 'primary' : 'secondary',
+      cannibalizationCompetitorCount: assessment.currentRows.length,
+      cannibalizationQueryImpressionShare:
+        queryTotalImpressions > 0 ? row.impressions / queryTotalImpressions : 0,
+    }));
+  });
 
   if (cannibalizedRows.length) {
     const likelyRealCount = cannibalizedAssessments.filter((assessment) => assessment.isLikelyReal).length;

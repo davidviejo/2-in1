@@ -45,8 +45,12 @@ describe('GSC Insights Engine', () => {
   it('detects cannibalization when two URLs compete for the same query', () => {
     const result = analyzeCannibalization(currentRows);
     expect(result.count).toBe(1);
+    expect(result.items.length).toBe(2);
     expect(result.items[0].keys[0]).toBe('cannibal');
     expect(result.items[0].keys[1]).toBe('https://site.com/a');
+    expect((result.items[0] as any).cannibalizationRole).toBe('primary');
+    expect(result.items[1].keys[1]).toBe('https://site.com/b');
+    expect((result.items[1] as any).cannibalizationRole).toBe('secondary');
   });
 
   it('builds quick wins aligned with current project type only', () => {

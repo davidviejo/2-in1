@@ -163,6 +163,9 @@ export const InsightDetailModal: React.FC<InsightDetailModalProps> = ({
       'Current Position',
       'Previous Position',
       'Delta Position',
+      'Cannibalization Role',
+      'Competing URLs',
+      'Query Impression Share (%)',
     ];
     const csvContent = [
       headers.join(','),
@@ -201,6 +204,9 @@ export const InsightDetailModal: React.FC<InsightDetailModalProps> = ({
           Number(currentPosition.toFixed(2)),
           Number(previousPosition.toFixed(2)),
           Number((currentPosition - previousPosition).toFixed(2)),
+          `"${item.cannibalizationRole === 'primary' ? 'URL principal' : item.cannibalizationRole === 'secondary' ? 'URL secundaria' : ''}"`,
+          Number(item.cannibalizationCompetitorCount || 0),
+          Number(((item.cannibalizationQueryImpressionShare || 0) * 100).toFixed(2)),
         ].join(',');
       }),
     ].join('\n');
@@ -458,19 +464,32 @@ export const InsightDetailModal: React.FC<InsightDetailModalProps> = ({
                     className="px-4 py-3 text-slate-500 dark:text-slate-400 truncate max-w-[200px]"
                     title={item.keys[1]}
                   >
-                    {item.keys[1] ? (
-                      <a
-                        href={item.keys[1]}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="hover:text-blue-500 flex items-center gap-1"
-                      >
-                        {item.keys[1].replace('https://', '').split('/').pop() || '/'}
-                        <ExternalLink size={10} />
-                      </a>
-                    ) : (
-                      '-'
-                    )}
+                    <div className="flex items-center gap-2">
+                      {item.keys[1] ? (
+                        <a
+                          href={item.keys[1]}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="hover:text-blue-500 flex items-center gap-1"
+                        >
+                          {item.keys[1].replace('https://', '').split('/').pop() || '/'}
+                          <ExternalLink size={10} />
+                        </a>
+                      ) : (
+                        '-'
+                      )}
+                      {item.cannibalizationRole ? (
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                            item.cannibalizationRole === 'primary'
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                              : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                          }`}
+                        >
+                          {item.cannibalizationRole === 'primary' ? 'Principal' : 'Secundaria'}
+                        </span>
+                      ) : null}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-right font-mono text-slate-600 dark:text-slate-300">
                     {item.clicks.toLocaleString()}
