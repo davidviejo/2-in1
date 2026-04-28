@@ -111,6 +111,10 @@ npm run test       # vitest (run)
 npm run test:watch # vitest modo watch
 npm run db:up      # levanta PostgreSQL local
 npm run db:seed    # carga dataset demo de reporting (1 proyecto dental + data histórica)
+npm run db:migrate:deploy # aplica migraciones pendientes (CI/prod)
+npm run db:check:migrations # valida drift schema vs migraciones SQL
+npm run db:backup     # backup PostgreSQL (requiere DATABASE_URL + pg_dump)
+npm run db:restore -- <file.dump> # restore DB (destructivo sobre schema public)
 npm run dev:local  # db + prisma + app
 ```
 
@@ -153,3 +157,10 @@ La app soporta como modos de análisis de primer nivel:
   - Gemini official API (`models.generateContent`) para `gemini`.
   - DataForSEO API (`/v3/serp/google/ai_mode/live/advanced`) para `ai_mode` y `ai_overview`.
 - Cada ejecución persiste `run`, `response`, `citations` y detección de `brand_mentions` para alimentar dashboard y reportes.
+
+
+## Operación y despliegue
+
+- Runbook de despliegue: `docs/deployment.md`
+- Estrategia de backup/restore: `docs/backup-restore.md`
+- CI de PR: `.github/workflows/ci.yml`
