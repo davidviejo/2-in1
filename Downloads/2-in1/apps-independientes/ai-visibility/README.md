@@ -47,6 +47,8 @@ Copia `.env.example` y ajusta valores si necesitas cambiar puertos/credenciales:
 - `GEMINI_API_KEY` / `GEMINI_DEFAULT_MODEL` (Gemini real API)
 - `DATAFORSEO_LOGIN` / `DATAFORSEO_PASSWORD` / `DATAFORSEO_LOCATION_CODE` (Google AI Mode + AI Overview vía DataForSEO)
 
+> Nota: en desarrollo, si `DATABASE_URL` no está definida, la app construye una URL local automáticamente usando `POSTGRES_*` (con defaults `postgres/postgres`, `ai_visibility`, puerto `5432`).
+
 ## Auth MVP (internal-tool friendly)
 
 La app usa autenticación por cookie HttpOnly firmada y roles básicos para autorización:
