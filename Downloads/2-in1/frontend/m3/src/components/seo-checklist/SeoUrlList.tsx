@@ -30,7 +30,7 @@ import { runBatchWithConcurrency, BatchProgress } from '../../utils/batchProcess
 import { useProject } from '../../context/ProjectContext';
 import { validateChecklistWithAI } from '../../services/seoChecklistAIValidator';
 import { useGSCAuth } from '../../hooks/useGSCAuth';
-import { listSites, getPageMetrics } from '../../services/googleSearchConsole';
+import { listSites, getPageMetricsBulkByUrl } from '../../services/googleSearchConsole';
 
 interface Props {
   pages: SeoPage[];
@@ -56,6 +56,14 @@ export const SeoUrlList: React.FC<Props> = ({
   onAllowKwAutoSelectInBasicChange,
 }) => {
   const PROCESSING_BATCH_SIZE = 1000;
+  const GSC_DATA_DELAY_DAYS = 2;
+  const GSC_PERIOD_OPTIONS = [
+    { value: '16m', label: '16 meses (28d/mes)', days: 16 * 28 },
+    { value: '12m', label: '12 meses (28d/mes)', days: 12 * 28 },
+    { value: '6m', label: '6 meses (28d/mes)', days: 6 * 28 },
+    { value: '28d', label: '28 días', days: 28 },
+    { value: '7d', label: '7 días', days: 7 },
+  ] as const;
   const [filter, setFilter] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -86,6 +94,7 @@ export const SeoUrlList: React.FC<Props> = ({
   const [isSyncingGscMetrics, setIsSyncingGscMetrics] = useState(false);
   const [gscSyncStatus, setGscSyncStatus] = useState<string | null>(null);
   const [gscPropertySearch, setGscPropertySearch] = useState('');
+  const [gscSyncPeriod, setGscSyncPeriod] = useState<(typeof GSC_PERIOD_OPTIONS)[number]['value']>('28d');
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -588,8 +597,13 @@ export const SeoUrlList: React.FC<Props> = ({
     setIsSyncingGscMetrics(true);
     setGscSyncStatus(`Sincronizando clics e impresiones para ${targetPages.length} URL(s)...`);
 
-    const endDate = new Date().toISOString().slice(0, 10);
-    const startDate = new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const selectedPeriodOption = GSC_PERIOD_OPTIONS.find((option) => option.value === gscSyncPeriod) || GSC_PERIOD_OPTIONS[3];
+    const endDateObj = new Date();
+    endDateObj.setDate(endDateObj.getDate() - GSC_DATA_DELAY_DAYS);
+    const startDateObj = new Date(endDateObj);
+    startDateObj.setDate(startDateObj.getDate() - (selectedPeriodOption.days - 1));
+    const endDate = endDateObj.toISOString().slice(0, 10);
+    const startDate = startDateObj.toISOString().slice(0, 10);
     const updates: { id: string; changes: Partial<SeoPage> }[] = [];
     let processed = 0;
 
@@ -599,11 +613,17 @@ export const SeoUrlList: React.FC<Props> = ({
         setGscSyncStatus(
           `Sincronizando bloque ${batchIndex + 1}/${pageBatches.length} (${batch.length} URL${batch.length === 1 ? '' : 's'}).`,
         );
-        for (const page of batch) {
-          try {
-            const row = await getPageMetrics(gscAccessToken, selectedGscSite, page.url, startDate, endDate);
+        try {
+          const batchMetrics = await getPageMetricsBulkByUrl(
+            gscAccessToken,
+            selectedGscSite,
+            batch.map((page) => page.url),
+            startDate,
+            endDate,
+          );
+          for (const page of batch) {
+            const row = batchMetrics[page.url];
             if (!row) continue;
-
             updates.push({
               id: page.id,
               changes: {
@@ -619,9 +639,9 @@ export const SeoUrlList: React.FC<Props> = ({
               },
             });
             processed += 1;
-          } catch (error) {
-            console.warn('No se pudieron sincronizar métricas para URL', page.url, error);
           }
+        } catch (error) {
+          console.warn('No se pudieron sincronizar métricas para bloque de URLs', error);
         }
       }
 
@@ -629,7 +649,7 @@ export const SeoUrlList: React.FC<Props> = ({
         onBulkUpdate(updates);
       }
       setGscSyncStatus(
-        `Sincronización completada: ${processed}/${targetPages.length} URL(s) actualizadas con GSC.`,
+        `Sincronización completada: ${processed}/${targetPages.length} URL(s) actualizadas con GSC (${selectedPeriodOption.label.toLowerCase()}, ${startDate} → ${endDate}).`,
       );
     } finally {
       setIsSyncingGscMetrics(false);
@@ -745,6 +765,18 @@ export const SeoUrlList: React.FC<Props> = ({
           >
             {isSyncingGscMetrics ? 'Sincronizando GSC...' : 'Asignar clics/impresiones a URLs'}
           </button>
+          <select
+            value={gscSyncPeriod}
+            onChange={(e) => setGscSyncPeriod(e.target.value as (typeof GSC_PERIOD_OPTIONS)[number]['value'])}
+            disabled={isSyncingGscMetrics}
+            className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs min-w-[180px] disabled:opacity-60"
+          >
+            {GSC_PERIOD_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                Periodo: {option.label}
+              </option>
+            ))}
+          </select>
           <span className="text-xs text-slate-500 dark:text-slate-400">
             {selectedIds.size > 0
               ? `Aplicará a ${selectedIds.size} URL(s) seleccionadas.`
