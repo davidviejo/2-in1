@@ -82,7 +82,6 @@ const GSC_COMPARISON_MODE_LABELS: Record<GSCComparisonMode, string> = {
   previous_year: 'Mismo periodo del año pasado',
 };
 
-const MAX_INSIGHTS_EXPORT_FILES = 12;
 const GOOGLE_SHEETS_MAX_CELLS = 10_000_000;
 const GOOGLE_SHEETS_SAFE_CELLS = 9_200_000;
 const GOOGLE_SHEETS_MAX_CELL_CHARACTERS = 50_000;
@@ -576,6 +575,48 @@ const mapInsightRowForExport = (row: SeoInsight['relatedRows'][number]) => {
   };
 };
 
+type InsightRowBaselineMetrics = {
+  previousClicks: number;
+  previousImpressions: number;
+  previousCtr: number;
+  previousPosition: number;
+};
+
+const buildInsightBaselineMap = (rows: GSCRow[]) =>
+  rows.reduce((acc, row) => {
+    const query = row.keys?.[0] || '';
+    const url = row.keys?.[1] || '';
+    const key = `${query}|||${url}`;
+    const previous = acc.get(key) || { clicks: 0, impressions: 0, positionWeighted: 0 };
+    const clicks = Number(row.clicks || 0);
+    const impressions = Number(row.impressions || 0);
+    const position = Number(row.position || 0);
+    previous.clicks += clicks;
+    previous.impressions += impressions;
+    previous.positionWeighted += position * impressions;
+    acc.set(key, previous);
+    return acc;
+  }, new Map<string, { clicks: number; impressions: number; positionWeighted: number }>());
+
+const getInsightBaselineMetrics = (
+  row: SeoInsight['relatedRows'][number],
+  baselineByQueryUrl: Map<string, { clicks: number; impressions: number; positionWeighted: number }>,
+): InsightRowBaselineMetrics => {
+  const query = row.query ?? row.keys?.[0] ?? '';
+  const url = row.url ?? row.page ?? row.keys?.[1] ?? '';
+  const key = `${query}|||${url}`;
+  const baseline = baselineByQueryUrl.get(key) || { clicks: 0, impressions: 0, positionWeighted: 0 };
+  const previousCtr = baseline.impressions > 0 ? (baseline.clicks / baseline.impressions) * 100 : 0;
+  const previousPosition = baseline.impressions > 0 ? baseline.positionWeighted / baseline.impressions : 0;
+
+  return {
+    previousClicks: baseline.clicks,
+    previousImpressions: baseline.impressions,
+    previousCtr: Number(previousCtr.toFixed(2)),
+    previousPosition: Number(previousPosition.toFixed(2)),
+  };
+};
+
 const formatInsightEvidence = (insight: SeoInsight) =>
   insight.evidence
     .map((item) => `${item.label}: ${item.value}${item.context ? ` (${item.context})` : ''}`)
@@ -590,7 +631,10 @@ const formatInsightTrace = (insight: SeoInsight) =>
     moduleId: insight.trace?.moduleId ?? '',
   });
 
-const buildInsightExportRows = (insight: SeoInsight) => {
+const buildInsightExportRows = (
+  insight: SeoInsight,
+  baselineByQueryUrl: Map<string, { clicks: number; impressions: number; positionWeighted: number }>,
+) => {
   const evidenceDetalle = formatInsightEvidence(insight);
   const traceDetalle = formatInsightTrace(insight);
   const metadataDetalle = JSON.stringify({
@@ -648,6 +692,23 @@ const buildInsightExportRows = (insight: SeoInsight) => {
   }
 
   return insight.relatedRows.map((row) => ({
+    ...(() => {
+      const baseline = getInsightBaselineMetrics(row, baselineByQueryUrl);
+      const currentClicks = Number(row.clicks || 0);
+      const currentImpressions = Number(row.impressions || 0);
+      const currentCtrPct = Number(((row.ctr || 0) * 100).toFixed(2));
+      const currentPosition = Number((row.position || 0).toFixed(2));
+      return {
+        previousClicks: baseline.previousClicks,
+        deltaClicks: currentClicks - baseline.previousClicks,
+        previousImpressions: baseline.previousImpressions,
+        deltaImpressions: currentImpressions - baseline.previousImpressions,
+        previousCtrPct: baseline.previousCtr,
+        deltaCtrPp: Number((currentCtrPct - baseline.previousCtr).toFixed(2)),
+        previousPosition: baseline.previousPosition,
+        deltaPosition: Number((currentPosition - baseline.previousPosition).toFixed(2)),
+      };
+    })(),
     categoria: insight.category,
     insightId: insight.id,
     titulo: insight.title,
@@ -1959,8 +2020,9 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
         affectedCount: insight.affectedCount,
       })),
     );
+    const baselineByQueryUrl = buildInsightBaselineMap(comparisonQueryPageData || []);
     const allDetailRows = sanitizeRowsForSheets(
-      exportableActionableInsights.flatMap((insight) => buildInsightExportRows(insight)),
+      exportableActionableInsights.flatMap((insight) => buildInsightExportRows(insight, baselineByQueryUrl)),
     );
     const summaryColumnCount = Math.max(1, Object.keys(allSummaryRows[0] || {}).length);
     const detailColumnCount = Math.max(1, Object.keys(allDetailRows[0] || {}).length);
@@ -1969,7 +2031,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     const maxDetailRowsPerFile = Math.max(1, Math.floor(remainingCellsForDetail / detailColumnCount));
     const preparedInsights = exportableActionableInsights.map((insight, index) => ({
       summaryRow: allSummaryRows[index],
-      detailRows: sanitizeRowsForSheets(buildInsightExportRows(insight)),
+      detailRows: sanitizeRowsForSheets(buildInsightExportRows(insight, baselineByQueryUrl)),
       analysisType: insight.category || 'General',
     }));
     const filePlans: Array<{
@@ -1980,7 +2042,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     }> = [];
     let cursor = 0;
 
-    while (cursor < preparedInsights.length && filePlans.length < MAX_INSIGHTS_EXPORT_FILES) {
+    while (cursor < preparedInsights.length) {
       const start = cursor;
       const summaryRows: Array<Record<string, string | number>> = [];
       const detailGroups: Record<string, Array<Record<string, string | number>>> = {};
@@ -2399,6 +2461,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
           <ErrorBoundary>
             <InsightDetailModal
               insight={selectedInsight}
+              comparisonRows={comparisonQueryPageData}
               onClose={() => setSelectedInsight(null)}
               isIgnored={isIgnored}
               onIgnoreRow={(row) => {
