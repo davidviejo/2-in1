@@ -5,3 +5,6 @@ dist
 coverage
 .env
 *.tsbuildinfo
+
+.env.*
+!.env.docker.example
