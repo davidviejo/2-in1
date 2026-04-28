@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "dev:local": "npx prisma generate && next dev",
+    "dev:local": "npx prisma generate && npm run db:migrate:deploy && next dev",
     "test:smoke": "vitest run __tests__/smoke.test.ts",
     "test:kpi": "vitest run __tests__/kpi.logic.test.ts",
     "verify": "node scripts/verify.mjs",

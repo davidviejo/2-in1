@@ -23,9 +23,18 @@ npm run dev:local
 
 Este comando:
 1. Genera el cliente de Prisma.
-2. Arranca Next.js en `http://localhost:3000`.
+2. Aplica migraciones pendientes en la base de datos configurada.
+3. Arranca Next.js en `http://localhost:3000`.
 
 > Requiere `DATABASE_URL`/`DIRECT_URL` apuntando a Supabase antes de iniciar.
+
+Si es la primera vez que levantas el entorno, después de `dev:local` ejecuta en otra terminal:
+
+```bash
+npm run db:seed
+```
+
+Esto carga un proyecto demo para que `GET /api/projects` devuelva datos desde el inicio.
 
 ## Setup con Docker
 
@@ -106,6 +115,16 @@ Ejemplo de respuesta OK:
 ```
 
 Si la base de datos no está disponible, responde `503` con `db: "down"`.
+
+## Troubleshooting rápido: error en `/api/projects`
+
+Si en el navegador ves error en la API de proyectos (normalmente `500`), revisa este orden:
+
+1. **Variables de entorno**: confirma que `DATABASE_URL` y `DIRECT_URL` existen y apuntan al Postgres correcto.
+2. **Migraciones**: ejecuta `npm run db:migrate:deploy` (si no usaste `dev:local`, este paso es obligatorio).
+3. **Datos iniciales**: ejecuta `npm run db:seed` para crear al menos un proyecto demo.
+4. **Autenticación**: inicia sesión en `/login` con usuarios seed (`admin@internal.local`, etc.).
+5. **Health**: valida `GET /api/health`; si devuelve `db: "down"` el problema es conectividad DB.
 
 ## Comandos
 
