@@ -121,6 +121,9 @@ export interface SeoInsight {
     query?: string;
     url?: string;
     page?: string;
+    cannibalizationRole?: 'primary' | 'secondary';
+    cannibalizationCompetitorCount?: number;
+    cannibalizationQueryImpressionShare?: number;
   }>;
   metrics: {
     potentialTraffic?: number;
