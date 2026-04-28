@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import {
   SeoPage,
@@ -29,6 +29,8 @@ import { BatchAnalysisConfirmationModal } from './BatchAnalysisConfirmationModal
 import { runBatchWithConcurrency, BatchProgress } from '../../utils/batchProcessor';
 import { useProject } from '../../context/ProjectContext';
 import { validateChecklistWithAI } from '../../services/seoChecklistAIValidator';
+import { useGSCAuth } from '../../hooks/useGSCAuth';
+import { listSites, getPageMetrics } from '../../services/googleSearchConsole';
 
 interface Props {
   pages: SeoPage[];
@@ -70,6 +72,19 @@ export const SeoUrlList: React.FC<Props> = ({
     errors: string[];
   } | null>(null);
   const { currentClient } = useProject();
+  const {
+    gscAccessToken,
+    googleUser,
+    login,
+    handleLogoutGsc,
+  } = useGSCAuth();
+  const [gscSites, setGscSites] = useState<Array<{ siteUrl: string; permissionLevel?: string }>>([]);
+  const [selectedGscSite, setSelectedGscSite] = useState<string>(
+    () => localStorage.getItem('mediaflow_gsc_selected_site') || '',
+  );
+  const [isLoadingGscSites, setIsLoadingGscSites] = useState(false);
+  const [isSyncingGscMetrics, setIsSyncingGscMetrics] = useState(false);
+  const [gscSyncStatus, setGscSyncStatus] = useState<string | null>(null);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -107,6 +122,12 @@ export const SeoUrlList: React.FC<Props> = ({
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage,
   );
+
+  useEffect(() => {
+    if (gscAccessToken) {
+      void handleFetchGscSites();
+    }
+  }, [gscAccessToken]);
 
   const handleFilterChange = (val: string) => {
     setFilter(val);
@@ -476,6 +497,106 @@ export const SeoUrlList: React.FC<Props> = ({
     }
   };
 
+  const handleFetchGscSites = async (tokenOverride?: string) => {
+    const token = tokenOverride || gscAccessToken;
+    if (!token) return;
+    setIsLoadingGscSites(true);
+    try {
+      const sites = await listSites(token);
+      const normalizedSites = Array.isArray(sites) ? sites : [];
+      setGscSites(normalizedSites);
+
+      if (normalizedSites.length === 0) {
+        setGscSyncStatus('Tu cuenta GSC no tiene propiedades disponibles.');
+        return;
+      }
+
+      const rememberedSite = localStorage.getItem('mediaflow_gsc_selected_site');
+      const siteToUse =
+        rememberedSite && normalizedSites.some((site) => site.siteUrl === rememberedSite)
+          ? rememberedSite
+          : normalizedSites[0].siteUrl;
+
+      setSelectedGscSite(siteToUse);
+      localStorage.setItem('mediaflow_gsc_selected_site', siteToUse);
+      setGscSyncStatus(`Conectado con GSC. Propiedades detectadas: ${normalizedSites.length}.`);
+    } catch (error) {
+      console.error('No se pudieron cargar propiedades GSC', error);
+      setGscSyncStatus('No se pudieron cargar tus propiedades de GSC.');
+    } finally {
+      setIsLoadingGscSites(false);
+    }
+  };
+
+  const handleConnectGsc = () => {
+    login((token) => {
+      void handleFetchGscSites(token);
+    });
+  };
+
+  const handleSyncGscMetrics = async () => {
+    if (!gscAccessToken) {
+      setGscSyncStatus('Primero conecta tu cuenta de Google Search Console.');
+      return;
+    }
+
+    if (!selectedGscSite) {
+      setGscSyncStatus('Selecciona una propiedad GSC antes de sincronizar métricas.');
+      return;
+    }
+
+    const targetIds = selectedIds.size > 0 ? selectedIds : new Set(filteredPages.map((p) => p.id));
+    const targetPages = pages.filter((page) => targetIds.has(page.id)).slice(0, MAX_URLS_PER_BATCH);
+    if (targetPages.length === 0) {
+      setGscSyncStatus('No hay URLs disponibles para sincronizar.');
+      return;
+    }
+
+    setIsSyncingGscMetrics(true);
+    setGscSyncStatus(`Sincronizando clics e impresiones para ${targetPages.length} URL(s)...`);
+
+    const endDate = new Date().toISOString().slice(0, 10);
+    const startDate = new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const updates: { id: string; changes: Partial<SeoPage> }[] = [];
+    let processed = 0;
+
+    try {
+      for (const page of targetPages) {
+        try {
+          const row = await getPageMetrics(gscAccessToken, selectedGscSite, page.url, startDate, endDate);
+          if (!row) continue;
+
+          updates.push({
+            id: page.id,
+            changes: {
+              gscMetrics: {
+                clicks: Number(row.clicks || 0),
+                impressions: Number(row.impressions || 0),
+                ctr: Number(row.ctr || 0),
+                position: Number(row.position || 0) || undefined,
+                source: 'page',
+                updatedAt: Date.now(),
+                queryCount: page.gscMetrics?.queryCount,
+              },
+            },
+          });
+          processed += 1;
+        } catch (error) {
+          console.warn('No se pudieron sincronizar métricas para URL', page.url, error);
+        }
+      }
+
+      if (updates.length > 0) {
+        onBulkUpdate(updates);
+      }
+      setGscSyncStatus(
+        `Sincronización completada: ${processed}/${targetPages.length} URL(s) actualizadas con GSC.`,
+      );
+    } finally {
+      setIsSyncingGscMetrics(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row gap-4 justify-between items-center">
@@ -515,6 +636,76 @@ export const SeoUrlList: React.FC<Props> = ({
           <Download size={18} />
           <span className="hidden sm:inline">Exportar Excel</span>
         </button>
+      </div>
+
+      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {gscAccessToken ? (
+            <>
+              <span className="text-xs text-emerald-700 dark:text-emerald-300 font-medium">
+                GSC conectado{googleUser?.email ? `: ${googleUser.email}` : ''}.
+              </span>
+              <button
+                onClick={handleLogoutGsc}
+                className="px-3 py-1.5 rounded-lg text-xs border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700"
+              >
+                Desconectar
+              </button>
+              <button
+                onClick={() => handleFetchGscSites()}
+                disabled={isLoadingGscSites}
+                className="px-3 py-1.5 rounded-lg text-xs border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
+              >
+                {isLoadingGscSites ? 'Cargando propiedades...' : 'Recargar propiedades'}
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={handleConnectGsc}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-sky-600 hover:bg-sky-700 text-white"
+            >
+              Conectar con GSC
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={selectedGscSite}
+            onChange={(e) => {
+              setSelectedGscSite(e.target.value);
+              localStorage.setItem('mediaflow_gsc_selected_site', e.target.value);
+            }}
+            disabled={!gscAccessToken || gscSites.length === 0}
+            className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs min-w-[260px] disabled:opacity-60"
+          >
+            {gscSites.length === 0 ? (
+              <option value="">Sin propiedades cargadas</option>
+            ) : (
+              gscSites.map((site) => (
+                <option key={site.siteUrl} value={site.siteUrl}>
+                  {site.siteUrl}
+                </option>
+              ))
+            )}
+          </select>
+          <button
+            onClick={handleSyncGscMetrics}
+            disabled={!gscAccessToken || !selectedGscSite || isSyncingGscMetrics}
+            className="px-3 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50"
+          >
+            {isSyncingGscMetrics ? 'Sincronizando GSC...' : 'Asignar clics/impresiones a URLs'}
+          </button>
+          <span className="text-xs text-slate-500 dark:text-slate-400">
+            {selectedIds.size > 0
+              ? `Aplicará a ${selectedIds.size} URL(s) seleccionadas.`
+              : `Aplicará a ${filteredPages.length} URL(s) filtradas.`}
+          </span>
+        </div>
+
+        {gscSyncStatus && (
+          <div className="text-xs text-slate-600 dark:text-slate-300">{gscSyncStatus}</div>
+        )}
       </div>
 
       <SeoChecklistSettingsModal
