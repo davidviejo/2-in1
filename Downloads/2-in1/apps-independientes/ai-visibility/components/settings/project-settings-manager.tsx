@@ -27,6 +27,8 @@ type Project = {
   updatedAt: string;
   brandAliases: BrandAlias[];
 };
+type QuickTag = { id: string; name: string; _count?: { promptTags: number } };
+type QuickCompetitor = { id: string; name: string; domain: string; isActive: boolean };
 
 type ProjectFormState = {
   name: string;
@@ -77,6 +79,8 @@ export function ProjectSettingsManager() {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [quickTags, setQuickTags] = useState<QuickTag[]>([]);
+  const [quickCompetitors, setQuickCompetitors] = useState<QuickCompetitor[]>([]);
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId) ?? null,
@@ -99,6 +103,11 @@ export function ProjectSettingsManager() {
     setStatusMessage(null);
   }, [selectedProject]);
 
+  useEffect(() => {
+    if (!selectedProject?.id) return;
+    void loadQuickPanels(selectedProject.id);
+  }, [selectedProject?.id]);
+
   async function loadProjects() {
     setLoading(true);
     const response = await fetch('/api/projects', { cache: 'no-store' });
@@ -109,6 +118,17 @@ export function ProjectSettingsManager() {
       setSelectedProjectId((current) => (current === 'new' ? data.projects[0].id : current));
     }
     setLoading(false);
+  }
+
+  async function loadQuickPanels(projectId: string) {
+    const [tagsResponse, competitorsResponse] = await Promise.all([
+      fetch(`/api/projects/${projectId}/tags`, { cache: 'no-store' }),
+      fetch(`/api/projects/${projectId}/competitors`, { cache: 'no-store' })
+    ]);
+    const tagsData = (await tagsResponse.json()) as { tags: QuickTag[] };
+    const competitorsData = (await competitorsResponse.json()) as { competitors: QuickCompetitor[] };
+    setQuickTags(tagsData.tags ?? []);
+    setQuickCompetitors(competitorsData.competitors ?? []);
   }
 
   async function submitProject(event: FormEvent<HTMLFormElement>) {
@@ -190,6 +210,7 @@ export function ProjectSettingsManager() {
     }
 
     setBusy(true);
+    if (!confirm('Remove this alias? This can affect mention detection in downstream reporting.')) return;
     await fetch(`/api/projects/${selectedProject.id}/aliases?aliasId=${aliasId}`, { method: 'DELETE' });
     await loadProjects();
     await refreshProjects();
@@ -342,6 +363,20 @@ export function ProjectSettingsManager() {
               {selectedProject && selectedProject.brandAliases.length === 0 ? (
                 <p className="px-3 py-4 text-xs text-slate-500">No aliases yet.</p>
               ) : null}
+            </div>
+          </section>
+          <section className="grid gap-4 md:grid-cols-2">
+            <div className="rounded-md border border-slate-200 bg-white p-3">
+              <h3 className="mb-2 text-sm font-semibold text-slate-900">Competitors quick access</h3>
+              <ul className="space-y-1 text-xs">
+                {quickCompetitors.slice(0, 8).map((competitor) => <li key={competitor.id}>{competitor.name} · {competitor.domain} · {competitor.isActive ? 'active' : 'inactive'}</li>)}
+              </ul>
+            </div>
+            <div className="rounded-md border border-slate-200 bg-white p-3">
+              <h3 className="mb-2 text-sm font-semibold text-slate-900">Tag overview</h3>
+              <ul className="space-y-1 text-xs">
+                {quickTags.slice(0, 8).map((tag) => <li key={tag.id}>{tag.name} · usage {tag._count?.promptTags ?? 0}</li>)}
+              </ul>
             </div>
           </section>
 

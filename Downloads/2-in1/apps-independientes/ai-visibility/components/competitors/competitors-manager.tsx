@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { SharedReportingFilters } from '@/components/reporting/shared-filters';
 
 import { useProjectContext } from '@/components/projects/project-context';
 
@@ -22,6 +23,9 @@ type CompetitorForm = {
   isActive: boolean;
   chartColor: string;
 };
+type MentionShareRow = { brandKey: string; brandName: string; mentionCount: number; share: number | null };
+type PromptInsightRow = { competitorId: string; competitorName: string; strongestPrompt: { title: string } | null; weakestPrompt: { title: string } | null };
+type ComparisonPayload = { comparison?: { mentionShareByBrand?: MentionShareRow[]; competitorPromptInsights?: PromptInsightRow[] } };
 
 const defaultForm: CompetitorForm = {
   name: '',
@@ -54,6 +58,9 @@ export function CompetitorsManager() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [comparison, setComparison] = useState<ComparisonPayload | null>(null);
+  const [from, setFrom] = useState(new Date(Date.now() - 27 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
+  const [to, setTo] = useState(new Date().toISOString().slice(0, 10));
 
   const selectedCompetitor = useMemo(
     () => competitors.find((competitor) => competitor.id === selectedCompetitorId) ?? null,
@@ -97,6 +104,17 @@ export function CompetitorsManager() {
 
     void loadCompetitors(currentProjectId, searchTerm);
   }, [currentProjectId, loadCompetitors, searchTerm]);
+
+  useEffect(() => {
+    if (!currentProjectId) return;
+    void loadComparison(currentProjectId);
+  }, [currentProjectId, from, to]);
+
+  async function loadComparison(projectId: string) {
+    const response = await fetch(`/api/projects/${projectId}/competitors/comparison?from=${from}&to=${to}`, { cache: 'no-store' });
+    if (!response.ok) return setComparison(null);
+    setComparison(await response.json());
+  }
 
   async function submitCompetitor(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -295,6 +313,27 @@ export function CompetitorsManager() {
       </div>
 
       {statusMessage ? <p className="text-xs font-medium text-slate-700">{statusMessage}</p> : null}
+      <section className="space-y-2 rounded-md border border-slate-200 bg-white p-3">
+        <h2 className="text-sm font-semibold text-slate-900">Comparison analytics</h2>
+        <SharedReportingFilters search="" from={from} to={to} model="" tag="" country="" language="" onChange={(key, value) => {
+          if (key === 'from') setFrom(value);
+          if (key === 'to') setTo(value);
+        }} />
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <h3 className="mb-1 text-xs font-semibold">Mention share</h3>
+            <table className="min-w-full text-xs"><thead><tr><th className="text-left">Brand</th><th className="text-left">Mentions</th><th className="text-left">Share</th></tr></thead>
+              <tbody>{comparison?.comparison?.mentionShareByBrand?.map((row) => <tr key={row.brandKey}><td>{row.brandName}</td><td>{row.mentionCount}</td><td>{row.share === null ? '—' : `${(row.share * 100).toFixed(1)}%`}</td></tr>)}</tbody>
+            </table>
+          </div>
+          <div>
+            <h3 className="mb-1 text-xs font-semibold">Top prompts won/lost</h3>
+            <table className="min-w-full text-xs"><thead><tr><th className="text-left">Competitor</th><th className="text-left">Won</th><th className="text-left">Lost</th></tr></thead>
+              <tbody>{comparison?.comparison?.competitorPromptInsights?.map((row) => <tr key={row.competitorId}><td>{row.competitorName}</td><td>{row.strongestPrompt?.title ?? '—'}</td><td>{row.weakestPrompt?.title ?? '—'}</td></tr>)}</tbody>
+            </table>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

@@ -9,6 +9,7 @@ type Tag = {
   projectId: string;
   name: string;
   description: string | null;
+  _count?: { promptTags: number };
 };
 
 type TagForm = {
@@ -112,7 +113,13 @@ export function TagsManager() {
     }
 
     setBusy(true);
-    await fetch(`/api/projects/${currentProjectId}/tags/${tagId}`, { method: 'DELETE' });
+    const response = await fetch(`/api/projects/${currentProjectId}/tags/${tagId}`, { method: 'DELETE' });
+    const data = (await response.json()) as { message?: string };
+    if (!response.ok) {
+      setStatusMessage(data.message ?? 'Unable to delete tag.');
+      setBusy(false);
+      return;
+    }
     await loadTags(currentProjectId, searchTerm);
     setStatusMessage('Tag deleted.');
     setBusy(false);
@@ -146,8 +153,11 @@ export function TagsManager() {
                 <div>
                   <p className="font-medium text-slate-900">{tag.name}</p>
                   <p className="text-xs text-slate-500">{tag.description || 'No description'}</p>
+                  <p className="text-[11px] text-slate-500">Usage: {tag._count?.promptTags ?? 0}</p>
                 </div>
                 <div className="flex gap-2 text-xs">
+                  <a className="rounded border border-slate-300 bg-white px-2 py-1" href={`/prompts?tagIds=${encodeURIComponent(tag.id)}`}>Prompts</a>
+                  <a className="rounded border border-slate-300 bg-white px-2 py-1" href={`/responses?tag=${encodeURIComponent(tag.name)}`}>Responses</a>
                   <button className="rounded border border-slate-300 bg-white px-2 py-1" onClick={() => setSelectedTagId(tag.id)} type="button">
                     Edit
                   </button>

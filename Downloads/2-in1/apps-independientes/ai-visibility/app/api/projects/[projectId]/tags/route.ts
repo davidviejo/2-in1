@@ -55,6 +55,13 @@ export async function GET(
           }
         : {})
     },
+    include: {
+      _count: {
+        select: {
+          promptTags: true
+        }
+      }
+    },
     orderBy: [{ name: 'asc' }]
   });
 

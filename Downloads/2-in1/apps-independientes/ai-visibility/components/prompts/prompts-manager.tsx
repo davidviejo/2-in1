@@ -1,9 +1,11 @@
 'use client';
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
 import { HistoricalImporter } from '@/components/imports/historical-importer';
 import { useProjectContext } from '@/components/projects/project-context';
+import { SharedReportingFilters } from '@/components/reporting/shared-filters';
 import { normalizeCountry, normalizeLanguage, normalizeSearchTerm } from '@/lib/filters/normalization';
 
 type PromptTag = { tag: { id: string; name: string; description: string | null } };
@@ -101,12 +103,16 @@ function currentRange() {
 
 export function PromptsManager() {
   const { currentProject, currentProjectId, hasProjects, loading } = useProjectContext();
+  const params = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [promptMetrics, setPromptMetrics] = useState<Record<string, PromptMetric>>({});
   const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [countryFilter, setCountryFilter] = useState('');
-  const [languageFilter, setLanguageFilter] = useState('');
+  const [searchTerm, setSearchTerm] = useState(params.get('q') ?? '');
+  const [countryFilter, setCountryFilter] = useState(params.get('country') ?? '');
+  const [languageFilter, setLanguageFilter] = useState(params.get('language') ?? '');
+  const [tagFilter, setTagFilter] = useState(params.get('tagIds') ?? '');
   const [analysisModeFilter, setAnalysisModeFilter] = useState('');
   const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [intentFilter, setIntentFilter] = useState('');
@@ -129,7 +135,18 @@ export function PromptsManager() {
   useEffect(() => {
     if (!currentProjectId) return;
     void loadPrompts(currentProjectId, 1);
-  }, [activeFilter, countryFilter, currentProjectId, intentFilter, languageFilter, searchTerm]);
+  }, [activeFilter, countryFilter, currentProjectId, intentFilter, languageFilter, searchTerm, tagFilter]);
+
+  useEffect(() => {
+    const next = new URLSearchParams();
+    if (searchTerm) next.set('q', searchTerm);
+    if (countryFilter) next.set('country', countryFilter);
+    if (languageFilter) next.set('language', languageFilter);
+    if (tagFilter) next.set('tagIds', tagFilter);
+    if (activeFilter !== 'all') next.set('active', activeFilter);
+    if (intentFilter) next.set('intentClassification', intentFilter);
+    router.replace(`${pathname}?${next.toString()}`);
+  }, [activeFilter, countryFilter, intentFilter, languageFilter, pathname, router, searchTerm, tagFilter]);
 
   async function loadPromptMetrics(projectId: string) {
     const range = currentRange();
@@ -154,6 +171,7 @@ export function PromptsManager() {
     if (activeFilter !== 'all') params.set('active', activeFilter);
     const normalizedIntent = normalizeSearchTerm(intentFilter);
     if (normalizedIntent) params.set('intentClassification', normalizedIntent);
+    if (tagFilter) params.set('tagIds', tagFilter);
     params.set('page', String(page));
     params.set('pageSize', String(pagination.pageSize));
     const response = await fetch(`/api/projects/${projectId}/prompts?${params.toString()}`, { cache: 'no-store' });
@@ -231,15 +249,33 @@ export function PromptsManager() {
       <div className="grid gap-4 xl:grid-cols-[1.6fr_1fr]">
         <section className="rounded-md border border-slate-200 bg-white">
           <div className="space-y-2 border-b border-slate-200 p-3">
-            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-6">
-              <input className="rounded border border-slate-300 px-2 py-1 text-xs" onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search prompt text/notes" value={searchTerm} />
-              <input className="rounded border border-slate-300 px-2 py-1 text-xs" maxLength={2} onChange={(event) => setCountryFilter(event.target.value)} placeholder="Country (US)" value={countryFilter} />
-              <input className="rounded border border-slate-300 px-2 py-1 text-xs" onChange={(event) => setLanguageFilter(event.target.value)} placeholder="Language (en)" value={languageFilter} />
+            <div className="space-y-2">
+              <SharedReportingFilters
+                search={searchTerm}
+                from=""
+                to=""
+                model=""
+                tag={tagFilter}
+                country={countryFilter}
+                language={languageFilter}
+                showDateRange={false}
+                onChange={(key, value) => {
+                  if (key === 'q') setSearchTerm(value);
+                  if (key === 'tag') setTagFilter(value);
+                  if (key === 'country') setCountryFilter(value);
+                  if (key === 'language') setLanguageFilter(value);
+                }}
+                extra={<div className="flex gap-2">
               <select className="rounded border border-slate-300 px-2 py-1 text-xs" value={analysisModeFilter} onChange={(event) => setAnalysisModeFilter(event.target.value)}>
                 <option value="">All modes</option><option value="chatgpt">ChatGPT</option><option value="gemini">Gemini</option><option value="ai_mode">Google AI Mode</option><option value="ai_overview">Google AI Overview</option>
               </select>
               <input className="rounded border border-slate-300 px-2 py-1 text-xs" onChange={(event) => setIntentFilter(event.target.value)} placeholder="Intent classification" value={intentFilter} />
               <select className="rounded border border-slate-300 px-2 py-1 text-xs" onChange={(event) => setActiveFilter(event.target.value as 'all' | 'active' | 'inactive')} value={activeFilter}><option value="all">All states</option><option value="active">Active</option><option value="inactive">Inactive</option></select>
+                </div>}
+              />
+              <div className="flex justify-end">
+                <a className="rounded border border-slate-300 bg-white px-2 py-1 text-xs" href={`/api/projects/${currentProjectId}/exports?dataset=prompts_table`}>Export</a>
+              </div>
             </div>
           </div>
           <div className="overflow-x-auto">

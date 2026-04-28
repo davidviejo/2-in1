@@ -85,6 +85,26 @@ export async function DELETE(
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
+  const usageCount = await prisma.promptTag.count({
+    where: {
+      tagId,
+      prompt: {
+        projectId,
+        deletedAt: null
+      }
+    }
+  });
+
+  if (usageCount > 0) {
+    return NextResponse.json(
+      {
+        error: 'tag_in_use',
+        message: `Tag is in use by ${usageCount} prompt(s). Remove mappings first.`
+      },
+      { status: 409 }
+    );
+  }
+
   await prisma.tag.updateMany({
     where: {
       id: tagId,

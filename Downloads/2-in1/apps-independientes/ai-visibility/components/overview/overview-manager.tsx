@@ -14,6 +14,7 @@ import {
   SectionCard
 } from '@/components/dashboard-primitives';
 import { useProjectContext } from '@/components/projects/project-context';
+import { SharedReportingFilters } from '@/components/reporting/shared-filters';
 
 type PromptKpi = {
   promptId: string;
@@ -215,24 +216,20 @@ export function OverviewManager() {
           <p className="text-xs uppercase tracking-wide text-slate-500">Project</p>
           <p className="font-semibold text-slate-900">{currentProject?.name ?? 'Unknown project'}</p>
         </div>
-        <label className="flex items-center gap-2 text-sm text-slate-700">
-          From
-          <input
-            className="rounded border border-slate-300 bg-white px-2 py-1"
-            onChange={(event) => setRange((current) => ({ ...current, from: event.target.value }))}
-            type="date"
-            value={range.from}
-          />
-        </label>
-        <label className="flex items-center gap-2 text-sm text-slate-700">
-          To
-          <input
-            className="rounded border border-slate-300 bg-white px-2 py-1"
-            onChange={(event) => setRange((current) => ({ ...current, to: event.target.value }))}
-            type="date"
-            value={range.to}
-          />
-        </label>
+        <SharedReportingFilters
+          search=""
+          from={range.from}
+          to={range.to}
+          model=""
+          tag=""
+          country=""
+          language=""
+          showDateRange
+          onChange={(key, value) => {
+            if (key === 'from') setRange((current) => ({ ...current, from: value }));
+            if (key === 'to') setRange((current) => ({ ...current, to: value }));
+          }}
+        />
         {currentProjectId ? (
           <div className="ml-auto flex flex-wrap items-center gap-2 text-xs text-slate-600">
             <span className="font-medium">Quick links:</span>
