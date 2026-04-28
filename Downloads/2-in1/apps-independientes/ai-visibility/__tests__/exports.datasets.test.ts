@@ -4,20 +4,26 @@ const {
   mockFindManyPrompts,
   mockBuildProjectSummary,
   mockBuildProjectCompetitorComparison,
-  mockListResponses,
-  mockListCitations
+  mockFindManyResponses,
+  mockFindManyCitations
 } = vi.hoisted(() => ({
   mockFindManyPrompts: vi.fn(),
   mockBuildProjectSummary: vi.fn(),
   mockBuildProjectCompetitorComparison: vi.fn(),
-  mockListResponses: vi.fn(),
-  mockListCitations: vi.fn()
+  mockFindManyResponses: vi.fn(),
+  mockFindManyCitations: vi.fn()
 }));
 
 vi.mock('@/lib/db', () => ({
   prisma: {
     prompt: {
       findMany: mockFindManyPrompts
+    },
+    response: {
+      findMany: mockFindManyResponses
+    },
+    citation: {
+      findMany: mockFindManyCitations
     }
   }
 }));
@@ -30,13 +36,16 @@ vi.mock('@/lib/reporting/competitor-comparison', () => ({
   buildProjectCompetitorComparison: mockBuildProjectCompetitorComparison
 }));
 
-vi.mock('@/lib/responses/persistence', () => ({
-  listResponses: mockListResponses,
-  listCitations: mockListCitations
+vi.mock('@/lib/reporting/timeseries', () => ({
+  buildProjectTimeseries: vi.fn().mockResolvedValue({
+    series: [],
+    range: { from: '2026-04-01T00:00:00.000Z', to: '2026-04-07T23:59:59.999Z' }
+  })
 }));
 
 import {
   buildCompetitorsComparisonExport,
+  buildNarrativeInsightsDraft,
   buildPromptsTableExport,
   buildSummaryKpiPackExport
 } from '@/lib/exports/datasets';
@@ -44,6 +53,8 @@ import {
 describe('export datasets', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFindManyResponses.mockResolvedValue([]);
+    mockFindManyCitations.mockResolvedValue([]);
   });
 
   it('builds prompts export with stable column order and UI filters', async () => {
@@ -123,9 +134,7 @@ describe('export datasets', () => {
   it('builds competitor comparison rows with stable keys', async () => {
     mockBuildProjectCompetitorComparison.mockResolvedValue({
       comparison: {
-        mentionShareByBrand: [
-          { brandKey: 'client', brandName: 'Client', brandType: 'CLIENT', mentionCount: 5, share: 0.5 }
-        ],
+        mentionShareByBrand: [{ brandKey: 'client', brandName: 'Client', brandType: 'CLIENT', mentionCount: 5, share: 0.5 }],
         citationShareByBrand: {
           rows: [{ brandKey: 'client', citationCount: 4, share: 0.4 }]
         },
@@ -142,5 +151,38 @@ describe('export datasets', () => {
 
     expect(table.columns[0]?.key).toBe('brandKey');
     expect(table.rows[0]?.mentionCount).toBe(5);
+  });
+
+  it('builds analyst-draft insights with explicit metric grounding', () => {
+    const insights = buildNarrativeInsightsDraft({
+      summary: {
+        dataset: 'summary_kpi_pack',
+        suggestedFilename: 'summary',
+        columns: [],
+        rows: [{ mentionRate: 0.42, citationRate: 0.55, shareOfVoice: 0.61 }]
+      },
+      promptsPerformance: {
+        dataset: 'prompts_performance',
+        suggestedFilename: 'prompts',
+        columns: [],
+        rows: [{ promptId: 'p1', title: 'Best prompt', citationRate: 0.8, validResponses: 10 }]
+      },
+      citations: {
+        dataset: 'citations_table',
+        suggestedFilename: 'citations',
+        columns: [],
+        rows: [{ sourceDomain: 'example.com' }, { sourceDomain: 'example.com' }, { sourceDomain: 'other.com' }]
+      },
+      competitors: {
+        dataset: 'competitors_comparison',
+        suggestedFilename: 'comp',
+        columns: [],
+        rows: [{ brandType: 'COMPETITOR', brandName: 'Rival', mentionShare: 0.4, citationShare: 0.35 }]
+      }
+    });
+
+    expect(insights.length).toBeGreaterThan(0);
+    expect(insights.every((insight) => insight.bullet.startsWith('Analyst draft:'))).toBe(true);
+    expect(insights.every((insight) => Object.keys(insight.metrics).length > 0)).toBe(true);
   });
 });

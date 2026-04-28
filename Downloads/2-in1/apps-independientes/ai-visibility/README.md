@@ -124,7 +124,7 @@ npm run dev:local  # db + prisma + app
 npx prisma generate
 ```
 
-> Nota: se incluye `prisma/schema.prisma` como base de scaffold. No hay lógica de negocio implementada todavía.
+> Prisma schema y migraciones están activas y alineadas con el flujo de reporting/export actual.
 
 ## Rutas placeholder incluidas
 
@@ -164,3 +164,33 @@ La app soporta como modos de análisis de primer nivel:
 - Runbook de despliegue: `docs/deployment.md`
 - Estrategia de backup/restore: `docs/backup-restore.md`
 - CI de PR: `.github/workflows/ci.yml`
+
+
+## Report-ready export pack (MVP)
+
+Endpoint: `POST /api/projects/:projectId/exports` con `dataset=report_pack` y `format=xlsx`.
+
+El pack exporta un bundle consistente para **1 proyecto + 1 date range**, con tabs estables:
+
+1. `summary_kpis`
+2. `timeseries`
+3. `prompts_performance`
+4. `responses`
+5. `citations`
+6. `competitors_comparison`
+7. `narrative_draft` (opcional, si `filters.includeNarrativeInsights=true`)
+
+Notas:
+- `report_pack` no soporta `csv` para evitar pérdida de estructura multi-sección.
+- Los datasets de detalle (`responses`/`citations`) respetan el rango `from`/`to` del pack.
+- El contenido está pensado para uso externo por analistas sin SQL manual.
+
+### Narrative-insights helper (asistencia de analista)
+
+El helper genera bullets borrador sobre:
+- strongest prompts
+- source opportunities
+- competitor pressure
+- model differences
+
+Cada bullet empieza con `Analyst draft:` y reporta explícitamente los valores métricos usados (sin claims inventados).

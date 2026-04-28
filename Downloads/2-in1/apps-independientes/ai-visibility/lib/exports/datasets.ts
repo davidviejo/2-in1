@@ -1,10 +1,11 @@
+import { prisma } from '@/lib/db';
+import type { NarrativeInsightDraft, ExportRequestFilters, ExportTable, ReportExportPack } from '@/lib/exports/types';
+import { normalizeCountry, normalizeLanguage, normalizeSearchTerm, safeTrim } from '@/lib/filters/normalization';
 import { buildProjectCompetitorComparison } from '@/lib/reporting/competitor-comparison';
+import { normalizeAnalysisMode, normalizeCaptureMethod, normalizeProvider, normalizeSurface } from '@/lib/reporting/dimensions';
 import { buildProjectSummary } from '@/lib/reporting/summary';
 import { getPreviousComparableRange, validateSummaryDateRange } from '@/lib/reporting/summary-validation';
-import { normalizeCountry, normalizeLanguage, normalizeSearchTerm, safeTrim } from '@/lib/filters/normalization';
-import { listCitations, listResponses } from '@/lib/responses/persistence';
-import { prisma } from '@/lib/db';
-import type { ExportRequestFilters, ExportTable } from '@/lib/exports/types';
+import { buildProjectTimeseries } from '@/lib/reporting/timeseries';
 
 function parseTagIds(raw: string | undefined): string[] {
   if (!raw) {
@@ -36,20 +37,34 @@ function summarizeFilters(filters: ExportRequestFilters): string {
   return `${from}_${to}`;
 }
 
-export async function buildSummaryKpiPackExport(projectId: string, filters: ExportRequestFilters): Promise<ExportTable> {
+function getValidatedDateRange(filters: ExportRequestFilters) {
   const validation = validateSummaryDateRange(filters.from ?? null, filters.to ?? null);
   if (!validation.values) {
     throw new Error('invalid_date_range');
   }
 
+  return validation.values;
+}
+
+export async function buildSummaryKpiPackExport(projectId: string, filters: ExportRequestFilters): Promise<ExportTable> {
+  const range = getValidatedDateRange(filters);
+
   const payload = await buildProjectSummary({
     projectId,
-    currentRange: validation.values,
-    previousRange: getPreviousComparableRange(validation.values)
+    currentRange: range,
+    previousRange: getPreviousComparableRange(range),
+    filters: {
+      provider: normalizeProvider(filters.provider),
+      surface: normalizeSurface(filters.surface),
+      analysisMode: normalizeAnalysisMode(filters.analysisMode),
+      modelLabel: normalizeSearchTerm(filters.modelLabel),
+      captureMethod: normalizeCaptureMethod(filters.captureMethod)
+    }
   });
 
   return {
     dataset: 'summary_kpi_pack',
+    sectionName: 'summary_kpis',
     suggestedFilename: `summary-kpi-pack_${projectId}_${summarizeFilters(filters)}`,
     columns: [
       { key: 'projectId', label: 'project_id' },
@@ -79,6 +94,145 @@ export async function buildSummaryKpiPackExport(projectId: string, filters: Expo
         generatedAt: payload.generatedAt
       }
     ]
+  };
+}
+
+export async function buildTimeseriesExport(projectId: string, filters: ExportRequestFilters): Promise<ExportTable> {
+  const range = getValidatedDateRange(filters);
+  const granularity = filters.granularity === 'week' ? 'week' : 'day';
+
+  const payload = await buildProjectTimeseries({
+    projectId,
+    range,
+    granularity,
+    filters: {
+      provider: normalizeProvider(filters.provider),
+      surface: normalizeSurface(filters.surface),
+      analysisMode: normalizeAnalysisMode(filters.analysisMode),
+      modelLabel: normalizeSearchTerm(filters.modelLabel),
+      captureMethod: normalizeCaptureMethod(filters.captureMethod)
+    }
+  });
+
+  const rows = payload.series.flatMap((point) =>
+    Object.entries(point.values).map(([metric, value]) => ({
+      date: point.periodStart,
+      metric,
+      value: Number(value)
+    }))
+  );
+
+  return {
+    dataset: 'timeseries',
+    sectionName: 'timeseries',
+    suggestedFilename: `timeseries_${projectId}_${summarizeFilters(filters)}`,
+    columns: [
+      { key: 'date', label: 'date' },
+      { key: 'metric', label: 'metric' },
+      { key: 'value', label: 'value' }
+    ],
+    rows
+  };
+}
+
+export async function buildPromptsPerformanceExport(projectId: string, filters: ExportRequestFilters): Promise<ExportTable> {
+  const range = getValidatedDateRange(filters);
+  const tagIds = parseTagIds(filters.tagIds);
+
+  const prompts = await prisma.prompt.findMany({
+    where: {
+      projectId,
+      deletedAt: null,
+      ...(filters.country ? { country: normalizeCountry(filters.country) ?? undefined } : {}),
+      ...(filters.language ? { language: normalizeLanguage(filters.language) ?? undefined } : {}),
+      ...(tagIds.length > 0
+        ? {
+            AND: tagIds.map((tagId) => ({
+              promptTags: {
+                some: {
+                  tagId,
+                  tag: { deletedAt: null }
+                }
+              }
+            }))
+          }
+        : {})
+    },
+    include: {
+      promptTags: {
+        where: { tag: { deletedAt: null } },
+        include: { tag: true }
+      },
+      runs: {
+        where: {
+          executedAt: {
+            gte: range.from,
+            lte: range.to
+          },
+          ...{
+            ...(
+              normalizeProvider(filters.provider)
+                ? { provider: normalizeProvider(filters.provider) }
+                : {}
+            ),
+            ...(normalizeSurface(filters.surface) ? { surface: normalizeSurface(filters.surface) } : {}),
+            ...(normalizeAnalysisMode(filters.analysisMode) ? { analysisMode: normalizeAnalysisMode(filters.analysisMode) } : {}),
+            ...(normalizeSearchTerm(filters.modelLabel) ? { model: normalizeSearchTerm(filters.modelLabel) } : {}),
+            ...(normalizeCaptureMethod(filters.captureMethod)
+              ? { captureMethod: normalizeCaptureMethod(filters.captureMethod) }
+              : {})
+          }
+        },
+        include: {
+          responses: {
+            where: { isError: false },
+            include: {
+              citations: { select: { id: true } },
+              brandMentions: {
+                where: { mentionType: 'COMPETITOR' },
+                select: { id: true }
+              }
+            }
+          }
+        }
+      }
+    },
+    orderBy: [{ priority: 'asc' }, { updatedAt: 'desc' }]
+  });
+
+  const rows = prompts.map((prompt: (typeof prompts)[number]) => {
+    const responses = prompt.runs.flatMap((run: (typeof prompt.runs)[number]) => run.responses);
+    const responsesCount = responses.length;
+    const citedResponses = responses.filter((response: (typeof responses)[number]) => response.citations.length > 0).length;
+    const competitorResponses = responses.filter((response: (typeof responses)[number]) => response.brandMentions.length > 0).length;
+
+    return {
+      promptId: prompt.id,
+      title: prompt.title,
+      promptText: prompt.promptText,
+      tags: prompt.promptTags.map((item: (typeof prompt.promptTags)[number]) => item.tag.name).join('|'),
+      executions: prompt.runs.length,
+      validResponses: responsesCount,
+      citationRate: responsesCount > 0 ? Number((citedResponses / responsesCount).toFixed(4)) : null,
+      competitorPresence: responsesCount > 0 ? Number((competitorResponses / responsesCount).toFixed(4)) : null
+    };
+  });
+
+  return {
+    dataset: 'prompts_performance',
+    sectionName: 'prompts_performance',
+    suggestedFilename: `prompts-performance_${projectId}_${summarizeFilters(filters)}`,
+    columns: [
+      { key: 'promptId', label: 'prompt_id' },
+      { key: 'title', label: 'title' },
+      { key: 'promptText', label: 'prompt_text' },
+      { key: 'tags', label: 'tags' },
+      { key: 'executions', label: 'executions' },
+      { key: 'validResponses', label: 'valid_responses' },
+      { key: 'citationRate', label: 'citation_rate' },
+      { key: 'competitorPresence', label: 'competitor_presence' }
+    ],
+    rows
   };
 }
 
@@ -173,7 +327,8 @@ export async function buildPromptsTableExport(projectId: string, filters: Export
 
   return {
     dataset: 'prompts_table',
-    suggestedFilename: `prompts-table_${projectId}_${Date.now()}`,
+    sectionName: 'prompts_table',
+    suggestedFilename: `prompts-table_${projectId}_${summarizeFilters(filters)}`,
     columns: [
       { key: 'promptId', label: 'prompt_id' },
       { key: 'promptText', label: 'prompt_text' },
@@ -192,42 +347,46 @@ export async function buildPromptsTableExport(projectId: string, filters: Export
   };
 }
 
-export async function buildResponsesTableExport(projectId: string): Promise<ExportTable> {
-  const pageSize = 100;
-  let page = 1;
-  let totalPages = 1;
-  const rows: Record<string, string | number | boolean | null>[] = [];
+export async function buildResponsesTableExport(projectId: string, filters?: ExportRequestFilters): Promise<ExportTable> {
+  const range = filters?.from || filters?.to ? getValidatedDateRange(filters) : null;
 
-  while (page <= totalPages) {
-    const payload = await listResponses(projectId, page, pageSize);
-    totalPages = payload.pagination.totalPages;
-
-    rows.push(
-      ...payload.responses.map((item: (typeof payload.responses)[number]) => ({
-        responseId: item.id,
-        runId: item.runId,
-        promptId: item.promptId,
-        promptTitle: item.promptTitle,
-        promptText: item.promptText,
-        runStatus: item.runStatus,
-        responseStatus: item.responseStatus,
-        language: item.language,
-        mentionDetected: item.mentionDetected,
-        mentionType: item.mentionType,
-        sentiment: item.sentiment,
-        rawSnippet: item.rawSnippet,
-        cleanedSnippet: item.cleanedSnippet,
-        createdAt: asIsoDate(item.createdAt),
-        runExecutedAt: asIsoDate(item.runExecutedAt)
-      }))
-    );
-
-    page += 1;
-  }
+  const responses = await prisma.response.findMany({
+    where: {
+      run: {
+        projectId,
+        ...(range
+          ? {
+              executedAt: {
+                gte: range.from,
+                lte: range.to
+              }
+            }
+          : {})
+      }
+    },
+    include: {
+      run: {
+        select: {
+          id: true,
+          status: true,
+          executedAt: true,
+          prompt: {
+            select: {
+              id: true,
+              title: true,
+              promptText: true
+            }
+          }
+        }
+      }
+    },
+    orderBy: [{ createdAt: 'desc' }]
+  });
 
   return {
     dataset: 'responses_table',
-    suggestedFilename: `responses-table_${projectId}_${Date.now()}`,
+    sectionName: 'responses',
+    suggestedFilename: `responses-table_${projectId}_${summarizeFilters(filters ?? {})}`,
     columns: [
       { key: 'responseId', label: 'response_id' },
       { key: 'runId', label: 'run_id' },
@@ -245,46 +404,73 @@ export async function buildResponsesTableExport(projectId: string): Promise<Expo
       { key: 'createdAt', label: 'created_at' },
       { key: 'runExecutedAt', label: 'run_executed_at' }
     ],
-    rows
+    rows: responses.map((item: (typeof responses)[number]) => ({
+      responseId: item.id,
+      runId: item.runId,
+      promptId: item.run.prompt.id,
+      promptTitle: item.run.prompt.title,
+      promptText: item.run.prompt.promptText,
+      runStatus: item.run.status,
+      responseStatus: item.status,
+      language: item.language,
+      mentionDetected: item.mentionDetected,
+      mentionType: item.mentionType,
+      sentiment: item.sentiment,
+      rawSnippet: item.rawText.slice(0, 300),
+      cleanedSnippet: (item.cleanedText ?? '').slice(0, 300),
+      createdAt: asIsoDate(item.createdAt),
+      runExecutedAt: asIsoDate(item.run.executedAt)
+    }))
   };
 }
 
-export async function buildCitationsTableExport(projectId: string): Promise<ExportTable> {
-  const pageSize = 100;
-  let page = 1;
-  let totalPages = 1;
-  const rows: Record<string, string | number | boolean | null>[] = [];
+export async function buildCitationsTableExport(projectId: string, filters?: ExportRequestFilters): Promise<ExportTable> {
+  const range = filters?.from || filters?.to ? getValidatedDateRange(filters) : null;
 
-  while (page <= totalPages) {
-    const payload = await listCitations(projectId, page, pageSize);
-    totalPages = payload.pagination.totalPages;
-
-    rows.push(
-      ...payload.citations.map((item: (typeof payload.citations)[number]) => ({
-        citationId: item.id,
-        responseId: item.responseId,
-        runId: item.runId,
-        promptId: item.promptId,
-        promptTitle: item.promptTitle,
-        promptText: item.promptText,
-        model: item.model,
-        sourceDomain: item.sourceDomain,
-        sourceUrl: item.sourceUrl,
-        title: item.title,
-        snippet: item.snippet,
-        position: item.position,
-        createdAt: asIsoDate(item.createdAt),
-        publishedAt: asIsoDate(item.publishedAt),
-        runExecutedAt: asIsoDate(item.runExecutedAt)
-      }))
-    );
-
-    page += 1;
-  }
+  const citations = await prisma.citation.findMany({
+    where: {
+      response: {
+        run: {
+          projectId,
+          ...(range
+            ? {
+                executedAt: {
+                  gte: range.from,
+                  lte: range.to
+                }
+              }
+            : {})
+        }
+      }
+    },
+    include: {
+      response: {
+        select: {
+          id: true,
+          run: {
+            select: {
+              id: true,
+              model: true,
+              executedAt: true,
+              prompt: {
+                select: {
+                  id: true,
+                  title: true,
+                  promptText: true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    orderBy: [{ createdAt: 'desc' }]
+  });
 
   return {
     dataset: 'citations_table',
-    suggestedFilename: `citations-table_${projectId}_${Date.now()}`,
+    sectionName: 'citations',
+    suggestedFilename: `citations-table_${projectId}_${summarizeFilters(filters ?? {})}`,
     columns: [
       { key: 'citationId', label: 'citation_id' },
       { key: 'responseId', label: 'response_id' },
@@ -302,19 +488,39 @@ export async function buildCitationsTableExport(projectId: string): Promise<Expo
       { key: 'publishedAt', label: 'published_at' },
       { key: 'runExecutedAt', label: 'run_executed_at' }
     ],
-    rows
+    rows: citations.map((item: (typeof citations)[number]) => ({
+      citationId: item.id,
+      responseId: item.responseId,
+      runId: item.response.run.id,
+      promptId: item.response.run.prompt.id,
+      promptTitle: item.response.run.prompt.title,
+      promptText: item.response.run.prompt.promptText,
+      model: item.response.run.model,
+      sourceDomain: item.sourceDomain,
+      sourceUrl: item.sourceUrl,
+      title: item.title,
+      snippet: item.snippet,
+      position: item.position,
+      createdAt: asIsoDate(item.createdAt),
+      publishedAt: asIsoDate(item.publishedAt),
+      runExecutedAt: asIsoDate(item.response.run.executedAt)
+    }))
   };
 }
 
 export async function buildCompetitorsComparisonExport(projectId: string, filters: ExportRequestFilters): Promise<ExportTable> {
-  const validation = validateSummaryDateRange(filters.from ?? null, filters.to ?? null);
-  if (!validation.values) {
-    throw new Error('invalid_date_range');
-  }
+  const range = getValidatedDateRange(filters);
 
   const payload = await buildProjectCompetitorComparison({
     projectId,
-    range: validation.values
+    range,
+    filters: {
+      provider: normalizeProvider(filters.provider),
+      surface: normalizeSurface(filters.surface),
+      analysisMode: normalizeAnalysisMode(filters.analysisMode),
+      modelLabel: normalizeSearchTerm(filters.modelLabel),
+      captureMethod: normalizeCaptureMethod(filters.captureMethod)
+    }
   });
 
   const rows: Record<string, string | number | boolean | null>[] = [];
@@ -340,6 +546,7 @@ export async function buildCompetitorsComparisonExport(projectId: string, filter
 
   return {
     dataset: 'competitors_comparison',
+    sectionName: 'competitors_comparison',
     suggestedFilename: `competitors-comparison_${projectId}_${summarizeFilters(filters)}`,
     columns: [
       { key: 'brandKey', label: 'brand_key' },
@@ -355,5 +562,107 @@ export async function buildCompetitorsComparisonExport(projectId: string, filter
       { key: 'sentimentOtherShare', label: 'sentiment_other_share' }
     ],
     rows
+  };
+}
+
+export function buildNarrativeInsightsDraft(input: {
+  summary: ExportTable;
+  promptsPerformance: ExportTable;
+  citations: ExportTable;
+  competitors: ExportTable;
+}): NarrativeInsightDraft[] {
+  const insights: NarrativeInsightDraft[] = [];
+
+  const bestPrompt = [...input.promptsPerformance.rows]
+    .filter((row) => typeof row.citationRate === 'number')
+    .sort((a, b) => Number(b.citationRate ?? 0) - Number(a.citationRate ?? 0))[0];
+  if (bestPrompt) {
+    insights.push({
+      area: 'strongest_prompts',
+      bullet: `Analyst draft: Prompt "${bestPrompt.title}" appears strongest with citation_rate=${bestPrompt.citationRate} over valid_responses=${bestPrompt.validResponses}.`,
+      metrics: {
+        prompt_id: String(bestPrompt.promptId),
+        citation_rate: Number(bestPrompt.citationRate),
+        valid_responses: Number(bestPrompt.validResponses)
+      }
+    });
+  }
+
+  const domains = new Map<string, number>();
+  for (const row of input.citations.rows) {
+    const domain = String(row.sourceDomain ?? '').trim().toLowerCase();
+    if (!domain) {
+      continue;
+    }
+    domains.set(domain, (domains.get(domain) ?? 0) + 1);
+  }
+  const topDomain = [...domains.entries()].sort((a, b) => b[1] - a[1])[0];
+  if (topDomain) {
+    insights.push({
+      area: 'source_opportunities',
+      bullet: `Analyst draft: Source concentration shows ${topDomain[0]} with citations=${topDomain[1]} in this range; review if diversification is needed.`,
+      metrics: {
+        source_domain: topDomain[0],
+        citations: topDomain[1],
+        distinct_domains: domains.size
+      }
+    });
+  }
+
+  const strongestCompetitor = [...input.competitors.rows]
+    .filter((row) => row.brandType === 'COMPETITOR')
+    .sort((a, b) => Number(b.mentionShare ?? 0) - Number(a.mentionShare ?? 0))[0];
+  if (strongestCompetitor) {
+    insights.push({
+      area: 'competitor_pressure',
+      bullet: `Analyst draft: Competitor pressure is led by ${strongestCompetitor.brandName} with mention_share=${strongestCompetitor.mentionShare} and citation_share=${strongestCompetitor.citationShare}.`,
+      metrics: {
+        competitor: String(strongestCompetitor.brandName),
+        mention_share: Number(strongestCompetitor.mentionShare ?? 0),
+        citation_share: Number(strongestCompetitor.citationShare ?? 0)
+      }
+    });
+  }
+
+  const summaryRow = input.summary.rows[0];
+  if (summaryRow) {
+    insights.push({
+      area: 'model_differences',
+      bullet: `Analyst draft: Aggregate period ended with mention_rate=${summaryRow.mentionRate}, citation_rate=${summaryRow.citationRate}, share_of_voice=${summaryRow.shareOfVoice}; compare these metrics across model tabs for deeper diagnosis.`,
+      metrics: {
+        mention_rate: Number(summaryRow.mentionRate ?? 0),
+        citation_rate: Number(summaryRow.citationRate ?? 0),
+        share_of_voice: Number(summaryRow.shareOfVoice ?? 0)
+      }
+    });
+  }
+
+  return insights;
+}
+
+export async function buildReportPackExport(projectId: string, filters: ExportRequestFilters): Promise<ReportExportPack> {
+  const [summary, timeseries, promptsPerformance, responses, citations, competitors] = await Promise.all([
+    buildSummaryKpiPackExport(projectId, filters),
+    buildTimeseriesExport(projectId, filters),
+    buildPromptsPerformanceExport(projectId, filters),
+    buildResponsesTableExport(projectId, filters),
+    buildCitationsTableExport(projectId, filters),
+    buildCompetitorsComparisonExport(projectId, filters)
+  ]);
+
+  const narrativeInsights = filters.includeNarrativeInsights
+    ? buildNarrativeInsightsDraft({
+        summary,
+        promptsPerformance,
+        citations,
+        competitors
+      })
+    : [];
+
+  return {
+    dataset: 'report_pack',
+    suggestedFilename: `report-pack_${projectId}_${summarizeFilters(filters)}`,
+    sections: [summary, timeseries, promptsPerformance, responses, citations, competitors],
+    narrativeInsights
   };
 }
