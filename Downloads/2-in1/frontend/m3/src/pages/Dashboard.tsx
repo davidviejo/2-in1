@@ -97,6 +97,13 @@ const TRENDING_ANALYSIS_MAX_ROWS_DEFAULT = 25000;
 const TRENDING_ANALYSIS_MAX_ROWS_HARD_LIMIT = 4000000;
 const TRENDING_ANALYSIS_MAX_ROWS_MIN = 1000;
 
+interface ImportedInsightStatusRow {
+  query: string;
+  url: string;
+  status: SeoInsightLifecycleStatus;
+  removeInsight?: boolean;
+}
+
 interface DashboardProps {
   modules: ModuleData[];
   globalScore: number;
@@ -562,6 +569,139 @@ const sanitizeRowsForSheets = (rows: Array<Record<string, unknown>>) =>
     ),
   );
 
+const parseCsvLine = (line: string) => {
+  const values: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+
+    if (char === '"') {
+      if (inQuotes && line[index + 1] === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      values.push(current.trim());
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  values.push(current.trim());
+  return values.map((value) => value.replace(/^"|"$/g, '').trim());
+};
+
+const normalizeImportedStatus = (statusValue: string): SeoInsightLifecycleStatus | null => {
+  const normalized = statusValue.trim().toLowerCase();
+
+  if (!normalized) return null;
+  if (['done', 'completo', 'completado', 'realizado', 'resuelto', 'ok'].includes(normalized)) {
+    return 'done';
+  }
+  if (['ignored', 'ignorado', 'omitido', 'omitida', 'descartado', 'descartada'].includes(normalized)) {
+    return 'ignored';
+  }
+  if (['planned', 'planificado', 'planificada', 'plan'].includes(normalized)) {
+    return 'planned';
+  }
+  if (['postponed', 'pospuesto', 'pospuesta'].includes(normalized)) {
+    return 'postponed';
+  }
+  if (['in_progress', 'in progress', 'en_progreso', 'en progreso'].includes(normalized)) {
+    return 'in_progress';
+  }
+
+  return null;
+};
+
+const normalizeImportedBoolean = (value: string): boolean =>
+  ['1', 'true', 'yes', 'si', 'sí'].includes(value.trim().toLowerCase());
+
+const parseInsightStatusRows = (content: string): ImportedInsightStatusRow[] => {
+  const lines = content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) {
+    return [];
+  }
+
+  const rows = lines.map(parseCsvLine);
+  const [firstRow, ...restRows] = rows;
+  const normalizedHeader = firstRow.map((cell) => cell.trim().toLowerCase());
+  const hasHeader = normalizedHeader.includes('query') || normalizedHeader.includes('url') || normalizedHeader.includes('status');
+  const dataRows = hasHeader ? restRows : rows;
+
+  const queryIndex = hasHeader ? normalizedHeader.indexOf('query') : 0;
+  const urlIndex = hasHeader ? normalizedHeader.indexOf('url') : 1;
+  const statusIndex = hasHeader ? normalizedHeader.indexOf('status') : 2;
+  const removeInsightIndex = hasHeader
+    ? normalizedHeader.findIndex((header) => ['remove_insight', 'delete_insight', 'eliminar_insight'].includes(header))
+    : -1;
+
+  if (statusIndex < 0) {
+    return [];
+  }
+
+  return dataRows
+    .map((cells) => {
+      const status = normalizeImportedStatus(cells[statusIndex] || '');
+      if (!status) return null;
+      return {
+        query: cells[queryIndex] || '',
+        url: cells[urlIndex] || '',
+        status,
+        removeInsight: removeInsightIndex >= 0 ? normalizeImportedBoolean(cells[removeInsightIndex] || '') : false,
+      };
+    })
+    .filter((row): row is ImportedInsightStatusRow => Boolean(row))
+    .filter((row) => row.query || row.url);
+};
+
+const normalizeImportToken = (value?: string) => (value || '').trim().toLowerCase();
+
+const matchesImportedScope = (
+  relatedRow: SeoInsight['relatedRows'][number],
+  importedRow: Pick<ImportedInsightStatusRow, 'query' | 'url'>,
+) => {
+  const importedQuery = normalizeImportToken(importedRow.query);
+  const importedUrl = normalizeImportToken(importedRow.url);
+  const rowQuery = normalizeImportToken(relatedRow.keys?.[0]);
+  const rowUrl = normalizeImportToken(relatedRow.keys?.[1]);
+
+  if (importedQuery && importedUrl) {
+    return rowQuery === importedQuery && rowUrl === importedUrl;
+  }
+
+  if (importedQuery) {
+    return rowQuery === importedQuery;
+  }
+
+  if (importedUrl) {
+    return rowUrl === importedUrl;
+  }
+
+  return false;
+};
+
+const buildInsightIgnoreScope = (insight: SeoInsight) =>
+  [
+    normalizeImportToken(insight.ruleKey || insight.title),
+    normalizeImportToken(insight.category),
+    normalizeImportToken(String(insight.moduleId || insight.trace?.moduleId || '')),
+    normalizeImportToken(insight.sourceType),
+  ].join('|');
+
 const mapInsightRowForExport = (row: SeoInsight['relatedRows'][number]) => {
   const queryFromKeys = row.keys?.[0] ?? '';
   const urlFromKeys = row.keys?.[1] ?? '';
@@ -936,6 +1076,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   const {
     entries: ignoredEntries,
     isIgnored,
+    ignoreEntry,
     ignoreRow,
     unignoreKey,
     importEntries,
@@ -944,6 +1085,80 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   const { getInsightStatus, setInsightStatus } = useSeoInsightState(
     `${currentClient?.id || 'global'}:${selectedSite || 'no-site'}`,
   );
+
+  const applyImportedInsightSheet = useCallback((content: string) => {
+    const parsedStatusRows = parseInsightStatusRows(content);
+
+    const normalizedRows = parsedStatusRows.map((row) => ({ ...row }));
+
+    if (normalizedRows.length === 0) {
+      return {
+        ignoredRowsImported: importEntries(content),
+        statusUpdates: 0,
+        matchedInsights: 0,
+      };
+    }
+
+    const rowsToExclude = normalizedRows.filter((row) => row.status === 'done' || row.status === 'ignored');
+    let ignoredRowsImported = 0;
+    let statusUpdates = 0;
+    const matchedInsightIds = new Set<string>();
+
+    normalizedRows.forEach((row) => {
+      insights.forEach((insight) => {
+        const matchesInsight = insight.relatedRows.some((relatedRow) => matchesImportedScope(relatedRow, row));
+
+        if (!matchesInsight) {
+          return;
+        }
+
+        matchedInsightIds.add(insight.id);
+        setInsightStatus(insight, row.status);
+        statusUpdates += 1;
+
+        if (rowsToExclude.includes(row)) {
+          ignoreEntry(row.query, row.url, { scope: buildInsightIgnoreScope(insight), source: 'import' });
+          ignoredRowsImported += 1;
+        }
+
+        if (row.removeInsight) {
+          insight.relatedRows.forEach((relatedRow) => {
+            ignoreEntry(relatedRow.keys?.[0] || '', relatedRow.keys?.[1] || '', {
+              scope: buildInsightIgnoreScope(insight),
+              source: 'import',
+            });
+            ignoredRowsImported += 1;
+          });
+          setInsightStatus(insight, 'ignored');
+        }
+      });
+    });
+
+    return {
+      ignoredRowsImported,
+      statusUpdates,
+      matchedInsights: matchedInsightIds.size,
+    };
+  }, [ignoreEntry, importEntries, insights, setInsightStatus]);
+
+  const handleDownloadInsightImportTemplate = useCallback(() => {
+    const templateRows = [
+      'query,url,status,remove_insight,notes',
+      'mejores zapatillas running,https://dominio.com/running,done,false,Factor ya analizado en este insight',
+      'auditoria seo local,https://dominio.com/seo-local,ignorado,true,Eliminar insight concreto del panel/export',
+    ];
+    const csvContent = templateRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `plantilla_omision_insights_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showSuccess('Plantilla CSV descargada. Puedes completarla y reimportarla para omitir insights/factores.');
+  }, [showSuccess]);
 
   const filteredGscSites = useMemo(() => {
     const normalizedQuery = gscSiteQuery.trim().toLowerCase();
@@ -1063,7 +1278,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     () =>
       insights
         .map((insight) => {
-          const visibleRows = insight.relatedRows.filter((row) => !isIgnored(row));
+          const visibleRows = insight.relatedRows.filter((row) => !isIgnored(row, buildInsightIgnoreScope(insight)));
           const totalRows = visibleRows.length;
           return {
             ...insight,
@@ -1207,7 +1422,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
           ...group,
           insights: group.insights
             .map((insight) => {
-              const visibleRows = insight.relatedRows.filter((row) => !isIgnored(row));
+              const visibleRows = insight.relatedRows.filter((row) => !isIgnored(row, buildInsightIgnoreScope(insight)));
               const totalRows = visibleRows.length;
               return {
                 ...insight,
@@ -2400,16 +2615,16 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
             <InsightDetailModal
               insight={selectedInsight}
               onClose={() => setSelectedInsight(null)}
-              isIgnored={isIgnored}
+              isIgnored={(row) => isIgnored(row, buildInsightIgnoreScope(selectedInsight))}
               onIgnoreRow={(row) => {
-                ignoreRow(row);
+                ignoreRow(row, buildInsightIgnoreScope(selectedInsight));
                 showSuccess('Fila marcada como ya gestionada.');
               }}
               onUnignoreRow={(key) => {
                 unignoreKey(key);
                 showSuccess('Fila reincorporada al análisis.');
               }}
-              buildIgnoredKey={buildIgnoredEntryKey}
+              buildIgnoredKey={(query, url) => buildIgnoredEntryKey(query, url, buildInsightIgnoreScope(selectedInsight))}
             />
           </ErrorBoundary>
         </div>
@@ -2454,8 +2669,21 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
               </div>
               <p className="mt-2 text-sm text-muted">
                 Sube un CSV con cabeceras <strong>query</strong> y <strong>url</strong>, o con esas
-                dos columnas en ese orden.
+                dos columnas en ese orden. Si incluyes una tercera columna <strong>status</strong>
+                (ej. done/completado/ignorado), el dashboard aplicará ese estado automáticamente
+                al insight relacionado. Solo se excluyen del análisis las filas marcadas como
+                <strong> done</strong> o <strong>ignored</strong>, y la exclusión se guarda por
+                cada insight de forma independiente (no global), para que una misma URL/query
+                pueda seguir visible en otros insights. Si añades <strong>remove_insight=true</strong>,
+                se ocultará el insight concreto completo del panel y de las exportaciones futuras.
               </p>
+              <button
+                type="button"
+                onClick={handleDownloadInsightImportTemplate}
+                className="mt-3 inline-flex items-center gap-2 rounded-brand-md border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-surface-alt"
+              >
+                <Download size={14} /> Descargar plantilla CSV
+              </button>
               <label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-brand-md bg-primary px-4 py-2 text-sm font-medium text-on-primary hover:bg-primary-hover">
                 <Upload size={16} /> Importar CSV
                 <input
@@ -2466,8 +2694,10 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
                     const file = event.target.files?.[0];
                     if (!file) return;
                     const content = await file.text();
-                    const importedCount = importEntries(content);
-                    showSuccess(`${importedCount} filas añadidas a exclusiones.`);
+                    const result = applyImportedInsightSheet(content);
+                    showSuccess(
+                      `${result.ignoredRowsImported} filas añadidas a exclusiones · ${result.matchedInsights} insights afectados · ${result.statusUpdates} estados actualizados.`,
+                    );
                     event.target.value = '';
                   }}
                 />
@@ -2477,9 +2707,10 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
 
           <div className="mt-5 rounded-xl border border-warning/30 bg-warning-soft p-4 text-sm text-warning">
             <div className="font-semibold">Formato recomendado del sheet</div>
-            <pre className="mt-2 overflow-x-auto rounded-lg bg-surface p-3 text-xs">{`query,url
-mejores zapatillas running,https://dominio.com/running
-auditoria seo local,https://dominio.com/seo-local`}</pre>
+            <pre className="mt-2 overflow-x-auto rounded-lg bg-surface p-3 text-xs">{`query,url,status,remove_insight
+mejores zapatillas running,https://dominio.com/running,done,false
+auditoria seo local,https://dominio.com/seo-local,ignorado,true
+keyword en revisión,https://dominio.com/servicio,planned,false`}</pre>
             <p className="mt-2">
               Exclusiones guardadas actualmente: <strong>{ignoredEntries.length}</strong>.
             </p>
