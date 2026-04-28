@@ -102,6 +102,138 @@ export async function listResponses(projectId: string, page: number, pageSize: n
   };
 }
 
+export type ListResponsesFilters = {
+  from?: Date;
+  to?: Date;
+  model?: string | null;
+  tag?: string | null;
+  country?: string | null;
+  language?: string | null;
+  mentionStatus?: 'mentioned' | 'not_mentioned' | null;
+  q?: string | null;
+};
+
+export async function listResponsesFiltered(projectId: string, page: number, pageSize: number, filters: ListResponsesFilters) {
+  const skip = (page - 1) * pageSize;
+
+  const where = {
+    run: {
+      projectId,
+      ...(filters.from || filters.to
+        ? {
+            executedAt: {
+              ...(filters.from ? { gte: filters.from } : {}),
+              ...(filters.to ? { lte: filters.to } : {})
+            }
+          }
+        : {}),
+      ...(filters.model ? { model: filters.model } : {}),
+      prompt: {
+        ...(filters.country ? { country: filters.country } : {}),
+        ...(filters.language ? { language: filters.language } : {}),
+        ...(filters.tag
+          ? {
+              promptTags: {
+                some: {
+                  tag: {
+                    normalizedName: filters.tag.toLowerCase()
+                  }
+                }
+              }
+            }
+          : {})
+      }
+    },
+    ...(filters.mentionStatus === 'mentioned' ? { mentionDetected: true } : {}),
+    ...(filters.mentionStatus === 'not_mentioned' ? { mentionDetected: false } : {}),
+    ...(filters.q
+      ? {
+          OR: [
+            { rawText: { contains: filters.q, mode: 'insensitive' as const } },
+            { cleanedText: { contains: filters.q, mode: 'insensitive' as const } },
+            { run: { prompt: { promptText: { contains: filters.q, mode: 'insensitive' as const } } } }
+          ]
+        }
+      : {})
+  };
+
+  const [total, rows] = await Promise.all([
+    prisma.response.count({ where }),
+    prisma.response.findMany({
+      where,
+      include: {
+        citations: {
+          select: { id: true }
+        },
+        run: {
+          select: {
+            id: true,
+            status: true,
+            model: true,
+            executedAt: true,
+            prompt: {
+              select: {
+                id: true,
+                title: true,
+                promptText: true,
+                country: true,
+                language: true,
+                promptTags: {
+                  where: {
+                    tag: { deletedAt: null }
+                  },
+                  include: {
+                    tag: {
+                      select: {
+                        id: true,
+                        name: true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      orderBy: [{ createdAt: 'desc' }],
+      skip,
+      take: pageSize
+    })
+  ]);
+
+  return {
+    responses: rows.map((row: (typeof rows)[number]) => ({
+      id: row.id,
+      runId: row.runId,
+      promptId: row.run.prompt.id,
+      promptTitle: row.run.prompt.title,
+      promptText: row.run.prompt.promptText,
+      model: row.run.model,
+      country: row.run.prompt.country,
+      language: row.run.prompt.language,
+      tags: row.run.prompt.promptTags.map((item: (typeof row.run.prompt.promptTags)[number]) => item.tag.name),
+      runStatus: row.run.status,
+      responseStatus: row.status,
+      languageDetected: row.language,
+      mentionDetected: row.mentionDetected,
+      mentionType: row.mentionType,
+      sentiment: row.sentiment,
+      citationCount: row.citations.length,
+      rawSnippet: buildDisplaySnippet(row.rawText),
+      cleanedSnippet: buildDisplaySnippet(row.cleanedText),
+      createdAt: row.createdAt,
+      runExecutedAt: row.run.executedAt
+    })),
+    pagination: {
+      page,
+      pageSize,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / pageSize))
+    }
+  };
+}
+
 export async function getResponseAudit(projectId: string, responseId: string) {
   const row = await prisma.response.findFirst({
     where: {
