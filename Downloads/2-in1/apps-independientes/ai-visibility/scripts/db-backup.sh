@@ -3,7 +3,7 @@ set -euo pipefail
 
 if [[ -z "${DATABASE_URL:-}" ]]; then
   echo "[backup] ERROR: DATABASE_URL is required."
-  echo "[backup] Example: export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/ai_visibility?schema=public"
+  echo "[backup] Example: export DATABASE_URL=postgresql://postgres.<project-ref>:<password>@aws-0-us-east-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1&schema=public"
   exit 1
 fi
 
