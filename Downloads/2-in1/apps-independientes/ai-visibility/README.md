@@ -1,12 +1,12 @@
 # AI Visibility (Internal Analytics Shell)
 
-Bootstrap de una app interna con **Next.js + TypeScript + Tailwind + Prisma + PostgreSQL**.
+Bootstrap de una app interna con **Next.js + TypeScript + Tailwind + Prisma + Supabase Postgres**.
 
 ## Prerrequisitos
 
 - Node.js 20+
 - npm 10+
-- Docker (para PostgreSQL local)
+- Proyecto de Supabase con credenciales de Postgres
 
 ## Setup local (nuevo desarrollador)
 
@@ -22,32 +22,24 @@ npm run dev:local
 ```
 
 Este comando:
-1. Levanta PostgreSQL local con `docker compose`.
-2. Genera el cliente de Prisma.
-3. Arranca Next.js en `http://localhost:3000`.
+1. Genera el cliente de Prisma.
+2. Arranca Next.js en `http://localhost:3000`.
 
-Si prefieres levantar solo la base:
-
-```bash
-npm run db:up
-```
+> Requiere `DATABASE_URL`/`DIRECT_URL` apuntando a Supabase antes de iniciar.
 
 ## Variables de entorno
 
 Copia `.env.example` y ajusta valores si necesitas cambiar puertos/credenciales:
 
 - `NEXT_PUBLIC_APP_NAME`
-- `POSTGRES_DB`
-- `POSTGRES_USER`
-- `POSTGRES_PASSWORD`
-- `POSTGRES_PORT`
 - `DATABASE_URL`
+- `DIRECT_URL`
 - `AUTH_SESSION_SECRET` (recomendado para firmar sesión; si no existe usa fallback local de desarrollo)
 - `OPENAI_API_KEY` / `OPENAI_DEFAULT_MODEL` (ChatGPT real API)
 - `GEMINI_API_KEY` / `GEMINI_DEFAULT_MODEL` (Gemini real API)
 - `DATAFORSEO_LOGIN` / `DATAFORSEO_PASSWORD` / `DATAFORSEO_LOCATION_CODE` (Google AI Mode + AI Overview vía DataForSEO)
 
-> Nota: en desarrollo, si `DATABASE_URL` no está definida, la app construye una URL local automáticamente usando `POSTGRES_*` (con defaults `postgres/postgres`, `ai_visibility`, puerto `5432`).
+> Nota: la app **no** crea fallback local ni usa Docker; `DATABASE_URL` es obligatoria y debe apuntar a Supabase.
 
 ## Auth MVP (internal-tool friendly)
 
@@ -111,7 +103,6 @@ npm run lint       # eslint (Next.js)
 npm run typecheck  # tsc --noEmit
 npm run test       # vitest (run)
 npm run test:watch # vitest modo watch
-npm run db:up      # levanta PostgreSQL local
 npm run db:seed    # carga dataset demo de reporting (1 proyecto dental + data histórica)
 npm run db:migrate:deploy # aplica migraciones pendientes (CI/prod)
 npm run db:check:migrations # valida drift schema vs migraciones SQL

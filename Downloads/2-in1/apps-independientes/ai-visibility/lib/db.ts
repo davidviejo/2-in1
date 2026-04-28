@@ -5,21 +5,8 @@ function ensureDatabaseUrl() {
     return;
   }
 
-  if (process.env.NODE_ENV === "production") {
-    throw new Error(
-      "DATABASE_URL is required in production. Set it in your environment before starting the app."
-    );
-  }
-
-  const user = process.env.POSTGRES_USER ?? "postgres";
-  const password = process.env.POSTGRES_PASSWORD ?? "postgres";
-  const database = process.env.POSTGRES_DB ?? "ai_visibility";
-  const port = process.env.POSTGRES_PORT ?? "5432";
-
-  process.env.DATABASE_URL = `postgresql://${user}:${password}@localhost:${port}/${database}?schema=public`;
-
-  console.warn(
-    `[db] DATABASE_URL was not set. Using local fallback ${process.env.DATABASE_URL}`
+  throw new Error(
+    "DATABASE_URL is required. Configure a Supabase Postgres connection string in your environment before starting the app."
   );
 }
 

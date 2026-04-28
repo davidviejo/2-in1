@@ -32,7 +32,7 @@ Protect at minimum:
 ### 1) Create a backup
 
 ```bash
-export DATABASE_URL='postgresql://user:pass@host:5432/ai_visibility?schema=public'
+export DATABASE_URL='postgresql://postgres.<project-ref>:<password>@aws-0-us-east-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1&schema=public'
 npm run db:backup
 ```
 
@@ -64,7 +64,7 @@ If command prints schema/table entries, the backup is readable.
 ### 2) Execute restore
 
 ```bash
-export DATABASE_URL='postgresql://user:pass@host:5432/ai_visibility?schema=public'
+export DATABASE_URL='postgresql://postgres.<project-ref>:<password>@aws-0-us-east-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1&schema=public'
 npm run db:restore -- ./backups/<file>.dump
 ```
 
