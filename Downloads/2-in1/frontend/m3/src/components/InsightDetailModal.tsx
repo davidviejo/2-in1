@@ -7,11 +7,13 @@ import { buildTaskFromInsight } from '../services/insightFlowService';
 import { useToast } from './ui/ToastContext';
 import { useSettings } from '../context/SettingsContext';
 import { useProject } from '../context/ProjectContext';
+import { GSCRow } from '../types';
 
 const INSIGHT_MODAL_TABLE_LIMIT = 200;
 
 interface InsightDetailModalProps {
   insight: SeoInsight;
+  comparisonRows: GSCRow[];
   onClose: () => void;
   isIgnored: (row: { keys: string[] }) => boolean;
   onIgnoreRow: (row: { keys: string[] }) => void;
@@ -21,6 +23,7 @@ interface InsightDetailModalProps {
 
 export const InsightDetailModal: React.FC<InsightDetailModalProps> = ({
   insight,
+  comparisonRows,
   onClose,
   isIgnored,
   onIgnoreRow,
@@ -54,6 +57,24 @@ export const InsightDetailModal: React.FC<InsightDetailModalProps> = ({
   const displayedItems = useMemo(
     () => filteredItems.slice(0, INSIGHT_MODAL_TABLE_LIMIT),
     [filteredItems],
+  );
+  const comparisonBaselineByQueryUrl = useMemo(
+    () =>
+      (comparisonRows || []).reduce((acc, row) => {
+        const query = row.keys?.[0] || '';
+        const url = row.keys?.[1] || '';
+        const key = `${query}|||${url}`;
+        const previous = acc.get(key) || { clicks: 0, impressions: 0, positionWeighted: 0 };
+        const clicks = Number(row.clicks || 0);
+        const impressions = Number(row.impressions || 0);
+        const position = Number(row.position || 0);
+        previous.clicks += clicks;
+        previous.impressions += impressions;
+        previous.positionWeighted += position * impressions;
+        acc.set(key, previous);
+        return acc;
+      }, new Map<string, { clicks: number; impressions: number; positionWeighted: number }>()),
+    [comparisonRows],
   );
 
   const findExistingTaskFromInsight = (insightId: string) => {
@@ -120,19 +141,68 @@ export const InsightDetailModal: React.FC<InsightDetailModalProps> = ({
   };
 
   const handleExport = () => {
-    const headers = ['Query', 'URL', 'Clicks', 'Impressions', 'CTR', 'Position'];
+    const headers = [
+      'Insight ID',
+      'Insight Title',
+      'Insight Summary',
+      'Insight Reason',
+      'Insight Action',
+      'Current Period',
+      'Previous Period',
+      'Query',
+      'URL',
+      'Current Clicks',
+      'Previous Clicks',
+      'Delta Clicks',
+      'Current Impressions',
+      'Previous Impressions',
+      'Delta Impressions',
+      'Current CTR (%)',
+      'Previous CTR (%)',
+      'Delta CTR (pp)',
+      'Current Position',
+      'Previous Position',
+      'Delta Position',
+    ];
     const csvContent = [
       headers.join(','),
-      ...filteredItems.map((item) =>
-        [
-          `"${item.keys[0]}"`,
-          `"${item.keys[1] || ''}"`,
-          item.clicks,
-          item.impressions,
-          item.ctr,
-          item.position,
-        ].join(','),
-      ),
+      ...filteredItems.map((item) => {
+        const query = item.query ?? item.keys?.[0] ?? '';
+        const url = item.url ?? item.page ?? item.keys?.[1] ?? '';
+        const baseline = comparisonBaselineByQueryUrl.get(`${query}|||${url}`) || {
+          clicks: 0,
+          impressions: 0,
+          positionWeighted: 0,
+        };
+        const previousCtr = baseline.impressions > 0 ? (baseline.clicks / baseline.impressions) * 100 : 0;
+        const previousPosition = baseline.impressions > 0 ? baseline.positionWeighted / baseline.impressions : 0;
+        const currentCtr = (item.ctr || 0) * 100;
+        const currentPosition = item.position || 0;
+
+        return [
+          `"${insight.id}"`,
+          `"${insight.title.replace(/"/g, '""')}"`,
+          `"${(insight.summary || '').replace(/"/g, '""')}"`,
+          `"${(insight.reason || '').replace(/"/g, '""')}"`,
+          `"${(insight.action || '').replace(/"/g, '""')}"`,
+          `"${insight.periodCurrent ? `${insight.periodCurrent.startDate}..${insight.periodCurrent.endDate}` : ''}"`,
+          `"${insight.periodPrevious ? `${insight.periodPrevious.startDate}..${insight.periodPrevious.endDate}` : ''}"`,
+          `"${query.replace(/"/g, '""')}"`,
+          `"${url.replace(/"/g, '""')}"`,
+          Number(item.clicks || 0),
+          baseline.clicks,
+          Number(item.clicks || 0) - baseline.clicks,
+          Number(item.impressions || 0),
+          baseline.impressions,
+          Number(item.impressions || 0) - baseline.impressions,
+          Number(currentCtr.toFixed(2)),
+          Number(previousCtr.toFixed(2)),
+          Number((currentCtr - previousCtr).toFixed(2)),
+          Number(currentPosition.toFixed(2)),
+          Number(previousPosition.toFixed(2)),
+          Number((currentPosition - previousPosition).toFixed(2)),
+        ].join(',');
+      }),
     ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
