@@ -46,7 +46,7 @@ describe('GSC Insights Engine', () => {
     const result = analyzeCannibalization(currentRows);
     expect(result.count).toBe(1);
     expect(result.items[0].keys[0]).toBe('cannibal');
-    expect(result.items[0].keys[1]).toContain('URLs');
+    expect(result.items[0].keys[1]).toBe('https://site.com/a');
   });
 
   it('builds quick wins aligned with current project type only', () => {

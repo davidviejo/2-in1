@@ -42,6 +42,16 @@ interface QueryPageAggregate {
   relativeClickChange: number | null;
 }
 
+interface CannibalizationQueryAssessment {
+  query: string;
+  primaryUrl: string;
+  secondaryUrls: string[];
+  currentRows: GSCRow[];
+  overlapShare: number;
+  stableCompetitors: number;
+  isLikelyReal: boolean;
+}
+
 interface InsightCandidate {
   id: string;
   title: string;
@@ -705,46 +715,73 @@ export const analyzeGSCInsights = ({
     });
   }
 
-  const cannibalized: GSCRow[] = [];
+  const previousByKey = buildAggregateMaps(previousRows).byKey;
+  const cannibalizedAssessments: CannibalizationQueryAssessment[] = [];
+  const minImpressionsPerUrl = SEO_INSIGHT_THRESHOLDS.cannibalization.minImpressionsPerUrl;
   byQuery.forEach((rows, query) => {
-    const significant = rows.filter((row) => row.impressions >= 80);
-    if (significant.length >= 2) {
-      const competingUrls = significant
-        .map((row) => row.keys?.[1] || '')
-        .filter((value) => value.trim().length > 0);
-      const compactUrls = competingUrls.slice(0, 5).join(' | ');
-      const urlsLabel = compactUrls
-        ? `${significant.length} URLs: ${compactUrls}${competingUrls.length > 5 ? ' | ...' : ''}`
-        : `${significant.length} URLs`;
+    const significant = rows.filter((row) => row.impressions >= minImpressionsPerUrl);
+    if (significant.length < 2) return;
 
-      cannibalized.push({ ...significant[0], keys: [query, urlsLabel] });
-    }
+    const sortedByClicks = [...significant].sort((a, b) => b.clicks - a.clicks);
+    const primary = sortedByClicks[0];
+    const secondaryRows = sortedByClicks.slice(1);
+    const currentTotalImpressions = significant.reduce((sum, row) => sum + row.impressions, 0);
+    const secondaryImpressions = secondaryRows.reduce((sum, row) => sum + row.impressions, 0);
+    const overlapShare = currentTotalImpressions > 0 ? secondaryImpressions / currentTotalImpressions : 0;
+
+    const stableCompetitors = significant.reduce((count, row) => {
+      const url = row.keys?.[1] || '';
+      const previous = previousByKey.get(`${query}||${url}`);
+      return count + ((previous?.impressions || 0) >= minImpressionsPerUrl ? 1 : 0);
+    }, 0);
+
+    const isLikelyReal = stableCompetitors >= 2 || overlapShare >= 0.35;
+    cannibalizedAssessments.push({
+      query,
+      primaryUrl: primary.keys?.[1] || '',
+      secondaryUrls: secondaryRows
+        .map((row) => row.keys?.[1] || '')
+        .filter((url) => url.trim().length > 0),
+      currentRows: sortedByClicks,
+      overlapShare,
+      stableCompetitors,
+      isLikelyReal,
+    });
   });
-  if (cannibalized.length) {
+  const cannibalizedRows = cannibalizedAssessments.map((assessment) => assessment.currentRows[0]);
+
+  if (cannibalizedRows.length) {
+    const likelyRealCount = cannibalizedAssessments.filter((assessment) => assessment.isLikelyReal).length;
+    const likelyTransientCount = cannibalizedAssessments.length - likelyRealCount;
     candidates.push({
       id: 'cannibalization',
       ruleKey: 'basic_cannibalization',
       sourceType: 'query',
-      sourceId: cannibalized[0].keys?.[0] || 'cannibalization',
-      title: 'Posible canibalización básica',
-      summary: `${cannibalized.length} queries con múltiples URLs compitiendo en paralelo.`,
-      reason: 'La autoridad se reparte entre URLs y reduce estabilidad del ranking.',
-      recommendation: 'Definir URL canónica por intención y consolidar señales internas.',
+      sourceId: cannibalizedRows[0].keys?.[0] || 'cannibalization',
+      title: 'Canibalización con URL principal y secundarias',
+      summary: `${cannibalizedAssessments.length} queries con competencia entre URLs (${likelyRealCount} probable real, ${likelyTransientCount} puntual).`,
+      reason: 'Se identifica URL principal por clics y se distingue si la competencia es estable (real) o pico puntual.',
+      recommendation: 'Consolidar intención en la URL principal cuando la canibalización sea estable; monitorizar sin fusionar si es puntual.',
       category: 'risk',
       severity: 'high',
-      priority: cannibalized.length >= 5 ? 'high' : 'medium',
+      priority: cannibalizedAssessments.length >= 5 ? 'high' : 'medium',
       status: 'new',
-      opportunity: clamp(cannibalized.reduce((sum, row) => sum + row.impressions, 0) / 10),
-      impact: normalize(cannibalized.reduce((sum, row) => sum + row.impressions, 0), totalImpressions || 1),
+      opportunity: clamp(cannibalizedRows.reduce((sum, row) => sum + row.impressions, 0) / 10),
+      impact: normalize(cannibalizedRows.reduce((sum, row) => sum + row.impressions, 0), totalImpressions || 1),
       urgency: 82,
       confidence: 84,
       implementationEase: 42,
       businessValue: 88,
       moduleId: 2,
       effort: 75,
-      evidence: cannibalized.slice(0, 3).map((row) => ({ label: row.keys?.[0] || '', value: row.keys?.[1] || '', context: `${row.impressions} impr.`, metricKey: 'query' })),
-      relatedRows: cannibalized,
-      affectedCount: cannibalized.length,
+      evidence: cannibalizedAssessments.slice(0, 5).map((assessment) => ({
+        label: assessment.query,
+        value: `Principal: ${assessment.primaryUrl || 'N/A'} · Secundarias: ${assessment.secondaryUrls.slice(0, 2).join(' | ') || 'N/A'}`,
+        context: `${Math.round(assessment.overlapShare * 100)}% overlap · ${assessment.isLikelyReal ? 'Canibalización real' : 'Pico puntual'}`,
+        metricKey: 'query',
+      })),
+      relatedRows: cannibalizedRows,
+      affectedCount: cannibalizedAssessments.length,
       brandType: 'mixed',
       findingFamily: 'anomaly',
       ruleScope: 'generic',
