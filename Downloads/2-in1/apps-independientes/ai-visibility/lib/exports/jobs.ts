@@ -2,11 +2,14 @@ import { prisma } from '@/lib/db';
 import {
   buildCitationsTableExport,
   buildCompetitorsComparisonExport,
+  buildPromptsPerformanceExport,
   buildPromptsTableExport,
+  buildReportPackExport,
   buildResponsesTableExport,
-  buildSummaryKpiPackExport
+  buildSummaryKpiPackExport,
+  buildTimeseriesExport
 } from '@/lib/exports/datasets';
-import type { ExportDataset, ExportFileFormat, ExportRequestFilters, ExportTable } from '@/lib/exports/types';
+import type { ExportArtifact, ExportDataset, ExportFileFormat, ExportRequestFilters } from '@/lib/exports/types';
 
 const LARGE_EXPORT_THRESHOLD = 1_000;
 
@@ -15,7 +18,7 @@ function toPrismaFormat(format: ExportFileFormat): 'CSV' | 'XLSX' {
 }
 
 export async function estimateExportSize(projectId: string, dataset: ExportDataset): Promise<number> {
-  if (dataset === 'responses_table') {
+  if (dataset === 'responses_table' || dataset === 'report_pack') {
     return prisma.response.count({ where: { run: { projectId } } });
   }
 
@@ -87,9 +90,17 @@ export async function buildDatasetExport(
   dataset: ExportDataset,
   projectId: string,
   filters: ExportRequestFilters
-): Promise<ExportTable> {
+): Promise<ExportArtifact> {
   if (dataset === 'summary_kpi_pack') {
     return buildSummaryKpiPackExport(projectId, filters);
+  }
+
+  if (dataset === 'timeseries') {
+    return buildTimeseriesExport(projectId, filters);
+  }
+
+  if (dataset === 'prompts_performance') {
+    return buildPromptsPerformanceExport(projectId, filters);
   }
 
   if (dataset === 'prompts_table') {
@@ -97,14 +108,18 @@ export async function buildDatasetExport(
   }
 
   if (dataset === 'responses_table') {
-    return buildResponsesTableExport(projectId);
+    return buildResponsesTableExport(projectId, filters);
   }
 
   if (dataset === 'citations_table') {
-    return buildCitationsTableExport(projectId);
+    return buildCitationsTableExport(projectId, filters);
   }
 
-  return buildCompetitorsComparisonExport(projectId, filters);
+  if (dataset === 'competitors_comparison') {
+    return buildCompetitorsComparisonExport(projectId, filters);
+  }
+
+  return buildReportPackExport(projectId, filters);
 }
 
 export async function processExportJob(jobId: string): Promise<void> {

@@ -61,8 +61,19 @@ function parseBody(payload: unknown): {
     language: typeof filtersRaw.language === 'string' ? filtersRaw.language : undefined,
     active: filtersRaw.active === 'all' || filtersRaw.active === 'active' || filtersRaw.active === 'inactive' ? filtersRaw.active : undefined,
     intentClassification: typeof filtersRaw.intentClassification === 'string' ? filtersRaw.intentClassification : undefined,
-    tagIds: typeof filtersRaw.tagIds === 'string' ? filtersRaw.tagIds : undefined
+    tagIds: typeof filtersRaw.tagIds === 'string' ? filtersRaw.tagIds : undefined,
+    granularity: filtersRaw.granularity === 'day' || filtersRaw.granularity === 'week' ? filtersRaw.granularity : undefined,
+    provider: typeof filtersRaw.provider === 'string' ? filtersRaw.provider : undefined,
+    surface: typeof filtersRaw.surface === 'string' ? filtersRaw.surface : undefined,
+    analysisMode: typeof filtersRaw.analysisMode === 'string' ? filtersRaw.analysisMode : undefined,
+    modelLabel: typeof filtersRaw.modelLabel === 'string' ? filtersRaw.modelLabel : undefined,
+    captureMethod: typeof filtersRaw.captureMethod === 'string' ? filtersRaw.captureMethod : undefined,
+    includeNarrativeInsights: typeof filtersRaw.includeNarrativeInsights === 'boolean' ? filtersRaw.includeNarrativeInsights : undefined
   };
+
+  if (dataset === 'report_pack' && format === 'csv') {
+    errors.format = 'format csv is not supported for dataset report_pack. Use xlsx.';
+  }
 
   return { dataset, format, filters, errors };
 }
@@ -124,7 +135,7 @@ export async function POST(
   const user = getRequestUser(request);
   const payload = parseBody(await request.json());
 
-  if (!payload.dataset || !payload.format) {
+  if (!payload.dataset || !payload.format || Object.keys(payload.errors).length > 0) {
     return NextResponse.json({ error: 'validation_failed', fieldErrors: payload.errors, correlationId }, { status: 422, headers: buildCorrelationHeaders(correlationId) });
   }
 

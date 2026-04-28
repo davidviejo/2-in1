@@ -27,11 +27,14 @@ export type ProjectTimeseriesResponse = {
 };
 
 export async function buildProjectTimeseries(input: BuildTimeseriesInput): Promise<ProjectTimeseriesResponse> {
+  const runFilters = toRunWhereFilters(input.filters ?? {});
+
   const [responses, citations, mentions] = await Promise.all([
     prisma.response.findMany({
       where: {
         run: {
           projectId: input.projectId,
+          ...runFilters,
           executedAt: {
             gte: input.range.from,
             lte: input.range.to
@@ -57,9 +60,7 @@ export async function buildProjectTimeseries(input: BuildTimeseriesInput): Promi
         response: {
           run: {
             projectId: input.projectId,
-            ...toRunWhereFilters(input.filters ?? {}),
-            ...toRunWhereFilters(input.filters ?? {}),
-            ...toRunWhereFilters(input.filters ?? {}),
+            ...runFilters,
             executedAt: {
               gte: input.range.from,
               lte: input.range.to
@@ -77,8 +78,7 @@ export async function buildProjectTimeseries(input: BuildTimeseriesInput): Promi
         response: {
           run: {
             projectId: input.projectId,
-            ...toRunWhereFilters(input.filters ?? {}),
-            ...toRunWhereFilters(input.filters ?? {}),
+            ...runFilters,
             executedAt: {
               gte: input.range.from,
               lte: input.range.to

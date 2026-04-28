@@ -68,6 +68,26 @@ describe('project exports endpoint', () => {
     expect(mockCreateExportJob).not.toHaveBeenCalled();
   });
 
+
+  it('returns 422 when report_pack is requested as csv', async () => {
+    const request = new NextRequest('http://localhost:3000/api/projects/p1/exports', {
+      method: 'POST',
+      body: JSON.stringify({
+        dataset: 'report_pack',
+        format: 'csv',
+        filters: {
+          from: '2026-04-01',
+          to: '2026-04-07'
+        }
+      })
+    });
+
+    const response = await POST(request, { params: { projectId: 'p1' } });
+
+    expect(response.status).toBe(422);
+    expect(mockCreateExportJob).not.toHaveBeenCalled();
+  });
+
   it('returns 202 and does not await processing when job is large', async () => {
     mockEstimateExportSize.mockResolvedValue(5000);
     mockShouldRunInBackground.mockReturnValue(true);
