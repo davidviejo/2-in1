@@ -16,6 +16,8 @@ import {
   type ExportRequestFilters
 } from '@/lib/exports/types';
 import { prisma } from '@/lib/db';
+import { recordFailure } from '@/lib/observability/failures';
+import { buildCorrelationHeaders, getCorrelationIdFromHeaders, logOperation } from '@/lib/observability/logging';
 
 function canReadProject(request: NextRequest, projectId: string): boolean {
   const user = getRequestUser(request);
@@ -74,9 +76,10 @@ export async function GET(
   }
 ) {
   const { projectId } = context.params;
+  const correlationId = getCorrelationIdFromHeaders(request.headers);
 
   if (!canReadProject(request, projectId)) {
-    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+    return NextResponse.json({ error: 'forbidden' }, { status: 403, headers: buildCorrelationHeaders(correlationId) });
   }
 
   const jobs = await prisma.exportJob.findMany({
@@ -100,7 +103,7 @@ export async function GET(
       createdAt: job.createdAt,
       updatedAt: job.updatedAt
     }))
-  });
+  }, { headers: buildCorrelationHeaders(correlationId) });
 }
 
 export async function POST(
@@ -112,16 +115,17 @@ export async function POST(
   }
 ) {
   const { projectId } = context.params;
+  const correlationId = getCorrelationIdFromHeaders(request.headers);
 
   if (!canReadProject(request, projectId)) {
-    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+    return NextResponse.json({ error: 'forbidden' }, { status: 403, headers: buildCorrelationHeaders(correlationId) });
   }
 
   const user = getRequestUser(request);
   const payload = parseBody(await request.json());
 
   if (!payload.dataset || !payload.format) {
-    return NextResponse.json({ error: 'validation_failed', fieldErrors: payload.errors }, { status: 422 });
+    return NextResponse.json({ error: 'validation_failed', fieldErrors: payload.errors, correlationId }, { status: 422, headers: buildCorrelationHeaders(correlationId) });
   }
 
   const estimatedRows = await estimateExportSize(projectId, payload.dataset);
@@ -137,11 +141,17 @@ export async function POST(
 
   if (runAsync) {
     setTimeout(() => {
-      void processExportJob(job.id);
+      void Promise.resolve(processExportJob(job.id)).catch((error) => {
+        const message = error instanceof Error ? error.message : 'Unexpected export processing error.';
+        recordFailure({ operation: 'export_job', projectId, correlationId, message, details: { jobId: job.id, dataset: payload.dataset } });
+        logOperation('error', 'export.process_failed', { correlationId, projectId, jobId: job.id, message });
+      });
     }, 0);
 
+    logOperation('info', 'export.queued_background', { correlationId, projectId, jobId: job.id, estimatedRows, dataset: payload.dataset });
     return NextResponse.json(
       {
+        correlationId,
         job: {
           id: job.id,
           status: job.status,
@@ -151,16 +161,25 @@ export async function POST(
           requestedAt: job.requestedAt
         }
       },
-      { status: 202 }
+      { status: 202, headers: buildCorrelationHeaders(correlationId) }
     );
   }
 
-  await processExportJob(job.id);
+  try {
+    await processExportJob(job.id);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unexpected export processing error.';
+    recordFailure({ operation: 'export_job', projectId, correlationId, message, details: { jobId: job.id, dataset: payload.dataset } });
+    logOperation('error', 'export.process_failed', { correlationId, projectId, jobId: job.id, message });
+    return NextResponse.json({ error: 'export_failed', message, correlationId }, { status: 500, headers: buildCorrelationHeaders(correlationId) });
+  }
 
   const freshJob = await prisma.exportJob.findUniqueOrThrow({ where: { id: job.id } });
 
+  logOperation('info', 'export.completed', { correlationId, projectId, jobId: job.id, status: freshJob.status, dataset: payload.dataset });
   return NextResponse.json(
     {
+      correlationId,
       job: {
         id: freshJob.id,
         status: freshJob.status,
@@ -173,6 +192,6 @@ export async function POST(
         finishedAt: freshJob.finishedAt
       }
     },
-    { status: 201 }
+    { status: 201, headers: buildCorrelationHeaders(correlationId) }
   );
 }

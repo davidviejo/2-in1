@@ -112,6 +112,7 @@ export function HistoricalImporter({ onImported }: { onImported: () => Promise<v
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [lastCorrelationId, setLastCorrelationId] = useState<string | null>(null);
 
   const canPreview = useMemo(
     () => Boolean(currentProjectId && fileContent && mapping.promptColumn && mapping.modelColumn && mapping.responseColumn),
@@ -175,11 +176,14 @@ export function HistoricalImporter({ onImported }: { onImported: () => Promise<v
       committed?: PreviewResult;
       error?: string;
       message?: string;
+      correlationId?: string;
     };
 
+    setLastCorrelationId(data.correlationId ?? response.headers.get('x-correlation-id'));
     if (!response.ok) {
       setPreview(data.preview ?? null);
-      setStatusMessage(data.message ?? 'Import failed. Review row errors and try again.');
+      const detail = data.message ? ` ${data.message}` : '';
+      setStatusMessage(`Import failed. Review row errors and try again.${detail}`);
       setBusy(false);
       return;
     }
@@ -254,6 +258,7 @@ export function HistoricalImporter({ onImported }: { onImported: () => Promise<v
       </div>
 
       {statusMessage ? <p className="mt-2 text-xs text-slate-700">{statusMessage}</p> : null}
+      {lastCorrelationId ? <p className="mt-1 text-[11px] text-slate-500">Correlation ID: <code>{lastCorrelationId}</code></p> : null}
 
       {preview ? (
         <div className="mt-3 space-y-2 text-xs text-slate-700">

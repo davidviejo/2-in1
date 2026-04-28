@@ -30,6 +30,15 @@ type Project = {
 type QuickTag = { id: string; name: string; _count?: { promptTags: number } };
 type QuickCompetitor = { id: string; name: string; domain: string; isActive: boolean };
 
+type OpsFailure = {
+  id: string;
+  occurredAt: string;
+  operation: 'historical_import' | 'export_job';
+  projectId: string;
+  correlationId: string;
+  message: string;
+};
+
 type ProjectFormState = {
   name: string;
   primaryDomain: string;
@@ -81,6 +90,7 @@ export function ProjectSettingsManager() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [quickTags, setQuickTags] = useState<QuickTag[]>([]);
   const [quickCompetitors, setQuickCompetitors] = useState<QuickCompetitor[]>([]);
+  const [recentFailures, setRecentFailures] = useState<OpsFailure[]>([]);
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId) ?? null,
@@ -108,6 +118,10 @@ export function ProjectSettingsManager() {
     void loadQuickPanels(selectedProject.id);
   }, [selectedProject?.id]);
 
+  useEffect(() => {
+    void loadRecentFailures();
+  }, []);
+
   async function loadProjects() {
     setLoading(true);
     const response = await fetch('/api/projects', { cache: 'no-store' });
@@ -118,6 +132,19 @@ export function ProjectSettingsManager() {
       setSelectedProjectId((current) => (current === 'new' ? data.projects[0].id : current));
     }
     setLoading(false);
+  }
+
+
+  async function loadRecentFailures() {
+    const response = await fetch('/api/ops/failures?limit=10', { cache: 'no-store' });
+
+    if (!response.ok) {
+      setRecentFailures([]);
+      return;
+    }
+
+    const data = (await response.json()) as { failures?: OpsFailure[] };
+    setRecentFailures(data.failures ?? []);
   }
 
   async function loadQuickPanels(projectId: string) {
@@ -381,6 +408,23 @@ export function ProjectSettingsManager() {
           </section>
 
           {statusMessage ? <p className="text-xs font-medium text-slate-700">{statusMessage}</p> : null}
+
+          <section className="rounded-md border border-slate-200 bg-white p-3">
+            <h2 className="text-sm font-semibold text-slate-900">Recent operation failures (dev/staging)</h2>
+            <p className="mt-1 text-xs text-slate-600">Use correlation IDs to trace import/export failures in server logs.</p>
+            <button className="mt-2 rounded border border-slate-300 bg-white px-2 py-1 text-xs" onClick={() => void loadRecentFailures()} type="button">Refresh failures</button>
+            <div className="mt-2 space-y-2">
+              {recentFailures.map((failure) => (
+                <article className="rounded border border-rose-200 bg-rose-50 p-2 text-xs" key={failure.id}>
+                  <p className="font-medium text-rose-900">{failure.operation} · {new Date(failure.occurredAt).toLocaleString()}</p>
+                  <p className="text-rose-800">{failure.message}</p>
+                  <p className="text-rose-700">Project: {failure.projectId}</p>
+                  <p className="text-rose-700">Correlation ID: <code>{failure.correlationId}</code></p>
+                </article>
+              ))}
+              {recentFailures.length === 0 ? <p className="text-xs text-slate-500">No recent failures recorded.</p> : null}
+            </div>
+          </section>
         </section>
       </div>
     </div>

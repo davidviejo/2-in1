@@ -9,6 +9,9 @@ import {
   previewHistoricalImport
 } from '@/lib/imports/historical';
 
+import { recordFailure } from '@/lib/observability/failures';
+import { buildCorrelationHeaders, getCorrelationIdFromHeaders, logOperation } from '@/lib/observability/logging';
+
 function canWriteProject(request: NextRequest, projectId: string): boolean {
   const user = getRequestUser(request);
 
@@ -86,22 +89,24 @@ export async function POST(
   }
 ) {
   const { projectId } = context.params;
+  const correlationId = getCorrelationIdFromHeaders(request.headers);
 
   if (!canWriteProject(request, projectId)) {
-    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+    return NextResponse.json({ error: 'forbidden' }, { status: 403, headers: buildCorrelationHeaders(correlationId) });
   }
 
   const payload = (await request.json().catch(() => null)) as unknown;
   const validation = validatePayload(payload);
 
   if (!validation.values) {
-    return NextResponse.json({ error: 'validation_failed', fieldErrors: validation.errors }, { status: 422 });
+    return NextResponse.json({ error: 'validation_failed', fieldErrors: validation.errors, correlationId }, { status: 422, headers: buildCorrelationHeaders(correlationId) });
   }
 
   try {
     if (validation.values.mode === 'preview') {
       const preview = await previewHistoricalImport(projectId, validation.values);
-      return NextResponse.json({ preview });
+      logOperation('info', 'historical_import.preview_completed', { correlationId, projectId, validRows: preview.validRows, totalRows: preview.totalRows, issues: preview.issues.length });
+      return NextResponse.json({ preview, correlationId }, { headers: buildCorrelationHeaders(correlationId) });
     }
 
     const user = getRequestUser(request);
@@ -109,17 +114,23 @@ export async function POST(
     const committed = await commitHistoricalImport(projectId, dbUser?.id ?? null, validation.values);
 
     if (committed.issues.length > 0) {
-      return NextResponse.json({ error: 'validation_failed', preview: committed }, { status: 422 });
+      recordFailure({ operation: 'historical_import', projectId, correlationId, message: 'Historical import validation failed.', details: { issues: committed.issues.length } });
+      return NextResponse.json({ error: 'validation_failed', preview: committed, correlationId }, { status: 422, headers: buildCorrelationHeaders(correlationId) });
     }
 
-    return NextResponse.json({ committed }, { status: 201 });
+    logOperation('info', 'historical_import.committed', { correlationId, projectId, rows: committed.validRows, citations: committed.citationCount });
+    return NextResponse.json({ committed, correlationId }, { status: 201, headers: buildCorrelationHeaders(correlationId) });
   } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unexpected import error.';
+    recordFailure({ operation: 'historical_import', projectId, correlationId, message, details: { stage: validation.values.mode } });
+    logOperation('error', 'historical_import.failed', { correlationId, projectId, message });
     return NextResponse.json(
       {
         error: 'import_failed',
-        message: error instanceof Error ? error.message : 'Unexpected import error.'
+        message,
+        correlationId
       },
-      { status: 400 }
+      { status: 400, headers: buildCorrelationHeaders(correlationId) }
     );
   }
 }
