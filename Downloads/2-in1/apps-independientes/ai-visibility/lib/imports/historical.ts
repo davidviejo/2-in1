@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { normalizeLanguage, normalizeModelLabel } from '@/lib/filters/normalization';
 import { normalizeAnalysisMode, normalizeCaptureMethod, normalizeProvider, normalizeSurface } from '@/lib/reporting/dimensions';
+import { resolveAnalysisDefaults } from '@/lib/runs/analysis-defaults';
 import { normalizeRootDomain } from '@/lib/responses/citations';
 
 export type ImportFileType = 'csv' | 'json';
@@ -283,9 +284,14 @@ function validateAndNormalizeRows(projectId: string, parsedRows: ParsedRow[], ma
   for (const row of parsedRows) {
     const promptText = toTextValue(row.values[mapping.promptColumn]);
     const analysisMode = normalizeAnalysisMode(mapping.analysisModeColumn ? toTextValue(row.values[mapping.analysisModeColumn]) : '') ?? 'other';
-    const provider = normalizeProvider(mapping.providerColumn ? toTextValue(row.values[mapping.providerColumn]) : '') ?? (analysisMode === 'chatgpt' ? 'openai' : analysisMode === 'gemini' || analysisMode === 'ai_mode' || analysisMode === 'ai_overview' ? 'google' : 'other');
-    const surface = normalizeSurface(mapping.surfaceColumn ? toTextValue(row.values[mapping.surfaceColumn]) : '') ?? (analysisMode === 'chatgpt' ? 'chatgpt' : analysisMode === 'gemini' ? 'gemini' : analysisMode === 'ai_mode' || analysisMode === 'ai_overview' ? 'google_search' : 'other');
-    const model = normalizeModelLabel(toTextValue(row.values[mapping.modelColumn])) ?? (analysisMode === 'ai_mode' || analysisMode === 'ai_overview' ? 'unknown' : '');
+    const modeDefaults = resolveAnalysisDefaults(analysisMode);
+    const provider =
+      normalizeProvider(mapping.providerColumn ? toTextValue(row.values[mapping.providerColumn]) : '') ??
+      modeDefaults.provider;
+    const surface =
+      normalizeSurface(mapping.surfaceColumn ? toTextValue(row.values[mapping.surfaceColumn]) : '') ??
+      modeDefaults.surface;
+    const model = normalizeModelLabel(toTextValue(row.values[mapping.modelColumn])) ?? modeDefaults.model;
     const captureMethod = normalizeCaptureMethod(mapping.captureMethodColumn ? toTextValue(row.values[mapping.captureMethodColumn]) : '') ?? 'manual_import';
     const country = (mapping.countryColumn ? toTextValue(row.values[mapping.countryColumn]).toUpperCase() : 'US') || null;
     const language = normalizeLanguage(mapping.languageColumn ? toTextValue(row.values[mapping.languageColumn]) : 'en') ?? 'en';
