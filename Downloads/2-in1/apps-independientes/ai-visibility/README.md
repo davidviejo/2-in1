@@ -116,6 +116,28 @@ Ejemplo de respuesta OK:
 
 Si la base de datos no está disponible, responde `503` con `db: "down"`.
 
+
+### Prisma 7 vs Prisma 5 (Windows / npx)
+
+Si ejecutas `npx prisma ...` sin versión fijada, `npx` puede descargar Prisma 7 y verás el error `P1012` sobre `url/directUrl` en `schema.prisma`.
+
+Para este proyecto usa Prisma 5.22.0 (alineado con el repo):
+
+```bash
+npm install
+npm run prisma:generate
+npm run db:migrate:deploy
+```
+
+Si quieres comando directo, fija versión explícita:
+
+```bash
+npx prisma@5.22.0 generate
+npx prisma@5.22.0 migrate deploy
+```
+
+`ERR_MODULE_NOT_FOUND: @prisma/client` normalmente indica que faltó `npm install` o no se generó el cliente todavía.
+
 ## Troubleshooting rápido: error en `/api/projects`
 
 Si en el navegador ves error en la API de proyectos (normalmente `500`), revisa este orden:
@@ -147,7 +169,7 @@ npm run dev:local  # db + prisma + app
 ## Base de datos (Prisma)
 
 ```bash
-npx prisma generate
+npm run prisma:generate
 ```
 
 > Prisma schema y migraciones están activas y alineadas con el flujo de reporting/export actual.

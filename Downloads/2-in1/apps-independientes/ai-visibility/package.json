@@ -3,22 +3,23 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "npx prisma generate && npm run db:migrate:deploy && next dev",
+    "dev": "npm run prisma:generate && npm run db:migrate:deploy && next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "dev:local": "npx prisma generate && npm run db:migrate:deploy && next dev",
+    "dev:local": "npm run prisma:generate && npm run db:migrate:deploy && next dev",
     "test:smoke": "vitest run __tests__/smoke.test.ts",
     "test:kpi": "vitest run __tests__/kpi.logic.test.ts",
     "verify": "node scripts/verify.mjs",
     "db:seed": "node scripts/seed-dev.mjs",
-    "db:migrate:deploy": "PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1 prisma migrate deploy",
-    "db:check:migrations": "PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1 prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --exit-code",
+    "db:migrate:deploy": "PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1 npx prisma@5.22.0 migrate deploy",
+    "db:check:migrations": "PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1 npx prisma@5.22.0 migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --exit-code",
     "db:backup": "bash scripts/db-backup.sh",
-    "db:restore": "bash scripts/db-restore.sh"
+    "db:restore": "bash scripts/db-restore.sh",
+    "prisma:generate": "PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1 npx prisma@5.22.0 generate"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
