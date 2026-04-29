@@ -30,7 +30,7 @@ import { runBatchWithConcurrency, BatchProgress } from '../../utils/batchProcess
 import { useProject } from '../../context/ProjectContext';
 import { validateChecklistWithAI } from '../../services/seoChecklistAIValidator';
 import { useGSCAuth } from '../../hooks/useGSCAuth';
-import { listSites, getPageMetrics } from '../../services/googleSearchConsole';
+import { listSites, querySearchAnalyticsPaged } from '../../services/googleSearchConsole';
 
 interface Props {
   pages: SeoPage[];
@@ -595,34 +595,55 @@ export const SeoUrlList: React.FC<Props> = ({
 
     try {
       const pageBatches = createBatches(targetPages, PROCESSING_BATCH_SIZE);
-      for (const [batchIndex, batch] of pageBatches.entries()) {
-        setGscSyncStatus(
-          `Sincronizando bloque ${batchIndex + 1}/${pageBatches.length} (${batch.length} URL${batch.length === 1 ? '' : 's'}).`,
-        );
-        for (const page of batch) {
-          try {
-            const row = await getPageMetrics(gscAccessToken, selectedGscSite, page.url, startDate, endDate);
-            if (!row) continue;
+      setGscSyncStatus(
+        `Sincronizando bloque 1/${pageBatches.length} (${Math.min(PROCESSING_BATCH_SIZE, targetPages.length)} URL${targetPages.length === 1 ? '' : 's'}).`,
+      );
+      const response = await querySearchAnalyticsPaged(gscAccessToken, {
+        siteUrl: selectedGscSite,
+        startDate,
+        endDate,
+        dimensions: ['page'],
+        rowLimit: 25_000,
+        maxRows: 500_000,
+        searchType: 'web',
+      });
+      const rows = Array.isArray(response.rows) ? response.rows : [];
+      const metricsByUrl = new Map<string, { clicks: number; impressions: number; ctr: number; position?: number }>();
 
-            updates.push({
-              id: page.id,
-              changes: {
-                gscMetrics: {
-                  clicks: Number(row.clicks || 0),
-                  impressions: Number(row.impressions || 0),
-                  ctr: Number(row.ctr || 0),
-                  position: Number(row.position || 0) || undefined,
-                  source: 'page',
-                  updatedAt: Date.now(),
-                  queryCount: page.gscMetrics?.queryCount,
-                },
-              },
-            });
-            processed += 1;
-          } catch (error) {
-            console.warn('No se pudieron sincronizar métricas para URL', page.url, error);
-          }
-        }
+      for (const row of rows) {
+        const rawUrl = String(row?.keys?.[0] || '').trim();
+        if (!rawUrl) continue;
+        const normalizedUrl = rawUrl.endsWith('/') ? rawUrl.slice(0, -1) : rawUrl;
+        metricsByUrl.set(normalizedUrl, {
+          clicks: Number(row.clicks || 0),
+          impressions: Number(row.impressions || 0),
+          ctr: Number(row.ctr || 0),
+          position: Number(row.position || 0) || undefined,
+        });
+      }
+
+      for (const page of targetPages) {
+        const normalizedPageUrl = page.url.trim().endsWith('/')
+          ? page.url.trim().slice(0, -1)
+          : page.url.trim();
+        const row = metricsByUrl.get(normalizedPageUrl);
+        if (!row) continue;
+
+        updates.push({
+          id: page.id,
+          changes: {
+            gscMetrics: {
+              clicks: row.clicks,
+              impressions: row.impressions,
+              ctr: row.ctr,
+              position: row.position,
+              source: 'page',
+              updatedAt: Date.now(),
+              queryCount: page.gscMetrics?.queryCount,
+            },
+          },
+        });
+        processed += 1;
       }
 
       if (updates.length > 0) {
