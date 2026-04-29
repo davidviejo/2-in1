@@ -32,6 +32,20 @@ import { validateChecklistWithAI } from '../../services/seoChecklistAIValidator'
 import { useGSCAuth } from '../../hooks/useGSCAuth';
 import { listSites, querySearchAnalyticsPaged } from '../../services/googleSearchConsole';
 
+const createEmptyChecklist = () =>
+  CHECKLIST_POINTS.reduce(
+    (acc, point) => {
+      acc[point.key] = {
+        key: point.key,
+        label: point.label,
+        status_manual: 'NA',
+        notes_manual: '',
+      };
+      return acc;
+    },
+    {} as SeoPage['checklist'],
+  );
+
 interface Props {
   pages: SeoPage[];
   onSelect: (page: SeoPage) => void;
@@ -152,9 +166,11 @@ export const SeoUrlList: React.FC<Props> = ({
     // Tab 1: Resumen
     const summaryHeaders = [
       'URL',
-      'Keyword',
+      'KW Principal',
       'Tipo',
       'Cluster',
+      'Clics',
+      'Impresiones',
       ...CHECKLIST_POINTS.map((p) => p.label),
     ];
     const exportPages = pages;
@@ -164,13 +180,15 @@ export const SeoUrlList: React.FC<Props> = ({
       p.kwPrincipal,
       p.pageType,
       p.cluster || '',
+      p.gscMetrics?.clicks || 0,
+      p.gscMetrics?.impressions || 0,
       ...CHECKLIST_POINTS.map((point) => p.checklist[point.key]?.status_manual || 'NA'),
     ]);
 
     const wsSummary = XLSX.utils.aoa_to_sheet([summaryHeaders, ...summaryData]);
 
     // Tab 2: Detalle Completo
-    const detailHeaders = ['URL', 'Keyword', 'Tipo', 'Cluster'];
+    const detailHeaders = ['URL', 'KW Principal', 'Tipo', 'Cluster', 'Clics', 'Impresiones'];
     CHECKLIST_POINTS.forEach((p) => {
       detailHeaders.push(`${p.label} - Estado`);
       detailHeaders.push(`${p.label} - Notas`);
@@ -178,7 +196,7 @@ export const SeoUrlList: React.FC<Props> = ({
     });
 
     const detailData = exportPages.map((p) => {
-      const row = [p.url, p.kwPrincipal, p.pageType, p.cluster || ''];
+      const row = [p.url, p.kwPrincipal, p.pageType, p.cluster || '', p.gscMetrics?.clicks || 0, p.gscMetrics?.impressions || 0];
       CHECKLIST_POINTS.forEach((point) => {
         const item = p.checklist[point.key];
         row.push(item?.status_manual || 'NA');
@@ -580,13 +598,9 @@ export const SeoUrlList: React.FC<Props> = ({
 
     const targetIds = selectedIds.size > 0 ? selectedIds : new Set(filteredPages.map((p) => p.id));
     const targetPages = pages.filter((page) => targetIds.has(page.id));
-    if (targetPages.length === 0) {
-      setGscSyncStatus('No hay URLs disponibles para sincronizar.');
-      return;
-    }
 
     setIsSyncingGscMetrics(true);
-    setGscSyncStatus(`Sincronizando clics e impresiones para ${targetPages.length} URL(s)...`);
+    setGscSyncStatus('Sincronizando clics e impresiones desde el informe de páginas de GSC...');
 
     const endDate = new Date().toISOString().slice(0, 10);
     const startDate = new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -637,6 +651,10 @@ export const SeoUrlList: React.FC<Props> = ({
         metricsByUrl.set(normalizedUrl, current);
       }
 
+      const normalizedExistingUrls = new Set(
+        pages.map((page) => normalizeUrlCandidate(page.url)).filter(Boolean),
+      );
+
       for (const page of targetPages) {
         const pageCandidates = buildUrlCandidates(page.url);
         if (pageCandidates.length === 0) continue;
@@ -676,6 +694,36 @@ export const SeoUrlList: React.FC<Props> = ({
         processed += 1;
       }
 
+      const rowsNotInChecklist = Array.from(metricsByUrl.entries()).filter(([url, metrics]) => {
+        if (normalizedExistingUrls.has(url)) return false;
+        return metrics.clicks > 0;
+      });
+
+      rowsNotInChecklist.forEach(([url, metrics]) => {
+        const ctr = metrics.impressions > 0 ? metrics.clicks / metrics.impressions : 0;
+        const position =
+          metrics.impressions > 0
+            ? metrics.weightedPosition / metrics.impressions
+            : undefined;
+        updates.push({
+          id: `gsc-${url}`,
+          changes: {
+            url,
+            kwPrincipal: '',
+            pageType: 'Pendiente',
+            checklist: createEmptyChecklist(),
+            gscMetrics: {
+              clicks: metrics.clicks,
+              impressions: metrics.impressions,
+              ctr,
+              position,
+              source: 'page',
+              updatedAt: Date.now(),
+            },
+          },
+        });
+      });
+
       if (updates.length > 0) {
         onBulkUpdate(updates);
       }
@@ -686,7 +734,7 @@ export const SeoUrlList: React.FC<Props> = ({
         return;
       }
       setGscSyncStatus(
-        `Sincronización completada: ${processed}/${targetPages.length} URL(s) actualizadas con GSC.`,
+        `Sincronización completada: ${processed}/${targetPages.length} URL(s) actualizadas y ${rowsNotInChecklist.length} URL(s) nuevas añadidas desde GSC.`,
       );
     } finally {
       setIsSyncingGscMetrics(false);
