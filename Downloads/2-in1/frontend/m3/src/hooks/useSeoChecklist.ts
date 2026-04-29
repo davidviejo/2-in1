@@ -280,9 +280,30 @@ export const useSeoChecklist = () => {
   const bulkUpdatePages = useCallback(
     (updates: { id: string; changes: Partial<SeoPage> }[]) => {
       setPages((prev) => {
+        const existingIds = new Set(prev.map((page) => page.id));
         const updated = enforceUniquePrimaryKeywords(
           normalizeSeoPages(
-            prev.map((p) => {
+            [
+              ...prev,
+              ...updates
+                .filter((update) => !existingIds.has(update.id))
+                .map((update) => ({
+                  id: update.id,
+                  url: update.changes.url || '',
+                  kwPrincipal: update.changes.kwPrincipal || '',
+                  pageType: update.changes.pageType || 'Pendiente',
+                  cluster: update.changes.cluster || '',
+                  geoTarget: update.changes.geoTarget,
+                  isBrandKeyword: update.changes.isBrandKeyword,
+                  originalKwPrincipal: update.changes.originalKwPrincipal,
+                  gscMetrics: update.changes.gscMetrics,
+                  checklist: normalizeChecklist(update.changes.checklist),
+                  lastAnalyzedAt: update.changes.lastAnalyzedAt,
+                  competitors: update.changes.competitors || [],
+                  advancedBlockedReason: update.changes.advancedBlockedReason,
+                  engineMeta: update.changes.engineMeta,
+                })),
+            ].map((p) => {
               const update = updates.find((u) => u.id === p.id);
               if (!update) return p;
               const mergedChecklist = update.changes.checklist
