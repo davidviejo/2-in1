@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { SeoPage } from '../../types/seoChecklist';
-import { getPageMetrics, getPageQueries } from '../../services/googleSearchConsole';
+import { querySearchAnalyticsPaged } from '../../services/googleSearchConsole';
 import {
   getCachedUrlKeywordEntry,
   getLatestGscUrlKeywordCache,
@@ -27,6 +27,21 @@ interface Props {
   pages: SeoPage[];
   onBulkUpdate: (updates: { id: string; changes: Partial<SeoPage> }[]) => void;
 }
+
+const GSC_BULK_ROW_LIMIT = 25_000;
+const GSC_BULK_MAX_ROWS = 100_000;
+
+const normalizeUrlCandidate = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
+};
+
+const buildUrlCandidates = (url: string) => {
+  const normalized = normalizeUrlCandidate(url);
+  if (!normalized) return [];
+  return [normalized, `${normalized}/`];
+};
 
 const isUsableKeyword = (value?: string) => {
   const normalized = (value || '').trim();
@@ -224,6 +239,8 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
     const updates: { id: string; changes: Partial<SeoPage> }[] = [];
     const cachedSnapshot = reuseDashboardData ? getLatestGscUrlKeywordCache(site) : null;
 
+    const pagesToFetchLive: SeoPage[] = [];
+
     for (const page of targetPages) {
       const cachedEntry = getCachedUrlKeywordEntry(cachedSnapshot, page.url);
       if (cachedEntry) {
@@ -256,54 +273,101 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
         continue;
       }
 
+      pagesToFetchLive.push(page);
+
       if (!token) {
         missingTokenCount += 1;
-        continue;
       }
+    }
 
+    if (token && pagesToFetchLive.length > 0) {
       try {
-        const [pageMetricsRow, pageQueries] = await Promise.all([
-          getPageMetrics(token, site, page.url, start, end),
-          getPageQueries(token, site, page.url, start, end),
-        ]);
-        const normalizedQueries = Array.isArray(pageQueries)
-          ? pageQueries.map(normalizeQueryRow).filter((query) => isUsableKeyword(query.query))
-          : [];
+        const bulkResponse = await querySearchAnalyticsPaged(token, {
+          siteUrl: site,
+          startDate: start,
+          endDate: end,
+          dimensions: ['page', 'query'],
+          rowLimit: GSC_BULK_ROW_LIMIT,
+          maxRows: GSC_BULK_MAX_ROWS,
+          searchType: 'web',
+        });
+        const bulkRows = Array.isArray(bulkResponse.rows) ? bulkResponse.rows : [];
+        const rowsByUrl = new Map<string, any[]>();
 
-        if (normalizedQueries.length === 0 && !pageMetricsRow) {
-          continue;
+        for (const row of bulkRows) {
+          const rowUrl = normalizeUrlCandidate(String(row?.keys?.[0] || ''));
+          if (!rowUrl) continue;
+          const bucket = rowsByUrl.get(rowUrl);
+          if (bucket) {
+            bucket.push(row);
+          } else {
+            rowsByUrl.set(rowUrl, [row]);
+          }
         }
 
-        okCount += 1;
-        fetchedCount += 1;
-        updates.push({
-          id: page.id,
-          changes: {
-            gscMetrics: pageMetricsRow
-              ? {
-                  clicks: Number(pageMetricsRow.clicks || 0),
-                  impressions: Number(pageMetricsRow.impressions || 0),
-                  ctr: Number(pageMetricsRow.ctr || 0),
-                  position: Number(pageMetricsRow.position || 0) || undefined,
-                  queryCount: normalizedQueries.length,
-                  source: 'page',
-                  updatedAt: Date.now(),
-                }
-              : page.gscMetrics,
-            checklist: {
-              ...page.checklist,
-              OPORTUNIDADES: {
-                ...page.checklist.OPORTUNIDADES,
-                autoData: {
-                  ...(page.checklist.OPORTUNIDADES?.autoData || {}),
-                  gscQueries: normalizedQueries,
+        for (const page of pagesToFetchLive) {
+          const pageCandidates = buildUrlCandidates(page.url);
+          const pageRows = pageCandidates.flatMap((candidate) => rowsByUrl.get(candidate) || []);
+          const normalizedQueries = pageRows
+            .map((row) =>
+              normalizeQueryRow({
+                ...row,
+                query: row?.keys?.[1] || row?.query || '',
+              }),
+            )
+            .filter((query) => isUsableKeyword(query.query))
+            .sort((a, b) => {
+              if (b.clicks !== a.clicks) return b.clicks - a.clicks;
+              if (b.impressions !== a.impressions) return b.impressions - a.impressions;
+              return a.position - b.position;
+            });
+
+          if (normalizedQueries.length === 0) continue;
+
+          const aggregated = normalizedQueries.reduce(
+            (acc, row) => {
+              acc.clicks += Number(row.clicks || 0);
+              acc.impressions += Number(row.impressions || 0);
+              acc.weightedPosition += Number(row.position || 0) * Number(row.impressions || 0);
+              return acc;
+            },
+            { clicks: 0, impressions: 0, weightedPosition: 0 },
+          );
+          const ctr = aggregated.impressions > 0 ? aggregated.clicks / aggregated.impressions : 0;
+          const position =
+            aggregated.impressions > 0
+              ? aggregated.weightedPosition / aggregated.impressions
+              : undefined;
+
+          okCount += 1;
+          fetchedCount += 1;
+          updates.push({
+            id: page.id,
+            changes: {
+              gscMetrics: {
+                clicks: aggregated.clicks,
+                impressions: aggregated.impressions,
+                ctr,
+                position,
+                queryCount: normalizedQueries.length,
+                source: 'page',
+                updatedAt: Date.now(),
+              },
+              checklist: {
+                ...page.checklist,
+                OPORTUNIDADES: {
+                  ...page.checklist.OPORTUNIDADES,
+                  autoData: {
+                    ...(page.checklist.OPORTUNIDADES?.autoData || {}),
+                    gscQueries: normalizedQueries,
+                  },
                 },
               },
             },
-          },
-        });
+          });
+        }
       } catch (error) {
-        console.warn('No se pudieron cargar queries GSC para URL', page.url, error);
+        console.warn('Fallo en carga masiva GSC. No se pudieron actualizar URLs sin caché.', error);
       }
     }
 
