@@ -593,10 +593,23 @@ export const SeoUrlList: React.FC<Props> = ({
     const updates: { id: string; changes: Partial<SeoPage> }[] = [];
     let processed = 0;
 
+    const normalizeUrlCandidate = (value: string): string => {
+      const trimmed = value.trim();
+      if (!trimmed) return '';
+      return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
+    };
+
+    const buildUrlCandidates = (value: string): string[] => {
+      const normalized = normalizeUrlCandidate(value);
+      if (!normalized) return [];
+      const withSlash = normalized.endsWith('/') ? normalized : `${normalized}/`;
+      const withoutSlash = normalized.endsWith('/') ? normalized.slice(0, -1) : normalized;
+      return Array.from(new Set([normalized, withSlash, withoutSlash].filter(Boolean)));
+    };
+
     try {
-      const pageBatches = createBatches(targetPages, PROCESSING_BATCH_SIZE);
       setGscSyncStatus(
-        `Sincronizando bloque 1/${pageBatches.length} (${Math.min(PROCESSING_BATCH_SIZE, targetPages.length)} URL${targetPages.length === 1 ? '' : 's'}).`,
+        `Sincronizando métricas GSC en modo masivo (${targetPages.length} URL${targetPages.length === 1 ? '' : 's'}).`,
       );
       const response = await querySearchAnalyticsPaged(gscAccessToken, {
         siteUrl: selectedGscSite,
@@ -604,39 +617,56 @@ export const SeoUrlList: React.FC<Props> = ({
         endDate,
         dimensions: ['page'],
         rowLimit: 25_000,
-        maxRows: 500_000,
         searchType: 'web',
       });
       const rows = Array.isArray(response.rows) ? response.rows : [];
-      const metricsByUrl = new Map<string, { clicks: number; impressions: number; ctr: number; position?: number }>();
+      const metricsByUrl = new Map<string, { clicks: number; impressions: number; weightedPosition: number }>();
 
       for (const row of rows) {
         const rawUrl = String(row?.keys?.[0] || '').trim();
         if (!rawUrl) continue;
-        const normalizedUrl = rawUrl.endsWith('/') ? rawUrl.slice(0, -1) : rawUrl;
-        metricsByUrl.set(normalizedUrl, {
-          clicks: Number(row.clicks || 0),
-          impressions: Number(row.impressions || 0),
-          ctr: Number(row.ctr || 0),
-          position: Number(row.position || 0) || undefined,
-        });
+        const normalizedUrl = normalizeUrlCandidate(rawUrl);
+        if (!normalizedUrl) continue;
+        const current = metricsByUrl.get(normalizedUrl) || { clicks: 0, impressions: 0, weightedPosition: 0 };
+        const rowClicks = Number(row.clicks || 0);
+        const rowImpressions = Number(row.impressions || 0);
+        const rowPosition = Number(row.position || 0);
+        current.clicks += rowClicks;
+        current.impressions += rowImpressions;
+        current.weightedPosition += rowPosition * rowImpressions;
+        metricsByUrl.set(normalizedUrl, current);
       }
 
       for (const page of targetPages) {
-        const normalizedPageUrl = page.url.trim().endsWith('/')
-          ? page.url.trim().slice(0, -1)
-          : page.url.trim();
-        const row = metricsByUrl.get(normalizedPageUrl);
-        if (!row) continue;
+        const pageCandidates = buildUrlCandidates(page.url);
+        if (pageCandidates.length === 0) continue;
+
+        const aggregated = pageCandidates.reduce(
+          (acc, candidate) => {
+            const row = metricsByUrl.get(candidate);
+            if (!row) return acc;
+            acc.clicks += row.clicks;
+            acc.impressions += row.impressions;
+            acc.weightedPosition += row.weightedPosition;
+            return acc;
+          },
+          { clicks: 0, impressions: 0, weightedPosition: 0 },
+        );
+        if (aggregated.impressions === 0 && aggregated.clicks === 0) continue;
+        const ctr = aggregated.impressions > 0 ? aggregated.clicks / aggregated.impressions : 0;
+        const position =
+          aggregated.impressions > 0
+            ? aggregated.weightedPosition / aggregated.impressions
+            : undefined;
 
         updates.push({
           id: page.id,
           changes: {
             gscMetrics: {
-              clicks: row.clicks,
-              impressions: row.impressions,
-              ctr: row.ctr,
-              position: row.position,
+              clicks: aggregated.clicks,
+              impressions: aggregated.impressions,
+              ctr,
+              position,
               source: 'page',
               updatedAt: Date.now(),
               queryCount: page.gscMetrics?.queryCount,
@@ -648,6 +678,12 @@ export const SeoUrlList: React.FC<Props> = ({
 
       if (updates.length > 0) {
         onBulkUpdate(updates);
+      }
+      if (response.truncated) {
+        setGscSyncStatus(
+          `Sincronización completada con aviso: ${processed}/${targetPages.length} URL(s) actualizadas. GSC devolvió datos truncados (${response.truncatedReason || 'límite de API'}).`,
+        );
+        return;
       }
       setGscSyncStatus(
         `Sincronización completada: ${processed}/${targetPages.length} URL(s) actualizadas con GSC.`,
