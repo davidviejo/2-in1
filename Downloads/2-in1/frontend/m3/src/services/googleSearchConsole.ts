@@ -218,6 +218,18 @@ const buildPageUrlVariants = (pageUrl: string) => {
   return Array.from(variants);
 };
 
+const normalizeComparablePageUrl = (pageUrl: string) => {
+  const trimmed = pageUrl.trim();
+  if (!trimmed) return '';
+  try {
+    const parsed = new URL(trimmed);
+    const normalizedPath = parsed.pathname.replace(/\/+$/, '') || '/';
+    return `${parsed.protocol}//${parsed.host}${normalizedPath}`.toLowerCase();
+  } catch {
+    return trimmed.replace(/\/+$/, '').toLowerCase();
+  }
+};
+
 const queryPageAnalytics = async (
   accessToken: string,
   siteUrl: string,
@@ -696,6 +708,50 @@ export const getPageMetrics = async (
     console.error('GSC Page Metrics Error:', error);
     throw error;
   }
+};
+
+export const getPageMetricsBulkByUrl = async (
+  accessToken: string,
+  siteUrl: string,
+  pageUrls: string[],
+  startDate: string,
+  endDate: string,
+): Promise<Record<string, GSCRow>> => {
+  if (!Array.isArray(pageUrls) || pageUrls.length === 0) {
+    return {};
+  }
+
+  const response = await querySearchAnalyticsPaged(accessToken, {
+    siteUrl,
+    startDate,
+    endDate,
+    dimensions: ['page'],
+    searchType: DEFAULT_PAGED_SEARCH_TYPE,
+    enableDateChunking: false,
+  });
+
+  const metricsByComparableUrl = new Map<string, GSCRow>();
+  for (const row of response.rows || []) {
+    const rowPage = row.keys?.[0];
+    if (!rowPage) continue;
+    const comparableUrl = normalizeComparablePageUrl(rowPage);
+    if (!comparableUrl) continue;
+    metricsByComparableUrl.set(comparableUrl, row);
+  }
+
+  const metricsByInputUrl: Record<string, GSCRow> = {};
+  for (const pageUrl of pageUrls) {
+    const variants = buildPageUrlVariants(pageUrl);
+    const matchedVariant = variants
+      .map(normalizeComparablePageUrl)
+      .find((variant) => metricsByComparableUrl.has(variant));
+    if (!matchedVariant) continue;
+    const row = metricsByComparableUrl.get(matchedVariant);
+    if (!row) continue;
+    metricsByInputUrl[pageUrl] = row;
+  }
+
+  return metricsByInputUrl;
 };
 
 export const getGSCTimeSeriesData = async (

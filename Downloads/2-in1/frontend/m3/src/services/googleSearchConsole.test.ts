@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { querySearchAnalyticsPaged } from './googleSearchConsole';
+import { getPageMetricsBulkByUrl, querySearchAnalyticsPaged } from './googleSearchConsole';
 
 describe('googleSearchConsole service hardening', () => {
   const accessToken = 'token';
@@ -136,5 +136,31 @@ describe('googleSearchConsole service hardening', () => {
     expect(second.rows).toEqual(first.rows);
     expect(callsAfterFirstRun).toBeGreaterThan(1);
     expect(fetchMock).toHaveBeenCalledTimes(callsAfterFirstRun);
+  });
+
+  it('maps bulk page metrics back to requested URLs', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        rows: [
+          { keys: ['https://example.com/url-a/'], clicks: 5, impressions: 50, ctr: 0.1, position: 4 },
+          { keys: ['https://example.com/url-b'], clicks: 2, impressions: 20, ctr: 0.1, position: 8 },
+        ],
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+
+    const metricsByUrl = await getPageMetricsBulkByUrl(
+      accessToken,
+      'sc-domain:bulk-example.com',
+      ['https://example.com/url-a', 'https://example.com/url-b/', 'https://example.com/url-c'],
+      '2026-04-01',
+      '2026-04-28',
+    );
+
+    expect(Object.keys(metricsByUrl)).toEqual(['https://example.com/url-a', 'https://example.com/url-b/']);
+    expect(metricsByUrl['https://example.com/url-a'].clicks).toBe(5);
+    expect(metricsByUrl['https://example.com/url-b/'].impressions).toBe(20);
   });
 });
