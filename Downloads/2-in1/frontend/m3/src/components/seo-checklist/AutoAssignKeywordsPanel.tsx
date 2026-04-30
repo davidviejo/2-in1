@@ -43,6 +43,21 @@ const buildUrlCandidates = (url: string) => {
   return [normalized, `${normalized}/`];
 };
 
+const toCanonicalUrlKey = (value: string) => {
+  const raw = (value || '').trim();
+  if (!raw) return '';
+
+  try {
+    const parsed = new URL(raw);
+    const host = parsed.hostname.replace(/^www\./i, '').toLowerCase();
+    const path = (parsed.pathname || '/').replace(/\/+$/g, '') || '/';
+    return `${host}${path.toLowerCase()}`;
+  } catch {
+    const normalized = normalizeUrlCandidate(raw).toLowerCase();
+    return normalized.replace(/^https?:\/\/(www\.)?/i, '');
+  }
+};
+
 const isUsableKeyword = (value?: string) => {
   const normalized = (value || '').trim();
   return normalized.length > 0 && normalized !== '-';
@@ -89,16 +104,18 @@ export const getKeywordCandidatesFromPage = (page: SeoPage) => {
 
 export const getBestKeywordFromPage = (page: SeoPage, blockedKeywords: Set<string>) => {
   const candidates = getKeywordCandidatesFromPage(page);
-  const best =
-    candidates.find(
-      (candidate: any) => !blockedKeywords.has(candidate.query.trim().toLowerCase()),
-    ) || null;
+  const bestUnblocked = candidates.find(
+    (candidate: any) => !blockedKeywords.has(candidate.query.trim().toLowerCase()),
+  );
+  const bestBlockedFallback = candidates[0];
+  const best = bestUnblocked || bestBlockedFallback || null;
   if (!best) return null;
 
   return {
     keyword: best.query.trim(),
     clicks: best.clicks,
     impressions: best.impressions,
+    isBlockedFallback: !bestUnblocked,
   };
 };
 
@@ -155,8 +172,7 @@ export const buildKeywordProposals = (
           currentKeyword,
           proposedKeyword: '',
           confidence: 'baja' as const,
-          reason:
-            'Sin queries GSC válidas o todas bloqueadas (marca / ya asignadas en otras URLs).',
+          reason: 'Sin queries GSC válidas para proponer una KW principal.',
           gscClicks: 0,
           gscImpressions: 0,
         };
@@ -188,8 +204,9 @@ export const buildKeywordProposals = (
         currentKeyword,
         proposedKeyword: suggestion.keyword,
         confidence,
-        reason:
-          currentKeyword.toLowerCase() === suggestion.keyword.toLowerCase()
+        reason: suggestion.isBlockedFallback
+          ? 'Keyword sugerida aunque ya aparece en otra URL; se prioriza no dejar la propuesta vacía.'
+          : currentKeyword.toLowerCase() === suggestion.keyword.toLowerCase()
             ? 'La keyword actual ya coincide con la mejor query de GSC.'
             : 'Keyword sugerida desde la query con mejor rendimiento (clics/impresiones).',
         gscClicks: suggestion.clicks,
@@ -305,21 +322,40 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
         });
         const bulkRows = Array.isArray(bulkResponse.rows) ? bulkResponse.rows : [];
         const rowsByUrl = new Map<string, any[]>();
+        const rowsByCanonicalUrl = new Map<string, any[]>();
 
         for (const row of bulkRows) {
           const rowUrl = normalizeUrlCandidate(String(row?.keys?.[0] || ''));
           if (!rowUrl) continue;
-          const bucket = rowsByUrl.get(rowUrl);
-          if (bucket) {
-            bucket.push(row);
+
+          const directBucket = rowsByUrl.get(rowUrl);
+          if (directBucket) {
+            directBucket.push(row);
           } else {
             rowsByUrl.set(rowUrl, [row]);
+          }
+
+          const canonicalKey = toCanonicalUrlKey(rowUrl);
+          if (!canonicalKey) continue;
+          const canonicalBucket = rowsByCanonicalUrl.get(canonicalKey);
+          if (canonicalBucket) {
+            canonicalBucket.push(row);
+          } else {
+            rowsByCanonicalUrl.set(canonicalKey, [row]);
           }
         }
 
         for (const page of pagesToFetchLive) {
           const pageCandidates = buildUrlCandidates(page.url);
-          const pageRows = pageCandidates.flatMap((candidate) => rowsByUrl.get(candidate) || []);
+          const pageRowsFromCandidates = pageCandidates.flatMap(
+            (candidate) => rowsByUrl.get(candidate) || [],
+          );
+          const canonicalPageKey = toCanonicalUrlKey(page.url);
+          const pageRowsFromCanonical = canonicalPageKey
+            ? rowsByCanonicalUrl.get(canonicalPageKey) || []
+            : [];
+          const pageRows =
+            pageRowsFromCandidates.length > 0 ? pageRowsFromCandidates : pageRowsFromCanonical;
           const normalizedQueries = pageRows
             .map((row) =>
               normalizeQueryRow({
