@@ -29,7 +29,9 @@ interface Props {
 }
 
 const GSC_BULK_ROW_LIMIT = 25_000;
-const GSC_BULK_MAX_ROWS = 100_000;
+// Para proyectos grandes: aumentamos el límite total paginado para capturar más queries
+// y mejorar la probabilidad de recuperar la KW principal por URL.
+const GSC_BULK_MAX_ROWS = 300_000;
 
 const normalizeUrlCandidate = (value: string) => {
   const trimmed = value.trim();
