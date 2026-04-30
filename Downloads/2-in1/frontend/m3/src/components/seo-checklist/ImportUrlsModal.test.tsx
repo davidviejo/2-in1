@@ -312,4 +312,58 @@ describe('ImportUrlsModal', () => {
       'https://www.pccomponentes.com/como-ver-anime-naruto-completo-sin-relleno',
     );
   });
+
+  it('importa estados de checklist cuando llegan columnas del exportable de Excel', async () => {
+    const onImport = vi.fn();
+
+    render(
+      <ImportUrlsModal isOpen onClose={vi.fn()} onImport={onImport} existingPages={[]} />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(/https:\/\/example.com\/page1/i), {
+      target: {
+        value: [
+          'URL\tKeyword Principal\tTipo\tCluster\tClics\tImpresiones\t1. Cluster\t2. Geolocalización\t3. Datos estructurados',
+          'https://example.com/page-import\tkw importada\tArticle\tCluster A\t10\t200\tSI\tPARCIAL\tNO',
+        ].join('\n'),
+      },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Importar URLs' }));
+
+    await waitFor(() => {
+      expect(onImport).toHaveBeenCalledTimes(1);
+    });
+
+    const importedPage = onImport.mock.calls[0][0][0];
+    expect(importedPage.checklist.CLUSTER.status_manual).toBe('SI');
+    expect(importedPage.checklist.GEOLOCALIZACION.status_manual).toBe('PARCIAL');
+    expect(importedPage.checklist.DATOS_ESTRUCTURADOS.status_manual).toBe('NO');
+  });
+
+  it('permite descargar una plantilla TSV para importación', () => {
+    const createObjectURLSpy = vi
+      .spyOn(URL, 'createObjectURL')
+      .mockReturnValue('blob:template-url');
+    const revokeObjectURLSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+
+    const appendChildSpy = vi.spyOn(document.body, 'appendChild');
+    const removeChildSpy = vi.spyOn(document.body, 'removeChild');
+
+    render(
+      <ImportUrlsModal isOpen onClose={vi.fn()} onImport={vi.fn()} existingPages={[]} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Descargar plantilla de importación/i }));
+
+    expect(createObjectURLSpy).toHaveBeenCalledTimes(1);
+    expect(appendChildSpy).toHaveBeenCalled();
+    expect(removeChildSpy).toHaveBeenCalled();
+    expect(revokeObjectURLSpy).toHaveBeenCalledWith('blob:template-url');
+
+    createObjectURLSpy.mockRestore();
+    revokeObjectURLSpy.mockRestore();
+    appendChildSpy.mockRestore();
+    removeChildSpy.mockRestore();
+  });
 });
