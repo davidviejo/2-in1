@@ -312,6 +312,18 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
       return;
     }
 
+    const cachedSnapshot = reuseDashboardData ? getLatestGscUrlKeywordCache(site) : null;
+    const hasReusableCacheForTargets =
+      reuseDashboardData &&
+      targetPages.some((page) => Boolean(getCachedUrlKeywordEntry(cachedSnapshot, page.url)));
+
+    if (!hasReusableCacheForTargets && !token) {
+      setStatus(
+        '⚠️ Sin token GSC activo y sin caché reutilizable; conecta GSC en Dashboard y vuelve a intentar.',
+      );
+      return;
+    }
+
     setIsLoadingGsc(true);
     setStatus(`Cargando datos GSC para ${targetPages.length} URL(s)...`);
     const end = new Date().toISOString().split('T')[0];
@@ -322,8 +334,6 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
     let fetchedCount = 0;
     let missingTokenCount = 0;
     const updates: { id: string; changes: Partial<SeoPage> }[] = [];
-    const cachedSnapshot = reuseDashboardData ? getLatestGscUrlKeywordCache(site) : null;
-
     const pagesToFetchLive: SeoPage[] = [];
 
     for (const page of targetPages) {
