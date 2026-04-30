@@ -29,7 +29,9 @@ interface Props {
 }
 
 const GSC_BULK_ROW_LIMIT = 25_000;
-const GSC_BULK_MAX_ROWS = 100_000;
+// Para proyectos grandes: aumentamos el límite total paginado para capturar más queries
+// y mejorar la probabilidad de recuperar la KW principal por URL.
+const GSC_BULK_MAX_ROWS = 300_000;
 
 const normalizeUrlCandidate = (value: string) => {
   const trimmed = value.trim();
@@ -41,6 +43,30 @@ const buildUrlCandidates = (url: string) => {
   const normalized = normalizeUrlCandidate(url);
   if (!normalized) return [];
   return [normalized, `${normalized}/`];
+};
+
+const normalizeSiteHost = (siteUrl: string) => {
+  const trimmed = (siteUrl || '').trim().toLowerCase();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('sc-domain:')) {
+    return trimmed.replace('sc-domain:', '').replace(/^www\./, '');
+  }
+  try {
+    return new URL(trimmed).hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+};
+
+const doesUrlBelongToSite = (url: string, siteUrl: string) => {
+  const siteHost = normalizeSiteHost(siteUrl);
+  if (!siteHost) return true;
+  try {
+    const pageHost = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+    return pageHost === siteHost || pageHost.endsWith(`.${siteHost}`);
+  } catch {
+    return true;
+  }
 };
 
 const isUsableKeyword = (value?: string) => {
@@ -223,7 +249,12 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
   const actionableProposalsCount = proposals.filter((proposal) => proposal.proposedKeyword).length;
 
   const loadGscData = async () => {
-    const site = selectedSite.trim();
+    const latestRememberedSite = (localStorage.getItem('mediaflow_gsc_selected_site') || '').trim();
+    const site = (latestRememberedSite || selectedSite).trim();
+
+    if (site !== selectedSite.trim()) {
+      setSelectedSite(site);
+    }
     const token = localStorage.getItem('mediaflow_gsc_token');
 
     if (!site) {
@@ -238,6 +269,8 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
       if (sourceMode === 'without_kw') return !isUsableKeyword(page.kwPrincipal);
       return true;
     });
+
+    const pagesOutsideSelectedProperty = targetPages.filter((page) => !doesUrlBelongToSite(page.url, site));
 
     if (targetPages.length === 0) {
       setStatus('No hay URLs para consultar GSC con el filtro actual.');
@@ -404,8 +437,13 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
         ? ` ${missingTokenCount} URL(s) sin actualizar por falta de token GSC para consulta en vivo.`
         : '';
 
+    const outsidePropertyText =
+      pagesOutsideSelectedProperty.length > 0
+        ? ` ${pagesOutsideSelectedProperty.length} URL(s) parecen ser de otro dominio distinto a la propiedad seleccionada (${site}).`
+        : '';
+
     setStatus(
-      `Carga finalizada: ${okCount} URL(s) con datos actualizados.${reusedText}${fetchedText}${missingTokenText}`,
+      `Carga finalizada: ${okCount} URL(s) con datos actualizados.${reusedText}${fetchedText}${missingTokenText}${outsidePropertyText}`,
     );
     setIsLoadingGsc(false);
   };
