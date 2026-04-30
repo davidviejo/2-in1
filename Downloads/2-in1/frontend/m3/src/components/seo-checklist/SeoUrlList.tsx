@@ -12,6 +12,7 @@ import {
   ExternalLink,
   ChevronRight,
   ChevronLeft,
+  ArrowUpDown,
   Search,
   Download,
   Play,
@@ -104,6 +105,13 @@ export const SeoUrlList: React.FC<Props> = ({
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
+  const [sortConfig, setSortConfig] = useState<{
+    key: 'clicks' | 'impressions' | 'progress' | 'lastAnalyzedAt';
+    direction: 'asc' | 'desc';
+  }>({
+    key: 'clicks',
+    direction: 'desc',
+  });
 
   const filteredPages = pages.filter(
     (p) =>
@@ -112,7 +120,33 @@ export const SeoUrlList: React.FC<Props> = ({
       (p.cluster && p.cluster.toLowerCase().includes(filter.toLowerCase())),
   );
 
-  const totalPages = Math.ceil(filteredPages.length / itemsPerPage);
+  const sortedFilteredPages = useMemo(() => {
+    const getProgress = (page: SeoPage) => calculateStatusMetrics(page).progress;
+    const normalized = [...filteredPages];
+    normalized.sort((a, b) => {
+      let aValue = 0;
+      let bValue = 0;
+      if (sortConfig.key === 'clicks') {
+        aValue = a.gscMetrics?.clicks || 0;
+        bValue = b.gscMetrics?.clicks || 0;
+      } else if (sortConfig.key === 'impressions') {
+        aValue = a.gscMetrics?.impressions || 0;
+        bValue = b.gscMetrics?.impressions || 0;
+      } else if (sortConfig.key === 'progress') {
+        aValue = getProgress(a);
+        bValue = getProgress(b);
+      } else {
+        aValue = a.lastAnalyzedAt ? new Date(a.lastAnalyzedAt).getTime() : 0;
+        bValue = b.lastAnalyzedAt ? new Date(b.lastAnalyzedAt).getTime() : 0;
+      }
+
+      if (aValue === bValue) return a.url.localeCompare(b.url);
+      return sortConfig.direction === 'asc' ? aValue - bValue : bValue - aValue;
+    });
+    return normalized;
+  }, [filteredPages, sortConfig]);
+
+  const totalPages = Math.ceil(sortedFilteredPages.length / itemsPerPage);
 
   const aggregatedMetrics = useMemo(() => {
     return filteredPages.reduce(
@@ -133,10 +167,17 @@ export const SeoUrlList: React.FC<Props> = ({
       filteredPages.every((page) => (page.cluster || '').toLowerCase().includes(normalizedFilter))
     );
   }, [filter, filteredPages]);
-  const displayedPages = filteredPages.slice(
+  const displayedPages = sortedFilteredPages.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage,
   );
+  const handleSort = (key: 'clicks' | 'impressions' | 'progress' | 'lastAnalyzedAt') => {
+    setSortConfig((prev) => ({
+      key,
+      direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc',
+    }));
+    setCurrentPage(1);
+  };
   const filteredGscSites = useMemo(() => {
     const normalizedSearch = gscPropertySearch.trim().toLowerCase();
     if (!normalizedSearch) return gscSites;
@@ -1069,10 +1110,26 @@ export const SeoUrlList: React.FC<Props> = ({
                 <th className="px-6 py-4">URL</th>
                 <th className="px-6 py-4">Keyword</th>
                 <th className="px-6 py-4">Tipo</th>
-                <th className="px-6 py-4 text-right">Clics GSC</th>
-                <th className="px-6 py-4 text-right">Impresiones GSC</th>
-                <th className="px-6 py-4 text-center">Progreso</th>
-                <th className="px-6 py-4 text-right">Último Análisis</th>
+                <th className="px-6 py-4 text-right">
+                  <button type="button" onClick={() => handleSort('clicks')} className="inline-flex items-center gap-1">
+                    Clics GSC <ArrowUpDown size={12} />
+                  </button>
+                </th>
+                <th className="px-6 py-4 text-right">
+                  <button type="button" onClick={() => handleSort('impressions')} className="inline-flex items-center gap-1">
+                    Impresiones GSC <ArrowUpDown size={12} />
+                  </button>
+                </th>
+                <th className="px-6 py-4 text-center">
+                  <button type="button" onClick={() => handleSort('progress')} className="inline-flex items-center gap-1">
+                    Progreso <ArrowUpDown size={12} />
+                  </button>
+                </th>
+                <th className="px-6 py-4 text-right">
+                  <button type="button" onClick={() => handleSort('lastAnalyzedAt')} className="inline-flex items-center gap-1">
+                    Último Análisis <ArrowUpDown size={12} />
+                  </button>
+                </th>
                 <th className="px-6 py-4 text-right">Acciones</th>
               </tr>
             </thead>
@@ -1183,7 +1240,7 @@ export const SeoUrlList: React.FC<Props> = ({
                   </tr>
                 );
               })}
-              {filteredPages.length === 0 && (
+              {sortedFilteredPages.length === 0 && (
                 <tr>
                   <td colSpan={9} className="px-6 py-12 text-center text-slate-400">
                     {filter
@@ -1196,10 +1253,10 @@ export const SeoUrlList: React.FC<Props> = ({
           </table>
         </div>
         {/* Pagination Controls */}
-        {filteredPages.length > itemsPerPage && (
+        {sortedFilteredPages.length > itemsPerPage && (
           <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
             <div className="text-sm text-slate-500">
-              Showing {displayedPages.length} of {filteredPages.length} pages
+              Showing {displayedPages.length} of {sortedFilteredPages.length} pages
             </div>
             <div className="flex gap-2">
               <button
