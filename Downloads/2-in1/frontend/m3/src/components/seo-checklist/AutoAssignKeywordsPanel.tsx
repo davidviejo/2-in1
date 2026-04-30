@@ -48,6 +48,17 @@ const isUsableKeyword = (value?: string) => {
   return normalized.length > 0 && normalized !== '-';
 };
 
+const isUrlLikeQuery = (value?: string) => {
+  const query = (value || '').trim().toLowerCase();
+  if (!query) return false;
+  if (query.startsWith('http://') || query.startsWith('https://') || query.startsWith('www.')) {
+    return true;
+  }
+  if (query.includes('/')) return true;
+  if (query.includes('.') && !query.includes(' ')) return true;
+  return false;
+};
+
 const normalizeQueryRow = (row: any) => {
   const query = row?.query || row?.keys?.[0] || '';
   return {
@@ -68,10 +79,11 @@ export const getKeywordCandidatesFromPage = (page: SeoPage) => {
   return rawQueries
     .map(normalizeQueryRow)
     .filter((query: any) => isUsableKeyword(query.query))
+    .filter((query: any) => !isUrlLikeQuery(query.query))
     .sort((a: any, b: any) => {
-      if (b.clicks !== a.clicks) return b.clicks - a.clicks;
       if (b.impressions !== a.impressions) return b.impressions - a.impressions;
-      return a.position - b.position;
+      if (b.clicks !== a.clicks) return b.clicks - a.clicks;
+      return 0;
     });
 };
 
@@ -316,10 +328,11 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
               }),
             )
             .filter((query) => isUsableKeyword(query.query))
+            .filter((query) => !isUrlLikeQuery(query.query))
             .sort((a, b) => {
-              if (b.clicks !== a.clicks) return b.clicks - a.clicks;
               if (b.impressions !== a.impressions) return b.impressions - a.impressions;
-              return a.position - b.position;
+              if (b.clicks !== a.clicks) return b.clicks - a.clicks;
+              return 0;
             });
 
           if (normalizedQueries.length === 0) continue;

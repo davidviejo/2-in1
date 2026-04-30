@@ -39,19 +39,31 @@ const isUsablePrimaryKeyword = (keyword?: string) => {
   return normalized.length > 0 && normalized !== '-';
 };
 
+const isUrlLikeQuery = (value?: string) => {
+  const query = (value || '').trim().toLowerCase();
+  if (!query) return false;
+  if (query.startsWith('http://') || query.startsWith('https://') || query.startsWith('www.')) {
+    return true;
+  }
+  if (query.includes('/')) return true;
+  if (query.includes('.') && !query.includes(' ')) return true;
+  return false;
+};
+
 const pickPrimaryKeywordFromQueries = (gscQueries: any[] = [], brandTerms: string[] = []) => {
   const sortedQueries = [...gscQueries]
     .map(normalizeGscQueryRow)
     .filter((row) => isUsablePrimaryKeyword(row.query))
+    .filter((row) => !isUrlLikeQuery(row.query))
     .filter((row) => !isBrandTermMatch(row.query, brandTerms))
     .sort((a, b) => {
-      if ((b.clicks || 0) !== (a.clicks || 0)) {
-        return (b.clicks || 0) - (a.clicks || 0);
-      }
       if ((b.impressions || 0) !== (a.impressions || 0)) {
         return (b.impressions || 0) - (a.impressions || 0);
       }
-      return (a.position || Number.POSITIVE_INFINITY) - (b.position || Number.POSITIVE_INFINITY);
+      if ((b.clicks || 0) !== (a.clicks || 0)) {
+        return (b.clicks || 0) - (a.clicks || 0);
+      }
+      return 0;
     });
 
   return sortedQueries[0]?.query?.trim() || '';
