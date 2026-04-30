@@ -75,7 +75,12 @@ def create_app(config_class=Config):
 
     if not app.config.get('TESTING'):
         start_monitor()
-        JobRunner.start_worker()
+
+        auto_start_job_runner = str(app.config.get('AUTO_START_JOB_RUNNER', 'false')).strip().lower() in {
+            '1', 'true', 'yes', 'on'
+        }
+        if auto_start_job_runner:
+            JobRunner.start_worker()
 
     return app
 
