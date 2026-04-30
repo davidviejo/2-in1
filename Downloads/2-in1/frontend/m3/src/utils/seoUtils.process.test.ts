@@ -135,6 +135,36 @@ describe('processAnalysisResult', () => {
     expect(updates.checklist?.OPORTUNIDADES.autoData.primaryKeyword).toBe('');
   });
 
+  it('should ignore URL-like GSC queries when selecting the primary keyword', () => {
+    const pageWithoutKeyword: SeoPage = {
+      ...mockPage,
+      kwPrincipal: '',
+    };
+    const gscQueries = [
+      {
+        keys: ['https://example.com/servicios/seo-local'],
+        query: 'https://example.com/servicios/seo-local',
+        clicks: 300,
+        impressions: 900,
+        ctr: 0.33,
+        position: 1.2,
+      },
+      {
+        keys: ['seo local para clinicas'],
+        query: 'seo local para clinicas',
+        clicks: 50,
+        impressions: 700,
+        ctr: 0.07,
+        position: 3.1,
+      },
+    ];
+
+    const updates = processAnalysisResult(pageWithoutKeyword, { pageId: 'page-1', items: {} }, gscQueries);
+
+    expect(updates.kwPrincipal).toBe('seo local para clinicas');
+    expect(updates.checklist?.OPORTUNIDADES.autoData.primaryKeyword).toBe('seo local para clinicas');
+  });
+
 
   it('should treat a keyword containing a configured brand term as brand', () => {
     const pageWithoutKeyword: SeoPage = {
@@ -229,7 +259,7 @@ describe('processAnalysisResult', () => {
     expect(updates.checklist?.OPORTUNIDADES.autoData.gscQueries[0].keys[0]).toBe('existing');
   });
 
-  it('should assign a non-brand primary keyword when the current value is a dash placeholder', () => {
+  it('should assign a non-brand primary keyword by impressions when the current value is a dash placeholder', () => {
     const pageWithoutKeyword: SeoPage = {
       ...mockPage,
       kwPrincipal: '-',
@@ -245,8 +275,8 @@ describe('processAnalysisResult', () => {
       gscQueries,
     );
 
-    expect(updates.kwPrincipal).toBe('best kw');
-    expect(updates.originalKwPrincipal).toBe('best kw');
+    expect(updates.kwPrincipal).toBe('secondary kw');
+    expect(updates.originalKwPrincipal).toBe('secondary kw');
   });
 
   it('should store exact page GSC metrics when they are provided', () => {

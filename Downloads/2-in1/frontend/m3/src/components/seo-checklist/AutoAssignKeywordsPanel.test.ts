@@ -22,6 +22,19 @@ const buildPage = (queries: any[], kwPrincipal = ''): SeoPage =>
   }) as SeoPage;
 
 describe('getBestKeywordFromPage', () => {
+  it('prioriza impresiones por encima de clics para determinar la KW principal', () => {
+    const page = buildPage([
+      { query: 'query-con-mas-clicks', clicks: 80, impressions: 200, position: 2 },
+      { query: 'query-con-mas-impresiones', clicks: 20, impressions: 800, position: 5 },
+    ]);
+
+    const result = getBestKeywordFromPage(page, new Set());
+
+    expect(result?.keyword).toBe('query-con-mas-impresiones');
+    expect(result?.clicks).toBe(20);
+    expect(result?.impressions).toBe(800);
+  });
+
   it('elige la query con más impresiones cuando no hay clics', () => {
     const page = buildPage([
       { query: 'kw sin clics 1', clicks: 0, impressions: 50, position: 4 },
@@ -44,5 +57,16 @@ describe('getBestKeywordFromPage', () => {
     const result = getBestKeywordFromPage(page, new Set(['keyword-duplicada']));
 
     expect(result?.keyword).toBe('keyword-alternativa');
+  });
+
+  it('descarta queries con formato de URL durante la autoasignación', () => {
+    const page = buildPage([
+      { query: 'https://example.com/servicios/seo', clicks: 120, impressions: 1600, position: 1 },
+      { query: 'seo local para clinicas', clicks: 15, impressions: 700, position: 4 },
+    ]);
+
+    const result = getBestKeywordFromPage(page, new Set());
+
+    expect(result?.keyword).toBe('seo local para clinicas');
   });
 });
