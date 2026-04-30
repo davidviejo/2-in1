@@ -89,16 +89,18 @@ export const getKeywordCandidatesFromPage = (page: SeoPage) => {
 
 export const getBestKeywordFromPage = (page: SeoPage, blockedKeywords: Set<string>) => {
   const candidates = getKeywordCandidatesFromPage(page);
-  const best =
-    candidates.find(
-      (candidate: any) => !blockedKeywords.has(candidate.query.trim().toLowerCase()),
-    ) || null;
+  const bestUnblocked = candidates.find(
+    (candidate: any) => !blockedKeywords.has(candidate.query.trim().toLowerCase()),
+  );
+  const bestBlockedFallback = candidates[0];
+  const best = bestUnblocked || bestBlockedFallback || null;
   if (!best) return null;
 
   return {
     keyword: best.query.trim(),
     clicks: best.clicks,
     impressions: best.impressions,
+    isBlockedFallback: !bestUnblocked,
   };
 };
 
@@ -155,8 +157,7 @@ export const buildKeywordProposals = (
           currentKeyword,
           proposedKeyword: '',
           confidence: 'baja' as const,
-          reason:
-            'Sin queries GSC válidas o todas bloqueadas (marca / ya asignadas en otras URLs).',
+          reason: 'Sin queries GSC válidas para proponer una KW principal.',
           gscClicks: 0,
           gscImpressions: 0,
         };
@@ -188,8 +189,9 @@ export const buildKeywordProposals = (
         currentKeyword,
         proposedKeyword: suggestion.keyword,
         confidence,
-        reason:
-          currentKeyword.toLowerCase() === suggestion.keyword.toLowerCase()
+        reason: suggestion.isBlockedFallback
+          ? 'Keyword sugerida aunque ya aparece en otra URL; se prioriza no dejar la propuesta vacía.'
+          : currentKeyword.toLowerCase() === suggestion.keyword.toLowerCase()
             ? 'La keyword actual ya coincide con la mejor query de GSC.'
             : 'Keyword sugerida desde la query con mejor rendimiento (clics/impresiones).',
         gscClicks: suggestion.clicks,
