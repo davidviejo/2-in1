@@ -45,6 +45,21 @@ const buildUrlCandidates = (url: string) => {
   return [normalized, `${normalized}/`];
 };
 
+const toCanonicalUrlKey = (url: string) => {
+  const trimmed = (url || '').trim();
+  if (!trimmed) return '';
+
+  try {
+    const parsed = new URL(trimmed);
+    const host = parsed.hostname.replace(/^www\./i, '').toLowerCase();
+    const normalizedPath = parsed.pathname.toLowerCase();
+    const path = normalizedPath !== '/' ? normalizedPath.replace(/\/+$/, '') || '/' : '/';
+    return `${host}${path}`;
+  } catch {
+    return normalizeUrlCandidate(trimmed).toLowerCase();
+  }
+};
+
 const normalizeSiteHost = (siteUrl: string) => {
   const trimmed = (siteUrl || '').trim().toLowerCase();
   if (!trimmed) return '';
@@ -343,6 +358,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
         });
         const bulkRows = Array.isArray(bulkResponse.rows) ? bulkResponse.rows : [];
         const rowsByUrl = new Map<string, any[]>();
+        const rowsByCanonicalUrl = new Map<string, any[]>();
 
         for (const row of bulkRows) {
           const rowUrl = normalizeUrlCandidate(String(row?.keys?.[0] || ''));
@@ -353,11 +369,25 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
           } else {
             rowsByUrl.set(rowUrl, [row]);
           }
+
+          const canonicalRowUrl = toCanonicalUrlKey(rowUrl);
+          if (!canonicalRowUrl) continue;
+          const canonicalBucket = rowsByCanonicalUrl.get(canonicalRowUrl);
+          if (canonicalBucket) {
+            canonicalBucket.push(row);
+          } else {
+            rowsByCanonicalUrl.set(canonicalRowUrl, [row]);
+          }
         }
 
         for (const page of pagesToFetchLive) {
           const pageCandidates = buildUrlCandidates(page.url);
-          const pageRows = pageCandidates.flatMap((candidate) => rowsByUrl.get(candidate) || []);
+          const exactPageRows = pageCandidates.flatMap((candidate) => rowsByUrl.get(candidate) || []);
+          const fallbackCanonicalRows =
+            exactPageRows.length === 0
+              ? rowsByCanonicalUrl.get(toCanonicalUrlKey(page.url)) || []
+              : [];
+          const pageRows = exactPageRows.length > 0 ? exactPageRows : fallbackCanonicalRows;
           const normalizedQueries = pageRows
             .map((row) =>
               normalizeQueryRow({
