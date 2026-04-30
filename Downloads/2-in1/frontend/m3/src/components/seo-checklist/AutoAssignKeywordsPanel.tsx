@@ -255,6 +255,9 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
   const [selectedSite, setSelectedSite] = useState(
     () => localStorage.getItem('mediaflow_gsc_selected_site') || '',
   );
+  const [outsidePropertyUrls, setOutsidePropertyUrls] = useState<
+    { originalUrl: string; parsedHost: string; normalizedSiteHost: string }[]
+  >([]);
   const { settings } = useSeoChecklistSettings();
   const activeBrandTerms = useMemo(() => settings.brandTerms || [], [settings.brandTerms]);
 
@@ -286,6 +289,23 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
     });
 
     const pagesOutsideSelectedProperty = targetPages.filter((page) => !doesUrlBelongToSite(page.url, site));
+    const normalizedSiteHost = normalizeSiteHost(site) || '-';
+    const detectedOutsidePropertyUrls = pagesOutsideSelectedProperty.map((page) => {
+      let parsedHost = 'No se pudo parsear';
+      try {
+        parsedHost = new URL(page.url).hostname.replace(/^www\./i, '').toLowerCase();
+      } catch {
+        // mantenemos fallback descriptivo para la UI
+      }
+
+      return {
+        originalUrl: page.url,
+        parsedHost,
+        normalizedSiteHost,
+      };
+    });
+
+    setOutsidePropertyUrls(detectedOutsidePropertyUrls);
 
     if (targetPages.length === 0) {
       setStatus('No hay URLs para consultar GSC con el filtro actual.');
@@ -469,7 +489,9 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
 
     const outsidePropertyText =
       pagesOutsideSelectedProperty.length > 0
-        ? ` ${pagesOutsideSelectedProperty.length} URL(s) parecen ser de otro dominio distinto a la propiedad seleccionada (${site}).`
+        ? ` ${pagesOutsideSelectedProperty.length} URL(s) parecen ser de otro dominio distinto a la propiedad seleccionada (${site}): ${detectedOutsidePropertyUrls
+            .map((entry) => entry.originalUrl)
+            .join(', ')}.`
         : '';
 
     setStatus(
@@ -566,6 +588,34 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
       </div>
 
       {status && <p className="text-sm text-slate-600">{status}</p>}
+
+      {outsidePropertyUrls.length > 0 && (
+        <details className="rounded-lg border border-amber-200 bg-amber-50/40 p-3">
+          <summary className="cursor-pointer text-sm font-semibold text-amber-800">
+            URLs fuera de propiedad detectadas ({outsidePropertyUrls.length})
+          </summary>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="text-amber-900">
+                <tr>
+                  <th className="px-2 py-1">URL original</th>
+                  <th className="px-2 py-1">Host parseado</th>
+                  <th className="px-2 py-1">Host normalizado de propiedad</th>
+                </tr>
+              </thead>
+              <tbody>
+                {outsidePropertyUrls.map((entry) => (
+                  <tr key={`${entry.originalUrl}-${entry.parsedHost}`} className="border-t border-amber-200">
+                    <td className="px-2 py-1 text-slate-700">{entry.originalUrl}</td>
+                    <td className="px-2 py-1 text-slate-700">{entry.parsedHost}</td>
+                    <td className="px-2 py-1 text-slate-700">{entry.normalizedSiteHost}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
 
       <div className="overflow-x-auto rounded-lg border border-slate-200">
         <table className="w-full text-left text-sm">
