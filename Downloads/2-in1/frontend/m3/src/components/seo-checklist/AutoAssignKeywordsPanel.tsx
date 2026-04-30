@@ -211,6 +211,9 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
   const [status, setStatus] = useState('');
   const [isLoadingGsc, setIsLoadingGsc] = useState(false);
   const [reuseDashboardData, setReuseDashboardData] = useState(true);
+  const [selectedSite, setSelectedSite] = useState(
+    () => localStorage.getItem('mediaflow_gsc_selected_site') || '',
+  );
   const { settings } = useSeoChecklistSettings();
   const activeBrandTerms = useMemo(() => settings.brandTerms || [], [settings.brandTerms]);
 
@@ -220,7 +223,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
   const actionableProposalsCount = proposals.filter((proposal) => proposal.proposedKeyword).length;
 
   const loadGscData = async () => {
-    const site = localStorage.getItem('mediaflow_gsc_selected_site');
+    const site = selectedSite.trim();
     const token = localStorage.getItem('mediaflow_gsc_token');
 
     if (!site) {
@@ -462,6 +465,23 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
           />
           Reutilizar datos ya recopilados en Dashboard (si existen)
         </label>
+        <div className="md:col-span-2">
+          <label className="mb-1 block text-sm font-semibold text-slate-700">Propiedad GSC a usar</label>
+          <input
+            type="text"
+            value={selectedSite}
+            onChange={(event) => {
+              const nextValue = event.target.value;
+              setSelectedSite(nextValue);
+              localStorage.setItem('mediaflow_gsc_selected_site', nextValue.trim());
+            }}
+            placeholder="sc-domain:midominio.com o https://www.midominio.com/"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
+          <p className="mt-1 text-xs text-slate-500">
+            Este campo controla desde qué propiedad se cargan las queries para Autoasignar KWs.
+          </p>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">
