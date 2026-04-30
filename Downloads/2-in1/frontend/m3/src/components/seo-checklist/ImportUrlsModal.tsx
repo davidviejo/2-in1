@@ -1,6 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { X, Clipboard, Upload } from 'lucide-react';
-import { SeoPage, CHECKLIST_POINTS, ChecklistItem, ChecklistKey } from '../../types/seoChecklist';
+import {
+  SeoPage,
+  CHECKLIST_POINTS,
+  ChecklistItem,
+  ChecklistKey,
+  normalizeChecklistStatus,
+} from '../../types/seoChecklist';
 import { normalizeSeoUrl } from '../../utils/seoUrlNormalizer';
 import { useSettings } from '../../context/SettingsContext';
 import { isBrandTermMatch } from '../../utils/brandTerms';
@@ -127,6 +133,37 @@ const createEmptyChecklist = (): Record<ChecklistKey, ChecklistItem> => {
   );
 };
 
+const normalizeHeader = (value: string): string =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, ' ');
+
+const CHECKLIST_LABEL_ALIASES: Record<string, ChecklistKey> = CHECKLIST_POINTS.reduce(
+  (acc, point) => {
+    const normalizedLabel = normalizeHeader(point.label.replace(/^\d+\.\s*/, ''));
+    acc[normalizedLabel] = point.key;
+    return acc;
+  },
+  {} as Record<string, ChecklistKey>,
+);
+
+const parseChecklistHeaders = (parts: string[]): Map<number, ChecklistKey> => {
+  const parsed = new Map<number, ChecklistKey>();
+  parts.forEach((header, index) => {
+    const normalized = normalizeHeader(header);
+    const stateMatch = normalized.match(/^(\d+\.\s*)?(.+?)\s*-\s*estado$/);
+    const checklistName = (stateMatch?.[2] || normalized).replace(/^\d+\.\s*/, '').trim();
+    const checklistKey = CHECKLIST_LABEL_ALIASES[checklistName];
+    if (checklistKey) {
+      parsed.set(index, checklistKey);
+    }
+  });
+  return parsed;
+};
+
 const buildSeenUrls = (pages: SeoPage[]): Set<string> => {
   const seen = new Set<string>();
   for (const page of pages) {
@@ -138,6 +175,28 @@ const buildSeenUrls = (pages: SeoPage[]): Set<string> => {
     }
   }
   return seen;
+};
+
+const buildImportTemplateTsv = (): string => {
+  const headers = [
+    'URL',
+    'Keyword Principal',
+    'Tipo Página',
+    'Geo (Opcional)',
+    'Cluster (Opcional)',
+    ...CHECKLIST_POINTS.map((point) => point.label),
+  ];
+
+  const exampleRow = [
+    'https://example.com/servicio/local',
+    'keyword objetivo',
+    'Article',
+    'ES',
+    'Cluster Local SEO',
+    ...CHECKLIST_POINTS.map(() => 'NA'),
+  ];
+
+  return `${headers.join('\t')}\n${exampleRow.join('\t')}`;
 };
 
 export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, existingPages }) => {
@@ -170,6 +229,7 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
     };
     const seenExistingUrls = ignoreDuplicates ? buildSeenUrls(existingPages) : new Set<string>();
     const seenImportedUrls = new Set<string>();
+    let checklistColumnsByIndex: Map<number, ChecklistKey> | null = null;
     const yieldToMainThread = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
     setIsImporting(true);
@@ -193,6 +253,7 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
               continue;
             }
             if (isHeaderLikeRow(parts)) {
+              checklistColumnsByIndex = parseChecklistHeaders(parts);
               continue;
             }
 
@@ -217,6 +278,18 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
             const kwPrincipal = parts[1 + metadataOffset] || '';
             const isBrandKeyword = kwPrincipal ? isBrandTermMatch(kwPrincipal, brandTerms) : false;
 
+            const checklist = createEmptyChecklist();
+            if (checklistColumnsByIndex && checklistColumnsByIndex.size > 0) {
+              checklistColumnsByIndex.forEach((checklistKey, columnIndex) => {
+                const rawStatus = parts[columnIndex];
+                if (!rawStatus) return;
+                checklist[checklistKey] = {
+                  ...checklist[checklistKey],
+                  status_manual: normalizeChecklistStatus(rawStatus),
+                };
+              });
+            }
+
             chunkPages.push({
               id: createSeoPageId(),
               url: normalizedUrl,
@@ -225,7 +298,7 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
               pageType: parts[2 + metadataOffset] || 'Article',
               geoTarget: parts[3 + metadataOffset] || '',
               cluster: parts[4 + metadataOffset] || '',
-              checklist: createEmptyChecklist(),
+              checklist,
             });
           } catch (error) {
             console.warn('No se pudo procesar la fila importada de URLs.', { rowNumber, error });
@@ -264,6 +337,20 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
     }
   };
 
+  const handleDownloadTemplate = () => {
+    const blob = new Blob([buildImportTemplateTsv()], {
+      type: 'text/tab-separated-values;charset=utf-8;',
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'plantilla_importacion_checklist_seo.tsv';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-2xl shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col max-h-[90vh]">
@@ -288,6 +375,13 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
               URL | Keyword Principal | Tipo Página | Geo (Opcional) | Cluster (Opcional)
             </code>
           </p>
+          <button
+            type="button"
+            onClick={handleDownloadTemplate}
+            className="mb-4 inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+          >
+            Descargar plantilla de importación (TSV)
+          </button>
           {brandTerms.length > 0 && (
             <p className="text-xs text-amber-600 dark:text-amber-400 mb-4">
               Términos de marca activos: {brandTerms.join(', ')}. Si la keyword coincide, la URL
