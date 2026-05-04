@@ -107,8 +107,28 @@ const isUrlLikeQuery = (value?: string) => {
   return false;
 };
 
+const getDimensionValue = (row: any, dimension: 'page' | 'query') => {
+  const keys = Array.isArray(row?.keys) ? row.keys : [];
+  const dimensions = Array.isArray(row?.dimensions) ? row.dimensions : [];
+  const dimensionIndex = dimensions.findIndex((item) => String(item).toLowerCase() === dimension);
+  if (dimensionIndex >= 0 && typeof keys[dimensionIndex] === 'string') {
+    return String(keys[dimensionIndex] || '').trim();
+  }
+  if (typeof row?.[dimension] === 'string') {
+    return row[dimension].trim();
+  }
+  if (dimension === 'query' && typeof keys[0] === 'string') {
+    return String(keys[0] || '').trim();
+  }
+  if (dimension === 'page') {
+    const urlKeyCandidate = keys.find((key: any) => typeof key === 'string' && /^https?:\/\//i.test(key));
+    if (typeof urlKeyCandidate === 'string') return urlKeyCandidate.trim();
+  }
+  return '';
+};
+
 const normalizeQueryRow = (row: any) => {
-  const query = row?.query || row?.keys?.[0] || '';
+  const query = getDimensionValue(row, 'query');
   return {
     ...row,
     query,
@@ -199,13 +219,16 @@ export const buildKeywordProposals = (
       }
 
       if (!suggestion) {
+        const fallbackReason =
+          page.checklist.OPORTUNIDADES?.autoData?.gscQueryFallbackReason ||
+          'Sin queries GSC válidas para proponer una KW principal.';
         return {
           id: page.id,
           url: page.url,
           currentKeyword,
           proposedKeyword: '',
           confidence: 'baja' as const,
-          reason: 'Sin queries GSC válidas para proponer una KW principal.',
+          reason: fallbackReason,
           gscClicks: 0,
           gscImpressions: 0,
         };
@@ -237,11 +260,13 @@ export const buildKeywordProposals = (
         currentKeyword,
         proposedKeyword: suggestion.keyword,
         confidence,
-        reason: suggestion.isBlockedFallback
-          ? 'Keyword sugerida aunque ya aparece en otra URL; se prioriza no dejar la propuesta vacía.'
-          : currentKeyword.toLowerCase() === suggestion.keyword.toLowerCase()
-            ? 'La keyword actual ya coincide con la mejor query de GSC.'
-            : 'Keyword sugerida desde la query con mejor rendimiento (clics/impresiones).',
+        reason:
+          page.checklist.OPORTUNIDADES?.autoData?.gscQueryFallbackReason ||
+          (suggestion.isBlockedFallback
+            ? 'Keyword sugerida aunque ya aparece en otra URL; se prioriza no dejar la propuesta vacía.'
+            : currentKeyword.toLowerCase() === suggestion.keyword.toLowerCase()
+              ? 'La keyword actual ya coincide con la mejor query de GSC.'
+              : 'Keyword sugerida desde la query con mejor rendimiento (clics/impresiones).'),
         gscClicks: suggestion.clicks,
         gscImpressions: suggestion.impressions,
       };
@@ -396,9 +421,19 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
         const bulkRows = Array.isArray(bulkResponse.rows) ? bulkResponse.rows : [];
         const rowsByUrl = new Map<string, any[]>();
         const rowsByCanonicalUrl = new Map<string, any[]>();
+        const globalTopQueryRows = bulkRows
+          .map((row) => normalizeQueryRow({ ...row, query: getDimensionValue(row, 'query') }))
+          .filter((query) => isUsableKeyword(query.query))
+          .filter((query) => !isUrlLikeQuery(query.query))
+          .sort((a, b) => {
+            if (b.impressions !== a.impressions) return b.impressions - a.impressions;
+            if (b.clicks !== a.clicks) return b.clicks - a.clicks;
+            return 0;
+          })
+          .slice(0, 20);
 
         for (const row of bulkRows) {
-          const rowUrl = normalizeUrlCandidate(String(row?.keys?.[1] || ''));
+          const rowUrl = normalizeUrlCandidate(getDimensionValue(row, 'page'));
           if (!rowUrl) continue;
 
           for (const rowUrlCandidate of buildUrlCandidates(rowUrl)) {
@@ -430,11 +465,12 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
               ? rowsByCanonicalUrl.get(toCanonicalUrlKey(page.url)) || []
               : [];
           const pageRows = exactPageRows.length > 0 ? exactPageRows : fallbackCanonicalRows;
+          const usesGlobalFallback = pageRows.length === 0;
           const normalizedQueries = pageRows
             .map((row) =>
               normalizeQueryRow({
                 ...row,
-                query: row?.keys?.[0] || row?.query || '',
+                query: getDimensionValue(row, 'query'),
               }),
             )
             .filter((query) => isUsableKeyword(query.query))
@@ -445,9 +481,12 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
               return 0;
             });
 
-          if (normalizedQueries.length === 0) continue;
+          const diagnosticQueries =
+            normalizedQueries.length > 0 ? normalizedQueries : usesGlobalFallback ? globalTopQueryRows : [];
 
-          const aggregated = normalizedQueries.reduce(
+          if (diagnosticQueries.length === 0) continue;
+
+          const aggregated = diagnosticQueries.reduce(
             (acc, row) => {
               acc.clicks += Number(row.clicks || 0);
               acc.impressions += Number(row.impressions || 0);
@@ -472,7 +511,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
                 impressions: aggregated.impressions,
                 ctr,
                 position,
-                queryCount: normalizedQueries.length,
+                queryCount: diagnosticQueries.length,
                 source: 'page',
                 updatedAt: Date.now(),
               },
@@ -482,7 +521,10 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
                   ...page.checklist.OPORTUNIDADES,
                   autoData: {
                     ...(page.checklist.OPORTUNIDADES?.autoData || {}),
-                    gscQueries: normalizedQueries,
+                    gscQueries: diagnosticQueries,
+                    gscQueryFallbackReason: usesGlobalFallback
+                      ? 'Fallback global del sitio por falta de match URL↔query (exacto/canónico).'
+                      : '',
                   },
                 },
               },
