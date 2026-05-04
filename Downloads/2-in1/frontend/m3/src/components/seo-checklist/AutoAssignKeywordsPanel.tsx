@@ -36,7 +36,14 @@ const GSC_BULK_MAX_ROWS = 300_000;
 const normalizeUrlCandidate = (value: string) => {
   const trimmed = value.trim();
   if (!trimmed) return '';
-  return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
+
+  try {
+    const parsed = new URL(trimmed);
+    const pathname = parsed.pathname !== '/' ? parsed.pathname.replace(/\/+$/, '') || '/' : '/';
+    return `${parsed.protocol}//${parsed.host}${pathname}`;
+  } catch {
+    return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
+  }
 };
 
 const buildUrlCandidates = (url: string) => {
@@ -381,7 +388,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
           siteUrl: site,
           startDate: start,
           endDate: end,
-          dimensions: ['page', 'query'],
+          dimensions: ['query', 'page'],
           rowLimit: GSC_BULK_ROW_LIMIT,
           maxRows: GSC_BULK_MAX_ROWS,
           searchType: 'web',
@@ -391,13 +398,16 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
         const rowsByCanonicalUrl = new Map<string, any[]>();
 
         for (const row of bulkRows) {
-          const rowUrl = normalizeUrlCandidate(String(row?.keys?.[0] || ''));
+          const rowUrl = normalizeUrlCandidate(String(row?.keys?.[1] || ''));
           if (!rowUrl) continue;
-          const bucket = rowsByUrl.get(rowUrl);
-          if (bucket) {
-            bucket.push(row);
-          } else {
-            rowsByUrl.set(rowUrl, [row]);
+
+          for (const rowUrlCandidate of buildUrlCandidates(rowUrl)) {
+            const bucket = rowsByUrl.get(rowUrlCandidate);
+            if (bucket) {
+              bucket.push(row);
+            } else {
+              rowsByUrl.set(rowUrlCandidate, [row]);
+            }
           }
 
           const canonicalRowUrl = toCanonicalUrlKey(rowUrl);
@@ -412,7 +422,9 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
 
         for (const page of pagesToFetchLive) {
           const pageCandidates = buildUrlCandidates(page.url);
-          const exactPageRows = pageCandidates.flatMap((candidate) => rowsByUrl.get(candidate) || []);
+          const exactPageRows = Array.from(
+            new Set(pageCandidates.flatMap((candidate) => rowsByUrl.get(candidate) || [])),
+          );
           const fallbackCanonicalRows =
             exactPageRows.length === 0
               ? rowsByCanonicalUrl.get(toCanonicalUrlKey(page.url)) || []
@@ -422,7 +434,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
             .map((row) =>
               normalizeQueryRow({
                 ...row,
-                query: row?.keys?.[1] || row?.query || '',
+                query: row?.keys?.[0] || row?.query || '',
               }),
             )
             .filter((query) => isUsableKeyword(query.query))
