@@ -36,7 +36,14 @@ const GSC_BULK_MAX_ROWS = 300_000;
 const normalizeUrlCandidate = (value: string) => {
   const trimmed = value.trim();
   if (!trimmed) return '';
-  return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
+
+  try {
+    const parsed = new URL(trimmed);
+    const pathname = parsed.pathname !== '/' ? parsed.pathname.replace(/\/+$/, '') || '/' : '/';
+    return `${parsed.protocol}//${parsed.host}${pathname}`;
+  } catch {
+    return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
+  }
 };
 
 const buildUrlCandidates = (url: string) => {
@@ -100,6 +107,21 @@ const isUrlLikeQuery = (value?: string) => {
   return false;
 };
 
+
+const getPageAndQueryFromRow = (row: any) => {
+  const key0 = String(row?.keys?.[0] || '').trim();
+  const key1 = String(row?.keys?.[1] || '').trim();
+
+  if (isUrlLikeQuery(key0) && !isUrlLikeQuery(key1)) {
+    return { page: key0, query: key1 };
+  }
+  if (isUrlLikeQuery(key1) && !isUrlLikeQuery(key0)) {
+    return { page: key1, query: key0 };
+  }
+
+  // Fallback defensivo: asumir [query, page] como se solicita actualmente.
+  return { page: key1, query: key0 };
+};
 const normalizeQueryRow = (row: any) => {
   const query = row?.query || row?.keys?.[0] || '';
   return {
@@ -113,11 +135,18 @@ const normalizeQueryRow = (row: any) => {
 
 export const getKeywordCandidatesFromPage = (page: SeoPage) => {
   const rawQueries = page.checklist.OPORTUNIDADES?.autoData?.gscQueries;
-  if (!Array.isArray(rawQueries) || rawQueries.length === 0) {
+  const fallbackQueries = page.checklist.OPORTUNIDADES?.autoData?.gscGlobalFallbackQueries;
+  const selectedQueries = Array.isArray(rawQueries) && rawQueries.length > 0
+    ? rawQueries
+    : Array.isArray(fallbackQueries)
+      ? fallbackQueries
+      : [];
+
+  if (selectedQueries.length === 0) {
     return [];
   }
 
-  return rawQueries
+  return selectedQueries
     .map(normalizeQueryRow)
     .filter((query: any) => isUsableKeyword(query.query))
     .filter((query: any) => !isUrlLikeQuery(query.query))
@@ -191,6 +220,9 @@ export const buildKeywordProposals = (
         };
       }
 
+      const hasGlobalFallback = Array.isArray(page.checklist.OPORTUNIDADES?.autoData?.gscGlobalFallbackQueries)
+        && page.checklist.OPORTUNIDADES?.autoData?.gscGlobalFallbackQueries.length > 0;
+
       if (!suggestion) {
         return {
           id: page.id,
@@ -198,7 +230,9 @@ export const buildKeywordProposals = (
           currentKeyword,
           proposedKeyword: '',
           confidence: 'baja' as const,
-          reason: 'Sin queries GSC válidas para proponer una KW principal.',
+          reason: hasGlobalFallback
+            ? 'Sin match URL↔query en GSC; se muestran queries globales de referencia para diagnóstico.'
+            : 'Sin queries GSC válidas para proponer una KW principal.',
           gscClicks: 0,
           gscImpressions: 0,
         };
@@ -381,23 +415,37 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
           siteUrl: site,
           startDate: start,
           endDate: end,
-          dimensions: ['page', 'query'],
+          dimensions: ['query', 'page'],
           rowLimit: GSC_BULK_ROW_LIMIT,
           maxRows: GSC_BULK_MAX_ROWS,
           searchType: 'web',
         });
         const bulkRows = Array.isArray(bulkResponse.rows) ? bulkResponse.rows : [];
+        const globalFallbackQueries = bulkRows
+          .map((row) => normalizeQueryRow({ ...row, query: getPageAndQueryFromRow(row).query || row?.query || '' }))
+          .filter((query) => isUsableKeyword(query.query))
+          .filter((query) => !isUrlLikeQuery(query.query))
+          .sort((a, b) => {
+            if (b.impressions !== a.impressions) return b.impressions - a.impressions;
+            if (b.clicks !== a.clicks) return b.clicks - a.clicks;
+            return 0;
+          })
+          .slice(0, 10);
         const rowsByUrl = new Map<string, any[]>();
         const rowsByCanonicalUrl = new Map<string, any[]>();
 
         for (const row of bulkRows) {
-          const rowUrl = normalizeUrlCandidate(String(row?.keys?.[0] || ''));
+          const { page: detectedPage } = getPageAndQueryFromRow(row);
+          const rowUrl = normalizeUrlCandidate(detectedPage);
           if (!rowUrl) continue;
-          const bucket = rowsByUrl.get(rowUrl);
-          if (bucket) {
-            bucket.push(row);
-          } else {
-            rowsByUrl.set(rowUrl, [row]);
+
+          for (const rowUrlCandidate of buildUrlCandidates(rowUrl)) {
+            const bucket = rowsByUrl.get(rowUrlCandidate);
+            if (bucket) {
+              bucket.push(row);
+            } else {
+              rowsByUrl.set(rowUrlCandidate, [row]);
+            }
           }
 
           const canonicalRowUrl = toCanonicalUrlKey(rowUrl);
@@ -412,7 +460,9 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
 
         for (const page of pagesToFetchLive) {
           const pageCandidates = buildUrlCandidates(page.url);
-          const exactPageRows = pageCandidates.flatMap((candidate) => rowsByUrl.get(candidate) || []);
+          const exactPageRows = Array.from(
+            new Set(pageCandidates.flatMap((candidate) => rowsByUrl.get(candidate) || [])),
+          );
           const fallbackCanonicalRows =
             exactPageRows.length === 0
               ? rowsByCanonicalUrl.get(toCanonicalUrlKey(page.url)) || []
@@ -422,7 +472,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
             .map((row) =>
               normalizeQueryRow({
                 ...row,
-                query: row?.keys?.[1] || row?.query || '',
+                query: getPageAndQueryFromRow(row).query || row?.query || '',
               }),
             )
             .filter((query) => isUsableKeyword(query.query))
@@ -433,7 +483,26 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
               return 0;
             });
 
-          if (normalizedQueries.length === 0) continue;
+          if (normalizedQueries.length === 0) {
+            if (globalFallbackQueries.length > 0) {
+              updates.push({
+                id: page.id,
+                changes: {
+                  checklist: {
+                    ...page.checklist,
+                    OPORTUNIDADES: {
+                      ...page.checklist.OPORTUNIDADES,
+                      autoData: {
+                        ...(page.checklist.OPORTUNIDADES?.autoData || {}),
+                        gscGlobalFallbackQueries: globalFallbackQueries,
+                      },
+                    },
+                  },
+                },
+              });
+            }
+            continue;
+          }
 
           const aggregated = normalizedQueries.reduce(
             (acc, row) => {
