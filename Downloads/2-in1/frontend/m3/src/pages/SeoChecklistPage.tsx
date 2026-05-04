@@ -254,7 +254,7 @@ const SeoChecklistPage: React.FC = () => {
           ) : activeView === 'auto_cluster' ? (
             <AutoClusterizationPanel pages={pages} onBulkUpdate={bulkUpdatePages} />
           ) : (
-            <AutoAssignKeywordsPanel pages={pages} onBulkUpdate={bulkUpdatePages} />
+            <AutoAssignKeywordsPanel pages={pages} onBulkUpdate={bulkUpdatePages} onAddPages={addPages} />
           )}
         </>
       ) : (

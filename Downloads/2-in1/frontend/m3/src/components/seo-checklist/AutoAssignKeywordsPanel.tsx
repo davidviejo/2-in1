@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
-import { SeoPage } from '../../types/seoChecklist';
+import { CHECKLIST_POINTS, ChecklistItem, ChecklistKey, SeoPage } from '../../types/seoChecklist';
+import { normalizeSeoUrl } from '../../utils/seoUrlNormalizer';
 import { querySearchAnalyticsPaged } from '../../services/googleSearchConsole';
 import {
   getCachedUrlKeywordEntry,
@@ -26,6 +27,7 @@ interface KeywordProposal {
 interface Props {
   pages: SeoPage[];
   onBulkUpdate: (updates: { id: string; changes: Partial<SeoPage> }[]) => void;
+  onAddPages: (pages: SeoPage[]) => void;
 }
 
 const GSC_BULK_ROW_LIMIT = 25_000;
@@ -299,7 +301,7 @@ export const buildKeywordProposals = (
     });
 };
 
-export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }) => {
+export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, onAddPages }) => {
   const [sourceMode, setSourceMode] = useState<KeywordSourceMode>('without_kw');
   const [status, setStatus] = useState('');
   const [isLoadingGsc, setIsLoadingGsc] = useState(false);
@@ -310,6 +312,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
   const [outsidePropertyUrls, setOutsidePropertyUrls] = useState<
     { originalUrl: string; parsedHost: string; normalizedSiteHost: string }[]
   >([]);
+  const [gscDiscoveredUrls, setGscDiscoveredUrls] = useState<SeoPage[]>([]);
   const { settings } = useSeoChecklistSettings();
   const activeBrandTerms = useMemo(() => settings.brandTerms || [], [settings.brandTerms]);
 
@@ -317,6 +320,21 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
     return buildKeywordProposals(pages, sourceMode, activeBrandTerms);
   }, [activeBrandTerms, pages, sourceMode]);
   const actionableProposalsCount = proposals.filter((proposal) => proposal.proposedKeyword).length;
+  const discoveredUrlCount = gscDiscoveredUrls.length;
+
+  const createSeoPageId = (): string => {
+    if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+    return `seo-page-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  };
+
+  const createEmptyChecklist = (): Record<ChecklistKey, ChecklistItem> =>
+    CHECKLIST_POINTS.reduce(
+      (acc, pt) => {
+        acc[pt.key] = { key: pt.key, label: pt.label, status_manual: 'NA', notes_manual: '' };
+        return acc;
+      },
+      {} as Record<ChecklistKey, ChecklistItem>,
+    );
 
   const loadGscData = async () => {
     const latestRememberedSite = (localStorage.getItem('mediaflow_gsc_selected_site') || '').trim();
@@ -427,6 +445,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
       }
     }
 
+    const discoveredByUrl = new Map<string, SeoPage>();
     if (token && pagesToFetchLive.length > 0) {
       try {
         const bulkResponse = await querySearchAnalyticsPaged(token, {
@@ -551,10 +570,65 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
             },
           });
         }
+
+        const existingUrlKeys = new Set(
+          pages
+            .map((page) => {
+              try {
+                return normalizeSeoUrl(page.url).toLowerCase();
+              } catch {
+                return '';
+              }
+            })
+            .filter(Boolean),
+        );
+
+        rowsByCanonicalUrl.forEach((canonicalRows) => {
+          if (!canonicalRows.length) return;
+          const discoveredUrl = normalizeUrlCandidate(getDimensionValue(canonicalRows[0], 'page'));
+          if (!discoveredUrl) return;
+
+          let discoveredUrlKey = '';
+          try {
+            discoveredUrlKey = normalizeSeoUrl(discoveredUrl).toLowerCase();
+          } catch {
+            return;
+          }
+          if (existingUrlKeys.has(discoveredUrlKey) || discoveredByUrl.has(discoveredUrlKey)) return;
+
+          const normalizedQueries = canonicalRows
+            .map((row) => normalizeQueryRow({ ...row, query: getDimensionValue(row, 'query') }))
+            .filter((query) => isUsableKeyword(query.query))
+            .filter((query) => !isUrlLikeQuery(query.query))
+            .filter((query) => !isBrandTermMatch(query.query, activeBrandTerms))
+            .sort((a, b) => (b.impressions - a.impressions) || (b.clicks - a.clicks));
+          const topQuery = normalizedQueries[0];
+          if (!topQuery) return;
+
+          discoveredByUrl.set(discoveredUrlKey, {
+            id: createSeoPageId(),
+            url: discoveredUrl,
+            kwPrincipal: topQuery.query,
+            originalKwPrincipal: topQuery.query,
+            isBrandKeyword: false,
+            pageType: 'Article',
+            checklist: createEmptyChecklist(),
+            gscMetrics: {
+              clicks: Number(topQuery.clicks || 0),
+              impressions: Number(topQuery.impressions || 0),
+              ctr: Number(topQuery.ctr || 0),
+              position: Number(topQuery.position || 0) || undefined,
+              queryCount: normalizedQueries.length,
+              source: 'page',
+              updatedAt: Date.now(),
+            },
+          });
+        });
       } catch (error) {
         console.warn('Fallo en carga masiva GSC. No se pudieron actualizar URLs sin caché.', error);
       }
     }
+    setGscDiscoveredUrls(Array.from(discoveredByUrl.values()));
 
     if (updates.length > 0) {
       onBulkUpdate(updates);
@@ -582,6 +656,16 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
       `Carga finalizada: ${okCount} URL(s) con datos actualizados.${reusedText}${fetchedText}${missingTokenText}${outsidePropertyText}`,
     );
     setIsLoadingGsc(false);
+  };
+
+  const includeDiscoveredUrls = () => {
+    if (gscDiscoveredUrls.length === 0) {
+      setStatus('No hay nuevas URLs detectadas desde GSC para añadir.');
+      return;
+    }
+    onAddPages(gscDiscoveredUrls);
+    setStatus(`Se añadieron ${gscDiscoveredUrls.length} URL(s) nuevas detectadas en GSC al checklist.`);
+    setGscDiscoveredUrls([]);
   };
 
   const applyKeywordAssignments = () => {
@@ -669,6 +753,9 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
         >
           Aprobar y pasar a Análisis SEO y Clusters
         </Button>
+        <Button variant="secondary" onClick={includeDiscoveredUrls} disabled={discoveredUrlCount === 0}>
+          Añadir URLs detectadas ({discoveredUrlCount})
+        </Button>
       </div>
 
       {status && <p className="text-sm text-slate-600">{status}</p>}
@@ -693,6 +780,36 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate }
                     <td className="px-2 py-1 text-slate-700">{entry.originalUrl}</td>
                     <td className="px-2 py-1 text-slate-700">{entry.parsedHost}</td>
                     <td className="px-2 py-1 text-slate-700">{entry.normalizedSiteHost}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
+
+      {gscDiscoveredUrls.length > 0 && (
+        <details className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-3" open>
+          <summary className="cursor-pointer text-sm font-semibold text-emerald-800">
+            Nuevas URLs detectadas en GSC listas para incluir ({gscDiscoveredUrls.length})
+          </summary>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="text-emerald-900">
+                <tr>
+                  <th className="px-2 py-1">URL</th>
+                  <th className="px-2 py-1">KW principal sugerida</th>
+                  <th className="px-2 py-1">Clics</th>
+                  <th className="px-2 py-1">Impresiones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {gscDiscoveredUrls.map((entry) => (
+                  <tr key={entry.id} className="border-t border-emerald-200">
+                    <td className="px-2 py-1 text-slate-700">{entry.url}</td>
+                    <td className="px-2 py-1 text-slate-700">{entry.kwPrincipal}</td>
+                    <td className="px-2 py-1 text-slate-700">{entry.gscMetrics?.clicks || 0}</td>
+                    <td className="px-2 py-1 text-slate-700">{entry.gscMetrics?.impressions || 0}</td>
                   </tr>
                 ))}
               </tbody>
