@@ -8,6 +8,7 @@ const FALLBACK_MARKER_PREFIX = 'mediaflow_seo_checklist_storage_backend_';
 const getMarkerKey = (storageKey: string) => `${FALLBACK_MARKER_PREFIX}${storageKey}`;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
+const persistQueueByStorageKey = new Map<string, Promise<void>>();
 
 const canUseIndexedDb = () => typeof window !== 'undefined' && typeof window.indexedDB !== 'undefined';
 
@@ -112,49 +113,59 @@ export const loadSeoChecklistPages = async (storageKey: string): Promise<SeoPage
 };
 
 export const persistSeoChecklistPages = async (storageKey: string, pages: SeoPage[]) => {
-  const serialized = JSON.stringify(pages);
+  const previous = persistQueueByStorageKey.get(storageKey) || Promise.resolve();
+  const next = previous
+    .catch(() => {
+      // noop: continue queue even if a previous write failed.
+    })
+    .then(async () => {
+      const serialized = JSON.stringify(pages);
 
-  if (getStorageBackend(storageKey) === 'idb' && canUseIndexedDb()) {
-    try {
-      await writeToIndexedDb(storageKey, pages);
-      return;
-    } catch (error) {
-      console.warn('No se pudo persistir SEO checklist en IndexedDB. Intentando localStorage.', {
-        storageKey,
-        pages: pages.length,
-        error,
-      });
-    }
-  }
+      if (getStorageBackend(storageKey) === 'idb' && canUseIndexedDb()) {
+        try {
+          await writeToIndexedDb(storageKey, pages);
+          return;
+        } catch (error) {
+          console.warn('No se pudo persistir SEO checklist en IndexedDB. Intentando localStorage.', {
+            storageKey,
+            pages: pages.length,
+            error,
+          });
+        }
+      }
 
-  try {
-    localStorage.setItem(storageKey, serialized);
-    setMarker(storageKey, 'local');
-    return;
-  } catch (error) {
-    if (!canUseIndexedDb()) {
-      console.warn('No se pudo persistir SEO checklist en localStorage y no hay IndexedDB.', {
-        storageKey,
-        pages: pages.length,
-        error,
-      });
-      return;
-    }
+      try {
+        localStorage.setItem(storageKey, serialized);
+        setMarker(storageKey, 'local');
+        return;
+      } catch (error) {
+        if (!canUseIndexedDb()) {
+          console.warn('No se pudo persistir SEO checklist en localStorage y no hay IndexedDB.', {
+            storageKey,
+            pages: pages.length,
+            error,
+          });
+          return;
+        }
 
-    try {
-      await writeToIndexedDb(storageKey, pages);
-      setMarker(storageKey, 'idb');
-      console.warn('SEO checklist migrado a IndexedDB por límite de localStorage.', {
-        storageKey,
-        pages: pages.length,
-      });
-    } catch (idbError) {
-      console.warn('No se pudo persistir SEO checklist en localStorage ni IndexedDB.', {
-        storageKey,
-        pages: pages.length,
-        error,
-        idbError,
-      });
-    }
-  }
+        try {
+          await writeToIndexedDb(storageKey, pages);
+          setMarker(storageKey, 'idb');
+          console.warn('SEO checklist migrado a IndexedDB por límite de localStorage.', {
+            storageKey,
+            pages: pages.length,
+          });
+        } catch (idbError) {
+          console.warn('No se pudo persistir SEO checklist en localStorage ni IndexedDB.', {
+            storageKey,
+            pages: pages.length,
+            error,
+            idbError,
+          });
+        }
+      }
+    });
+
+  persistQueueByStorageKey.set(storageKey, next);
+  await next;
 };
