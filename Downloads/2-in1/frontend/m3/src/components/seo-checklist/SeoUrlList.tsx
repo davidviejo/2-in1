@@ -47,6 +47,43 @@ const createEmptyChecklist = () =>
     {} as SeoPage['checklist'],
   );
 
+
+const parseFilterTokens = (rawFilter: string) => {
+  const tokens = rawFilter
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  const include: string[] = [];
+  const exclude: string[] = [];
+
+  tokens.forEach((token) => {
+    if ((token.startsWith('-') || token.startsWith('!')) && token.length > 1) {
+      exclude.push(token.slice(1));
+      return;
+    }
+    include.push(token);
+  });
+
+  return { include, exclude };
+};
+
+const matchesUrlFilter = (page: SeoPage, rawFilter: string) => {
+  const { include, exclude } = parseFilterTokens(rawFilter);
+  if (include.length === 0 && exclude.length === 0) return true
+
+  const searchable = [page.url, page.kwPrincipal, page.cluster || '']
+    .join(' ')
+    .toLowerCase();
+
+  const includesMatch = include.every((token) => searchable.includes(token));
+  if (!includesMatch) return false;
+
+  const excludesMatch = exclude.every((token) => !searchable.includes(token));
+  return excludesMatch;
+};
+
 interface Props {
   pages: SeoPage[];
   onSelect: (page: SeoPage) => void;
@@ -113,12 +150,7 @@ export const SeoUrlList: React.FC<Props> = ({
     direction: 'desc',
   });
 
-  const filteredPages = pages.filter(
-    (p) =>
-      p.url.toLowerCase().includes(filter.toLowerCase()) ||
-      p.kwPrincipal.toLowerCase().includes(filter.toLowerCase()) ||
-      (p.cluster && p.cluster.toLowerCase().includes(filter.toLowerCase())),
-  );
+  const filteredPages = pages.filter((p) => matchesUrlFilter(p, filter));
 
   const sortedFilteredPages = useMemo(() => {
     const getProgress = (page: SeoPage) => calculateStatusMetrics(page).progress;
@@ -789,7 +821,7 @@ export const SeoUrlList: React.FC<Props> = ({
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input
             type="text"
-            placeholder="Filtrar por URL, Keyword o Cluster..."
+            placeholder="Filtrar por URL/KW/Cluster. Excluir: -blog o !blog"
             value={filter}
             onChange={(e) => handleFilterChange(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm"
