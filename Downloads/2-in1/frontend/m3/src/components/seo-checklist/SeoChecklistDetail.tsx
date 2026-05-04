@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   SeoPage,
   CHECKLIST_POINTS,
@@ -61,15 +61,27 @@ export const SeoChecklistDetail: React.FC<Props> = ({
   });
 
   const [newCompetitor, setNewCompetitor] = useState('');
+  const lastAutosavedPayloadRef = useRef<string>('');
 
   const handleEdit = () => {
-    setEditForm({
+    const nextForm = {
       url: page.url,
       kwPrincipal: page.kwPrincipal,
       isBrandKeyword: page.isBrandKeyword || false,
       pageType: page.pageType,
       cluster: page.cluster || '',
       competitors: page.competitors || [],
+    };
+    setEditForm(nextForm);
+    const matchesBrandTerm = isBrandTermMatch(nextForm.kwPrincipal, settings.brandTerms);
+    const isBrandKeyword = matchesBrandTerm ? true : nextForm.isBrandKeyword;
+    lastAutosavedPayloadRef.current = JSON.stringify({
+      url: normalizeSeoUrl(nextForm.url),
+      kwPrincipal: isBrandKeyword ? '' : nextForm.kwPrincipal,
+      isBrandKeyword,
+      pageType: nextForm.pageType,
+      cluster: nextForm.cluster,
+      competitors: nextForm.competitors,
     });
     setNewCompetitor('');
     setIsEditing(true);
@@ -93,6 +105,32 @@ export const SeoChecklistDetail: React.FC<Props> = ({
     });
     setIsEditing(false);
   };
+
+  useEffect(() => {
+    if (!isEditing) return;
+
+    const autosaveTimer = window.setTimeout(() => {
+      const matchesBrandTerm = isBrandTermMatch(editForm.kwPrincipal, settings.brandTerms);
+      const isBrandKeyword = matchesBrandTerm ? true : editForm.isBrandKeyword;
+      const payload = {
+        url: normalizeSeoUrl(editForm.url),
+        kwPrincipal: isBrandKeyword ? '' : editForm.kwPrincipal,
+        isBrandKeyword,
+        pageType: editForm.pageType,
+        cluster: editForm.cluster,
+        competitors: editForm.competitors,
+      };
+      const serializedPayload = JSON.stringify(payload);
+      if (serializedPayload === lastAutosavedPayloadRef.current) return;
+
+      onUpdatePage(page.id, payload);
+      lastAutosavedPayloadRef.current = serializedPayload;
+    }, 500);
+
+    return () => {
+      window.clearTimeout(autosaveTimer);
+    };
+  }, [editForm, isEditing, onUpdatePage, page.id, settings.brandTerms]);
 
   const addCompetitor = () => {
     if (newCompetitor.trim()) {
