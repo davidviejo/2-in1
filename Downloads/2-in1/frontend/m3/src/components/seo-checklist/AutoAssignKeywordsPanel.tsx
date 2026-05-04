@@ -131,6 +131,22 @@ const getDimensionValue = (row: any, dimension: 'page' | 'query') => {
   if (typeof row?.[dimension] === 'string') {
     return row[dimension].trim();
   }
+  if (keys.length >= 2) {
+    const first = typeof keys[0] === 'string' ? keys[0].trim() : '';
+    const second = typeof keys[1] === 'string' ? keys[1].trim() : '';
+    const firstLooksLikeUrl = /^https?:\/\//i.test(first);
+    const secondLooksLikeUrl = /^https?:\/\//i.test(second);
+
+    if (dimension === 'query') {
+      if (firstLooksLikeUrl && !secondLooksLikeUrl) return second;
+      if (secondLooksLikeUrl && !firstLooksLikeUrl) return first;
+    }
+
+    if (dimension === 'page') {
+      if (firstLooksLikeUrl) return first;
+      if (secondLooksLikeUrl) return second;
+    }
+  }
   if (dimension === 'query' && typeof keys[0] === 'string') {
     return String(keys[0] || '').trim();
   }
