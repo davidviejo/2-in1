@@ -24,6 +24,18 @@ interface KeywordProposal {
   gscImpressions: number;
 }
 
+interface AnalysisDebugSnapshot {
+  selectedPropertyInput: string;
+  selectedPropertyUsed: string;
+  targetUrls: string[];
+  liveQueriedUrls: string[];
+  updatedUrls: string[];
+  newlyDetectedUrls: string[];
+  rawQueryPageRows: number;
+  appliedFromCacheCount: number;
+  propertyVariantsTried: string[];
+}
+
 interface Props {
   pages: SeoPage[];
   onBulkUpdate: (updates: { id: string; changes: Partial<SeoPage> }[]) => void;
@@ -313,6 +325,8 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
     { originalUrl: string; parsedHost: string; normalizedSiteHost: string }[]
   >([]);
   const [gscDiscoveredUrls, setGscDiscoveredUrls] = useState<SeoPage[]>([]);
+  const [debugSnapshot, setDebugSnapshot] = useState<AnalysisDebugSnapshot | null>(null);
+  const [showDebugSnapshot, setShowDebugSnapshot] = useState(false);
   const { settings } = useSeoChecklistSettings();
   const activeBrandTerms = useMemo(() => settings.brandTerms || [], [settings.brandTerms]);
 
@@ -405,6 +419,8 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
     let missingTokenCount = 0;
     const updates: { id: string; changes: Partial<SeoPage> }[] = [];
     const pagesToFetchLive: SeoPage[] = [];
+    const updatedUrls = new Set<string>();
+    let rawQueryPageRows = 0;
 
     for (const page of targetPages) {
       const cachedEntry = getCachedUrlKeywordEntry(cachedSnapshot, page.url);
@@ -435,6 +451,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
             },
           },
         });
+        updatedUrls.add(page.url);
         continue;
       }
 
@@ -458,6 +475,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
           searchType: 'web',
         });
         const bulkRows = Array.isArray(bulkResponse.rows) ? bulkResponse.rows : [];
+        rawQueryPageRows = bulkRows.length;
         const rowsByUrl = new Map<string, any[]>();
         const rowsByCanonicalUrl = new Map<string, any[]>();
         const globalTopQueryRows = bulkRows
@@ -542,6 +560,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
 
           okCount += 1;
           fetchedCount += 1;
+          updatedUrls.add(page.url);
           updates.push({
             id: page.id,
             changes: {
@@ -629,6 +648,19 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
       }
     }
     setGscDiscoveredUrls(Array.from(discoveredByUrl.values()));
+    setDebugSnapshot({
+      selectedPropertyInput: selectedSite.trim(),
+      selectedPropertyUsed: site,
+      targetUrls: targetPages.map((page) => page.url),
+      liveQueriedUrls: pagesToFetchLive.map((page) => page.url),
+      updatedUrls: Array.from(updatedUrls.values()),
+      newlyDetectedUrls: Array.from(discoveredByUrl.values()).map((entry) => entry.url),
+      rawQueryPageRows,
+      appliedFromCacheCount: reusedCount,
+      propertyVariantsTried: Array.from(
+        new Set([selectedSite.trim(), latestRememberedSite, site].filter(Boolean)),
+      ),
+    });
 
     if (updates.length > 0) {
       onBulkUpdate(updates);
@@ -756,9 +788,51 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
         <Button variant="secondary" onClick={includeDiscoveredUrls} disabled={discoveredUrlCount === 0}>
           Añadir URLs detectadas ({discoveredUrlCount})
         </Button>
+        <Button
+          variant="secondary"
+          onClick={() => setShowDebugSnapshot((prev) => !prev)}
+          disabled={!debugSnapshot}
+        >
+          {showDebugSnapshot ? 'Ocultar datos de referencia' : 'Ver datos de referencia'}
+        </Button>
       </div>
 
       {status && <p className="text-sm text-slate-600">{status}</p>}
+
+      {showDebugSnapshot && debugSnapshot && (
+        <details className="rounded-lg border border-sky-200 bg-sky-50/40 p-3" open>
+          <summary className="cursor-pointer text-sm font-semibold text-sky-800">
+            Snapshot de referencia del análisis
+          </summary>
+          <div className="mt-2 space-y-2 text-xs text-slate-700">
+            <p>
+              <strong>Propiedad introducida:</strong> {debugSnapshot.selectedPropertyInput || '-'}
+            </p>
+            <p>
+              <strong>Propiedad usada:</strong> {debugSnapshot.selectedPropertyUsed || '-'}
+            </p>
+            <p>
+              <strong>Variantes probadas:</strong>{' '}
+              {debugSnapshot.propertyVariantsTried.join(' · ') || '-'}
+            </p>
+            <p>
+              <strong>Filas crudas query+page (estimación):</strong> {debugSnapshot.rawQueryPageRows}
+            </p>
+            <p>
+              <strong>URLs objetivo checklist:</strong> {debugSnapshot.targetUrls.length}
+            </p>
+            <p>
+              <strong>URLs consultadas en vivo:</strong> {debugSnapshot.liveQueriedUrls.length}
+            </p>
+            <p>
+              <strong>URLs actualizadas:</strong> {debugSnapshot.updatedUrls.length}
+            </p>
+            <p>
+              <strong>URLs nuevas detectadas:</strong> {debugSnapshot.newlyDetectedUrls.length}
+            </p>
+          </div>
+        </details>
+      )}
 
       {outsidePropertyUrls.length > 0 && (
         <details className="rounded-lg border border-amber-200 bg-amber-50/40 p-3">
