@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getBestKeywordFromPage } from './AutoAssignKeywordsPanel';
+import { buildKeywordProposals, getBestKeywordFromPage } from './AutoAssignKeywordsPanel';
 import { SeoPage } from '../../types/seoChecklist';
 
 const buildPage = (queries: any[], kwPrincipal = ''): SeoPage =>
@@ -19,6 +19,13 @@ const buildPage = (queries: any[], kwPrincipal = ''): SeoPage =>
         },
       },
     } as SeoPage['checklist'],
+  }) as SeoPage;
+
+const buildPageWithId = (id: string, url: string, queries: any[], kwPrincipal = ''): SeoPage =>
+  ({
+    ...buildPage(queries, kwPrincipal),
+    id,
+    url,
   }) as SeoPage;
 
 describe('getBestKeywordFromPage', () => {
@@ -68,5 +75,37 @@ describe('getBestKeywordFromPage', () => {
     const result = getBestKeywordFromPage(page, new Set());
 
     expect(result?.keyword).toBe('seo local para clinicas');
+  });
+});
+
+describe('buildKeywordProposals', () => {
+  it('asigna una query duplicada a la URL con mayor impresiones y evita duplicarla en URLs inferiores', () => {
+    const pages = [
+      buildPageWithId(
+        'url-top',
+        'https://example.com/servicios',
+        [
+          { query: 'seo local', clicks: 20, impressions: 2000, position: 2 },
+          { query: 'auditoria seo local', clicks: 10, impressions: 900, position: 3 },
+        ],
+        '',
+      ),
+      buildPageWithId(
+        'url-low',
+        'https://example.com/servicios/',
+        [
+          { query: 'seo local', clicks: 10, impressions: 1200, position: 4 },
+          { query: 'consultoria seo local', clicks: 7, impressions: 600, position: 5 },
+        ],
+        '',
+      ),
+    ];
+
+    const proposals = buildKeywordProposals(pages, 'all');
+
+    expect(proposals.find((proposal) => proposal.id === 'url-top')?.proposedKeyword).toBe('seo local');
+    expect(proposals.find((proposal) => proposal.id === 'url-low')?.proposedKeyword).toBe(
+      'consultoria seo local',
+    );
   });
 });

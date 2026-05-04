@@ -177,13 +177,32 @@ export const buildKeywordProposals = (
   sourceMode: KeywordSourceMode,
   brandTerms: string[] = [],
 ): KeywordProposal[] => {
-  const pagesWithUsableKeyword = pages.filter(
-    (page) => isUsableKeyword(page.kwPrincipal) && !isBrandTermMatch(page.kwPrincipal || '', brandTerms),
-  );
-  const globallyAssignedKeywords = new Set(
-    pagesWithUsableKeyword.map((page) => page.kwPrincipal.trim().toLowerCase()),
-  );
-  const reservedKeywords = new Set(globallyAssignedKeywords);
+  const candidatesByPage = new Map<string, ReturnType<typeof getKeywordCandidatesFromPage>>();
+  pages.forEach((page) => {
+    candidatesByPage.set(page.id, getKeywordCandidatesFromPage(page));
+  });
+
+  const keywordOwners = new Map<string, { pageId: string; impressions: number; clicks: number }>();
+  pages.forEach((page) => {
+    const candidates = candidatesByPage.get(page.id) || [];
+    candidates.forEach((candidate: any) => {
+      const keyword = candidate.query.trim().toLowerCase();
+      if (!keyword || isBrandTermMatch(candidate.query, brandTerms)) return;
+
+      const currentOwner = keywordOwners.get(keyword);
+      if (
+        !currentOwner ||
+        candidate.impressions > currentOwner.impressions ||
+        (candidate.impressions === currentOwner.impressions && candidate.clicks > currentOwner.clicks)
+      ) {
+        keywordOwners.set(keyword, {
+          pageId: page.id,
+          impressions: candidate.impressions,
+          clicks: candidate.clicks,
+        });
+      }
+    });
+  });
 
   return pages
     .filter((page) => {
@@ -197,12 +216,19 @@ export const buildKeywordProposals = (
     })
     .map((page) => {
       const currentKeyword = (page.kwPrincipal || '').trim();
-      const currentKeywordNormalized = currentKeyword.toLowerCase();
-      const blockedKeywords = new Set(reservedKeywords);
-      if (currentKeywordNormalized) {
-        blockedKeywords.delete(currentKeywordNormalized);
-      }
-      const suggestion = getBestKeywordFromPage(page, blockedKeywords);
+      const ownedCandidates = (candidatesByPage.get(page.id) || []).filter((candidate: any) => {
+        const keyword = candidate.query.trim().toLowerCase();
+        return keywordOwners.get(keyword)?.pageId === page.id;
+      });
+      const bestOwned = ownedCandidates[0];
+      const suggestion = bestOwned
+        ? {
+            keyword: bestOwned.query.trim(),
+            clicks: bestOwned.clicks,
+            impressions: bestOwned.impressions,
+            isBlockedFallback: false,
+          }
+        : null;
       const isBrandPage = Boolean(page.isBrandKeyword || isBrandTermMatch(currentKeyword, brandTerms));
 
       if (isBrandPage) {
@@ -262,18 +288,12 @@ export const buildKeywordProposals = (
         confidence,
         reason:
           page.checklist.OPORTUNIDADES?.autoData?.gscQueryFallbackReason ||
-          (suggestion.isBlockedFallback
-            ? 'Keyword sugerida aunque ya aparece en otra URL; se prioriza no dejar la propuesta vacía.'
-            : currentKeyword.toLowerCase() === suggestion.keyword.toLowerCase()
-              ? 'La keyword actual ya coincide con la mejor query de GSC.'
-              : 'Keyword sugerida desde la query con mejor rendimiento (clics/impresiones).'),
+          (currentKeyword.toLowerCase() === suggestion.keyword.toLowerCase()
+            ? 'La keyword actual ya coincide con la mejor query de GSC.'
+            : 'Keyword sugerida desde la mejor query propietaria por URL (impresiones y luego clics), sin duplicar entre URLs.'),
         gscClicks: suggestion.clicks,
         gscImpressions: suggestion.impressions,
       };
-
-      if (proposal.proposedKeyword) {
-        reservedKeywords.add(proposal.proposedKeyword.trim().toLowerCase());
-      }
 
       return proposal;
     });
