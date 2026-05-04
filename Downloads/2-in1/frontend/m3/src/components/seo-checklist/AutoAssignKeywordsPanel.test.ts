@@ -76,6 +76,22 @@ describe('getBestKeywordFromPage', () => {
 
     expect(result?.keyword).toBe('seo local para clinicas');
   });
+
+  it('interpreta correctamente filas query+page cuando GSC devuelve keys sin dimensions', () => {
+    const page = buildPage([
+      {
+        keys: ['https://example.com/test', 'keyword util'],
+        clicks: 6,
+        impressions: 420,
+        position: 3,
+      },
+    ]);
+
+    const result = getBestKeywordFromPage(page, new Set());
+
+    expect(result?.keyword).toBe('keyword util');
+    expect(result?.impressions).toBe(420);
+  });
 });
 
 describe('buildKeywordProposals', () => {
