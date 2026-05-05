@@ -5,10 +5,11 @@ import { useProject } from '../context/ProjectContext';
 import { useSettings } from '../context/SettingsContext';
 import {
   BACKUP_SCHEMA_VERSION,
-  buildBackupPayload,
+  buildBackupPayloadAsync,
   isBackupPayload,
   migrateBackupPayload,
   restoreMediaFlowStorageSnapshot,
+  restoreSeoChecklistIndexedDbSnapshot,
 } from '../utils/backup';
 import { useToast } from './ui/ToastContext';
 import ConfirmDialog from './ui/ConfirmDialog';
@@ -47,8 +48,8 @@ const DataManagementPanel: React.FC = () => {
     }).format(completedDate);
   };
 
-  const handleExport = () => {
-    const data = buildBackupPayload({
+  const handleExport = async () => {
+    const data = await buildBackupPayloadAsync({
       clients,
       generalNotes,
       settings,
@@ -152,12 +153,13 @@ const DataManagementPanel: React.FC = () => {
     }
   };
 
-  const handleConfirmRestore = () => {
+  const handleConfirmRestore = async () => {
     if (!pendingBackup) return;
 
     if (pendingBackup.storage) {
       restoreMediaFlowStorageSnapshot(pendingBackup.storage);
     }
+    await restoreSeoChecklistIndexedDbSnapshot(pendingBackup.indexedDb?.seoChecklists);
 
     restoreProjectData(
       pendingBackup.clients,
