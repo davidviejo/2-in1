@@ -191,8 +191,11 @@ const getDimensionValue = (row: any, dimension: 'page' | 'query') => {
       if (secondLooksLikeUrl) return second;
     }
   }
-  if (dimension === 'query' && typeof keys[0] === 'string') {
-    return String(keys[0] || '').trim();
+  if (dimension === 'query') {
+    const nonUrlCandidate = keys.find((key: any) => typeof key === 'string' && !/^https?:\/\//i.test(key));
+    if (typeof nonUrlCandidate === 'string') return nonUrlCandidate.trim();
+    if (typeof keys[1] === 'string') return String(keys[1] || '').trim();
+    if (typeof keys[0] === 'string') return String(keys[0] || '').trim();
   }
   if (dimension === 'page') {
     const urlKeyCandidate = keys.find((key: any) => typeof key === 'string' && /^https?:\/\//i.test(key));
