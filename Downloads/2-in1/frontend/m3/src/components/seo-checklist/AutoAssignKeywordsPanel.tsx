@@ -17,6 +17,7 @@ interface KeywordProposal {
   id: string;
   url: string;
   currentKeyword: string;
+  secondaryKeywords: string[];
   proposedKeyword: string;
   confidence: 'alta' | 'media' | 'baja';
   reason: string;
@@ -54,7 +55,7 @@ interface Props {
 const GSC_BULK_ROW_LIMIT = 25_000;
 // Para proyectos grandes: aumentamos el límite total paginado para capturar más queries
 // y mejorar la probabilidad de recuperar la KW principal por URL.
-const GSC_BULK_MAX_ROWS = 1_000_000;
+const GSC_BULK_MAX_ROWS = 2_000_000;
 
 const normalizeUrlCandidate = (value: string) => {
   const trimmed = value.trim();
@@ -250,6 +251,30 @@ const normalizeAndPrioritizeQueries = (rows: any[], brandTerms: string[] = [], e
 };
 
 
+
+const getPagePriorityScore = (page: SeoPage) => {
+  const impressions = Number(page.gscMetrics?.impressions || 0);
+  const clicks = Number(page.gscMetrics?.clicks || 0);
+  return impressions * 10 + clicks;
+};
+
+const dedupePagesByCanonicalUrl = (pages: SeoPage[]) => {
+  const byCanonical = new Map<string, SeoPage>();
+
+  pages.forEach((page) => {
+    const canonical = toCanonicalUrlKey(page.url);
+    const key = canonical || normalizeUrlCandidate(page.url).toLowerCase();
+    if (!key) return;
+
+    const existing = byCanonical.get(key);
+    if (!existing || getPagePriorityScore(page) > getPagePriorityScore(existing)) {
+      byCanonical.set(key, page);
+    }
+  });
+
+  return Array.from(byCanonical.values());
+};
+
 export const getKeywordCandidatesFromPage = (page: SeoPage) => {
   const rawQueries = page.checklist.OPORTUNIDADES?.autoData?.gscQueries;
   if (!Array.isArray(rawQueries) || rawQueries.length === 0) {
@@ -288,14 +313,15 @@ export const buildKeywordProposals = (
   pages: SeoPage[],
   sourceMode: KeywordSourceMode,
   brandTerms: string[] = [],
-): KeywordProposal[] => {
+ ): KeywordProposal[] => {
+  const uniquePages = dedupePagesByCanonicalUrl(pages);
   const candidatesByPage = new Map<string, ReturnType<typeof getKeywordCandidatesFromPage>>();
-  pages.forEach((page) => {
+  uniquePages.forEach((page) => {
     candidatesByPage.set(page.id, getKeywordCandidatesFromPage(page));
   });
 
   const keywordOwners = new Map<string, { pageId: string; impressions: number; clicks: number }>();
-  pages.forEach((page) => {
+  uniquePages.forEach((page) => {
     const candidates = candidatesByPage.get(page.id) || [];
     candidates.forEach((candidate: any) => {
       const keyword = candidate.query.trim().toLowerCase();
@@ -316,7 +342,7 @@ export const buildKeywordProposals = (
     });
   });
 
-  return pages
+  return uniquePages
     .filter((page) => {
       if (sourceMode === 'with_gsc') {
         return (page.gscMetrics?.queryCount || 0) > 0;
@@ -348,6 +374,7 @@ export const buildKeywordProposals = (
           id: page.id,
           url: page.url,
           currentKeyword,
+          secondaryKeywords: [],
           proposedKeyword: '',
           confidence: 'baja' as const,
           reason: 'URL marcada como keyword de marca; se omite autoasignación.',
@@ -364,6 +391,7 @@ export const buildKeywordProposals = (
           id: page.id,
           url: page.url,
           currentKeyword,
+          secondaryKeywords: [],
           proposedKeyword: '',
           confidence: 'baja' as const,
           reason: fallbackReason,
@@ -377,6 +405,7 @@ export const buildKeywordProposals = (
           id: page.id,
           url: page.url,
           currentKeyword,
+          secondaryKeywords: [],
           proposedKeyword: '',
           confidence: 'baja' as const,
           reason: 'La mejor query detectada es de marca; no se propone como KW principal.',
@@ -384,6 +413,11 @@ export const buildKeywordProposals = (
           gscImpressions: suggestion.impressions,
         };
       }
+
+      const secondaryKeywords = ownedCandidates
+        .filter((candidate: any) => candidate.query.trim().toLowerCase() !== suggestion.keyword.toLowerCase())
+        .slice(0, 3)
+        .map((candidate: any) => candidate.query.trim());
 
       const confidence: KeywordProposal['confidence'] =
         suggestion.clicks >= 10 || suggestion.impressions >= 200
@@ -396,6 +430,7 @@ export const buildKeywordProposals = (
         id: page.id,
         url: page.url,
         currentKeyword,
+        secondaryKeywords,
         proposedKeyword: suggestion.keyword,
         confidence,
         reason:
@@ -1063,6 +1098,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
               <th className="px-3 py-2">URL</th>
               <th className="px-3 py-2">KW actual</th>
               <th className="px-3 py-2">KW propuesta</th>
+              <th className="px-3 py-2">KWs secundarias</th>
               <th className="px-3 py-2">Confianza</th>
               <th className="px-3 py-2">Datos GSC</th>
               <th className="px-3 py-2">Justificación</th>
@@ -1074,6 +1110,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
                 <td className="px-3 py-2 text-xs text-slate-700">{proposal.url}</td>
                 <td className="px-3 py-2 text-slate-600">{proposal.currentKeyword || '-'}</td>
                 <td className="px-3 py-2 font-medium text-slate-900">{proposal.proposedKeyword}</td>
+                <td className="px-3 py-2 text-slate-600">{proposal.secondaryKeywords.join(', ') || '-'}</td>
                 <td className="px-3 py-2 capitalize text-slate-600">{proposal.confidence}</td>
                 <td className="px-3 py-2 text-slate-600">
                   {proposal.gscClicks} clics / {proposal.gscImpressions} imp.
@@ -1083,7 +1120,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
             ))}
             {proposals.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-3 py-8 text-center text-slate-500">
+                <td colSpan={7} className="px-3 py-8 text-center text-slate-500">
                   No hay propuestas de keyword con los filtros actuales.
                 </td>
               </tr>
