@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { CHECKLIST_POINTS, ChecklistItem, ChecklistKey, SeoPage } from '../../types/seoChecklist';
-import { normalizeSeoUrl } from '../../utils/seoUrlNormalizer';
+import { buildSeoUrlCanonicalKey, normalizeSeoUrl } from '../../utils/seoUrlNormalizer';
 import { querySearchAnalyticsPaged } from '../../services/googleSearchConsole';
 import {
   getCachedUrlKeywordEntry,
@@ -54,7 +54,7 @@ interface Props {
 const GSC_BULK_ROW_LIMIT = 25_000;
 // Para proyectos grandes: aumentamos el límite total paginado para capturar más queries
 // y mejorar la probabilidad de recuperar la KW principal por URL.
-const GSC_BULK_MAX_ROWS = 300_000;
+const GSC_BULK_MAX_ROWS = 1_000_000;
 
 const normalizeUrlCandidate = (value: string) => {
   const trimmed = value.trim();
@@ -686,7 +686,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
           pages
             .map((page) => {
               try {
-                return normalizeSeoUrl(page.url).toLowerCase();
+                return buildSeoUrlCanonicalKey(page.url);
               } catch {
                 return '';
               }
@@ -701,7 +701,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
 
           let discoveredUrlKey = '';
           try {
-            discoveredUrlKey = normalizeSeoUrl(discoveredUrl).toLowerCase();
+            discoveredUrlKey = buildSeoUrlCanonicalKey(discoveredUrl);
           } catch {
             return;
           }

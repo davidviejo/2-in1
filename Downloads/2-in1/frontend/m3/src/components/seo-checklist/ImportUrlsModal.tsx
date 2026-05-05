@@ -7,7 +7,7 @@ import {
   ChecklistKey,
   normalizeChecklistStatus,
 } from '../../types/seoChecklist';
-import { normalizeSeoUrl } from '../../utils/seoUrlNormalizer';
+import { buildSeoUrlCanonicalKey, normalizeSeoUrl } from '../../utils/seoUrlNormalizer';
 import { useSettings } from '../../context/SettingsContext';
 import { isBrandTermMatch } from '../../utils/brandTerms';
 
@@ -169,7 +169,7 @@ const buildSeenUrls = (pages: SeoPage[]): Set<string> => {
   for (const page of pages) {
     if (!page?.url || typeof page.url !== 'string') continue;
     try {
-      seen.add(normalizeSeoUrl(page.url).toLowerCase());
+      seen.add(buildSeoUrlCanonicalKey(page.url));
     } catch {
       // Ignore malformed legacy URLs from persisted state.
     }
@@ -264,7 +264,7 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
             }
 
             const normalizedUrl = normalizeSeoUrl(rawUrl);
-            const normalizedUrlKey = normalizedUrl.toLowerCase();
+            const normalizedUrlKey = buildSeoUrlCanonicalKey(normalizedUrl);
             if (ignoreDuplicates && seenExistingUrls.has(normalizedUrlKey)) {
               errorSummary.duplicateExistingUrlRows.push(rowNumber);
               continue;
