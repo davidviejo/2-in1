@@ -3,7 +3,7 @@ import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { CHECKLIST_POINTS, ChecklistItem, ChecklistKey, SeoPage } from '../../types/seoChecklist';
 import { normalizeSeoUrl } from '../../utils/seoUrlNormalizer';
-import { getPageQueries, querySearchAnalyticsPaged } from '../../services/googleSearchConsole';
+import { querySearchAnalyticsPaged } from '../../services/googleSearchConsole';
 import {
   getCachedUrlKeywordEntry,
   getLatestGscUrlKeywordCache,
@@ -34,6 +34,15 @@ interface AnalysisDebugSnapshot {
   rawQueryPageRows: number;
   appliedFromCacheCount: number;
   propertyVariantsTried: string[];
+}
+
+interface RawQueryPageRow {
+  page: string;
+  query: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position?: number;
 }
 
 interface Props {
@@ -182,8 +191,11 @@ const getDimensionValue = (row: any, dimension: 'page' | 'query') => {
       if (secondLooksLikeUrl) return second;
     }
   }
-  if (dimension === 'query' && typeof keys[0] === 'string') {
-    return String(keys[0] || '').trim();
+  if (dimension === 'query') {
+    const nonUrlCandidate = keys.find((key: any) => typeof key === 'string' && !/^https?:\/\//i.test(key));
+    if (typeof nonUrlCandidate === 'string') return nonUrlCandidate.trim();
+    if (typeof keys[1] === 'string') return String(keys[1] || '').trim();
+    if (typeof keys[0] === 'string') return String(keys[0] || '').trim();
   }
   if (dimension === 'page') {
     const urlKeyCandidate = keys.find((key: any) => typeof key === 'string' && /^https?:\/\//i.test(key));
@@ -410,6 +422,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
   const [gscDiscoveredUrls, setGscDiscoveredUrls] = useState<SeoPage[]>([]);
   const [debugSnapshot, setDebugSnapshot] = useState<AnalysisDebugSnapshot | null>(null);
   const [showDebugSnapshot, setShowDebugSnapshot] = useState(false);
+  const [rawQueryPageRowsSnapshot, setRawQueryPageRowsSnapshot] = useState<RawQueryPageRow[]>([]);
   const { settings } = useSeoChecklistSettings();
   const activeBrandTerms = useMemo(() => settings.brandTerms || [], [settings.brandTerms]);
 
@@ -504,6 +517,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
     const pagesToFetchLive: SeoPage[] = [];
     const updatedUrls = new Set<string>();
     let rawQueryPageRows = 0;
+    const rawRowsForSnapshot: RawQueryPageRow[] = [];
 
     for (const page of targetPages) {
       const cachedEntry = getCachedUrlKeywordEntry(cachedSnapshot, page.url);
@@ -546,7 +560,6 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
     }
 
     const discoveredByUrl = new Map<string, SeoPage>();
-    const pagesWithoutQueriesAfterBulk: SeoPage[] = [];
     if (token && pagesToFetchLive.length > 0) {
       try {
         const bulkResponse = await querySearchAnalyticsPaged(token, {
@@ -560,6 +573,19 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
         });
         const bulkRows = Array.isArray(bulkResponse.rows) ? bulkResponse.rows : [];
         rawQueryPageRows = bulkRows.length;
+        for (const row of bulkRows) {
+          const pageValue = normalizeUrlCandidate(getDimensionValue(row, 'page'));
+          const queryValue = String(getDimensionValue(row, 'query') || '').trim();
+          if (!pageValue || !queryValue) continue;
+          rawRowsForSnapshot.push({
+            page: pageValue,
+            query: queryValue,
+            clicks: Number(row.clicks || 0),
+            impressions: Number(row.impressions || 0),
+            ctr: Number(row.ctr || 0),
+            position: Number(row.position || 0) || undefined,
+          });
+        }
         const rowsByUrl = new Map<string, any[]>();
         const rowsByCanonicalUrl = new Map<string, any[]>();
         const globalTopQueryRows = normalizeAndPrioritizeQueries(bulkRows).slice(0, 20);
@@ -603,10 +629,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
           const diagnosticQueries =
             normalizedQueries.length > 0 ? normalizedQueries : usesGlobalFallback ? globalTopQueryRows : [];
 
-          if (diagnosticQueries.length === 0) {
-            pagesWithoutQueriesAfterBulk.push(page);
-            continue;
-          }
+          if (diagnosticQueries.length === 0) continue;
 
           const aggregated = diagnosticQueries.reduce(
             (acc, row) => {
@@ -653,64 +676,6 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
               },
             },
           });
-        }
-
-        if (pagesWithoutQueriesAfterBulk.length > 0) {
-          for (const page of pagesWithoutQueriesAfterBulk) {
-            try {
-              const pageQueries = await getPageQueries(token, site, page.url, start, end);
-              const normalizedQueries = normalizeAndPrioritizeQueries(Array.isArray(pageQueries) ? pageQueries : []);
-
-              if (normalizedQueries.length === 0) continue;
-
-              const aggregated = normalizedQueries.reduce(
-                (acc, row) => {
-                  acc.clicks += Number(row.clicks || 0);
-                  acc.impressions += Number(row.impressions || 0);
-                  acc.weightedPosition += Number(row.position || 0) * Number(row.impressions || 0);
-                  return acc;
-                },
-                { clicks: 0, impressions: 0, weightedPosition: 0 },
-              );
-              const ctr = aggregated.impressions > 0 ? aggregated.clicks / aggregated.impressions : 0;
-              const position =
-                aggregated.impressions > 0
-                  ? aggregated.weightedPosition / aggregated.impressions
-                  : undefined;
-
-              okCount += 1;
-              fetchedCount += 1;
-              updatedUrls.add(page.url);
-              updates.push({
-                id: page.id,
-                changes: {
-                  gscMetrics: {
-                    clicks: aggregated.clicks,
-                    impressions: aggregated.impressions,
-                    ctr,
-                    position,
-                    queryCount: normalizedQueries.length,
-                    source: 'page',
-                    updatedAt: Date.now(),
-                  },
-                  checklist: {
-                    ...page.checklist,
-                    OPORTUNIDADES: {
-                      ...page.checklist.OPORTUNIDADES,
-                      autoData: {
-                        ...(page.checklist.OPORTUNIDADES?.autoData || {}),
-                        gscQueries: normalizedQueries,
-                        gscQueryFallbackReason:
-                          'Fallback por URL (getPageQueries) tras no obtener match suficiente en carga bulk query+page.',
-                      },
-                    },
-                  },
-                },
-              });
-            } catch {
-              // fallback silencioso por URL; se mantiene el resultado actual sin bloquear el lote
-            }
-          }
         }
 
         const existingUrlKeys = new Set(
@@ -765,6 +730,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
         console.warn('Fallo en carga masiva GSC. No se pudieron actualizar URLs sin caché.', error);
       }
     }
+    setRawQueryPageRowsSnapshot(rawRowsForSnapshot);
     setGscDiscoveredUrls(Array.from(discoveredByUrl.values()));
     setDebugSnapshot({
       selectedPropertyInput: selectedSite.trim(),
@@ -840,6 +806,39 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
 
     onBulkUpdate(updates);
     setStatus(`Autoasignación aplicada: ${updates.length} URLs actualizadas con nueva KW principal.`);
+  };
+
+  const escapeCsvCell = (value: string | number | undefined) => {
+    const normalized = String(value ?? '');
+    if (normalized.includes('"') || normalized.includes(',') || normalized.includes('\n')) {
+      return `"${normalized.replace(/"/g, '""')}"`;
+    }
+    return normalized;
+  };
+
+  const downloadRawQueryPageRowsCsv = () => {
+    if (!rawQueryPageRowsSnapshot.length) return;
+    const header = ['page', 'query', 'clicks', 'impressions', 'ctr', 'position'];
+    const lines = rawQueryPageRowsSnapshot.map((row) =>
+      [
+        escapeCsvCell(row.page),
+        escapeCsvCell(row.query),
+        escapeCsvCell(row.clicks),
+        escapeCsvCell(row.impressions),
+        escapeCsvCell(row.ctr),
+        escapeCsvCell(row.position ?? ''),
+      ].join(','),
+    );
+    const csv = [header.join(','), ...lines].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const href = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = href;
+    link.download = `gsc-query-page-rows-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(href);
   };
 
   return (
@@ -936,6 +935,49 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
             <p>
               <strong>Filas crudas query+page (estimación):</strong> {debugSnapshot.rawQueryPageRows}
             </p>
+            {rawQueryPageRowsSnapshot.length > 0 && (
+              <div className="rounded-md border border-sky-200 bg-white p-2">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-xs text-slate-700">
+                    <strong>Filas crudas guardadas:</strong> {rawQueryPageRowsSnapshot.length}
+                  </p>
+                  <Button variant="secondary" onClick={downloadRawQueryPageRowsCsv}>
+                    Descargar filas crudas (CSV)
+                  </Button>
+                </div>
+                <div className="max-h-64 overflow-auto rounded border border-slate-200">
+                  <table className="w-full text-left text-[11px]">
+                    <thead className="bg-slate-100 text-slate-700">
+                      <tr>
+                        <th className="px-2 py-1">page</th>
+                        <th className="px-2 py-1">query</th>
+                        <th className="px-2 py-1">clicks</th>
+                        <th className="px-2 py-1">impressions</th>
+                        <th className="px-2 py-1">ctr</th>
+                        <th className="px-2 py-1">position</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rawQueryPageRowsSnapshot.slice(0, 200).map((row, index) => (
+                        <tr key={`${row.page}-${row.query}-${index}`} className="border-t border-slate-100">
+                          <td className="px-2 py-1 text-slate-700">{row.page}</td>
+                          <td className="px-2 py-1 text-slate-700">{row.query}</td>
+                          <td className="px-2 py-1 text-slate-700">{row.clicks}</td>
+                          <td className="px-2 py-1 text-slate-700">{row.impressions}</td>
+                          <td className="px-2 py-1 text-slate-700">{row.ctr}</td>
+                          <td className="px-2 py-1 text-slate-700">{row.position ?? '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {rawQueryPageRowsSnapshot.length > 200 && (
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Mostrando primeras 200 filas. Descarga el CSV para el dataset completo.
+                  </p>
+                )}
+              </div>
+            )}
             <p>
               <strong>URLs objetivo checklist:</strong> {debugSnapshot.targetUrls.length}
             </p>
