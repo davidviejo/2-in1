@@ -110,6 +110,41 @@ const isUsableKeyword = (value?: string) => {
   return normalized.length > 0 && normalized !== '-';
 };
 
+
+const FRONTEND_ROUTE_BLOCKLIST = [
+  '/app',
+  '/dashboard',
+  '/login',
+  '/signup',
+  '/register',
+  '/admin',
+  '/_next',
+  '/static',
+  '/assets',
+];
+
+const FRONTEND_ASSET_EXTENSIONS = /\.(js|mjs|cjs|css|map|json|png|jpe?g|gif|svg|webp|ico|woff2?|ttf|eot|pdf|txt|xml)$/i;
+
+const shouldSkipFrontendUrlForAutoAssign = (rawUrl: string) => {
+  const trimmed = (rawUrl || '').trim();
+  if (!trimmed) return true;
+
+  try {
+    const parsed = new URL(trimmed);
+    const pathname = parsed.pathname.toLowerCase();
+
+    if (parsed.hash && parsed.hash.includes('/')) return true;
+    if (parsed.searchParams.has('utm_source') || parsed.searchParams.has('utm_campaign')) return true;
+    if (FRONTEND_ASSET_EXTENSIONS.test(pathname)) return true;
+    if (FRONTEND_ROUTE_BLOCKLIST.some((prefix) => pathname === prefix || pathname.startsWith(prefix + '/') )) return true;
+
+    return false;
+  } catch {
+    const normalized = trimmed.toLowerCase();
+    if (normalized.includes('#/')) return true;
+    return FRONTEND_ASSET_EXTENSIONS.test(normalized);
+  }
+};
 const isUrlLikeQuery = (value?: string) => {
   const query = (value || '').trim().toLowerCase();
   if (!query) return false;
@@ -508,7 +543,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
 
         for (const row of bulkRows) {
           const rowUrl = normalizeUrlCandidate(getDimensionValue(row, 'page'));
-          if (!rowUrl) continue;
+          if (!rowUrl || shouldSkipFrontendUrlForAutoAssign(rowUrl)) continue;
 
           for (const rowUrlCandidate of buildUrlCandidates(rowUrl)) {
             const bucket = rowsByUrl.get(rowUrlCandidate);
@@ -691,7 +726,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
         rowsByCanonicalUrl.forEach((canonicalRows) => {
           if (!canonicalRows.length) return;
           const discoveredUrl = normalizeUrlCandidate(getDimensionValue(canonicalRows[0], 'page'));
-          if (!discoveredUrl) return;
+          if (!discoveredUrl || shouldSkipFrontendUrlForAutoAssign(discoveredUrl)) return;
 
           let discoveredUrlKey = '';
           try {
