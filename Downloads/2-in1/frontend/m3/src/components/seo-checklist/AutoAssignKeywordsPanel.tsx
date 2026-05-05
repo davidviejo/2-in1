@@ -825,18 +825,38 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
 
   const applyKeywordAssignments = () => {
     const updates = proposals
-      .filter(
-        (proposal) =>
-          proposal.proposedKeyword &&
-          proposal.proposedKeyword.toLowerCase() !== proposal.currentKeyword.toLowerCase(),
-      )
-      .map((proposal) => ({
-        id: proposal.id,
-        changes: {
-          kwPrincipal: proposal.proposedKeyword,
-          isBrandKeyword: false,
-        },
-      }));
+      .filter((proposal) => proposal.proposedKeyword)
+      .map((proposal) => {
+        const page = pages.find((entry) => entry.id === proposal.id);
+        return {
+          id: proposal.id,
+          changes: {
+            kwPrincipal: proposal.proposedKeyword,
+            isBrandKeyword: false,
+            checklist: {
+              ...page?.checklist,
+              OPORTUNIDADES: {
+                ...page?.checklist.OPORTUNIDADES,
+                autoData: {
+                  ...(page?.checklist.OPORTUNIDADES?.autoData || {}),
+                  autoAssignedSecondaryKeywords: proposal.secondaryKeywords,
+                },
+              },
+            },
+          },
+        };
+      })
+      .filter((update) => {
+        const page = pages.find((entry) => entry.id === update.id);
+        const currentPrincipal = (page?.kwPrincipal || '').trim().toLowerCase();
+        const nextPrincipal = (update.changes.kwPrincipal || '').trim().toLowerCase();
+        const currentSecondary =
+          page?.checklist?.OPORTUNIDADES?.autoData?.autoAssignedSecondaryKeywords || [];
+        const nextSecondary =
+          update.changes.checklist?.OPORTUNIDADES?.autoData?.autoAssignedSecondaryKeywords || [];
+        const secondaryChanged = JSON.stringify(currentSecondary) !== JSON.stringify(nextSecondary);
+        return currentPrincipal !== nextPrincipal || secondaryChanged;
+      });
 
     if (updates.length === 0) {
       setStatus('No hay cambios para aplicar: todas las keywords ya estaban asignadas.');
