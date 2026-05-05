@@ -92,6 +92,45 @@ describe('getBestKeywordFromPage', () => {
     expect(result?.keyword).toBe('keyword util');
     expect(result?.impressions).toBe(420);
   });
+
+
+  it('ignora filas sin dimensión query cuando solo viene la URL en keys', () => {
+    const page = buildPage([
+      {
+        keys: ['https://www.rafibra.es/fr/blog/duree-vie-essence/'],
+        clicks: 36,
+        impressions: 1479,
+        position: 4,
+      },
+      {
+        keys: ['https://example.com/test', 'durée vie essence'],
+        clicks: 9,
+        impressions: 650,
+        position: 2,
+      },
+    ]);
+
+    const result = getBestKeywordFromPage(page, new Set());
+
+    expect(result?.keyword).toBe('durée vie essence');
+    expect(result?.impressions).toBe(650);
+  });
+
+
+  it('descarta filas donde ambos keys parecen URL (sin query real)', () => {
+    const page = buildPage([
+      {
+        keys: ['https://www.rafibra.es/fr/blog/duree-vie-essence', 'https://www.rafibra.es/fr/blog/duree-vie-essence/'],
+        clicks: 36,
+        impressions: 1479,
+        position: 4,
+      },
+    ]);
+
+    const result = getBestKeywordFromPage(page, new Set());
+
+    expect(result).toBeNull();
+  });
 });
 
 describe('buildKeywordProposals', () => {

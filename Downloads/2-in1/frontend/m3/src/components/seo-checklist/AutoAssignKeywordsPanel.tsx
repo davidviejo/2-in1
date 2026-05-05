@@ -192,10 +192,13 @@ const getDimensionValue = (row: any, dimension: 'page' | 'query') => {
     }
   }
   if (dimension === 'query') {
-    const nonUrlCandidate = keys.find((key: any) => typeof key === 'string' && !/^https?:\/\//i.test(key));
+    const nonUrlCandidate = keys.find((key: any) => {
+      if (typeof key !== 'string') return false;
+      const normalized = key.trim();
+      return normalized.length > 0 && !/^https?:\/\//i.test(normalized);
+    });
     if (typeof nonUrlCandidate === 'string') return nonUrlCandidate.trim();
-    if (typeof keys[1] === 'string') return String(keys[1] || '').trim();
-    if (typeof keys[0] === 'string') return String(keys[0] || '').trim();
+    return '';
   }
   if (dimension === 'page') {
     const urlKeyCandidate = keys.find((key: any) => typeof key === 'string' && /^https?:\/\//i.test(key));
