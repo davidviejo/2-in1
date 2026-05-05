@@ -111,6 +111,7 @@ export const SeoUrlList: React.FC<Props> = ({
   const [filter, setFilter] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const { settings, updateSettings } = useSeoChecklistSettings();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [analysisMode, setAnalysisMode] = useState<'basic' | 'advanced'>('basic');
@@ -235,104 +236,235 @@ export const SeoUrlList: React.FC<Props> = ({
     return { progress, siIaCount };
   };
 
-  const handleExport = () => {
-    // Tab 1: Resumen
-    const summaryHeaders = [
-      'URL',
-      'KW Principal',
-      'Tipo',
-      'Cluster',
-      'Clics',
-      'Impresiones',
-      ...CHECKLIST_POINTS.map((p) => p.label),
-    ];
-    const exportPages = pages;
+  const handleExport = async () => {
+    const exportPages = selectedIds.size > 0
+      ? pages.filter((p) => selectedIds.has(p.id))
+      : pages;
 
-    const summaryData = exportPages.map((p) => [
-      p.url,
-      p.kwPrincipal,
-      p.pageType,
-      p.cluster || '',
-      p.gscMetrics?.clicks || 0,
-      p.gscMetrics?.impressions || 0,
-      ...CHECKLIST_POINTS.map((point) => p.checklist[point.key]?.status_manual || 'NA'),
-    ]);
+    if (exportPages.length === 0) {
+      setGscSyncStatus('No hay URLs para exportar.');
+      return;
+    }
 
-    const wsSummary = XLSX.utils.aoa_to_sheet([summaryHeaders, ...summaryData]);
+    const MAX_ROWS_PER_FILE = 10000;
+    const LARGE_EXPORT_THRESHOLD = 15000;
+    const totalFiles = Math.ceil(exportPages.length / MAX_ROWS_PER_FILE);
 
-    // Tab 2: Detalle Completo
-    const detailHeaders = ['URL', 'KW Principal', 'Tipo', 'Cluster', 'Clics', 'Impresiones'];
-    CHECKLIST_POINTS.forEach((p) => {
-      detailHeaders.push(`${p.label} - Estado`);
-      detailHeaders.push(`${p.label} - Notas`);
-      detailHeaders.push(`${p.label} - Auto`);
-    });
+    const downloadTsv = (filename: string, rows: string[][]) => {
+      const toCell = (value: unknown) => {
+        const raw = value == null ? '' : String(value);
+        return raw.replace(/\t/g, ' ').replace(/\r?\n/g, ' ');
+      };
+      const content = rows.map((row) => row.map(toCell).join('\t')).join('\n');
+      const blob = new Blob([content], { type: 'text/tab-separated-values;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    };
 
-    const detailData = exportPages.map((p) => {
-      const row = [p.url, p.kwPrincipal, p.pageType, p.cluster || '', p.gscMetrics?.clicks || 0, p.gscMetrics?.impressions || 0];
-      CHECKLIST_POINTS.forEach((point) => {
-        const item = p.checklist[point.key];
-        row.push(item?.status_manual || 'NA');
-        row.push(item?.notes_manual || '');
-        row.push(item?.autoData ? JSON.stringify(item.autoData) : '');
-      });
-      return row;
-    });
+    setIsExporting(true);
+    try {
+      if (exportPages.length > LARGE_EXPORT_THRESHOLD) {
+        setGscSyncStatus(
+          `Exportación masiva detectada (${exportPages.length.toLocaleString()} URLs). Generando TSV completos para evitar bloqueos del navegador...`,
+        );
+        const summaryHeaders = [
+          'URL',
+          'KW Principal',
+          'Tipo',
+          'Cluster',
+          'Clics',
+          'Impresiones',
+          ...CHECKLIST_POINTS.map((p) => p.label),
+        ];
+        const summaryRows = exportPages.map((p) => [
+          p.url,
+          p.kwPrincipal,
+          p.pageType,
+          p.cluster || '',
+          String(p.gscMetrics?.clicks || 0),
+          String(p.gscMetrics?.impressions || 0),
+          ...CHECKLIST_POINTS.map((point) => p.checklist[point.key]?.status_manual || 'NA'),
+        ]);
+        const detailHeaders = ['URL', 'KW Principal', 'Tipo', 'Cluster', 'Clics', 'Impresiones'];
+        CHECKLIST_POINTS.forEach((p) => {
+          detailHeaders.push(`${p.label} - Estado`);
+          detailHeaders.push(`${p.label} - Notas`);
+          detailHeaders.push(`${p.label} - Auto`);
+        });
+        const detailRows = exportPages.map((p) => {
+          const row = [p.url, p.kwPrincipal, p.pageType, p.cluster || '', String(p.gscMetrics?.clicks || 0), String(p.gscMetrics?.impressions || 0)];
+          CHECKLIST_POINTS.forEach((point) => {
+            const item = p.checklist[point.key];
+            row.push(item?.status_manual || 'NA');
+            row.push(item?.notes_manual || '');
+            row.push(item?.autoData ? JSON.stringify(item.autoData) : '');
+          });
+          return row;
+        });
 
-    const wsDetail = XLSX.utils.aoa_to_sheet([detailHeaders, ...detailData]);
+        const clusterHeaders = [
+          'Cliente',
+          'Proyecto',
+          'URL',
+          'KW Objetivo (PADRE)',
+          'RunId',
+          'Total Clusters',
+          'Owned Clusters',
+          'Opportunity Clusters',
+          'Cluster ID',
+          'Rol',
+          'Keyword',
+          'Intención',
+          'Cobertura',
+          'URLs SERP',
+        ];
+        const clusterRows: string[][] = [];
+        exportPages.forEach((p) => {
+          const item = p.checklist.OPORTUNIDADES;
+          if (item?.autoData?.clusters && Array.isArray(item.autoData.clusters)) {
+            const { summary, clusters } = item.autoData;
+            clusters.forEach((cluster: any) => {
+              clusterRows.push([
+                currentClient?.name || '',
+                currentClient?.name || '',
+                p.url,
+                cluster.kwObjetivo || '',
+                cluster.runId || '',
+                String(summary?.totalClusters || ''),
+                String(summary?.ownedClusters || ''),
+                String(summary?.opportunityClusters || ''),
+                cluster.clusterId || '',
+                'PADRE',
+                cluster.kwObjetivo || '',
+                cluster.intent || '',
+                cluster.coverage || 'OPPORTUNITY',
+                (cluster.topUrlsSample || cluster.urls || []).join(' | '),
+              ]);
+              if (cluster.variations && Array.isArray(cluster.variations)) {
+                cluster.variations.forEach((v: any) => {
+                  const kw = typeof v === 'string' ? v : v.keyword;
+                  clusterRows.push([
+                    currentClient?.name || '',
+                    currentClient?.name || '',
+                    p.url,
+                    cluster.kwObjetivo || '',
+                    cluster.runId || '',
+                    String(summary?.totalClusters || ''),
+                    String(summary?.ownedClusters || ''),
+                    String(summary?.opportunityClusters || ''),
+                    cluster.clusterId || '',
+                    'VARIACIÓN',
+                    kw || '',
+                    cluster.intent || '',
+                    cluster.coverage || 'OPPORTUNITY',
+                    '',
+                  ]);
+                });
+              }
+            });
+          }
+        });
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, wsSummary, 'Resumen Estado');
-    XLSX.utils.book_append_sheet(wb, wsDetail, 'Detalle Completo');
+        const exportDate = new Date().toISOString().slice(0, 10);
+        downloadTsv(`SEO_Checklist_Resumen_${exportDate}.tsv`, [summaryHeaders, ...summaryRows]);
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        downloadTsv(`SEO_Checklist_Detalle_${exportDate}.tsv`, [detailHeaders, ...detailRows]);
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        downloadTsv(
+          `SEO_Checklist_Clusterizacion_${exportDate}.tsv`,
+          clusterRows.length > 0 ? [clusterHeaders, ...clusterRows] : [clusterHeaders],
+        );
+        setGscSyncStatus(
+          `Exportación completada en TSV (resumen, detalle y clusterización). URLs exportadas: ${exportPages.length.toLocaleString()}.`,
+        );
+        return;
+      }
 
-    // Tab 3: Clusterización (Intenciones)
-    const clusterHeaders = [
-      'Cliente',
-      'Proyecto',
-      'URL',
-      'KW Objetivo (PADRE)',
-      'RunId',
-      'Total Clusters',
-      'Owned Clusters',
-      'Opportunity Clusters',
-      'Cluster ID',
-      'Rol',
-      'Keyword',
-      'Intención',
-      'Cobertura',
-      'URLs SERP',
-    ];
+      for (let fileIndex = 0; fileIndex < totalFiles; fileIndex += 1) {
+        const chunkStart = fileIndex * MAX_ROWS_PER_FILE;
+        const chunkEnd = chunkStart + MAX_ROWS_PER_FILE;
+        const chunkPages = exportPages.slice(chunkStart, chunkEnd);
 
-    const clusterRows: any[][] = [];
+        setGscSyncStatus(
+          `Exportando ${chunkPages.length.toLocaleString()} URL(s) (archivo ${fileIndex + 1}/${totalFiles})...`,
+        );
 
-    exportPages.forEach((p) => {
-      const item = p.checklist.OPORTUNIDADES;
-      if (item?.autoData?.clusters && Array.isArray(item.autoData.clusters)) {
-        const { summary, clusters } = item.autoData;
+        const summaryHeaders = [
+          'URL',
+          'KW Principal',
+          'Tipo',
+          'Cluster',
+          'Clics',
+          'Impresiones',
+          ...CHECKLIST_POINTS.map((p) => p.label),
+        ];
 
-        clusters.forEach((cluster: any) => {
-          // Parent Row (KW Objetivo)
-          clusterRows.push([
-            currentClient?.name || '',
-            currentClient?.name || '',
-            p.url,
-            cluster.kwObjetivo,
-            cluster.runId || '',
-            summary?.totalClusters || '',
-            summary?.ownedClusters || '',
-            summary?.opportunityClusters || '',
-            cluster.clusterId,
-            'PADRE',
-            cluster.kwObjetivo,
-            cluster.intent || '',
-            cluster.coverage || 'OPPORTUNITY',
-                (cluster.topUrlsSample || cluster.urls || []).join('\n'),
-          ]);
+        const summaryData = chunkPages.map((p) => [
+          p.url,
+          p.kwPrincipal,
+          p.pageType,
+          p.cluster || '',
+          p.gscMetrics?.clicks || 0,
+          p.gscMetrics?.impressions || 0,
+          ...CHECKLIST_POINTS.map((point) => p.checklist[point.key]?.status_manual || 'NA'),
+        ]);
 
-          // Variations
-          if (cluster.variations && Array.isArray(cluster.variations)) {
-            cluster.variations.forEach((v: any) => {
-              const kw = typeof v === 'string' ? v : v.keyword;
+        const wsSummary = XLSX.utils.aoa_to_sheet([summaryHeaders, ...summaryData]);
+
+        const detailHeaders = ['URL', 'KW Principal', 'Tipo', 'Cluster', 'Clics', 'Impresiones'];
+        CHECKLIST_POINTS.forEach((p) => {
+          detailHeaders.push(`${p.label} - Estado`);
+          detailHeaders.push(`${p.label} - Notas`);
+          detailHeaders.push(`${p.label} - Auto`);
+        });
+
+        const detailData = chunkPages.map((p) => {
+          const row = [p.url, p.kwPrincipal, p.pageType, p.cluster || '', p.gscMetrics?.clicks || 0, p.gscMetrics?.impressions || 0];
+          CHECKLIST_POINTS.forEach((point) => {
+            const item = p.checklist[point.key];
+            row.push(item?.status_manual || 'NA');
+            row.push(item?.notes_manual || '');
+            row.push(item?.autoData ? JSON.stringify(item.autoData) : '');
+          });
+          return row;
+        });
+
+        const wsDetail = XLSX.utils.aoa_to_sheet([detailHeaders, ...detailData]);
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, wsSummary, 'Resumen Estado');
+        XLSX.utils.book_append_sheet(wb, wsDetail, 'Detalle Completo');
+
+        const clusterHeaders = [
+          'Cliente',
+          'Proyecto',
+          'URL',
+          'KW Objetivo (PADRE)',
+          'RunId',
+          'Total Clusters',
+          'Owned Clusters',
+          'Opportunity Clusters',
+          'Cluster ID',
+          'Rol',
+          'Keyword',
+          'Intención',
+          'Cobertura',
+          'URLs SERP',
+        ];
+
+        const clusterRows: any[][] = [];
+
+        chunkPages.forEach((p) => {
+          const item = p.checklist.OPORTUNIDADES;
+          if (item?.autoData?.clusters && Array.isArray(item.autoData.clusters)) {
+            const { summary, clusters } = item.autoData;
+
+            clusters.forEach((cluster: any) => {
               clusterRows.push([
                 currentClient?.name || '',
                 currentClient?.name || '',
@@ -343,28 +475,61 @@ export const SeoUrlList: React.FC<Props> = ({
                 summary?.ownedClusters || '',
                 summary?.opportunityClusters || '',
                 cluster.clusterId,
-                'VARIACIÓN',
-                kw,
+                'PADRE',
+                cluster.kwObjetivo,
                 cluster.intent || '',
                 cluster.coverage || 'OPPORTUNITY',
-                '', // URLs usually on parent
+                (cluster.topUrlsSample || cluster.urls || []).join('\n'),
               ]);
+
+              if (cluster.variations && Array.isArray(cluster.variations)) {
+                cluster.variations.forEach((v: any) => {
+                  const kw = typeof v === 'string' ? v : v.keyword;
+                  clusterRows.push([
+                    currentClient?.name || '',
+                    currentClient?.name || '',
+                    p.url,
+                    cluster.kwObjetivo,
+                    cluster.runId || '',
+                    summary?.totalClusters || '',
+                    summary?.ownedClusters || '',
+                    summary?.opportunityClusters || '',
+                    cluster.clusterId,
+                    'VARIACIÓN',
+                    kw,
+                    cluster.intent || '',
+                    cluster.coverage || 'OPPORTUNITY',
+                    '',
+                  ]);
+                });
+              }
             });
           }
         });
+
+        const wsClusters = XLSX.utils.aoa_to_sheet(clusterRows.length > 0 ? [clusterHeaders, ...clusterRows] : [clusterHeaders]);
+        XLSX.utils.book_append_sheet(wb, wsClusters, 'Clusterización (Intenciones)');
+
+        const fileSuffix = totalFiles > 1 ? `_part-${String(fileIndex + 1).padStart(2, '0')}` : '';
+        XLSX.writeFile(
+          wb,
+          `SEO_Checklist_Export_${new Date().toISOString().slice(0, 10)}${fileSuffix}.xlsx`,
+          { compression: true },
+        );
+
+        await new Promise((resolve) => setTimeout(resolve, 0));
       }
-    });
 
-    if (clusterRows.length > 0) {
-      const wsClusters = XLSX.utils.aoa_to_sheet([clusterHeaders, ...clusterRows]);
-      XLSX.utils.book_append_sheet(wb, wsClusters, 'Clusterización (Intenciones)');
-    } else {
-      // Create empty sheet with headers if no data
-      const wsClusters = XLSX.utils.aoa_to_sheet([clusterHeaders]);
-      XLSX.utils.book_append_sheet(wb, wsClusters, 'Clusterización (Intenciones)');
+      setGscSyncStatus(
+        `Exportación completada. Archivo(s): ${totalFiles}. URLs exportadas: ${exportPages.length.toLocaleString()}.`,
+      );
+    } catch (error) {
+      console.error('Error exporting checklist', error);
+      const message = error instanceof Error ? error.message : 'Error desconocido';
+      setGscSyncStatus(`La exportación falló: ${message}.`);
+    } finally {
+      setIsExporting(false);
     }
-
-    XLSX.writeFile(wb, `SEO_Checklist_Export_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   const buildAnalysisConfig = (): AnalysisConfigPayload => {
@@ -847,11 +1012,12 @@ export const SeoUrlList: React.FC<Props> = ({
           <span className="hidden sm:inline">Configuración</span>
         </button>
         <button
-          onClick={handleExport}
-          className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-bold shadow-lg shadow-emerald-500/20 transition-all shrink-0"
+          onClick={() => void handleExport()}
+          disabled={isExporting}
+          className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-bold shadow-lg shadow-emerald-500/20 transition-all shrink-0 disabled:opacity-60"
         >
-          <Download size={18} />
-          <span className="hidden sm:inline">Exportar Excel</span>
+          {isExporting ? <Loader2 className="animate-spin" size={18} /> : <Download size={18} />}
+          <span className="hidden sm:inline">{isExporting ? 'Exportando...' : 'Exportar Excel'}</span>
         </button>
       </div>
 
