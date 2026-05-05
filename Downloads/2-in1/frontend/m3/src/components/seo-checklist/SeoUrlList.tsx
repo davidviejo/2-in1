@@ -235,12 +235,11 @@ const EXPORT_DOWNLOAD_PAUSE_MS = 250;
 const escapeTsvField = (value: unknown): string => {
   const normalized = value == null ? '' : String(value);
   return normalized.replace(/\t/g, ' ').replace(/\r?\n/g, ' | ');
-  const lines = [headers, ...rows].map((row) => row.map((value) => escapeTsvField(value)).join('\t'));
-  return `${lines.join('\n')}\n`;
+};
+
+const buildTsv = (headers: unknown[], rows: unknown[][]): string => {
   const lines = [headers, ...rows].map((row) => row.map((value) => escapeTsvField(value)).join('	'));
-  return `${lines.join('
-')}
-`;
+  return `${lines.join('\n')}\n`;
 };
 
 const downloadTsv = (content: string, filename: string) => {
