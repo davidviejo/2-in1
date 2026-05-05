@@ -144,7 +144,7 @@ export const SeoUrlList: React.FC<Props> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
   const [sortConfig, setSortConfig] = useState<{
-    key: 'clicks' | 'impressions' | 'progress' | 'lastAnalyzedAt';
+    key: 'clicks' | 'impressions' | 'position' | 'progress' | 'lastAnalyzedAt';
     direction: 'asc' | 'desc';
   }>({
     key: 'clicks',
@@ -165,6 +165,9 @@ export const SeoUrlList: React.FC<Props> = ({
       } else if (sortConfig.key === 'impressions') {
         aValue = a.gscMetrics?.impressions || 0;
         bValue = b.gscMetrics?.impressions || 0;
+      } else if (sortConfig.key === 'position') {
+        aValue = a.gscMetrics?.position ?? Number.POSITIVE_INFINITY;
+        bValue = b.gscMetrics?.position ?? Number.POSITIVE_INFINITY;
       } else if (sortConfig.key === 'progress') {
         aValue = getProgress(a);
         bValue = getProgress(b);
@@ -204,7 +207,7 @@ export const SeoUrlList: React.FC<Props> = ({
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage,
   );
-  const handleSort = (key: 'clicks' | 'impressions' | 'progress' | 'lastAnalyzedAt') => {
+  const handleSort = (key: 'clicks' | 'impressions' | 'position' | 'progress' | 'lastAnalyzedAt') => {
     setSortConfig((prev) => ({
       key,
       direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc',
@@ -849,7 +852,7 @@ const downloadTsv = (content: string, filename: string) => {
     const targetPages = pages.filter((page) => targetIds.has(page.id));
 
     setIsSyncingGscMetrics(true);
-    setGscSyncStatus('Sincronizando clics e impresiones desde el informe de páginas de GSC...');
+    setGscSyncStatus('Sincronizando clics, impresiones y posición media desde el informe de páginas de GSC...');
 
     const endDate = new Date().toISOString().slice(0, 10);
     const startDate = new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -1098,7 +1101,7 @@ const downloadTsv = (content: string, filename: string) => {
             disabled={!gscAccessToken || !selectedGscSite || isSyncingGscMetrics}
             className="px-3 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50"
           >
-            {isSyncingGscMetrics ? 'Sincronizando GSC...' : 'Asignar clics/impresiones a URLs'}
+            {isSyncingGscMetrics ? 'Sincronizando GSC...' : 'Asignar clics/impresiones/posición a URLs'}
           </button>
           <span className="text-xs text-slate-500 dark:text-slate-400">
             {selectedIds.size > 0
@@ -1329,6 +1332,11 @@ const downloadTsv = (content: string, filename: string) => {
                     Impresiones GSC <ArrowUpDown size={12} />
                   </button>
                 </th>
+                <th className="px-6 py-4 text-right">
+                  <button type="button" onClick={() => handleSort('position')} className="inline-flex items-center gap-1">
+                    Posición media <ArrowUpDown size={12} />
+                  </button>
+                </th>
                 <th className="px-6 py-4 text-center">
                   <button type="button" onClick={() => handleSort('progress')} className="inline-flex items-center gap-1">
                     Progreso <ArrowUpDown size={12} />
@@ -1397,6 +1405,11 @@ const downloadTsv = (content: string, filename: string) => {
                     </td>
                     <td className="px-6 py-4 text-right text-slate-600 dark:text-slate-300 font-mono text-xs">
                       {(page.gscMetrics?.impressions || 0).toLocaleString('es-ES')}
+                    </td>
+                    <td className="px-6 py-4 text-right text-slate-600 dark:text-slate-300 font-mono text-xs">
+                      {typeof page.gscMetrics?.position === 'number'
+                        ? page.gscMetrics.position.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                        : '-'}
                     </td>
                     <td className="px-6 py-4 text-center">
                       <div className="flex items-center gap-2 justify-center">
