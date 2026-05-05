@@ -32,6 +32,9 @@ export interface BackupPayload {
   settings: AppSettings;
   currentClientId: string;
   storage: BackupStorageSnapshot;
+  indexedDb?: {
+    seoChecklists?: Record<string, unknown>;
+  };
 }
 
 type LegacyBackupPayload = Partial<BackupPayload> & {
@@ -50,6 +53,51 @@ interface BuildBackupPayloadOptions {
   currentClientId: string;
   storage?: Storage;
 }
+
+const CHECKLIST_DB_NAME = 'mediaflow-seo-checklist-db';
+const CHECKLIST_DB_STORE = 'seo-checklists';
+
+const canUseIndexedDb = () => typeof window !== 'undefined' && typeof window.indexedDB !== 'undefined';
+
+const readSeoChecklistIndexedDbSnapshot = async (): Promise<Record<string, unknown>> => {
+  if (!canUseIndexedDb()) return {};
+
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = window.indexedDB.open(CHECKLIST_DB_NAME, 1);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('No se pudo abrir IndexedDB para backup.'));
+  });
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(CHECKLIST_DB_STORE, 'readonly');
+    const store = tx.objectStore(CHECKLIST_DB_STORE);
+    const request = store.getAllKeys();
+    const out: Record<string, unknown> = {};
+
+    request.onsuccess = () => {
+      const keys = (request.result || []).map((key) => String(key));
+      if (keys.length === 0) {
+        resolve(out);
+        return;
+      }
+
+      let pending = keys.length;
+      keys.forEach((key) => {
+        const readRequest = store.get(key);
+        readRequest.onsuccess = () => {
+          out[key] = readRequest.result;
+          pending -= 1;
+          if (pending === 0) resolve(out);
+        };
+        readRequest.onerror = () => {
+          pending -= 1;
+          if (pending === 0) resolve(out);
+        };
+      });
+    };
+    request.onerror = () => reject(request.error || new Error('No se pudo leer claves de IndexedDB.'));
+  });
+};
 
 export const getMediaFlowStorageSnapshot = (storage: Storage = window.localStorage) => {
   const snapshot: BackupStorageSnapshot = {};
@@ -85,6 +133,23 @@ export const buildBackupPayload = ({
   currentClientId,
   storage: getMediaFlowStorageSnapshot(storage),
 });
+
+export const buildBackupPayloadAsync = async (
+  options: BuildBackupPayloadOptions,
+): Promise<BackupPayload> => {
+  const basePayload = buildBackupPayload(options);
+  try {
+    const seoChecklists = await readSeoChecklistIndexedDbSnapshot();
+    return {
+      ...basePayload,
+      indexedDb: {
+        seoChecklists,
+      },
+    };
+  } catch {
+    return basePayload;
+  }
+};
 
 export const isBackupPayload = (value: unknown): value is BackupPayload => {
   if (!value || typeof value !== 'object') return false;
@@ -180,4 +245,24 @@ export const restoreMediaFlowStorageSnapshot = (
 
   keysToRemove.forEach((key) => storage.removeItem(key));
   Object.entries(snapshot).forEach(([key, value]) => storage.setItem(key, value));
+};
+
+export const restoreSeoChecklistIndexedDbSnapshot = async (snapshot?: Record<string, unknown>) => {
+  if (!snapshot || !canUseIndexedDb()) return;
+
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = window.indexedDB.open(CHECKLIST_DB_NAME, 1);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('No se pudo abrir IndexedDB para restaurar.'));
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(CHECKLIST_DB_STORE, 'readwrite');
+    const store = tx.objectStore(CHECKLIST_DB_STORE);
+    Object.entries(snapshot).forEach(([key, value]) => {
+      store.put(value, key);
+    });
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error || new Error('No se pudo restaurar SEO checklist en IndexedDB.'));
+  });
 };
