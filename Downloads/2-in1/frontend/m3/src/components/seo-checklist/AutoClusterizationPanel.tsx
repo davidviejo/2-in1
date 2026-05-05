@@ -99,6 +99,7 @@ const inferClusterFromMetadata = (candidate: ClusterCandidate): { cluster: strin
 
 export const AutoClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) => {
   const [urlSourceMode, setUrlSourceMode] = useState<UrlSourceMode>('existing');
+  const [existingUrlScope, setExistingUrlScope] = useState<'all' | 'pending'>('pending');
   const [clusterMode, setClusterMode] = useState<ClusterMode>('url');
   const [manualUrls, setManualUrls] = useState('');
   const [urlDepth, setUrlDepth] = useState(1);
@@ -109,17 +110,22 @@ export const AutoClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }
   const sourceCandidates = useMemo<ClusterCandidate[]>(() => {
     if (urlSourceMode === 'manual') return parseManualUrls(manualUrls);
 
-    const filtered =
+    const filteredBySource =
       urlSourceMode === 'existing_gsc'
         ? pages.filter((page) => (page.gscMetrics?.clicks || 0) > 0)
         : pages;
+
+    const filtered =
+      existingUrlScope === 'pending'
+        ? filteredBySource.filter((page) => !(page.cluster || '').trim())
+        : filteredBySource;
 
     return filtered.map((page) => ({
       id: page.id,
       url: page.url,
       source: urlSourceMode === 'existing_gsc' ? 'gsc' : 'existing',
     }));
-  }, [manualUrls, pages, urlSourceMode]);
+  }, [existingUrlScope, manualUrls, pages, urlSourceMode]);
 
   const runClusterization = async () => {
     if (sourceCandidates.length === 0) {
@@ -263,6 +269,22 @@ export const AutoClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }
           </select>
         </div>
       </div>
+
+
+
+      {urlSourceMode !== 'manual' && (
+        <div>
+          <label className="mb-1 block text-sm font-semibold text-slate-700">Alcance de URLs existentes</label>
+          <select
+            value={existingUrlScope}
+            onChange={(event) => setExistingUrlScope(event.target.value as 'all' | 'pending')}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          >
+            <option value="pending">Solo URLs sin cluster asignado</option>
+            <option value="all">Todas las URLs (reclusterizar)</option>
+          </select>
+        </div>
+      )}
 
       {clusterMode === 'url' && (
         <div>
