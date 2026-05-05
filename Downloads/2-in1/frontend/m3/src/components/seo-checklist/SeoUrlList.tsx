@@ -228,6 +228,31 @@ export const SeoUrlList: React.FC<Props> = ({
     setCurrentPage(1);
   };
 
+  const MASSIVE_EXPORT_THRESHOLD = 15000;
+  const EXPORT_DOWNLOAD_PAUSE_MS = 250;
+
+  const escapeTsvField = (value: unknown): string => {
+    const normalized = value == null ? '' : String(value);
+    return normalized.replace(/\t/g, ' ').replace(/\r?\n/g, ' | ');
+  };
+
+  const buildTsv = (headers: string[], rows: unknown[][]): string => {
+    const lines = [headers, ...rows].map((row) => row.map((value) => escapeTsvField(value)).join('\t'));
+    return `${lines.join('\n')}\n`;
+  };
+
+  const downloadTsv = (content: string, filename: string) => {
+    const blob = new Blob([content], { type: 'text/tab-separated-values;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const calculateStatusMetrics = (page: SeoPage) => {
     const items = Object.values(page.checklist) as ChecklistItem[];
     const siCount = items.filter((i) => i.status_manual === 'SI').length;
@@ -246,11 +271,131 @@ export const SeoUrlList: React.FC<Props> = ({
       return;
     }
 
+    const isMassiveExport = exportPages.length > MASSIVE_EXPORT_THRESHOLD;
     const MAX_ROWS_PER_FILE = 10000;
-    const totalFiles = Math.ceil(exportPages.length / MAX_ROWS_PER_FILE);
+    const totalFiles = isMassiveExport ? 1 : Math.ceil(exportPages.length / MAX_ROWS_PER_FILE);
 
     setIsExporting(true);
     try {
+      if (isMassiveExport) {
+        setGscSyncStatus(`Exportación masiva detectada (${exportPages.length.toLocaleString()} URLs). Generando 3 TSV completos...`);
+
+        const summaryHeaders = [
+          'URL',
+          'KW Principal',
+          'Tipo',
+          'Cluster',
+          'Clics',
+          'Impresiones',
+          ...CHECKLIST_POINTS.map((p) => p.label),
+        ];
+
+        const summaryData = exportPages.map((p) => [
+          p.url,
+          p.kwPrincipal,
+          p.pageType,
+          p.cluster || '',
+          p.gscMetrics?.clicks || 0,
+          p.gscMetrics?.impressions || 0,
+          ...CHECKLIST_POINTS.map((point) => p.checklist[point.key]?.status_manual || 'NA'),
+        ]);
+
+        const detailHeaders = ['URL', 'KW Principal', 'Tipo', 'Cluster', 'Clics', 'Impresiones'];
+        CHECKLIST_POINTS.forEach((p) => {
+          detailHeaders.push(`${p.label} - Estado`);
+          detailHeaders.push(`${p.label} - Notas`);
+          detailHeaders.push(`${p.label} - Auto`);
+        });
+
+        const detailData = exportPages.map((p) => {
+          const row = [p.url, p.kwPrincipal, p.pageType, p.cluster || '', p.gscMetrics?.clicks || 0, p.gscMetrics?.impressions || 0];
+          CHECKLIST_POINTS.forEach((point) => {
+            const item = p.checklist[point.key];
+            row.push(item?.status_manual || 'NA');
+            row.push(item?.notes_manual || '');
+            row.push(item?.autoData ? JSON.stringify(item.autoData) : '');
+          });
+          return row;
+        });
+
+        const clusterHeaders = [
+          'Cliente',
+          'Proyecto',
+          'URL',
+          'KW Objetivo (PADRE)',
+          'RunId',
+          'Total Clusters',
+          'Owned Clusters',
+          'Opportunity Clusters',
+          'Cluster ID',
+          'Rol',
+          'Keyword',
+          'Intención',
+          'Cobertura',
+          'URLs SERP',
+        ];
+
+        const clusterRows: unknown[][] = [];
+
+        exportPages.forEach((p) => {
+          const item = p.checklist.OPORTUNIDADES;
+          if (item?.autoData?.clusters && Array.isArray(item.autoData.clusters)) {
+            const { summary, clusters } = item.autoData;
+
+            clusters.forEach((cluster: any) => {
+              clusterRows.push([
+                currentClient?.name || '',
+                currentClient?.name || '',
+                p.url,
+                cluster.kwObjetivo,
+                cluster.runId || '',
+                summary?.totalClusters || '',
+                summary?.ownedClusters || '',
+                summary?.opportunityClusters || '',
+                cluster.clusterId,
+                'PADRE',
+                cluster.kwObjetivo,
+                cluster.intent || '',
+                cluster.coverage || 'OPPORTUNITY',
+                (cluster.topUrlsSample || cluster.urls || []).join(' | '),
+              ]);
+
+              if (cluster.variations && Array.isArray(cluster.variations)) {
+                cluster.variations.forEach((v: any) => {
+                  const kw = typeof v === 'string' ? v : v.keyword;
+                  clusterRows.push([
+                    currentClient?.name || '',
+                    currentClient?.name || '',
+                    p.url,
+                    cluster.kwObjetivo,
+                    cluster.runId || '',
+                    summary?.totalClusters || '',
+                    summary?.ownedClusters || '',
+                    summary?.opportunityClusters || '',
+                    cluster.clusterId,
+                    'VARIACIÓN',
+                    kw,
+                    cluster.intent || '',
+                    cluster.coverage || 'OPPORTUNITY',
+                    '',
+                  ]);
+                });
+              }
+            });
+          }
+        });
+
+        const dateTag = new Date().toISOString().slice(0, 10);
+        downloadTsv(buildTsv(summaryHeaders, summaryData), `SEO_Checklist_Resumen_${dateTag}.tsv`);
+        await new Promise((resolve) => setTimeout(resolve, EXPORT_DOWNLOAD_PAUSE_MS));
+        downloadTsv(buildTsv(detailHeaders, detailData), `SEO_Checklist_Detalle_${dateTag}.tsv`);
+        await new Promise((resolve) => setTimeout(resolve, EXPORT_DOWNLOAD_PAUSE_MS));
+        downloadTsv(buildTsv(clusterHeaders, clusterRows), `SEO_Checklist_Clusterizacion_${dateTag}.tsv`);
+
+        setGscSyncStatus(`Exportación masiva completada. Se exportaron 3 datasets completos (Resumen, Detalle y Clusterización) con ${exportPages.length.toLocaleString()} URL(s).`);
+        return;
+      }
+
       for (let fileIndex = 0; fileIndex < totalFiles; fileIndex += 1) {
         const chunkStart = fileIndex * MAX_ROWS_PER_FILE;
         const chunkEnd = chunkStart + MAX_ROWS_PER_FILE;
