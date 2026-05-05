@@ -203,6 +203,38 @@ const normalizeQueryRow = (row: any) => {
   };
 };
 
+const normalizeAndPrioritizeQueries = (rows: any[], brandTerms: string[] = [], excludeBrand = false) => {
+  const byKeyword = new Map<string, any>();
+
+  rows
+    .map((row) => normalizeQueryRow({ ...row, query: getDimensionValue(row, 'query') }))
+    .filter((query) => isUsableKeyword(query.query))
+    .filter((query) => !isUrlLikeQuery(query.query))
+    .filter((query) => (excludeBrand ? !isBrandTermMatch(query.query, brandTerms) : true))
+    .forEach((query) => {
+      const keywordKey = query.query.trim().toLowerCase();
+      const existing = byKeyword.get(keywordKey);
+      if (!existing) {
+        byKeyword.set(keywordKey, query);
+        return;
+      }
+
+      if (
+        query.impressions > existing.impressions ||
+        (query.impressions === existing.impressions && query.clicks > existing.clicks)
+      ) {
+        byKeyword.set(keywordKey, query);
+      }
+    });
+
+  return Array.from(byKeyword.values()).sort((a, b) => {
+    if (b.impressions !== a.impressions) return b.impressions - a.impressions;
+    if (b.clicks !== a.clicks) return b.clicks - a.clicks;
+    return 0;
+  });
+};
+
+
 export const getKeywordCandidatesFromPage = (page: SeoPage) => {
   const rawQueries = page.checklist.OPORTUNIDADES?.autoData?.gscQueries;
   if (!Array.isArray(rawQueries) || rawQueries.length === 0) {
@@ -530,16 +562,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
         rawQueryPageRows = bulkRows.length;
         const rowsByUrl = new Map<string, any[]>();
         const rowsByCanonicalUrl = new Map<string, any[]>();
-        const globalTopQueryRows = bulkRows
-          .map((row) => normalizeQueryRow({ ...row, query: getDimensionValue(row, 'query') }))
-          .filter((query) => isUsableKeyword(query.query))
-          .filter((query) => !isUrlLikeQuery(query.query))
-          .sort((a, b) => {
-            if (b.impressions !== a.impressions) return b.impressions - a.impressions;
-            if (b.clicks !== a.clicks) return b.clicks - a.clicks;
-            return 0;
-          })
-          .slice(0, 20);
+        const globalTopQueryRows = normalizeAndPrioritizeQueries(bulkRows).slice(0, 20);
 
         for (const row of bulkRows) {
           const rowUrl = normalizeUrlCandidate(getDimensionValue(row, 'page'));
@@ -575,20 +598,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
               : [];
           const pageRows = exactPageRows.length > 0 ? exactPageRows : fallbackCanonicalRows;
           const usesGlobalFallback = pageRows.length === 0;
-          const normalizedQueries = pageRows
-            .map((row) =>
-              normalizeQueryRow({
-                ...row,
-                query: getDimensionValue(row, 'query'),
-              }),
-            )
-            .filter((query) => isUsableKeyword(query.query))
-            .filter((query) => !isUrlLikeQuery(query.query))
-            .sort((a, b) => {
-              if (b.impressions !== a.impressions) return b.impressions - a.impressions;
-              if (b.clicks !== a.clicks) return b.clicks - a.clicks;
-              return 0;
-            });
+          const normalizedQueries = normalizeAndPrioritizeQueries(pageRows);
 
           const diagnosticQueries =
             normalizedQueries.length > 0 ? normalizedQueries : usesGlobalFallback ? globalTopQueryRows : [];
@@ -649,15 +659,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
           for (const page of pagesWithoutQueriesAfterBulk) {
             try {
               const pageQueries = await getPageQueries(token, site, page.url, start, end);
-              const normalizedQueries = (Array.isArray(pageQueries) ? pageQueries : [])
-                .map(normalizeQueryRow)
-                .filter((query) => isUsableKeyword(query.query))
-                .filter((query) => !isUrlLikeQuery(query.query))
-                .sort((a, b) => {
-                  if (b.impressions !== a.impressions) return b.impressions - a.impressions;
-                  if (b.clicks !== a.clicks) return b.clicks - a.clicks;
-                  return 0;
-                });
+              const normalizedQueries = normalizeAndPrioritizeQueries(Array.isArray(pageQueries) ? pageQueries : []);
 
               if (normalizedQueries.length === 0) continue;
 
@@ -736,12 +738,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
           }
           if (existingUrlKeys.has(discoveredUrlKey) || discoveredByUrl.has(discoveredUrlKey)) return;
 
-          const normalizedQueries = canonicalRows
-            .map((row) => normalizeQueryRow({ ...row, query: getDimensionValue(row, 'query') }))
-            .filter((query) => isUsableKeyword(query.query))
-            .filter((query) => !isUrlLikeQuery(query.query))
-            .filter((query) => !isBrandTermMatch(query.query, activeBrandTerms))
-            .sort((a, b) => (b.impressions - a.impressions) || (b.clicks - a.clicks));
+          const normalizedQueries = normalizeAndPrioritizeQueries(canonicalRows, activeBrandTerms, true);
           const topQuery = normalizedQueries[0];
           if (!topQuery) return;
 
