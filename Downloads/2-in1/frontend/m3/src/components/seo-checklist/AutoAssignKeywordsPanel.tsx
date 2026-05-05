@@ -3,7 +3,7 @@ import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { CHECKLIST_POINTS, ChecklistItem, ChecklistKey, SeoPage } from '../../types/seoChecklist';
 import { normalizeSeoUrl } from '../../utils/seoUrlNormalizer';
-import { getPageQueries, querySearchAnalyticsPaged } from '../../services/googleSearchConsole';
+import { querySearchAnalyticsPaged } from '../../services/googleSearchConsole';
 import {
   getCachedUrlKeywordEntry,
   getLatestGscUrlKeywordCache,
@@ -546,7 +546,6 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
     }
 
     const discoveredByUrl = new Map<string, SeoPage>();
-    const pagesWithoutQueriesAfterBulk: SeoPage[] = [];
     if (token && pagesToFetchLive.length > 0) {
       try {
         const bulkResponse = await querySearchAnalyticsPaged(token, {
@@ -603,10 +602,7 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
           const diagnosticQueries =
             normalizedQueries.length > 0 ? normalizedQueries : usesGlobalFallback ? globalTopQueryRows : [];
 
-          if (diagnosticQueries.length === 0) {
-            pagesWithoutQueriesAfterBulk.push(page);
-            continue;
-          }
+          if (diagnosticQueries.length === 0) continue;
 
           const aggregated = diagnosticQueries.reduce(
             (acc, row) => {
@@ -653,64 +649,6 @@ export const AutoAssignKeywordsPanel: React.FC<Props> = ({ pages, onBulkUpdate, 
               },
             },
           });
-        }
-
-        if (pagesWithoutQueriesAfterBulk.length > 0) {
-          for (const page of pagesWithoutQueriesAfterBulk) {
-            try {
-              const pageQueries = await getPageQueries(token, site, page.url, start, end);
-              const normalizedQueries = normalizeAndPrioritizeQueries(Array.isArray(pageQueries) ? pageQueries : []);
-
-              if (normalizedQueries.length === 0) continue;
-
-              const aggregated = normalizedQueries.reduce(
-                (acc, row) => {
-                  acc.clicks += Number(row.clicks || 0);
-                  acc.impressions += Number(row.impressions || 0);
-                  acc.weightedPosition += Number(row.position || 0) * Number(row.impressions || 0);
-                  return acc;
-                },
-                { clicks: 0, impressions: 0, weightedPosition: 0 },
-              );
-              const ctr = aggregated.impressions > 0 ? aggregated.clicks / aggregated.impressions : 0;
-              const position =
-                aggregated.impressions > 0
-                  ? aggregated.weightedPosition / aggregated.impressions
-                  : undefined;
-
-              okCount += 1;
-              fetchedCount += 1;
-              updatedUrls.add(page.url);
-              updates.push({
-                id: page.id,
-                changes: {
-                  gscMetrics: {
-                    clicks: aggregated.clicks,
-                    impressions: aggregated.impressions,
-                    ctr,
-                    position,
-                    queryCount: normalizedQueries.length,
-                    source: 'page',
-                    updatedAt: Date.now(),
-                  },
-                  checklist: {
-                    ...page.checklist,
-                    OPORTUNIDADES: {
-                      ...page.checklist.OPORTUNIDADES,
-                      autoData: {
-                        ...(page.checklist.OPORTUNIDADES?.autoData || {}),
-                        gscQueries: normalizedQueries,
-                        gscQueryFallbackReason:
-                          'Fallback por URL (getPageQueries) tras no obtener match suficiente en carga bulk query+page.',
-                      },
-                    },
-                  },
-                },
-              });
-            } catch {
-              // fallback silencioso por URL; se mantiene el resultado actual sin bloquear el lote
-            }
-          }
         }
 
         const existingUrlKeys = new Set(
