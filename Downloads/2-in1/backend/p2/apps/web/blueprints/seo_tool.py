@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 import time, io, threading, re, urllib.parse
+import json
 from difflib import SequenceMatcher
 from collections import Counter
 
@@ -148,6 +149,41 @@ def scrape_page_local(url: str):
     wc = Counter(w.lower() for w in words if len(w) > 3)
     entities = [w for w, c in wc.most_common(30)]
 
+    # schema: tipos detectados en JSON-LD y microdata básico
+    schema_types = set()
+    for script in soup.find_all('script', attrs={'type': 'application/ld+json'}):
+        raw = (script.string or script.get_text() or '').strip()
+        if not raw:
+            continue
+        try:
+            data = json.loads(raw)
+        except Exception:
+            data = None
+
+        def _collect_types(node):
+            if isinstance(node, dict):
+                t = node.get('@type')
+                if isinstance(t, str):
+                    schema_types.add(t)
+                elif isinstance(t, list):
+                    for it in t:
+                        if isinstance(it, str):
+                            schema_types.add(it)
+                for v in node.values():
+                    _collect_types(v)
+            elif isinstance(node, list):
+                for it in node:
+                    _collect_types(it)
+
+        if data is not None:
+            _collect_types(data)
+
+    for tag in soup.select('[itemscope][itemtype]'):
+        itemtype = (tag.get('itemtype') or '').strip()
+        if not itemtype:
+            continue
+        schema_types.add(itemtype.split('/')[-1].split('#')[-1])
+
     return {
         'url': url,
         'title': page_title,
@@ -156,7 +192,8 @@ def scrape_page_local(url: str):
         'imgs': img_count,
         'structure': structure_lines,  # h1–h3 en forma de líneas de texto
         'headings': headings,          # h1–h3 como lista de dicts
-        'entities': entities
+        'entities': entities,
+        'schema_types': sorted(schema_types)
     }
 
 
@@ -174,6 +211,49 @@ def scrape_page(url: str):
     except Exception:
         pass
     return scrape_page_local(url)
+
+
+def _tokenize_tfidf_text(text: str):
+    return [t for t in re.findall(r"[a-zA-ZáéíóúñüÁÉÍÓÚÑÜ]{3,}", (text or '').lower())]
+
+
+def compute_semantic_tfidf(documents, top_k: int = 12):
+    """Calcula términos semánticos con TF-IDF sin dependencias externas."""
+    if not documents:
+        return []
+
+    stopwords = {
+        'para', 'como', 'este', 'esta', 'desde', 'hasta', 'sobre', 'entre', 'donde', 'cuando',
+        'tambien', 'porque', 'puede', 'pueden', 'tiene', 'tener', 'hacer', 'hacia', 'todos',
+        'todas', 'cada', 'solo', 'ademas', 'muy', 'mas', 'menos', 'una', 'unas', 'unos', 'uno',
+        'con', 'sin', 'por', 'del', 'las', 'los', 'que', 'sus', 'son', 'the', 'and', 'for', 'from',
+        'you', 'your', 'our', 'not', 'are', 'was', 'have', 'has'
+    }
+
+    tokenized_docs = []
+    doc_freq = Counter()
+
+    for doc in documents:
+        tokens = [t for t in _tokenize_tfidf_text(doc) if t not in stopwords]
+        if not tokens:
+            continue
+        tokenized_docs.append(tokens)
+        doc_freq.update(set(tokens))
+
+    n_docs = len(tokenized_docs)
+    if not n_docs:
+        return []
+
+    scores = Counter()
+    for tokens in tokenized_docs:
+        tf = Counter(tokens)
+        total_tokens = len(tokens)
+        for term, count in tf.items():
+            tf_norm = count / max(total_tokens, 1)
+            idf = 1.0 + (n_docs / (1 + doc_freq[term]))
+            scores[term] += tf_norm * idf
+
+    return [term for term, _ in scores.most_common(top_k)]
 
 
 # --- DISPATCHER CENTRAL ---
@@ -704,6 +784,9 @@ def analyze_cluster():
     target = next((c for c in job_status['results'] if c['id'] == cid), None)
     if target and target['serp_dump']:
         structs, ents, w, i, count = [], [], 0, 0, 0
+        semantic_docs = []
+        schema_by_url = []
+        schema_all = set()
         unique_urls = []
         seen = set()
 
@@ -724,6 +807,12 @@ def analyze_cluster():
                 structs.append(f"--- {u} ---")
                 structs.extend(d.get('structure', [])[:15])
                 ents.extend(d.get('entities', []))
+                semantic_docs.append(' '.join(d.get('entities', [])))
+                semantic_docs.append(' '.join(d.get('structure', [])))
+                url_schema_types = d.get('schema_types', []) or []
+                schema_by_url.append({'url': u, 'types': url_schema_types})
+                for schema_type in url_schema_types:
+                    schema_all.add(schema_type)
 
         if count > 0:
             target.update({
@@ -731,6 +820,9 @@ def analyze_cluster():
                 'avg_imgs': int(i / count),
                 'top_structure': "\n".join(structs),
                 'entities': ", ".join(list(set(ents))[:8]),
+                'semantic_tfidf_terms': compute_semantic_tfidf(semantic_docs),
+                'schema_types': sorted(schema_all),
+                'schema_by_url': schema_by_url,
                 'analyzed': True
             })
             r = target.copy()

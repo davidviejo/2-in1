@@ -564,7 +564,13 @@ function paintClusters(list){
                         <div class="col">🖼️ ${x.avg_imgs}i</div>
                     </div>
                     <div class="mt-2 small">🔑 ${x.entities}</div>
+                    <div class="mt-2 small">🧠 TF-IDF: ${(x.semantic_tfidf_terms || []).join(', ') || '—'}</div>
+                    <div class="mt-2 small">🏷️ Schema (cluster): ${(x.schema_types || []).join(', ') || '—'}</div>
                     <div class="structure-box mt-2">${x.top_structure}</div>
+                    <div class="mt-2 small">
+                        <strong>Schema por URL:</strong><br>
+                        ${(x.schema_by_url || []).map(s => `• ${s.url}: ${(s.types || []).join(', ') || '—'}`).join('<br>')}
+                    </div>
                     <button class="btn btn-outline-secondary btn-sm mt-2" onclick="copyStructure('${x.id}')">📋 Copiar estructura</button>
                </div>` 
             : '<div class="mt-2 small text-muted">Aún no analizado. Pulsa 👁️ para analizar este cluster.</div>';
@@ -636,7 +642,13 @@ function analyzeClustInternal(id, updateButtonUI){
                         <div class="col">🖼️ ${x.avg_imgs}i</div>
                     </div>
                     <div class="mt-2 small">🔑 ${x.entities}</div>
+                    <div class="mt-2 small">🧠 TF-IDF: ${(x.semantic_tfidf_terms || []).join(', ') || '—'}</div>
+                    <div class="mt-2 small">🏷️ Schema (cluster): ${(x.schema_types || []).join(', ') || '—'}</div>
                     <div class="structure-box mt-2">${x.top_structure}</div>
+                    <div class="mt-2 small">
+                        <strong>Schema por URL:</strong><br>
+                        ${(x.schema_by_url || []).map(s => `• ${s.url}: ${(s.types || []).join(', ') || '—'}`).join('<br>')}
+                    </div>
                     <button class="btn btn-outline-secondary btn-sm mt-2" onclick="copyStructure('${x.id}')">📋 Copiar estructura</button>
                 </div>`;
             }
