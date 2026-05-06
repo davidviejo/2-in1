@@ -22,6 +22,7 @@ const DataManagementPanel: React.FC = () => {
   const { settings, updateSettings } = useSettings();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingBackup, setPendingBackup] = React.useState<ReturnType<typeof migrateBackupPayload> | null>(null);
+  const [isExportingBackup, setIsExportingBackup] = React.useState(false);
 
   const formatMesColumn = (dueDate?: string) => {
     if (!dueDate) return '';
@@ -49,20 +50,35 @@ const DataManagementPanel: React.FC = () => {
   };
 
   const handleExport = async () => {
-    const data = await buildBackupPayloadAsync({
-      clients,
-      generalNotes,
-      settings,
-      currentClientId,
-    });
+    if (isExportingBackup) return;
 
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `MediaFlow_Backup_${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    setIsExportingBackup(true);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const data = await buildBackupPayloadAsync({
+        clients,
+        generalNotes,
+        settings,
+        currentClientId,
+      });
+
+      // En backups grandes evitamos pretty-print para reducir tamaño y tiempo de bloqueo.
+      const serializedData = JSON.stringify(data);
+      const blob = new Blob([serializedData], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `MediaFlow_Backup_${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      successAction('Backup JSON exportado correctamente.');
+    } catch (err) {
+      console.error(err);
+      errorAction(t('feedback.actions.export_data'));
+    } finally {
+      setIsExportingBackup(false);
+    }
   };
 
   const handleExportCSV = () => {
@@ -192,10 +208,11 @@ const DataManagementPanel: React.FC = () => {
       </h3>
       <div className="grid grid-cols-2 gap-2 mb-2">
         <button
-          onClick={handleExport}
+          onClick={() => void handleExport()}
+          disabled={isExportingBackup}
           className="flex items-center justify-center gap-2 px-3 py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors"
         >
-          <Download size={14} /> Backup JSON
+          <Download size={14} /> {isExportingBackup ? 'Exportando backup…' : 'Backup JSON'}
         </button>
         <button
           onClick={() => fileInputRef.current?.click()}
