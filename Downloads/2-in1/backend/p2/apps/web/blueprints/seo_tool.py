@@ -176,6 +176,49 @@ def scrape_page(url: str):
     return scrape_page_local(url)
 
 
+def _tokenize_tfidf_text(text: str):
+    return [t for t in re.findall(r"[a-zA-ZáéíóúñüÁÉÍÓÚÑÜ]{3,}", (text or '').lower())]
+
+
+def compute_semantic_tfidf(documents, top_k: int = 12):
+    """Calcula términos semánticos con TF-IDF sin dependencias externas."""
+    if not documents:
+        return []
+
+    stopwords = {
+        'para', 'como', 'este', 'esta', 'desde', 'hasta', 'sobre', 'entre', 'donde', 'cuando',
+        'tambien', 'porque', 'puede', 'pueden', 'tiene', 'tener', 'hacer', 'hacia', 'todos',
+        'todas', 'cada', 'solo', 'ademas', 'muy', 'mas', 'menos', 'una', 'unas', 'unos', 'uno',
+        'con', 'sin', 'por', 'del', 'las', 'los', 'que', 'sus', 'son', 'the', 'and', 'for', 'from',
+        'you', 'your', 'our', 'not', 'are', 'was', 'have', 'has'
+    }
+
+    tokenized_docs = []
+    doc_freq = Counter()
+
+    for doc in documents:
+        tokens = [t for t in _tokenize_tfidf_text(doc) if t not in stopwords]
+        if not tokens:
+            continue
+        tokenized_docs.append(tokens)
+        doc_freq.update(set(tokens))
+
+    n_docs = len(tokenized_docs)
+    if not n_docs:
+        return []
+
+    scores = Counter()
+    for tokens in tokenized_docs:
+        tf = Counter(tokens)
+        total_tokens = len(tokens)
+        for term, count in tf.items():
+            tf_norm = count / max(total_tokens, 1)
+            idf = 1.0 + (n_docs / (1 + doc_freq[term]))
+            scores[term] += tf_norm * idf
+
+    return [term for term, _ in scores.most_common(top_k)]
+
+
 # --- DISPATCHER CENTRAL ---
 
 def dispatcher(kw, cfg):
@@ -704,6 +747,7 @@ def analyze_cluster():
     target = next((c for c in job_status['results'] if c['id'] == cid), None)
     if target and target['serp_dump']:
         structs, ents, w, i, count = [], [], 0, 0, 0
+        semantic_docs = []
         unique_urls = []
         seen = set()
 
@@ -724,6 +768,8 @@ def analyze_cluster():
                 structs.append(f"--- {u} ---")
                 structs.extend(d.get('structure', [])[:15])
                 ents.extend(d.get('entities', []))
+                semantic_docs.append(' '.join(d.get('entities', [])))
+                semantic_docs.append(' '.join(d.get('structure', [])))
 
         if count > 0:
             target.update({
@@ -731,6 +777,7 @@ def analyze_cluster():
                 'avg_imgs': int(i / count),
                 'top_structure': "\n".join(structs),
                 'entities': ", ".join(list(set(ents))[:8]),
+                'semantic_tfidf_terms': compute_semantic_tfidf(semantic_docs),
                 'analyzed': True
             })
             r = target.copy()
