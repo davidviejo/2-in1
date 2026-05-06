@@ -267,7 +267,7 @@ export const SeoUrlList: React.FC<Props> = ({
   };
 
 
-const MASSIVE_EXPORT_THRESHOLD = 15000;
+const MASSIVE_EXPORT_THRESHOLD = 1;
 const EXPORT_DOWNLOAD_PAUSE_MS = 250;
 
 const escapeTsvField = (value: unknown): string => {
