@@ -69,6 +69,40 @@ const parseFilterTokens = (rawFilter: string) => {
   return { include, exclude };
 };
 
+const safeStringify = (value: unknown) => {
+  if (value === undefined || value === null) return '';
+
+  const seen = new WeakSet<object>();
+
+  try {
+    return JSON.stringify(value, (_key, currentValue) => {
+      if (typeof currentValue === 'bigint') {
+        return `${currentValue.toString()}n`;
+      }
+
+      if (currentValue instanceof Error) {
+        return {
+          name: currentValue.name,
+          message: currentValue.message,
+          stack: currentValue.stack,
+        };
+      }
+
+      if (typeof currentValue === 'object' && currentValue !== null) {
+        if (seen.has(currentValue)) {
+          return '[Circular]';
+        }
+        seen.add(currentValue);
+      }
+
+      return currentValue;
+    });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'unknown serialization error';
+    return `[Serialization error: ${reason}]`;
+  }
+};
+
 const matchesUrlFilter = (page: SeoPage, rawFilter: string) => {
   const { include, exclude } = parseFilterTokens(rawFilter);
   if (include.length === 0 && exclude.length === 0) return true
@@ -318,7 +352,7 @@ const downloadTsv = (content: string, filename: string) => {
             const item = p.checklist[point.key];
             row.push(item?.status_manual || 'NA');
             row.push(item?.notes_manual || '');
-            row.push(item?.autoData ? JSON.stringify(item.autoData) : '');
+            row.push(item?.autoData ? safeStringify(item.autoData) : '');
           });
           return row;
         });
@@ -445,7 +479,7 @@ const downloadTsv = (content: string, filename: string) => {
             const item = p.checklist[point.key];
             row.push(item?.status_manual || 'NA');
             row.push(item?.notes_manual || '');
-            row.push(item?.autoData ? JSON.stringify(item.autoData) : '');
+            row.push(item?.autoData ? safeStringify(item.autoData) : '');
           });
           return row;
         });
