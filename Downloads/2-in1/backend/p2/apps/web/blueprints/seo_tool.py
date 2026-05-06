@@ -2,7 +2,7 @@ from flask import Blueprint, render_template, request, jsonify, send_file
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
-import time, io, threading, re, urllib.parse
+import time, io, threading, re, urllib.parse, math
 from difflib import SequenceMatcher
 from collections import Counter, defaultdict
 import json
@@ -268,6 +268,59 @@ def compute_semantic_tfidf(documents, top_k: int = 12):
 
     return [term for term, _ in scores.most_common(top_k)]
 
+
+
+
+def _build_tfidf_term_scores(documents, *, min_df_ratio: float = 0.34, max_df_ratio: float = 0.95, top_k: int = 80):
+    """Calcula TF-IDF robusto para detectar términos de cobertura competitiva."""
+    tokenized_docs = []
+    doc_freq = Counter()
+    if not documents:
+        return []
+
+    stopwords = {
+        'para', 'como', 'este', 'esta', 'desde', 'hasta', 'sobre', 'entre', 'donde', 'cuando',
+        'tambien', 'porque', 'puede', 'pueden', 'tiene', 'tener', 'hacer', 'hacia', 'todos',
+        'todas', 'cada', 'solo', 'ademas', 'muy', 'mas', 'menos', 'una', 'unas', 'unos', 'uno',
+        'con', 'sin', 'por', 'del', 'las', 'los', 'que', 'sus', 'son', 'the', 'and', 'for', 'from',
+        'you', 'your', 'our', 'not', 'are', 'was', 'have', 'has'
+    }
+
+    for doc in documents:
+        tokens = [t for t in _tokenize_tfidf_text(doc) if t not in stopwords]
+        if not tokens:
+            continue
+        tokenized_docs.append(tokens)
+        doc_freq.update(set(tokens))
+
+    n_docs = len(tokenized_docs)
+    if not n_docs:
+        return []
+
+    min_df = max(1, int(n_docs * min_df_ratio))
+    max_df = max(1, int(n_docs * max_df_ratio))
+
+    scores = Counter()
+    for tokens in tokenized_docs:
+        tf = Counter(tokens)
+        total_tokens = len(tokens)
+        for term, count in tf.items():
+            df = doc_freq.get(term, 0)
+            if df < min_df or df > max_df:
+                continue
+            tf_norm = count / max(total_tokens, 1)
+            idf = math.log((1 + n_docs) / (1 + df)) + 1
+            scores[term] += tf_norm * idf
+
+    ranked = []
+    for term, score in scores.most_common(top_k):
+        ranked.append({
+            'term': term,
+            'score': round(float(score), 6),
+            'doc_frequency': int(doc_freq.get(term, 0)),
+            'document_coverage_percent': round((doc_freq.get(term, 0) / n_docs) * 100, 2),
+        })
+    return ranked
 
 BLOCK_PATTERNS = {
     "price": ["precio", "precios", "coste", "tarifa", "desde", "€", "eur", "price", "pricing", "cost", "from", "$", "plan"],
@@ -1014,8 +1067,47 @@ def compare_serp():
         pct = (cnt / len(competitors)) * 100
         if pct >= 50 and stype not in target.get('schema', {}).get('types', []):
             gaps["schema"].append({"schema_type": stype, "severity": "medium", "competitor_percent": round(pct, 2), "recommendation": f"Considera implementar schema {stype} si refleja contenido visible."})
-    recommendations = sorted(target.get("issues", []) + [{"id": f"gap_block_{g['block']}", "category": "competitive", "severity": g["severity"], "message": f"Gap en bloque {g['block']}", "recommendation": g["recommendation"], "evidence": [str(g["competitor_percent"])]} for g in gaps["blocks"]], key=lambda x: {"critical": 0, "high": 1, "medium": 2, "low": 3}.get(x.get("severity", "low"), 4))
-    return jsonify({"status": "ok", "target": target, "competitors": competitors, "serp_summary": {"avg_words": avg_words, "avg_images": avg_images, "avg_h2": avg_h2, "avg_h3": avg_h3, "common_blocks": common_blocks}, "gaps": gaps, "recommendations": recommendations})
+    target_text = " ".join([
+        target.get('title', ''),
+        target.get('h1', ''),
+        target.get('structure', ''),
+        " ".join(target.get('entities', []) or []),
+    ])
+    competitor_docs = []
+    for c in competitors:
+        competitor_docs.append(" ".join([
+            c.get('title', ''),
+            c.get('h1', ''),
+            c.get('structure', ''),
+            " ".join(c.get('entities', []) or []),
+        ]))
+
+    competitor_terms = _build_tfidf_term_scores(competitor_docs, min_df_ratio=0.34, max_df_ratio=0.95, top_k=80)
+    target_terms = _build_tfidf_term_scores([target_text], min_df_ratio=0.0, max_df_ratio=1.0, top_k=200)
+    target_term_set = {t['term'] for t in target_terms}
+
+    tfidf_gaps = []
+    for term_data in competitor_terms:
+        if term_data['term'] in target_term_set:
+            continue
+        sev = 'high' if term_data['document_coverage_percent'] >= 66 else 'medium'
+        tfidf_gaps.append({
+            'term': term_data['term'],
+            'severity': sev,
+            'competitor_coverage_percent': term_data['document_coverage_percent'],
+            'competitor_score': term_data['score'],
+            'recommendation': f"Añade el término '{term_data['term']}' en H2/H3, copy principal y FAQs si aplica a la intención.",
+        })
+
+    gaps['tfidf'] = tfidf_gaps[:25]
+
+    recommendations = sorted(
+        target.get("issues", [])
+        + [{"id": f"gap_block_{g['block']}", "category": "competitive", "severity": g["severity"], "message": f"Gap en bloque {g['block']}", "recommendation": g["recommendation"], "evidence": [str(g["competitor_percent"])]} for g in gaps["blocks"]]
+        + [{"id": f"gap_tfidf_{x['term']}", "category": "semantic", "severity": x["severity"], "message": f"Término semántico ausente: {x['term']}", "recommendation": x["recommendation"], "evidence": [str(x["competitor_coverage_percent"]), str(x["competitor_score"])]} for x in gaps['tfidf'][:12]],
+        key=lambda x: {"critical": 0, "high": 1, "medium": 2, "low": 3}.get(x.get("severity", "low"), 4)
+    )
+    return jsonify({"status": "ok", "target": target, "competitors": competitors, "serp_summary": {"avg_words": avg_words, "avg_images": avg_images, "avg_h2": avg_h2, "avg_h3": avg_h3, "common_blocks": common_blocks, "competitor_tfidf_terms": competitor_terms[:20]}, "gaps": gaps, "recommendations": recommendations})
 
 
 @seo_bp.route('/download')
