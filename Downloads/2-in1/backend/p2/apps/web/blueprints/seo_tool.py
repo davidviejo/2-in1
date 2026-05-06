@@ -670,6 +670,7 @@ def worker(kws, file, cfg):
                     existing_kws.add(child.lower())
 
         new_data = {}
+        unclusterable = {}
         kws_clean = []
         for k in kws:
             k_strip = k.strip()
@@ -728,18 +729,22 @@ def worker(kws, file, cfg):
                 cause = f"{provider}: bloqueo detectado (http={http_status or 'n/a'}, t={elapsed_ms or 'n/a'}ms)"
                 append_log("⛔ Google bloqueó la consulta, prueba cookie o mayor delay", keyword=ckw, technical_cause=cause)
                 new_data[ckw] = []
+                unclusterable[ckw] = 'Bloqueada por proveedor SERP'
             elif status == 'error':
                 cause = f"{provider}: {err or 'Error desconocido'}"
                 append_log(f"⛔ Error técnico en SERP ({ckw}): {err or 'Error desconocido'}", keyword=ckw, technical_cause=cause)
                 new_data[ckw] = []
+                unclusterable[ckw] = f"Error SERP: {err or 'Error desconocido'}"
             elif not res:
                 cause = f"{provider}: sin resultados (http={http_status or 'n/a'}, parsed={results_count}, t={elapsed_ms or 'n/a'}ms)"
                 append_log(f"⚠️ 0 resultados reales: {ckw}", keyword=ckw, technical_cause=cause)
                 new_data[ckw] = []
+                unclusterable[ckw] = 'Sin resultados SERP válidos'
             else:
                 cause = f"{provider}: ok (http={http_status or 'n/a'}, parsed={results_count}, t={elapsed_ms or 'n/a'}ms)"
                 append_log(f"✅ {ckw}: {len(res)} URLs", keyword=ckw, technical_cause=cause)
                 new_data[ckw] = res if isinstance(res, list) else []
+                unclusterable.pop(ckw, None)
 
         # --- FASE 2: CLUSTERIZACIÓN CON HISTÓRICO (45-70%) ---
         msg_cluster = "Clusterizando con histórico..."
@@ -791,7 +796,7 @@ def worker(kws, file, cfg):
         update_global("Cluster SEO", 70, msg_new)
 
         # Prepare data for new clustering
-        unmatched_data = {k: new_data.get(k, []) for k in unmatched}
+        unmatched_data = {k: new_data.get(k, []) for k in unmatched if new_data.get(k)}
 
         new_clusters = cluster_serp_results(
             serp_data_map=unmatched_data,
@@ -828,7 +833,10 @@ def worker(kws, file, cfg):
             results=final_clusters,
             progress=100,
             active=False,
-            current_action=final_msg
+            current_action=final_msg,
+            unclusterable_keywords=[
+                {'keyword': kw, 'reason': reason} for kw, reason in sorted(unclusterable.items())
+            ]
         )
         update_global("Cluster SEO", 100, final_msg, active=False)
 
@@ -1153,6 +1161,21 @@ def download():
                 'URL': u.get('url'),
                 'Título': u.get('title')
             })
+
+
+    for row in (job_status.get('unclusterable_keywords') or []):
+        r1.append({
+            'Cluster ID': '',
+            'Rol': 'No clusterizable',
+            'Keyword': row.get('keyword'),
+            'Avg Palabras': '-',
+            'Avg Imágenes': '-',
+            'Entidades': '-',
+            'Estructura': '-',
+            'Cobertura': '-',
+            'URLs Propias': '',
+            'Intención': row.get('reason', 'No se pudo clusterizar')
+        })
 
     o = io.BytesIO()
     with pd.ExcelWriter(o, engine='openpyxl') as w:
