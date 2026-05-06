@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 import time, io, threading, re, urllib.parse
 from difflib import SequenceMatcher
 from collections import Counter
+import json
 
 from apps.core_monitor import update_global, reset_global
 from apps.tools.scraper_core import smart_serp_search, GoogleSERPBlockedError
@@ -148,6 +149,49 @@ def scrape_page_local(url: str):
     wc = Counter(w.lower() for w in words if len(w) > 3)
     entities = [w for w, c in wc.most_common(30)]
 
+    # datos estructurados (Schema.org): JSON-LD y microdata
+    schema_types = []
+    schema_json_ld_count = 0
+    schema_microdata_count = 0
+
+    def _collect_schema_types(node):
+        if isinstance(node, dict):
+            stype = node.get('@type')
+            if isinstance(stype, str):
+                schema_types.append(stype)
+            elif isinstance(stype, list):
+                schema_types.extend([t for t in stype if isinstance(t, str)])
+            for val in node.values():
+                _collect_schema_types(val)
+        elif isinstance(node, list):
+            for item in node:
+                _collect_schema_types(item)
+
+    for script in soup.find_all('script', attrs={'type': 'application/ld+json'}):
+        raw = (script.string or script.get_text() or '').strip()
+        if not raw:
+            continue
+        try:
+            payload = json.loads(raw)
+        except Exception:
+            continue
+        schema_json_ld_count += 1
+        _collect_schema_types(payload)
+
+    # Conteo básico de microdata
+    schema_microdata_count = len(soup.select('[itemscope]'))
+    for tag in soup.select('[itemtype]'):
+        itemtype = (tag.get('itemtype') or '').strip()
+        if not itemtype:
+            continue
+        # suele venir como URL(s), extraemos el último segmento
+        for raw_type in itemtype.split():
+            t = raw_type.rstrip('/').split('/')[-1]
+            if t:
+                schema_types.append(t)
+
+    schema_types_clean = sorted(set([t.strip() for t in schema_types if t and t.strip()]))[:30]
+
     return {
         'url': url,
         'title': page_title,
@@ -156,7 +200,13 @@ def scrape_page_local(url: str):
         'imgs': img_count,
         'structure': structure_lines,  # h1–h3 en forma de líneas de texto
         'headings': headings,          # h1–h3 como lista de dicts
-        'entities': entities
+        'entities': entities,
+        'schema': {
+            'json_ld_count': schema_json_ld_count,
+            'microdata_count': schema_microdata_count,
+            'total_blocks': schema_json_ld_count + schema_microdata_count,
+            'types': schema_types_clean
+        }
     }
 
 
@@ -821,7 +871,8 @@ def analyze_bulk():
                 'imgs': 0,
                 'structure': 'Error',
                 'headings': [],
-                'entities': []
+                'entities': [],
+                'schema': {'json_ld_count': 0, 'microdata_count': 0, 'total_blocks': 0, 'types': []}
             })
 
     return jsonify({'status': 'ok', 'data': res})
