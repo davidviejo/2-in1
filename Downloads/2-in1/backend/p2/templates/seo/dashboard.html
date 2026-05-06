@@ -261,8 +261,14 @@ https://tu-url-2.com"></textarea>
                 </div>
 
                 <button class="btn btn-dark w-100 mb-3" id="bulkBtn" onclick="runBulk()">🕵️ Analizar</button>
+                <hr />
+                <h6 class="text-primary">Comparar URL vs competidores</h6>
+                <input id="targetUrl" class="form-control mb-2" placeholder="https://target.com/page" />
+                <textarea id="competitorUrls" class="form-control mb-2" rows="4" placeholder="https://competitor1.com/page&#10;https://competitor2.com/page"></textarea>
+                <button class="btn btn-outline-dark w-100 mb-3" id="compareBtn" onclick="runCompareSerp()">⚔️ Comparar SERP</button>
 
                 <div id="bulkResults" class="mt-2 row"></div>
+                <div id="compareResults" class="mt-3"></div>
             </div>
         </div>
 
@@ -808,6 +814,44 @@ function runBulk(){
     });
 }
 
+function runCompareSerp(){
+    const targetUrl = (document.getElementById('targetUrl').value || '').trim();
+    const competitorUrls = (document.getElementById('competitorUrls').value || '').split('\n').map(x=>x.trim()).filter(Boolean);
+    if (!targetUrl || competitorUrls.length === 0) {
+        showAlert('Completa URL objetivo y al menos un competidor.');
+        return;
+    }
+    const compareBtn = document.getElementById('compareBtn');
+    const div = document.getElementById('compareResults');
+    compareBtn.disabled = true;
+    div.innerHTML = '<div class="small text-muted">Comparando...</div>';
+    fetch('/seo/compare_serp', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({target_url: targetUrl, competitor_urls: competitorUrls})})
+        .then(r=>r.json())
+        .then(d=>{
+            if (d.status !== 'ok') throw new Error('compare error');
+            const t = d.target || {};
+            const summary = d.serp_summary || {};
+            const gaps = d.gaps || {};
+            const highCount = (d.recommendations || []).filter(x => ['high', 'critical'].includes((x.severity || '').toLowerCase())).length;
+            div.innerHTML = `<div class="card"><div class="card-body small">
+                <h6>Resumen ejecutivo</h6>
+                <div><strong>SEO score target:</strong> ${t.seo_score || 0}</div>
+                <div><strong>Intención principal:</strong> ${(t.intent || {}).primary_intent || '—'}</div>
+                <div><strong>Tipo de página:</strong> ${((t.page_classification || {}).page_type) || '—'}</div>
+                <div><strong>Gaps High/Critical:</strong> ${highCount}</div>
+                <hr/>
+                <h6>Target vs media competidores</h6>
+                <div>Words: ${t.words || 0} vs ${summary.avg_words || 0}</div>
+                <div>Images: ${t.imgs || 0} vs ${summary.avg_images || 0}</div>
+                <div>H2 promedio competidores: ${summary.avg_h2 || 0}</div>
+                <div>H3 promedio competidores: ${summary.avg_h3 || 0}</div>
+                <div class="mt-2"><strong>Gaps por bloques:</strong> ${(gaps.blocks || []).length}</div>
+            </div></div>`;
+        })
+        .catch(()=>{ div.innerHTML = '<div class="alert alert-warning small">No se pudo comparar SERP.</div>';})
+        .finally(()=>{ compareBtn.disabled = false; });
+}
+
 // --- Helpers del laboratorio ---
 
 function exportBulkLab() {
@@ -816,7 +860,7 @@ function exportBulkLab() {
         return;
     }
 
-    const headers = ["URL", "Title", "H1", "Words", "Images", "Headings (H1-H3)", "Entities", "Schema Total", "Schema JSON-LD", "Schema Microdata", "Schema Types"];
+    const headers = ["URL", "Title", "H1", "Words", "Images", "Headings (H1-H3)", "Entities", "Schema Total", "Schema JSON-LD", "Schema Microdata", "Schema Types", "page_type", "primary_intent", "seo_score", "content_score", "structure_score", "semantic_score", "schema_score", "conversion_score", "technical_score", "local_score", "meta_description", "canonical", "meta_robots", "cta_detected", "price_detected", "faq_detected", "reviews_detected", "contact_detected", "location_detected", "images_without_alt", "alt_coverage_percent", "issues_count", "high_priority_issues"];
     const rows = [];
     rows.push(headers.map(h => `"${h}"`).join(','));
 
@@ -834,6 +878,9 @@ function exportBulkLab() {
         const schemaJsonLd = schema.json_ld_count || 0;
         const schemaMicrodata = schema.microdata_count || 0;
         const schemaTypes = (schema.types || []).join(', ').replace(/"/g, '""');
+        const technical = i.technical || {};
+        const blocks = i.blocks || {};
+        const issues = i.issues || [];
 
         const row = [
             `"${url}"`,
@@ -846,7 +893,23 @@ function exportBulkLab() {
             schemaTotal,
             schemaJsonLd,
             schemaMicrodata,
-            `"${schemaTypes}"`
+            `"${schemaTypes}"`,
+            `"${((i.page_classification||{}).page_type || '')}"`,
+            `"${((i.intent||{}).primary_intent || '')}"`,
+            i.seo_score || 0, i.content_score || 0, i.structure_score || 0, i.semantic_score || 0, i.schema_score || 0, i.conversion_score || 0, i.technical_score || 0, i.local_score || 0,
+            `"${(technical.meta_description || '').replace(/"/g, '""')}"`,
+            `"${(technical.canonical || '').replace(/"/g, '""')}"`,
+            `"${(technical.meta_robots || '').replace(/"/g, '""')}"`,
+            blocks.cta?.present ? '1' : '0',
+            blocks.price?.present ? '1' : '0',
+            blocks.faq?.present ? '1' : '0',
+            blocks.reviews?.present ? '1' : '0',
+            blocks.contact?.present ? '1' : '0',
+            blocks.location?.present ? '1' : '0',
+            (i.images_analysis || {}).images_without_alt || 0,
+            (i.images_analysis || {}).alt_coverage_percent || 0,
+            issues.length,
+            `"${issues.filter(x => ['high', 'critical'].includes((x.severity || '').toLowerCase())).map(x => x.id).join('|')}"`
         ];
         rows.push(row.join(','));
     });

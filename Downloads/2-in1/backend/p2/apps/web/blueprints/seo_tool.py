@@ -4,7 +4,7 @@ import requests
 from bs4 import BeautifulSoup
 import time, io, threading, re, urllib.parse
 from difflib import SequenceMatcher
-from collections import Counter
+from collections import Counter, defaultdict
 import json
 
 from apps.core_monitor import update_global, reset_global
@@ -267,6 +267,96 @@ def compute_semantic_tfidf(documents, top_k: int = 12):
             scores[term] += tf_norm * idf
 
     return [term for term, _ in scores.most_common(top_k)]
+
+
+BLOCK_PATTERNS = {
+    "price": ["precio", "precios", "coste", "tarifa", "desde", "€", "eur", "price", "pricing", "cost", "from", "$", "plan"],
+    "faq": ["preguntas frecuentes", "faq", "frequently asked", "common questions"],
+    "reviews": ["reseñas", "opiniones", "valoraciones", "reviews", "ratings"],
+    "testimonials": ["testimonios", "testimonials", "success stories"],
+    "case_studies": ["caso de éxito", "casos de éxito", "case study", "case studies"],
+    "cta": ["comprar", "reservar", "pedir cita", "solicitar presupuesto", "contactar", "llamar", "whatsapp", "obtener demo", "prueba gratis", "suscribirse", "añadir al carrito", "book", "buy", "contact", "call", "get quote", "request demo", "free trial", "add to cart"],
+    "contact": ["contacto", "contactar", "call us", "contact us", "email", "correo"],
+    "form": ["formulario", "submit", "request", "solicitar"],
+    "guarantee": ["garantía", "garantizado", "devolución", "guarantee", "money back"],
+    "author_or_team": ["autor", "sobre nosotros", "equipo", "author", "about us", "team"],
+    "location": ["dirección", "ubicación", "mapa", "location", "address", "near me", "cerca de mí", "horario"],
+    "process_steps": ["paso 1", "paso 2", "cómo funciona", "process", "step 1", "step 2"],
+    "benefits": ["beneficios", "ventajas", "benefits", "advantages"],
+    "comparison": ["comparativa", "vs", "versus", "alternativas", "mejores", "best", "alternatives"],
+    "financing": ["financiación", "cuotas", "mensual", "financing", "monthly payment"],
+}
+
+
+def _normalize_text(text: str) -> str:
+    return re.sub(r"\s+", " ", (text or "").lower()).strip()
+
+
+def _extract_enriched_page_data(url: str):
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; SEO-Suite/1.1; +https://example.com)"}
+    response = requests.get(url, headers=headers, timeout=20, allow_redirects=True)
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text or "", 'html.parser')
+    text_clean = _normalize_text(soup.get_text(separator=' '))
+    base = scrape_page_local(url) or {}
+    base.setdefault('schema', {'json_ld_count': 0, 'microdata_count': 0, 'total_blocks': 0, 'types': []})
+    base.setdefault('headings', [])
+    base.setdefault('entities', [])
+    anchors = soup.find_all('a', href=True)
+    final_host = urllib.parse.urlparse(response.url or url).netloc.lower()
+    internal_links_count, external_links_count = 0, 0
+    for a in anchors:
+        parsed = urllib.parse.urlparse(urllib.parse.urljoin(response.url or url, a.get('href') or ''))
+        if not parsed.netloc or parsed.netloc.lower() == final_host:
+            internal_links_count += 1
+        else:
+            external_links_count += 1
+    images = soup.find_all('img')
+    without_alt = sum(1 for img in images if img.get('alt') is None)
+    empty_alt = sum(1 for img in images if img.get('alt') is not None and not (img.get('alt') or '').strip())
+    with_alt = max(len(images) - without_alt - empty_alt, 0)
+    blocks = {}
+    for block, pats in BLOCK_PATTERNS.items():
+        hits, first = [], None
+        for pat in pats:
+            for m in re.finditer(re.escape(pat.lower()), text_clean):
+                hits.append(pat)
+                if first is None:
+                    first = (m.start() / max(len(text_clean), 1)) * 100
+        blocks[block] = {"present": bool(hits), "count": len(hits), "first_position_percent": round(first, 2) if first is not None else None, "signals": sorted(set(hits))[:8]}
+    intent_scores = {"local": 3 if blocks["location"]["present"] else 0, "transactional": (3 if blocks["price"]["present"] else 0) + (3 if blocks["cta"]["present"] else 0), "informational": len(re.findall(r"\b(qué es|que es|cómo|como|guía|guide|how to|tutorial)\b", text_clean)), "commercial": int(blocks["reviews"]["present"]) + int(blocks["price"]["present"]) + int(blocks["guarantee"]["present"]), "comparison": 3 if blocks["comparison"]["present"] else 0, "navigational": len(re.findall(r"\b(login|contacto|soporte|support|área cliente|client area)\b", text_clean))}
+    primary_intent = max(intent_scores, key=lambda k: intent_scores[k]) if any(intent_scores.values()) else "informational"
+    page_type_scores = defaultdict(int)
+    schema_types = [t.lower() for t in base["schema"].get("types", [])]
+    page_type_scores["product_page"] += 3 if blocks["price"]["present"] and "product" in schema_types else 0
+    page_type_scores["service_landing"] += 2 if blocks["cta"]["present"] and (blocks["contact"]["present"] or blocks["form"]["present"]) else 0
+    page_type_scores["blog_article"] += 2 if "article" in schema_types else 0
+    page_type_scores["pricing_page"] += 3 if blocks["price"]["count"] >= 2 else 0
+    page_type_scores["comparison_page"] += 3 if blocks["comparison"]["present"] else 0
+    page_type_scores["local_page"] += 3 if blocks["location"]["present"] and re.search(r"\b(\+?\d[\d\-\s]{7,})\b", text_clean) else 0
+    page_type_scores["homepage"] += 2 if urllib.parse.urlparse(response.url or url).path in ("", "/") else 0
+    page_type = max(page_type_scores, key=lambda k: page_type_scores[k]) if page_type_scores else "other"
+    issues = []
+    if not base.get("title"):
+        issues.append({"id": "title_missing", "category": "content", "severity": "high", "message": "Falta title", "recommendation": "Añade una etiqueta title única y descriptiva.", "evidence": [url]})
+    meta_description = (soup.find('meta', attrs={'name': re.compile(r'description', re.I)}) or {}).get('content', '')
+    if not meta_description:
+        issues.append({"id": "meta_description_missing", "category": "technical", "severity": "medium", "message": "Falta meta description", "recommendation": "Añade meta description orientada al CTR.", "evidence": [url]})
+    h1_count = len(soup.find_all('h1'))
+    if h1_count == 0:
+        issues.append({"id": "h1_missing", "category": "structure", "severity": "high", "message": "Falta H1", "recommendation": "Incluye un H1 alineado con la intención.", "evidence": [url]})
+    if h1_count > 1:
+        issues.append({"id": "h1_multiple", "category": "structure", "severity": "medium", "message": "Múltiples H1", "recommendation": "Mantén un único H1 principal.", "evidence": [str(h1_count)]})
+    technical_score = (20 if response.status_code == 200 else 0) + (10 if soup.find('link', rel=lambda x: x and 'canonical' in str(x).lower()) else 0) + (10 if soup.find('meta', attrs={'name': re.compile(r'robots', re.I)}) else 0) + (10 if meta_description else 0) + (10 if h1_count == 1 else 0)
+    conversion_score = min(100, blocks["cta"]["count"] * 8 + blocks["contact"]["count"] * 6 + blocks["form"]["count"] * 6 + blocks["reviews"]["count"] * 5 + blocks["guarantee"]["count"] * 4)
+    content_score = min(100, 20 + (10 if base.get("words", 0) > 400 else 0) + (10 if base.get("h1") else 0))
+    structure_score = min(100, 20 + min(len(base.get("headings", [])) * 4, 40))
+    semantic_score = min(100, 20 + min(len(base.get("entities", [])), 30))
+    schema_score = min(100, 10 + base["schema"].get("json_ld_count", 0) * 8 + base["schema"].get("microdata_count", 0) * 4)
+    local_score = min(100, 20 + blocks["location"]["count"] * 8) if intent_scores["local"] > 0 else 0
+    seo_score = int((content_score + structure_score + semantic_score + schema_score + conversion_score + technical_score + (local_score or 0)) / (7 if local_score else 6))
+    base.update({"technical": {"status_code": response.status_code, "final_url": response.url, "redirect_chain": [h.url for h in response.history] if response.history else [], "canonical": (soup.find('link', rel=lambda x: x and 'canonical' in str(x).lower()) or {}).get('href', ''), "meta_robots": (soup.find('meta', attrs={'name': re.compile(r'robots', re.I)}) or {}).get('content', ''), "x_robots_tag": response.headers.get('X-Robots-Tag', ''), "meta_description": meta_description, "hreflang_count": len(soup.find_all('link', attrs={'hreflang': True})), "open_graph_count": len(soup.find_all('meta', attrs={'property': re.compile(r'^og:', re.I)})), "twitter_card_count": len(soup.find_all('meta', attrs={'name': re.compile(r'^twitter:', re.I)})), "internal_links_count": internal_links_count, "external_links_count": external_links_count}, "images_analysis": {"total_images": len(images), "images_without_alt": without_alt, "images_empty_alt": empty_alt, "alt_coverage_percent": round((with_alt / max(len(images), 1)) * 100, 2), "duplicate_alt_count": 0, "lazy_loaded_images_count": sum(1 for img in images if (img.get('loading') or '').lower() == 'lazy')}, "blocks": blocks, "intent": {"primary_intent": primary_intent, "intent_scores": intent_scores}, "page_classification": {"page_type": page_type, "page_type_scores": dict(page_type_scores)}, "content_score": content_score, "structure_score": structure_score, "semantic_score": semantic_score, "schema_score": schema_score, "conversion_score": conversion_score, "technical_score": technical_score, "local_score": local_score, "seo_score": seo_score, "issues": issues})
+    return base
 
 
 # --- DISPATCHER CENTRAL ---
@@ -857,7 +947,11 @@ def analyze_bulk():
     for u in urls:
         if not u.strip():
             continue
-        d = scrape_page(u.strip())
+        d = None
+        try:
+            d = _extract_enriched_page_data(u.strip())
+        except Exception:
+            d = scrape_page(u.strip())
         if d:
             # structure: pasamos a string para el front actual
             d['structure'] = "\n".join(d.get('structure', [])[:20])
@@ -872,10 +966,56 @@ def analyze_bulk():
                 'structure': 'Error',
                 'headings': [],
                 'entities': [],
-                'schema': {'json_ld_count': 0, 'microdata_count': 0, 'total_blocks': 0, 'types': []}
+                'schema': {'json_ld_count': 0, 'microdata_count': 0, 'total_blocks': 0, 'types': []},
+                'technical': {'status_code': 0, 'final_url': '', 'redirect_chain': [], 'canonical': '', 'meta_robots': '', 'x_robots_tag': '', 'meta_description': '', 'hreflang_count': 0, 'open_graph_count': 0, 'twitter_card_count': 0, 'internal_links_count': 0, 'external_links_count': 0},
+                'images_analysis': {'total_images': 0, 'images_without_alt': 0, 'images_empty_alt': 0, 'alt_coverage_percent': 0, 'duplicate_alt_count': 0, 'lazy_loaded_images_count': 0},
+                'blocks': {k: {"present": False, "count": 0, "first_position_percent": None, "signals": []} for k in BLOCK_PATTERNS.keys()},
+                'intent': {'primary_intent': 'informational', 'intent_scores': {'local': 0, 'transactional': 0, 'informational': 0, 'commercial': 0, 'comparison': 0, 'navigational': 0}},
+                'page_classification': {'page_type': 'other', 'page_type_scores': {}},
+                'content_score': 0, 'structure_score': 0, 'semantic_score': 0, 'schema_score': 0, 'conversion_score': 0, 'technical_score': 0, 'local_score': 0, 'seo_score': 0,
+                'issues': [{'id': 'fetch_error', 'category': 'technical', 'severity': 'high', 'message': 'Error al extraer URL', 'recommendation': 'Verifica disponibilidad o bloqueos del sitio.', 'evidence': [u]}]
             })
 
     return jsonify({'status': 'ok', 'data': res})
+
+
+@seo_bp.route('/compare_serp', methods=['POST'])
+def compare_serp():
+    payload = request.json or {}
+    target_url = (payload.get('target_url') or '').strip()
+    competitor_urls = [u.strip() for u in payload.get('competitor_urls', []) if str(u).strip()]
+    if not target_url or not competitor_urls:
+        return jsonify({'status': 'error', 'message': 'target_url y competitor_urls son obligatorios'}), 400
+    target = _extract_enriched_page_data(target_url)
+    competitors = []
+    for u in competitor_urls:
+        try:
+            competitors.append(_extract_enriched_page_data(u))
+        except Exception:
+            continue
+    if not competitors:
+        return jsonify({'status': 'error', 'message': 'No se pudieron analizar competidores'}), 400
+    avg_words = int(sum(c.get('words', 0) for c in competitors) / len(competitors))
+    avg_images = int(sum(c.get('imgs', 0) for c in competitors) / len(competitors))
+    avg_h2 = round(sum(len([h for h in c.get('headings', []) if h.get('tag') == 'H2']) for c in competitors) / len(competitors), 2)
+    avg_h3 = round(sum(len([h for h in c.get('headings', []) if h.get('tag') == 'H3']) for c in competitors) / len(competitors), 2)
+    common_blocks = {}
+    gaps = {"blocks": [], "schema": [], "technical": [], "conversion": []}
+    for block in BLOCK_PATTERNS.keys():
+        cnt = sum(1 for c in competitors if c.get('blocks', {}).get(block, {}).get('present'))
+        pct = round((cnt / len(competitors)) * 100, 2)
+        common_blocks[block] = {"competitor_count": cnt, "competitor_percent": pct}
+        if pct >= 50 and not target.get('blocks', {}).get(block, {}).get('present'):
+            gaps["blocks"].append({"block": block, "severity": "high", "competitor_percent": pct, "target_present": False, "recommendation": f"Añade bloque de {block} visible y accionable."})
+    comp_schema_types = Counter()
+    for c in competitors:
+        comp_schema_types.update(set(c.get('schema', {}).get('types', [])))
+    for stype, cnt in comp_schema_types.items():
+        pct = (cnt / len(competitors)) * 100
+        if pct >= 50 and stype not in target.get('schema', {}).get('types', []):
+            gaps["schema"].append({"schema_type": stype, "severity": "medium", "competitor_percent": round(pct, 2), "recommendation": f"Considera implementar schema {stype} si refleja contenido visible."})
+    recommendations = sorted(target.get("issues", []) + [{"id": f"gap_block_{g['block']}", "category": "competitive", "severity": g["severity"], "message": f"Gap en bloque {g['block']}", "recommendation": g["recommendation"], "evidence": [str(g["competitor_percent"])]} for g in gaps["blocks"]], key=lambda x: {"critical": 0, "high": 1, "medium": 2, "low": 3}.get(x.get("severity", "low"), 4))
+    return jsonify({"status": "ok", "target": target, "competitors": competitors, "serp_summary": {"avg_words": avg_words, "avg_images": avg_images, "avg_h2": avg_h2, "avg_h3": avg_h3, "common_blocks": common_blocks}, "gaps": gaps, "recommendations": recommendations})
 
 
 @seo_bp.route('/download')
