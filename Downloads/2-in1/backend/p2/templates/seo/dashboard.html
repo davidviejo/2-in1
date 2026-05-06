@@ -752,6 +752,11 @@ function runBulk(){
             `).join('') || '<div class="small text-muted">Sin encabezados (H1–H3) detectados.</div>';
 
             const entities = (i.entities || []).slice(0, 15).join(', ') || '—';
+            const schema = i.schema || {};
+            const schemaTypes = (schema.types || []).slice(0, 10).join(', ') || '—';
+            const schemaTotal = schema.total_blocks || 0;
+            const schemaJsonLd = schema.json_ld_count || 0;
+            const schemaMicrodata = schema.microdata_count || 0;
 
             return `
             <div class="col-md-6 mb-3">
@@ -783,6 +788,12 @@ function runBulk(){
                         <div class="small mt-2">
                             <strong>Entidades:</strong> ${entities}
                         </div>
+                        <div class="small mt-1">
+                            <strong>Schema:</strong> ${schemaTotal} bloques (JSON-LD: ${schemaJsonLd}, Microdata: ${schemaMicrodata})
+                        </div>
+                        <div class="small mt-1">
+                            <strong>Tipos Schema:</strong> ${schemaTypes}
+                        </div>
                     </div>
                 </div>
             </div>`;
@@ -805,7 +816,7 @@ function exportBulkLab() {
         return;
     }
 
-    const headers = ["URL", "Title", "H1", "Words", "Images", "Headings (H1-H3)", "Entities"];
+    const headers = ["URL", "Title", "H1", "Words", "Images", "Headings (H1-H3)", "Entities", "Schema Total", "Schema JSON-LD", "Schema Microdata", "Schema Types"];
     const rows = [];
     rows.push(headers.map(h => `"${h}"`).join(','));
 
@@ -818,6 +829,11 @@ function exportBulkLab() {
 
         const headingsText = (i.headings || []).map(h => `${h.tag}: ${h.text}`).join('\n').replace(/"/g, '""');
         const entitiesText = (i.entities || []).join(', ').replace(/"/g, '""');
+        const schema = i.schema || {};
+        const schemaTotal = schema.total_blocks || 0;
+        const schemaJsonLd = schema.json_ld_count || 0;
+        const schemaMicrodata = schema.microdata_count || 0;
+        const schemaTypes = (schema.types || []).join(', ').replace(/"/g, '""');
 
         const row = [
             `"${url}"`,
@@ -826,7 +842,11 @@ function exportBulkLab() {
             words,
             imgs,
             `"${headingsText}"`,
-            `"${entitiesText}"`
+            `"${entitiesText}"`,
+            schemaTotal,
+            schemaJsonLd,
+            schemaMicrodata,
+            `"${schemaTypes}"`
         ];
         rows.push(row.join(','));
     });
