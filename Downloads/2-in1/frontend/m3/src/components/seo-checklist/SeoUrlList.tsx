@@ -138,6 +138,7 @@ export const SeoUrlList: React.FC<Props> = ({
   const [isLoadingGscSites, setIsLoadingGscSites] = useState(false);
   const [isSyncingGscMetrics, setIsSyncingGscMetrics] = useState(false);
   const [gscSyncStatus, setGscSyncStatus] = useState<string | null>(null);
+  const [gscSyncNewUrlsLimitInput, setGscSyncNewUrlsLimitInput] = useState('10000');
   const [gscPropertySearch, setGscPropertySearch] = useState('');
 
   // Pagination
@@ -946,12 +947,22 @@ const downloadTsv = (content: string, filename: string) => {
         processed += 1;
       }
 
-      const rowsNotInChecklist = Array.from(metricsByUrl.entries()).filter(([url, metrics]) => {
-        if (normalizedExistingUrls.has(url)) return false;
-        return metrics.clicks > 0;
-      });
+      const maxNewUrls = Number.parseInt(gscSyncNewUrlsLimitInput, 10);
+      const hasNewUrlsLimit = Number.isFinite(maxNewUrls) && maxNewUrls > 0;
+      const rowsNotInChecklist = Array.from(metricsByUrl.entries())
+        .filter(([url, metrics]) => {
+          if (normalizedExistingUrls.has(url)) return false;
+          return metrics.clicks > 0;
+        })
+        .sort(([, metricsA], [, metricsB]) => {
+          if (metricsB.clicks !== metricsA.clicks) return metricsB.clicks - metricsA.clicks;
+          if (metricsB.impressions !== metricsA.impressions) return metricsB.impressions - metricsA.impressions;
+          return metricsA.weightedPosition - metricsB.weightedPosition;
+        });
 
-      rowsNotInChecklist.forEach(([url, metrics]) => {
+      const rowsToImport = hasNewUrlsLimit ? rowsNotInChecklist.slice(0, maxNewUrls) : rowsNotInChecklist;
+
+      rowsToImport.forEach(([url, metrics]) => {
         const ctr = metrics.impressions > 0 ? metrics.clicks / metrics.impressions : 0;
         const position =
           metrics.impressions > 0
@@ -986,7 +997,7 @@ const downloadTsv = (content: string, filename: string) => {
         return;
       }
       setGscSyncStatus(
-        `Sincronización completada: ${processed}/${targetPages.length} URL(s) actualizadas y ${rowsNotInChecklist.length} URL(s) nuevas añadidas desde GSC.`,
+        `Sincronización completada: ${processed}/${targetPages.length} URL(s) actualizadas y ${rowsToImport.length} URL(s) nuevas añadidas desde GSC${hasNewUrlsLimit ? ` (tope aplicado: ${maxNewUrls})` : ''}.`,
       );
     } finally {
       setIsSyncingGscMetrics(false);
@@ -1096,6 +1107,18 @@ const downloadTsv = (content: string, filename: string) => {
               ))
             )}
           </select>
+          <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+            Máx nuevas URL a volcar
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={gscSyncNewUrlsLimitInput}
+              onChange={(e) => setGscSyncNewUrlsLimitInput(e.target.value)}
+              className="w-28 px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs"
+              title="0 = sin límite"
+            />
+          </label>
           <button
             onClick={handleSyncGscMetrics}
             disabled={!gscAccessToken || !selectedGscSite || isSyncingGscMetrics}
