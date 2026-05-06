@@ -69,6 +69,15 @@ const parseFilterTokens = (rawFilter: string) => {
   return { include, exclude };
 };
 
+const safeStringify = (value: unknown) => {
+  if (value === undefined || value === null) return '';
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return '[No serializable]';
+  }
+};
+
 const matchesUrlFilter = (page: SeoPage, rawFilter: string) => {
   const { include, exclude } = parseFilterTokens(rawFilter);
   if (include.length === 0 && exclude.length === 0) return true
@@ -318,7 +327,7 @@ const downloadTsv = (content: string, filename: string) => {
             const item = p.checklist[point.key];
             row.push(item?.status_manual || 'NA');
             row.push(item?.notes_manual || '');
-            row.push(item?.autoData ? JSON.stringify(item.autoData) : '');
+            row.push(item?.autoData ? safeStringify(item.autoData) : '');
           });
           return row;
         });
@@ -445,7 +454,7 @@ const downloadTsv = (content: string, filename: string) => {
             const item = p.checklist[point.key];
             row.push(item?.status_manual || 'NA');
             row.push(item?.notes_manual || '');
-            row.push(item?.autoData ? JSON.stringify(item.autoData) : '');
+            row.push(item?.autoData ? safeStringify(item.autoData) : '');
           });
           return row;
         });
