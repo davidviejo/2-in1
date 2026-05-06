@@ -71,10 +71,35 @@ const parseFilterTokens = (rawFilter: string) => {
 
 const safeStringify = (value: unknown) => {
   if (value === undefined || value === null) return '';
+
+  const seen = new WeakSet<object>();
+
   try {
-    return JSON.stringify(value);
-  } catch {
-    return '[No serializable]';
+    return JSON.stringify(value, (_key, currentValue) => {
+      if (typeof currentValue === 'bigint') {
+        return `${currentValue.toString()}n`;
+      }
+
+      if (currentValue instanceof Error) {
+        return {
+          name: currentValue.name,
+          message: currentValue.message,
+          stack: currentValue.stack,
+        };
+      }
+
+      if (typeof currentValue === 'object' && currentValue !== null) {
+        if (seen.has(currentValue)) {
+          return '[Circular]';
+        }
+        seen.add(currentValue);
+      }
+
+      return currentValue;
+    });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'unknown serialization error';
+    return `[Serialization error: ${reason}]`;
   }
 };
 
