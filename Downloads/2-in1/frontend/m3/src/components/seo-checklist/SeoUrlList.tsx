@@ -322,6 +322,7 @@ const downloadTsv = (content: string, filename: string) => {
         const summaryHeaders = [
           'URL',
           'KW Principal',
+          'KWs Secundarias',
           'Tipo',
           'Cluster',
           'Clics',
@@ -333,6 +334,7 @@ const downloadTsv = (content: string, filename: string) => {
         const summaryData = exportPages.map((p) => [
           p.url,
           p.kwPrincipal,
+          ((p.checklist.OPORTUNIDADES?.autoData?.autoAssignedSecondaryKeywords as string[] | undefined) || []).join(', '),
           p.pageType,
           p.cluster || '',
           p.gscMetrics?.clicks || 0,
@@ -341,7 +343,7 @@ const downloadTsv = (content: string, filename: string) => {
           ...CHECKLIST_POINTS.map((point) => p.checklist[point.key]?.status_manual || 'NA'),
         ]);
 
-        const detailHeaders = ['URL', 'KW Principal', 'Tipo', 'Cluster', 'Clics', 'Impresiones', 'Posición media'];
+        const detailHeaders = ['URL', 'KW Principal', 'KWs Secundarias', 'Tipo', 'Cluster', 'Clics', 'Impresiones', 'Posición media'];
         CHECKLIST_POINTS.forEach((p) => {
           detailHeaders.push(`${p.label} - Estado`);
           detailHeaders.push(`${p.label} - Notas`);
@@ -349,7 +351,16 @@ const downloadTsv = (content: string, filename: string) => {
         });
 
         const detailData = exportPages.map((p) => {
-          const row = [p.url, p.kwPrincipal, p.pageType, p.cluster || '', p.gscMetrics?.clicks || 0, p.gscMetrics?.impressions || 0, p.gscMetrics?.position ?? ''];
+          const row = [
+            p.url,
+            p.kwPrincipal,
+            ((p.checklist.OPORTUNIDADES?.autoData?.autoAssignedSecondaryKeywords as string[] | undefined) || []).join(', '),
+            p.pageType,
+            p.cluster || '',
+            p.gscMetrics?.clicks || 0,
+            p.gscMetrics?.impressions || 0,
+            p.gscMetrics?.position ?? '',
+          ];
           CHECKLIST_POINTS.forEach((point) => {
             const item = p.checklist[point.key];
             row.push(item?.status_manual || 'NA');
@@ -449,6 +460,7 @@ const downloadTsv = (content: string, filename: string) => {
         const summaryHeaders = [
           'URL',
           'KW Principal',
+          'KWs Secundarias',
           'Tipo',
           'Cluster',
           'Clics',
@@ -460,6 +472,7 @@ const downloadTsv = (content: string, filename: string) => {
         const summaryData = chunkPages.map((p) => [
           p.url,
           p.kwPrincipal,
+          ((p.checklist.OPORTUNIDADES?.autoData?.autoAssignedSecondaryKeywords as string[] | undefined) || []).join(', '),
           p.pageType,
           p.cluster || '',
           p.gscMetrics?.clicks || 0,
@@ -470,7 +483,7 @@ const downloadTsv = (content: string, filename: string) => {
 
         const wsSummary = XLSX.utils.aoa_to_sheet([summaryHeaders, ...summaryData]);
 
-        const detailHeaders = ['URL', 'KW Principal', 'Tipo', 'Cluster', 'Clics', 'Impresiones', 'Posición media'];
+        const detailHeaders = ['URL', 'KW Principal', 'KWs Secundarias', 'Tipo', 'Cluster', 'Clics', 'Impresiones', 'Posición media'];
         CHECKLIST_POINTS.forEach((p) => {
           detailHeaders.push(`${p.label} - Estado`);
           detailHeaders.push(`${p.label} - Notas`);
@@ -478,7 +491,16 @@ const downloadTsv = (content: string, filename: string) => {
         });
 
         const detailData = chunkPages.map((p) => {
-          const row = [p.url, p.kwPrincipal, p.pageType, p.cluster || '', p.gscMetrics?.clicks || 0, p.gscMetrics?.impressions || 0, p.gscMetrics?.position ?? ''];
+          const row = [
+            p.url,
+            p.kwPrincipal,
+            ((p.checklist.OPORTUNIDADES?.autoData?.autoAssignedSecondaryKeywords as string[] | undefined) || []).join(', '),
+            p.pageType,
+            p.cluster || '',
+            p.gscMetrics?.clicks || 0,
+            p.gscMetrics?.impressions || 0,
+            p.gscMetrics?.position ?? '',
+          ];
           CHECKLIST_POINTS.forEach((point) => {
             const item = p.checklist[point.key];
             row.push(item?.status_manual || 'NA');
