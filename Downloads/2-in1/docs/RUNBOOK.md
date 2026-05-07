@@ -349,3 +349,32 @@ pytest
 ```
 
 Si usas CI/CD, estos comandos deben quedar como checks mínimos para cambios en runtime o integración de apps del Tools Hub.
+
+## 8. Integración Kanban ↔ Gantt en “Acciones”
+
+La vista de **Acciones** en la SPA (`/#/app/acciones`) incorpora una pestaña **Gantt** conectada con el mismo origen de datos que el tablero **Kanban**.
+
+### 8.1 Comportamiento esperado de sincronización
+
+- Crear una acción desde Kanban debe reflejarla inmediatamente en Gantt.
+- Cambiar el estado de una tarjeta en Kanban debe actualizar su columna/estado equivalente en Gantt.
+- Ajustar fechas (inicio/fin) en Gantt debe persistir y verse al volver a Kanban.
+- Editar responsable desde cualquiera de las dos vistas debe mantenerse consistente al alternar pestañas.
+
+### 8.2 Flujo mínimo de validación manual
+
+1. Abrir `/#/app/acciones`.
+2. Crear una nueva acción de prueba en Kanban.
+3. Cambiar su estado (por ejemplo: pendiente → en progreso).
+4. Abrir pestaña **Gantt** y verificar aparición de la acción con estado actualizado.
+5. En Gantt, modificar fechas de inicio y fin.
+6. Editar responsable desde el panel/edición disponible.
+7. Volver a Kanban y confirmar que estado, fechas y responsable permanecen sincronizados.
+
+### 8.3 Evidencia visual
+
+Para cada cambio que afecte esta integración, adjuntar en la PR al menos:
+
+- 1 captura de la pestaña **Gantt** embebida en “Acciones”.
+- (Opcional recomendado) 1 captura adicional del Kanban antes/después de la edición para comparar sincronización.
+
