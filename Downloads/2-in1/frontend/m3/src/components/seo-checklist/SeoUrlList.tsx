@@ -326,6 +326,7 @@ const downloadTsv = (content: string, filename: string) => {
           'Cluster',
           'Clics',
           'Impresiones',
+          'Posición media',
           ...CHECKLIST_POINTS.map((p) => p.label),
         ];
 
@@ -336,10 +337,11 @@ const downloadTsv = (content: string, filename: string) => {
           p.cluster || '',
           p.gscMetrics?.clicks || 0,
           p.gscMetrics?.impressions || 0,
+          p.gscMetrics?.position ?? '',
           ...CHECKLIST_POINTS.map((point) => p.checklist[point.key]?.status_manual || 'NA'),
         ]);
 
-        const detailHeaders = ['URL', 'KW Principal', 'Tipo', 'Cluster', 'Clics', 'Impresiones'];
+        const detailHeaders = ['URL', 'KW Principal', 'Tipo', 'Cluster', 'Clics', 'Impresiones', 'Posición media'];
         CHECKLIST_POINTS.forEach((p) => {
           detailHeaders.push(`${p.label} - Estado`);
           detailHeaders.push(`${p.label} - Notas`);
@@ -347,7 +349,7 @@ const downloadTsv = (content: string, filename: string) => {
         });
 
         const detailData = exportPages.map((p) => {
-          const row = [p.url, p.kwPrincipal, p.pageType, p.cluster || '', p.gscMetrics?.clicks || 0, p.gscMetrics?.impressions || 0];
+          const row = [p.url, p.kwPrincipal, p.pageType, p.cluster || '', p.gscMetrics?.clicks || 0, p.gscMetrics?.impressions || 0, p.gscMetrics?.position ?? ''];
           CHECKLIST_POINTS.forEach((point) => {
             const item = p.checklist[point.key];
             row.push(item?.status_manual || 'NA');
@@ -451,6 +453,7 @@ const downloadTsv = (content: string, filename: string) => {
           'Cluster',
           'Clics',
           'Impresiones',
+          'Posición media',
           ...CHECKLIST_POINTS.map((p) => p.label),
         ];
 
@@ -461,12 +464,13 @@ const downloadTsv = (content: string, filename: string) => {
           p.cluster || '',
           p.gscMetrics?.clicks || 0,
           p.gscMetrics?.impressions || 0,
+          p.gscMetrics?.position ?? '',
           ...CHECKLIST_POINTS.map((point) => p.checklist[point.key]?.status_manual || 'NA'),
         ]);
 
         const wsSummary = XLSX.utils.aoa_to_sheet([summaryHeaders, ...summaryData]);
 
-        const detailHeaders = ['URL', 'KW Principal', 'Tipo', 'Cluster', 'Clics', 'Impresiones'];
+        const detailHeaders = ['URL', 'KW Principal', 'Tipo', 'Cluster', 'Clics', 'Impresiones', 'Posición media'];
         CHECKLIST_POINTS.forEach((p) => {
           detailHeaders.push(`${p.label} - Estado`);
           detailHeaders.push(`${p.label} - Notas`);
@@ -474,7 +478,7 @@ const downloadTsv = (content: string, filename: string) => {
         });
 
         const detailData = chunkPages.map((p) => {
-          const row = [p.url, p.kwPrincipal, p.pageType, p.cluster || '', p.gscMetrics?.clicks || 0, p.gscMetrics?.impressions || 0];
+          const row = [p.url, p.kwPrincipal, p.pageType, p.cluster || '', p.gscMetrics?.clicks || 0, p.gscMetrics?.impressions || 0, p.gscMetrics?.position ?? ''];
           CHECKLIST_POINTS.forEach((point) => {
             const item = p.checklist[point.key];
             row.push(item?.status_manual || 'NA');
