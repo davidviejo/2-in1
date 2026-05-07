@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Task } from '../types';
 import { X, Save, FileText, CheckCircle2, Circle, Calendar, ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -41,6 +41,18 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   const [impactQuery, setImpactQuery] = useState(taskDraft.impactQuery);
   const [impactUrl, setImpactUrl] = useState(taskDraft.impactUrl);
   const [impactWindow, setImpactWindow] = useState(taskDraft.impactWindow);
+
+  useEffect(() => {
+    setNotes(taskDraft.notes);
+    setImpact(taskDraft.impact);
+    setTitle(taskDraft.title);
+    setDescription(taskDraft.description);
+    setDueDate(taskDraft.dueDate);
+    setImpactProperty(taskDraft.impactProperty);
+    setImpactQuery(taskDraft.impactQuery);
+    setImpactUrl(taskDraft.impactUrl);
+    setImpactWindow(taskDraft.impactWindow);
+  }, [taskDraft]);
 
   if (!isOpen || !task || moduleId === null) return null;
 
