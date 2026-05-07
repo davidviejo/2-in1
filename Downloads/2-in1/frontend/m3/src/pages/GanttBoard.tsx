@@ -8,6 +8,8 @@ import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useToast } from '@/components/ui/ToastContext';
+import { analyzeGantt, GanttAnalyzeResponse } from '@/services/ganttService';
+import Spinner from '@/components/ui/Spinner';
 
 type ViewMode = 'day' | 'week' | 'month';
 
@@ -31,13 +33,41 @@ const toDateInput = (date?: string) => (date ? new Date(date).toISOString().slic
 const GanttBoard: React.FC = () => {
   const { t } = useTranslation();
   const { modules, updateTaskTimeline, updateTaskStatus, toggleCustomRoadmapTask } = useProject();
-  const { success, info } = useToast();
+  const { success, info, error } = useToast();
 
   const [viewMode, setViewMode] = useState<ViewMode>('week');
   const [search, setSearch] = useState('');
   const [projectFilter, setProjectFilter] = useState('all');
   const [editingTask, setEditingTask] = useState<{ moduleId: number; task: Task } | null>(null);
   const [confirmState, setConfirmState] = useState<{ moduleId: number; task: Task } | null>(null);
+
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<GanttAnalyzeResponse | null>(null);
+
+  const handleAnalyzeGantt = async () => {
+    try {
+      setIsAnalyzing(true);
+      const response = await analyzeGantt(
+        filteredTasks.map(({ task }) => ({
+          title: task.title,
+          status: task.status,
+          progress: mapKanbanStatusToGanttProgress(task.status, task.progress),
+          startDate: task.startDate,
+          endDate: task.endDate,
+          assignee: task.assignee,
+          project: task.project,
+        })),
+      );
+      setAnalysisResult(response);
+      success('Análisis Gantt completado.');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'No se pudo analizar el Gantt.';
+      error(message);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
 
   const ganttTasks = useMemo(
     () =>
@@ -102,6 +132,10 @@ const GanttBoard: React.FC = () => {
               {mode}
             </Button>
           ))}
+          <Button variant="secondary" size="sm" onClick={handleAnalyzeGantt} disabled={isAnalyzing || filteredTasks.length === 0}>
+            {isAnalyzing ? <Spinner size={14} /> : null}
+            Analizar Gantt
+          </Button>
           <Button variant="secondary" size="sm" onClick={exportCsv}><Download size={16} /> CSV</Button>
         </div>
       </header>
@@ -115,6 +149,19 @@ const GanttBoard: React.FC = () => {
           </select>
         </div>
       </div>
+
+
+      {analysisResult && (
+        <div className="rounded-brand-lg border border-border bg-surface p-4 shadow-soft">
+          <h2 className="text-base font-semibold text-foreground">Resultado del análisis</h2>
+          <p className="mt-1 text-sm text-muted">
+            Total: {analysisResult.summary.totalTasks} · Avance medio: {analysisResult.summary.completionAvg}% · Vencidas: {analysisResult.summary.overdueCount}
+          </p>
+          <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-foreground">
+            {analysisResult.recommendations.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+        </div>
+      )}
 
       <div className="overflow-x-auto rounded-brand-lg border border-border bg-surface shadow-soft">
         <table className="min-w-full text-sm">
