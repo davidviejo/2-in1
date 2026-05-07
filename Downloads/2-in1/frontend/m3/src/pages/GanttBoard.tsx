@@ -35,6 +35,46 @@ type SortOrder = 'asc' | 'desc';
 
 const toDateInput = (date?: string) => (date ? new Date(date).toISOString().slice(0, 10) : '');
 
+const getTaskDateState = (task: Task): 'overdue' | 'next-week' | 'normal' => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (task.endDate) {
+    const endDate = new Date(task.endDate);
+    endDate.setHours(0, 0, 0, 0);
+    if (endDate < today) return 'overdue';
+  }
+
+  if (task.startDate) {
+    const startDate = new Date(task.startDate);
+    startDate.setHours(0, 0, 0, 0);
+    const diffDays = Math.round((startDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays >= 7 && diffDays <= 13) return 'next-week';
+  }
+
+  return 'normal';
+};
+
+const getTaskDateStyles = (task: Task) => {
+  const state = getTaskDateState(task);
+  if (state === 'overdue') {
+    return {
+      rowClass: 'bg-red-50/50 dark:bg-red-950/20',
+      textClass: 'text-red-700 dark:text-red-300',
+    };
+  }
+  if (state === 'next-week') {
+    return {
+      rowClass: 'bg-amber-50/50 dark:bg-amber-950/20',
+      textClass: 'text-amber-700 dark:text-amber-300',
+    };
+  }
+  return {
+    rowClass: '',
+    textClass: 'text-muted',
+  };
+};
+
 const GanttBoard: React.FC = () => {
   const { t } = useTranslation();
   const { clients, currentClientId, updateTaskTimeline, deleteTask, switchClient, addTasksBulk } = useProject();
@@ -329,17 +369,18 @@ const GanttBoard: React.FC = () => {
         <table className="min-w-full text-sm">
           <thead className="bg-surface-alt text-left text-muted">
             <tr>
-              <th className="px-4 py-3">Task</th><th className="px-4 py-3">Timeline ({viewMode})</th><th className="px-4 py-3">Client</th><th className="px-4 py-3">Project</th><th className="px-4 py-3">Assignee</th><th className="px-4 py-3">Columna Kanban</th><th className="px-4 py-3">Actions</th>
+              <th className="px-4 py-3">Task</th><th className="px-4 py-3">Timeline ({viewMode})</th><th className="px-4 py-3">Project</th><th className="px-4 py-3">Project</th><th className="px-4 py-3">Assignee</th><th className="px-4 py-3">Columna Kanban</th><th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
           <tbody>
             {pendingTasks.map(({ clientId, clientName, moduleId, task }) => {
+              const dateStyles = getTaskDateStyles(task);
               return (
-                <tr key={`${clientId}-${moduleId}-${task.id}`} className="border-t border-border/70">
+                <tr key={`${clientId}-${moduleId}-${task.id}`} className={`border-t border-border/70 ${dateStyles.rowClass}`}>
                   <td className="px-4 py-3 font-medium text-foreground">{task.title}</td>
                   <td className="px-4 py-3">
                     <div className="space-y-1">
-                      <p className="text-xs text-muted">{formatTimelineRange(task)}</p>
+                      <p className={`text-xs ${dateStyles.textClass}`}>{formatTimelineRange(task)}</p>
                     </div>
                   </td>
                   <td className="px-4 py-3 text-muted">{clientName}</td>
@@ -371,17 +412,18 @@ const GanttBoard: React.FC = () => {
         <table className="min-w-full text-sm">
           <thead className="bg-surface-alt text-left text-muted">
             <tr>
-              <th className="px-4 py-3">Task</th><th className="px-4 py-3">Timeline ({viewMode})</th><th className="px-4 py-3">Client</th><th className="px-4 py-3">Project</th><th className="px-4 py-3">Assignee</th><th className="px-4 py-3">Columna Kanban</th><th className="px-4 py-3">Actions</th>
+              <th className="px-4 py-3">Task</th><th className="px-4 py-3">Timeline ({viewMode})</th><th className="px-4 py-3">Project</th><th className="px-4 py-3">Project</th><th className="px-4 py-3">Assignee</th><th className="px-4 py-3">Columna Kanban</th><th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
           <tbody>
             {completedTasks.map(({ clientId, clientName, moduleId, task }) => {
+              const dateStyles = getTaskDateStyles(task);
               return (
-                <tr key={`${clientId}-${moduleId}-${task.id}`} className="border-t border-border/70 opacity-80">
+                <tr key={`${clientId}-${moduleId}-${task.id}`} className={`border-t border-border/70 opacity-80 ${dateStyles.rowClass}`}>
                   <td className="px-4 py-3 font-medium text-foreground line-through">{task.title}</td>
                   <td className="px-4 py-3">
                     <div className="space-y-1">
-                      <p className="text-xs text-muted">{formatTimelineRange(task)}</p>
+                      <p className={`text-xs ${dateStyles.textClass}`}>{formatTimelineRange(task)}</p>
                     </div>
                   </td>
                   <td className="px-4 py-3 text-muted">{clientName}</td>
