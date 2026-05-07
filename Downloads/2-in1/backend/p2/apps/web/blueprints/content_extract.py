@@ -25,7 +25,7 @@ def clean(url: str) -> Dict[str, Any]:
     Returns:
         dict: Diccionario con el markdown generado, conteo de palabras y errores si los hubo.
     """
-    result = {'url': url, 'markdown': '', 'word_count': 0, 'error': None}
+    result = {'url': url, 'markdown': '', 'full_text': '', 'word_count': 0, 'error': None}
     if not is_safe_url(url):
         result['error'] = 'URL no permitida'
         return result
@@ -34,13 +34,16 @@ def clean(url: str) -> Dict[str, Any]:
         soup = BeautifulSoup(response.content, 'html.parser')
         for x in soup(["script","style","nav","footer"]): x.extract()
         markdown_lines = []
-        for tag in soup.find_all(['h1','h2','h3','p']):
+        for tag in soup.find_all(['h1','h2','h3','p','li','blockquote']):
             txt = WS_PATTERN.sub(' ', tag.get_text(strip=True))
             if len(txt)>10:
                 pre = '#' if tag.name=='h1' else ('##' if tag.name=='h2' else '')
                 markdown_lines.append(f"{pre} {txt}")
         result['markdown'] = "\n".join(markdown_lines)
-        result['word_count'] = len(result['markdown'].split())
+
+        full_text = WS_PATTERN.sub(' ', soup.get_text(separator=' ', strip=True)).strip()
+        result['full_text'] = full_text
+        result['word_count'] = len(full_text.split())
     except Exception as e:
         logging.error(f"Extract error {url}: {e}")
         result['error'] = 'Error procesando el contenido'
