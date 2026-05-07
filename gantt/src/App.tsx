@@ -7,6 +7,33 @@ import { LayoutDashboard, Calendar, Search, Filter, ZoomIn, ZoomOut, CalendarDay
 import { addDays, startOfDay } from 'date-fns';
 import { analyzeBottlenecks } from './services/ai';
 
+
+const STORAGE_KEY = 'gantt.tasks.v1';
+
+const serializeTasks = (items: Task[]) => JSON.stringify(items.map(task => ({
+  ...task,
+  startDate: task.startDate.toISOString(),
+  endDate: task.endDate.toISOString()
+})));
+
+const parseStoredTasks = (raw: string | null): Task[] | null => {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    return parsed
+      .filter((task) => task?.id && task?.title && task?.startDate && task?.endDate && task?.status)
+      .map((task) => ({
+        ...task,
+        startDate: new Date(task.startDate),
+        endDate: new Date(task.endDate)
+      }));
+  } catch (error) {
+    console.error('No se pudo leer las tareas guardadas.', error);
+    return null;
+  }
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<'gantt-board' | 'tasks'>('gantt-board');
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -19,28 +46,35 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  const [tasks, setTasks] = useState<Task[]>([
-    {
-      id: 'example-1',
-      title: 'Planificación Inicial',
-      startDate: startOfDay(new Date()),
-      endDate: addDays(startOfDay(new Date()), 2),
-      status: 'done',
-      color: '#4f46e5',
-      project: 'Gantt AI',
-      assignee: 'Alex'
-    },
-    {
-      id: 'example-2',
-      title: 'Diseño de la interfaz',
-      startDate: startOfDay(new Date()),
-      endDate: addDays(startOfDay(new Date()), 4),
-      status: 'in-progress',
-      color: '#06b6d4',
-      project: 'Gantt AI',
-      assignee: 'María'
+  const [tasks, setTasks] = useState<Task[]>(() => {
+    const storedTasks = parseStoredTasks(localStorage.getItem(STORAGE_KEY));
+    if (storedTasks && storedTasks.length > 0) {
+      return storedTasks;
     }
-  ]);
+
+    return [
+      {
+        id: 'example-1',
+        title: 'Planificación Inicial',
+        startDate: startOfDay(new Date()),
+        endDate: addDays(startOfDay(new Date()), 2),
+        status: 'done',
+        color: '#4f46e5',
+        project: 'Gantt AI',
+        assignee: 'Alex'
+      },
+      {
+        id: 'example-2',
+        title: 'Diseño de la interfaz',
+        startDate: startOfDay(new Date()),
+        endDate: addDays(startOfDay(new Date()), 4),
+        status: 'in-progress',
+        color: '#06b6d4',
+        project: 'Gantt AI',
+        assignee: 'María'
+      }
+    ];
+  });
 
   const [viewMode, setViewMode] = useState<ViewMode>('day');
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -50,6 +84,11 @@ export default function App() {
   const [selectedProject, setSelectedProject] = useState<string>('all');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiInsights, setAiInsights] = useState('');
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, serializeTasks(tasks));
+  }, [tasks]);
+
 
   const handleAnalyze = async () => {
     setIsAnalyzing(true);
