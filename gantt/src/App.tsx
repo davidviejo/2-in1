@@ -8,6 +8,7 @@ import { addDays, startOfDay } from 'date-fns';
 import { analyzeBottlenecks } from './services/ai';
 
 export default function App() {
+  const [activeTab, setActiveTab] = useState<'gantt-board' | 'tasks'>('gantt-board');
   const [isDarkMode, setIsDarkMode] = useState(false);
 
   useEffect(() => {
@@ -123,6 +124,31 @@ export default function App() {
     });
   }, [tasks, searchQuery, selectedProject]);
 
+  const pendingTasksByMonth = useMemo(() => {
+    const pendingTasks = filteredTasks.filter((task) => task.status !== 'done');
+    const monthLabels = Array.from(
+      new Set(
+        pendingTasks.flatMap((task) => {
+          const labels: string[] = [];
+          const cursor = new Date(task.startDate.getFullYear(), task.startDate.getMonth(), 1);
+          const end = new Date(task.endDate.getFullYear(), task.endDate.getMonth(), 1);
+
+          while (cursor <= end) {
+            labels.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`);
+            cursor.setMonth(cursor.getMonth() + 1);
+          }
+
+          return labels;
+        })
+      )
+    ).sort();
+
+    return {
+      monthLabels,
+      pendingTasks
+    };
+  }, [filteredTasks]);
+
   const handleTasksAdded = (newTasks: Task[]) => {
     setTasks(prev => [...prev, ...newTasks]);
   };
@@ -233,13 +259,69 @@ export default function App() {
           </div>
         </div>
 
+        <div className="flex items-center gap-2 bg-white dark:bg-gray-900 p-2 rounded-xl border border-gray-100 dark:border-gray-800 w-fit">
+          <button
+            onClick={() => setActiveTab('gantt-board')}
+            className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${activeTab === 'gantt-board' ? 'bg-blue-600 text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+          >
+            Tablero Gantt
+          </button>
+          <button
+            onClick={() => setActiveTab('tasks')}
+            className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${activeTab === 'tasks' ? 'bg-blue-600 text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+          >
+            Lista de tareas
+          </button>
+        </div>
+
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           
           {/* Timeline & Chart */}
           <div className="lg:col-span-3 space-y-6">
-            <GanttChart tasks={filteredTasks} viewMode={viewMode} onTaskClick={setSelectedTask} />
-            <TaskInput onTasksAdded={handleTasksAdded} />
+            {activeTab === 'gantt-board' ? (
+              <>
+                <GanttChart tasks={filteredTasks} viewMode={viewMode} onTaskClick={setSelectedTask} />
+                <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-4">
+                  <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-300 mb-3">
+                    Calendarización mensual de pendientes
+                  </h3>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm border-separate border-spacing-0">
+                      <thead>
+                        <tr>
+                          <th className="sticky left-0 bg-white dark:bg-gray-900 text-left p-2 border-b border-gray-200 dark:border-gray-800">Tarea pendiente</th>
+                          {pendingTasksByMonth.monthLabels.map((monthLabel) => (
+                            <th key={monthLabel} className="p-2 border-b border-gray-200 dark:border-gray-800 text-center whitespace-nowrap">{monthLabel}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pendingTasksByMonth.pendingTasks.map((task) => (
+                          <tr key={`pending-${task.id}`} className="odd:bg-gray-50/60 dark:odd:bg-gray-800/30">
+                            <td className="sticky left-0 bg-inherit p-2 border-b border-gray-100 dark:border-gray-800">{task.title}</td>
+                            {pendingTasksByMonth.monthLabels.map((monthLabel) => {
+                              const [year, month] = monthLabel.split('-').map(Number);
+                              const startsBeforeOrInMonth = task.startDate <= new Date(year, month, 0);
+                              const endsAfterOrInMonth = task.endDate >= new Date(year, month - 1, 1);
+                              const isActiveInMonth = startsBeforeOrInMonth && endsAfterOrInMonth;
+                              return (
+                                <td key={`${task.id}-${monthLabel}`} className="p-2 text-center border-b border-gray-100 dark:border-gray-800">
+                                  {isActiveInMonth ? '●' : '—'}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                <TaskInput onTasksAdded={handleTasksAdded} />
+              </>
+            ) : (
+              <TaskInput onTasksAdded={handleTasksAdded} />
+            )}
           </div>
 
           {/* Sidebar Task List */}
