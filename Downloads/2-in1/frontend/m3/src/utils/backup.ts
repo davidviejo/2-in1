@@ -179,6 +179,16 @@ const appendJsonArray = (parts: string[], values: unknown[]) => {
   parts.push(']');
 };
 
+const appendJsonObject = (parts: string[], value: Record<string, unknown>) => {
+  parts.push('{');
+  const entries = Object.entries(value);
+  entries.forEach(([entryKey, entryValue], index) => {
+    if (index > 0) parts.push(',');
+    parts.push(safeJsonStringify(entryKey), ':', safeJsonStringify(entryValue));
+  });
+  parts.push('}');
+};
+
 /**
  * Serializa el backup en partes para evitar errores de memoria/"Invalid string length"
  * cuando hay volúmenes muy altos de clientes, notas o snapshots.
@@ -198,10 +208,14 @@ export const buildBackupBlob = (payload: BackupPayload): Blob => {
 
   parts.push(',"settings":', safeJsonStringify(payload.settings));
   parts.push(',"currentClientId":', safeJsonStringify(payload.currentClientId));
-  parts.push(',"storage":', safeJsonStringify(payload.storage));
+  parts.push(',"storage":');
+  appendJsonObject(parts, payload.storage);
 
   if (payload.indexedDb) {
-    parts.push(',"indexedDb":', safeJsonStringify(payload.indexedDb));
+    parts.push(',"indexedDb":{');
+    parts.push('\"seoChecklists\":');
+    appendJsonObject(parts, payload.indexedDb.seoChecklists || {});
+    parts.push('}');
   }
 
   parts.push('}');
