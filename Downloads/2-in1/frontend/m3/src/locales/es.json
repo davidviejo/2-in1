@@ -11,6 +11,8 @@
     "client_roadmap_sub": "Personalizado",
     "kanban_board": "Tablero Kanban",
     "kanban_board_sub": "Flujo de Trabajo",
+    "gantt_board": "Tablero Gantt",
+    "gantt_board_sub": "Cronograma de Tareas",
     "ai_roadmap": "Roadmap IA",
     "ai_roadmap_sub": "Estrategia Generativa",
     "settings": "Ajustes",

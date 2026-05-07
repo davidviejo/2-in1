@@ -20,6 +20,7 @@ const Settings = lazy(() => import('./pages/Settings'));
 const AdminIdeasPage = lazy(() => import('./pages/admin/AdminIdeasPage'));
 const TrendsMediaPage = lazy(() => import('./pages/TrendsMediaPage'));
 const ToolsHub = lazy(() => import('./pages/ToolsHub'));
+const GanttBoard = lazy(() => import('./pages/GanttBoard'));
 
 const LandingPage = lazy(() => import('./pages/portal/LandingPage'));
 const ClientsLogin = lazy(() => import('./pages/portal/ClientsLogin'));
@@ -160,6 +161,7 @@ export const AppRoutes: React.FC = () => {
                   }
                 />
                 <Route path="kanban" element={<KanbanBoard />} />
+                <Route path="gantt" element={<GanttBoard />} />
                 <Route path="checklist" element={<SeoChecklistPage />} />
                 <Route path="ai-roadmap" element={<AIRoadmap />} />
                 <Route path="ia-visibility" element={<IAVisibility />} />

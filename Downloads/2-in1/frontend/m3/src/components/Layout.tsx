@@ -26,6 +26,7 @@ import {
   Database,
   Code2,
   KanbanSquare,
+  GanttChartSquare,
   ListChecks,
   Wrench as Tool,
   Lightbulb,
@@ -168,6 +169,7 @@ const Layout: React.FC<LayoutProps> = ({
     }
     if (
       path.startsWith('/app/kanban') ||
+      path.startsWith('/app/gantt') ||
       path.startsWith('/app/settings') ||
       path.startsWith('/app/completed-tasks')
     ) {
@@ -348,6 +350,13 @@ const Layout: React.FC<LayoutProps> = ({
               icon={<KanbanSquare size={20} />}
               label={t('nav.kanban_board')}
               subLabel={t('nav.kanban_board_sub')}
+              onClick={() => setIsMobileMenuOpen(false)}
+            />
+            <NavItem
+              to="/app/gantt"
+              icon={<GanttChartSquare size={20} />}
+              label={t('nav.gantt_board')}
+              subLabel={t('nav.gantt_board_sub')}
               onClick={() => setIsMobileMenuOpen(false)}
             />
             <NavItem
