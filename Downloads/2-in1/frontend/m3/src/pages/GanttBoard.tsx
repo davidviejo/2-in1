@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CalendarRange, Download, Pencil, Trash2 } from 'lucide-react';
+import { CalendarRange, ChevronDown, ChevronRight, Download, Pencil, Trash2 } from 'lucide-react';
 import { useProject } from '@/context/ProjectContext';
 import { Task } from '@/types';
 import { Button } from '@/components/ui/Button';
@@ -13,6 +13,7 @@ import { Spinner } from '@/components/ui/Spinner';
 
 type ViewMode = 'day' | 'week' | 'month' | 'year';
 type TimeFilter = 'all' | 'week' | 'month' | 'year';
+
 
 const mapKanbanStatusToGanttProgress = (status: string, fallbackProgress?: number): number => {
   if (typeof fallbackProgress === 'number') return Math.max(0, Math.min(100, Math.round(fallbackProgress)));
@@ -29,11 +30,14 @@ const mapGanttProgressToKanbanStatus = (progress: number, currentStatus: string)
   return currentStatus;
 };
 
+type SortField = 'status' | 'assignee' | 'project' | 'title' | 'startDate' | 'endDate';
+type SortOrder = 'asc' | 'desc';
+
 const toDateInput = (date?: string) => (date ? new Date(date).toISOString().slice(0, 10) : '');
 
 const GanttBoard: React.FC = () => {
   const { t } = useTranslation();
-  const { clients, currentClientId, updateTaskTimeline, updateTaskStatus, toggleCustomRoadmapTask, switchClient, addTasksBulk } = useProject();
+  const { clients, currentClientId, updateTaskTimeline, deleteTask, switchClient, addTasksBulk } = useProject();
   const { success, info, error } = useToast();
 
   const [viewMode, setViewMode] = useState<ViewMode>('week');
@@ -42,6 +46,10 @@ const GanttBoard: React.FC = () => {
   const [editingTask, setEditingTask] = useState<{ clientId: string; clientName: string; moduleId: number; task: Task } | null>(null);
   const [confirmState, setConfirmState] = useState<{ clientId: string; clientName: string; moduleId: number; task: Task } | null>(null);
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
+  const [sortField, setSortField] = useState<SortField>('status');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
+  const [showPending, setShowPending] = useState(true);
+  const [showCompleted, setShowCompleted] = useState(true);
   const [createMode, setCreateMode] = useState<'manual' | 'ai'>('manual');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newTask, setNewTask] = useState({ title: '', description: '', startDate: '', endDate: '', assignee: '', project: '', moduleId: 1, clientId: currentClientId });
@@ -111,9 +119,40 @@ const GanttBoard: React.FC = () => {
 
 
 
-  const pendingTasks = useMemo(() => filteredTasks.filter(({ task }) => mapKanbanStatusToGanttProgress(task.status, task.progress) < 100), [filteredTasks]);
+  const sortedTasks = useMemo(() => {
+    const direction = sortOrder === 'asc' ? 1 : -1;
+    return [...filteredTasks].sort((a, b) => {
+      const va = (a.task[sortField] || '').toString().toLowerCase();
+      const vb = (b.task[sortField] || '').toString().toLowerCase();
+      return va.localeCompare(vb) * direction;
+    });
+  }, [filteredTasks, sortField, sortOrder]);
 
-  const completedTasks = useMemo(() => filteredTasks.filter(({ task }) => mapKanbanStatusToGanttProgress(task.status, task.progress) >= 100), [filteredTasks]);
+  const pendingTasks = useMemo(() => sortedTasks.filter(({ task }) => task.status !== 'completed'), [sortedTasks]);
+
+  const completedTasks = useMemo(() => sortedTasks.filter(({ task }) => task.status === 'completed'), [sortedTasks]);
+
+  const calendarItems = useMemo(() => {
+    return sortedTasks
+      .filter(({ task }) => task.startDate || task.endDate)
+      .map(({ clientName, task }) => ({
+        date: task.startDate || task.endDate || '',
+        text: `${task.title} · ${task.status} · ${clientName}`,
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [sortedTasks]);
+
+  const formatTimelineRange = (task: Task) => {
+    const start = task.startDate ? new Date(task.startDate) : null;
+    const end = task.endDate ? new Date(task.endDate) : null;
+    if (!start && !end) return 'Sin fechas';
+    const s = start ? start.toLocaleDateString('es-ES') : '—';
+    const e = end ? end.toLocaleDateString('es-ES') : '—';
+    if (viewMode === 'day') return `${s} · Franja diaria`;
+    if (viewMode === 'week') return `${s} → ${e} · Franja semanal`;
+    if (viewMode === 'month') return `${s} → ${e} · Mes/Año`; 
+    return `${s} → ${e} · Año`;
+  };
 
   const availableModulesForCreate = useMemo(() => {
     const selectedClient = clients.find((client) => client.id === newTask.clientId);
@@ -182,8 +221,8 @@ const GanttBoard: React.FC = () => {
   };
 
   const exportCsv = () => {
-    const headers = ['Task', 'Project', 'Assignee', 'Start', 'End', 'Progress', 'Status'];
-    const rows = filteredTasks.map(({ task }) => [task.title, task.project ?? '', task.assignee ?? '', task.startDate ?? '', task.endDate ?? '', String(mapKanbanStatusToGanttProgress(task.status, task.progress)), task.status]);
+    const headers = ['Task', 'Project', 'Assignee', 'Start', 'End', 'Kanban Status'];
+    const rows = filteredTasks.map(({ task }) => [task.title, task.project ?? '', task.assignee ?? '', task.startDate ?? '', task.endDate ?? '', task.status]);
     const csv = [headers.join(','), ...rows.map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -235,9 +274,38 @@ const GanttBoard: React.FC = () => {
             <option value="month">Ventana mensual</option>
             <option value="year">Ventana anual</option>
           </select>
+          <select className="w-full rounded-brand-md border border-border bg-surface-alt px-4 py-2 text-sm text-foreground" value={sortField} onChange={(e) => setSortField(e.target.value as SortField)}>
+            <option value="status">Ordenar por estado</option>
+            <option value="assignee">Ordenar por responsable</option>
+            <option value="project">Ordenar por proyecto</option>
+            <option value="title">Ordenar por título</option>
+            <option value="startDate">Ordenar por inicio</option>
+            <option value="endDate">Ordenar por fin</option>
+          </select>
+          <select className="w-full rounded-brand-md border border-border bg-surface-alt px-4 py-2 text-sm text-foreground" value={sortOrder} onChange={(e) => setSortOrder(e.target.value as SortOrder)}>
+            <option value="asc">Ascendente</option>
+            <option value="desc">Descendente</option>
+          </select>
         </div>
       </div>
 
+
+
+      <div className="rounded-brand-lg border border-border bg-surface p-4 shadow-soft">
+        <h2 className="text-base font-semibold text-foreground">Calendario de tareas</h2>
+        <div className="mt-3 grid gap-2 md:grid-cols-2">
+          {calendarItems.length === 0 ? (
+            <p className="text-sm text-muted">No hay tareas con fecha para mostrar en calendario.</p>
+          ) : (
+            calendarItems.map((item) => (
+              <div key={`${item.date}-${item.text}`} className="rounded-brand-md border border-border bg-surface-alt px-3 py-2 text-sm">
+                <div className="font-medium text-foreground">{toDateInput(item.date)}</div>
+                <div className="text-muted">{item.text}</div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
 
       {analysisResult && (
         <div className="rounded-brand-lg border border-border bg-surface p-4 shadow-soft">
@@ -252,32 +320,32 @@ const GanttBoard: React.FC = () => {
       )}
 
       <div className="rounded-brand-lg border border-border bg-surface p-4 shadow-soft">
-        <h2 className="text-base font-semibold text-foreground">Tareas activas ({pendingTasks.length})</h2>
+        <button className="flex w-full items-center gap-2 text-left text-base font-semibold text-foreground" onClick={() => setShowPending((prev) => !prev)}>
+          {showPending ? <ChevronDown size={18} /> : <ChevronRight size={18} />} Tareas activas ({pendingTasks.length})
+        </button>
       </div>
 
-      <div className="overflow-x-auto rounded-brand-lg border border-border bg-surface shadow-soft">
+      {showPending && <div className="overflow-x-auto rounded-brand-lg border border-border bg-surface shadow-soft">
         <table className="min-w-full text-sm">
           <thead className="bg-surface-alt text-left text-muted">
             <tr>
-              <th className="px-4 py-3">Task</th><th className="px-4 py-3">Timeline ({viewMode})</th><th className="px-4 py-3">Client</th><th className="px-4 py-3">Project</th><th className="px-4 py-3">Assignee</th><th className="px-4 py-3">Progress</th><th className="px-4 py-3">Actions</th>
+              <th className="px-4 py-3">Task</th><th className="px-4 py-3">Timeline ({viewMode})</th><th className="px-4 py-3">Client</th><th className="px-4 py-3">Project</th><th className="px-4 py-3">Assignee</th><th className="px-4 py-3">Columna Kanban</th><th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
           <tbody>
             {pendingTasks.map(({ clientId, clientName, moduleId, task }) => {
-              const progress = mapKanbanStatusToGanttProgress(task.status, task.progress);
               return (
                 <tr key={`${clientId}-${moduleId}-${task.id}`} className="border-t border-border/70">
                   <td className="px-4 py-3 font-medium text-foreground">{task.title}</td>
                   <td className="px-4 py-3">
                     <div className="space-y-1">
-                      <div className="h-2 rounded-full bg-surface-alt"><div className="h-full rounded-full bg-primary" style={{ width: `${progress}%` }} /></div>
-                      <p className="text-xs text-muted">{toDateInput(task.startDate)} → {toDateInput(task.endDate)}</p>
+                      <p className="text-xs text-muted">{formatTimelineRange(task)}</p>
                     </div>
                   </td>
                   <td className="px-4 py-3 text-muted">{clientName}</td>
                   <td className="px-4 py-3 text-muted">{task.project || '-'}</td>
                   <td className="px-4 py-3 text-muted">{task.assignee || '-'}</td>
-                  <td className="px-4 py-3">{progress}%</td>
+                  <td className="px-4 py-3">{task.status}</td>
                   <td className="px-4 py-3">
                     <div className="flex gap-1">
                       <Button variant="ghost" size="sm" onClick={() => setEditingTask({ clientId, clientName, moduleId, task })}><Pencil size={14} /></Button>
@@ -289,37 +357,37 @@ const GanttBoard: React.FC = () => {
             })}
           </tbody>
         </table>
-      </div>
+      </div>}
 
 
 
       <div className="rounded-brand-lg border border-border bg-surface p-4 shadow-soft">
-        <h2 className="text-base font-semibold text-foreground">Tareas completadas ({completedTasks.length})</h2>
+        <button className="flex w-full items-center gap-2 text-left text-base font-semibold text-foreground" onClick={() => setShowCompleted((prev) => !prev)}>
+          {showCompleted ? <ChevronDown size={18} /> : <ChevronRight size={18} />} Tareas completadas ({completedTasks.length})
+        </button>
       </div>
 
-      <div className="overflow-x-auto rounded-brand-lg border border-border bg-surface shadow-soft">
+      {showCompleted && <div className="overflow-x-auto rounded-brand-lg border border-border bg-surface shadow-soft">
         <table className="min-w-full text-sm">
           <thead className="bg-surface-alt text-left text-muted">
             <tr>
-              <th className="px-4 py-3">Task</th><th className="px-4 py-3">Timeline ({viewMode})</th><th className="px-4 py-3">Client</th><th className="px-4 py-3">Project</th><th className="px-4 py-3">Assignee</th><th className="px-4 py-3">Progress</th><th className="px-4 py-3">Actions</th>
+              <th className="px-4 py-3">Task</th><th className="px-4 py-3">Timeline ({viewMode})</th><th className="px-4 py-3">Client</th><th className="px-4 py-3">Project</th><th className="px-4 py-3">Assignee</th><th className="px-4 py-3">Columna Kanban</th><th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
           <tbody>
             {completedTasks.map(({ clientId, clientName, moduleId, task }) => {
-              const progress = mapKanbanStatusToGanttProgress(task.status, task.progress);
               return (
                 <tr key={`${clientId}-${moduleId}-${task.id}`} className="border-t border-border/70 opacity-80">
                   <td className="px-4 py-3 font-medium text-foreground line-through">{task.title}</td>
                   <td className="px-4 py-3">
                     <div className="space-y-1">
-                      <div className="h-2 rounded-full bg-surface-alt"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${progress}%` }} /></div>
-                      <p className="text-xs text-muted">{toDateInput(task.startDate)} → {toDateInput(task.endDate)}</p>
+                      <p className="text-xs text-muted">{formatTimelineRange(task)}</p>
                     </div>
                   </td>
                   <td className="px-4 py-3 text-muted">{clientName}</td>
                   <td className="px-4 py-3 text-muted">{task.project || '-'}</td>
                   <td className="px-4 py-3 text-muted">{task.assignee || '-'}</td>
-                  <td className="px-4 py-3">{progress}%</td>
+                  <td className="px-4 py-3">{task.status}</td>
                   <td className="px-4 py-3">
                     <div className="flex gap-1">
                       <Button variant="ghost" size="sm" onClick={() => setEditingTask({ clientId, clientName, moduleId, task })}><Pencil size={14} /></Button>
@@ -331,7 +399,7 @@ const GanttBoard: React.FC = () => {
             })}
           </tbody>
         </table>
-      </div>
+      </div>}
 
       <Modal isOpen={!!editingTask} onClose={() => setEditingTask(null)} title="Editar tarea" className="max-w-2xl">
         {editingTask && (
@@ -340,27 +408,26 @@ const GanttBoard: React.FC = () => {
             <Input value={editingTask.task.assignee || ''} placeholder="Responsable" onChange={(e) => setEditingTask((prev) => prev ? { ...prev, task: { ...prev.task, assignee: e.target.value } } : prev)} />
             <Input type="date" value={toDateInput(editingTask.task.startDate)} onChange={(e) => setEditingTask((prev) => prev ? { ...prev, task: { ...prev.task, startDate: e.target.value } } : prev)} />
             <Input type="date" value={toDateInput(editingTask.task.endDate)} onChange={(e) => setEditingTask((prev) => prev ? { ...prev, task: { ...prev.task, endDate: e.target.value } } : prev)} />
-            <Input type="number" min={0} max={100} value={mapKanbanStatusToGanttProgress(editingTask.task.status, editingTask.task.progress)} onChange={(e) => setEditingTask((prev) => prev ? { ...prev, task: { ...prev.task, progress: Number(e.target.value) } } : prev)} />
             <p className="text-xs text-muted">Cliente: {editingTask.clientName}</p>
-            <div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setEditingTask(null)}>Cancelar</Button><Button type="submit" onClick={() => handleTimelineUpdate(editingTask.clientId, editingTask.moduleId, editingTask.task, { project: editingTask.task.project, assignee: editingTask.task.assignee, startDate: editingTask.task.startDate, endDate: editingTask.task.endDate, progress: editingTask.task.progress })}>Guardar</Button></div>
+            <div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setEditingTask(null)}>Cancelar</Button><Button type="submit" onClick={() => handleTimelineUpdate(editingTask.clientId, editingTask.moduleId, editingTask.task, { project: editingTask.task.project, assignee: editingTask.task.assignee, startDate: editingTask.task.startDate, endDate: editingTask.task.endDate })}>Guardar</Button></div>
           </form>
         )}
       </Modal>
 
       <ConfirmDialog
         isOpen={!!confirmState}
-        title="Quitar de roadmap"
-        message="Esta tarea se ocultará del Gantt pero seguirá en Kanban."
+        title="Eliminar tarea"
+        message="Esta tarea se eliminará de todos los tableros (Kanban, Gantt y listados)."
         confirmLabel={t('feedback.confirm.confirm_button')}
         cancelLabel={t('feedback.confirm.cancel_button')}
         onConfirm={() => { if (confirmState) {
           const shouldRestoreClient = confirmState.clientId !== currentClientId;
           if (shouldRestoreClient) switchClient(confirmState.clientId);
           setTimeout(() => {
-            toggleCustomRoadmapTask(confirmState.moduleId, confirmState.task.id);
+            deleteTask(confirmState.moduleId, confirmState.task.id);
             if (shouldRestoreClient) switchClient(currentClientId);
           }, 0);
-          info('Tarea removida del roadmap personalizado.'); } setConfirmState(null); }}
+          info('Tarea eliminada en todos los tableros.'); } setConfirmState(null); }}
         onCancel={() => setConfirmState(null)}
         isDestructive={false}
       />
