@@ -118,11 +118,12 @@ interface ProjectContextType {
   ) => void;
   deleteTask: (moduleId: number, taskId: string) => void;
   toggleTask: (moduleId: number, taskId: string) => void;
-  updateTaskStatus: (moduleId: number, taskId: string, newStatus: TaskStatus) => void;
+  updateTaskStatus: (moduleId: number, taskId: string, newStatus: TaskStatus, clientId?: string) => void;
   updateTaskTimeline: (
     moduleId: number,
     taskId: string,
     updates: Partial<Pick<Task, 'startDate' | 'endDate' | 'assignee' | 'project' | 'progress'>>,
+    clientId?: string,
   ) => void;
   updateTaskNotes: (moduleId: number, taskId: string, notes: string) => void;
   updateTaskImpact: (moduleId: number, taskId: string, impact: 'High' | 'Medium' | 'Low') => void;
@@ -773,18 +774,46 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       moduleId: number,
       taskId: string,
       updates: Partial<Pick<Task, 'startDate' | 'endDate' | 'assignee' | 'project' | 'progress'>>,
+      clientId?: string,
     ) => {
       const safeProgress =
         typeof updates.progress === 'number'
           ? Math.max(0, Math.min(100, Math.round(updates.progress)))
           : undefined;
 
+      if (clientId && clientId !== currentClientId) {
+        setClients((prev) =>
+          prev.map((c) => {
+            if (c.id !== clientId) return c;
+            return {
+              ...c,
+              modules: c.modules.map((m) => {
+                if (m.id !== moduleId) return m;
+                return {
+                  ...m,
+                  tasks: m.tasks.map((t) =>
+                    t.id !== taskId
+                      ? t
+                      : {
+                          ...t,
+                          ...updates,
+                          ...(safeProgress === undefined ? {} : { progress: safeProgress }),
+                        },
+                  ),
+                };
+              }),
+            };
+          }),
+        );
+        return;
+      }
+
       updateTaskDetails(moduleId, taskId, {
         ...updates,
         ...(safeProgress === undefined ? {} : { progress: safeProgress }),
       });
     },
-    [updateTaskDetails],
+    [currentClientId, updateTaskDetails],
   );
 
   const addKanbanColumn = useCallback(
@@ -1075,9 +1104,13 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
   );
 
   const updateTaskStatus = useCallback(
-    (moduleId: number, taskId: string, newStatus: TaskStatus) => {
+    (moduleId: number, taskId: string, newStatus: TaskStatus, clientId?: string) => {
       let taskToUpdate: any = null;
-      modules.forEach((m) => {
+      const targetClientId = clientId || currentClientId;
+      const targetClient = clients.find((client) => client.id === targetClientId);
+      if (!targetClient) return;
+
+      targetClient.modules.forEach((m) => {
         if (m.id === moduleId) {
           const found = m.tasks.find((t) => t.id === taskId);
           if (found) taskToUpdate = found;
@@ -1088,7 +1121,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
 
       setClients((prev) =>
         prev.map((c) => {
-          if (c.id !== currentClientId) return c;
+          if (c.id !== targetClientId) return c;
 
           const newModules = c.modules.map((m) => {
             if (m.id !== moduleId) return m;
@@ -1157,7 +1190,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
         }),
       );
     },
-    [modules, currentClientId],
+    [clients, currentClientId],
   );
 
   const addManualCompletedTask = useCallback(
