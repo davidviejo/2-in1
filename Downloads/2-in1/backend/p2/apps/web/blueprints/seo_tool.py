@@ -350,7 +350,8 @@ def _extract_enriched_page_data(url: str):
     response = requests.get(url, headers=headers, timeout=20, allow_redirects=True)
     response.raise_for_status()
     soup = BeautifulSoup(response.text or "", 'html.parser')
-    text_clean = _normalize_text(soup.get_text(separator=' '))
+    raw_text = re.sub(r"\s+", " ", soup.get_text(separator=' ', strip=True)).strip()
+    text_clean = _normalize_text(raw_text)
     base = scrape_page_local(url) or {}
     base.setdefault('schema', {'json_ld_count': 0, 'microdata_count': 0, 'total_blocks': 0, 'types': []})
     base.setdefault('headings', [])
@@ -408,7 +409,7 @@ def _extract_enriched_page_data(url: str):
     schema_score = min(100, 10 + base["schema"].get("json_ld_count", 0) * 8 + base["schema"].get("microdata_count", 0) * 4)
     local_score = min(100, 20 + blocks["location"]["count"] * 8) if intent_scores["local"] > 0 else 0
     seo_score = int((content_score + structure_score + semantic_score + schema_score + conversion_score + technical_score + (local_score or 0)) / (7 if local_score else 6))
-    base.update({"technical": {"status_code": response.status_code, "final_url": response.url, "redirect_chain": [h.url for h in response.history] if response.history else [], "canonical": (soup.find('link', rel=lambda x: x and 'canonical' in str(x).lower()) or {}).get('href', ''), "meta_robots": (soup.find('meta', attrs={'name': re.compile(r'robots', re.I)}) or {}).get('content', ''), "x_robots_tag": response.headers.get('X-Robots-Tag', ''), "meta_description": meta_description, "hreflang_count": len(soup.find_all('link', attrs={'hreflang': True})), "open_graph_count": len(soup.find_all('meta', attrs={'property': re.compile(r'^og:', re.I)})), "twitter_card_count": len(soup.find_all('meta', attrs={'name': re.compile(r'^twitter:', re.I)})), "internal_links_count": internal_links_count, "external_links_count": external_links_count}, "images_analysis": {"total_images": len(images), "images_without_alt": without_alt, "images_empty_alt": empty_alt, "alt_coverage_percent": round((with_alt / max(len(images), 1)) * 100, 2), "duplicate_alt_count": 0, "lazy_loaded_images_count": sum(1 for img in images if (img.get('loading') or '').lower() == 'lazy')}, "blocks": blocks, "intent": {"primary_intent": primary_intent, "intent_scores": intent_scores}, "page_classification": {"page_type": page_type, "page_type_scores": dict(page_type_scores)}, "content_score": content_score, "structure_score": structure_score, "semantic_score": semantic_score, "schema_score": schema_score, "conversion_score": conversion_score, "technical_score": technical_score, "local_score": local_score, "seo_score": seo_score, "issues": issues})
+    base.update({"technical": {"status_code": response.status_code, "final_url": response.url, "redirect_chain": [h.url for h in response.history] if response.history else [], "canonical": (soup.find('link', rel=lambda x: x and 'canonical' in str(x).lower()) or {}).get('href', ''), "meta_robots": (soup.find('meta', attrs={'name': re.compile(r'robots', re.I)}) or {}).get('content', ''), "x_robots_tag": response.headers.get('X-Robots-Tag', ''), "meta_description": meta_description, "hreflang_count": len(soup.find_all('link', attrs={'hreflang': True})), "open_graph_count": len(soup.find_all('meta', attrs={'property': re.compile(r'^og:', re.I)})), "twitter_card_count": len(soup.find_all('meta', attrs={'name': re.compile(r'^twitter:', re.I)})), "internal_links_count": internal_links_count, "external_links_count": external_links_count}, "images_analysis": {"total_images": len(images), "images_without_alt": without_alt, "images_empty_alt": empty_alt, "alt_coverage_percent": round((with_alt / max(len(images), 1)) * 100, 2), "duplicate_alt_count": 0, "lazy_loaded_images_count": sum(1 for img in images if (img.get('loading') or '').lower() == 'lazy')}, "blocks": blocks, "intent": {"primary_intent": primary_intent, "intent_scores": intent_scores}, "page_classification": {"page_type": page_type, "page_type_scores": dict(page_type_scores)}, "content_score": content_score, "structure_score": structure_score, "semantic_score": semantic_score, "schema_score": schema_score, "conversion_score": conversion_score, "technical_score": technical_score, "local_score": local_score, "seo_score": seo_score, "issues": issues, "full_text": raw_text})
     return base
 
 
@@ -1034,7 +1035,8 @@ def analyze_bulk():
                 'intent': {'primary_intent': 'informational', 'intent_scores': {'local': 0, 'transactional': 0, 'informational': 0, 'commercial': 0, 'comparison': 0, 'navigational': 0}},
                 'page_classification': {'page_type': 'other', 'page_type_scores': {}},
                 'content_score': 0, 'structure_score': 0, 'semantic_score': 0, 'schema_score': 0, 'conversion_score': 0, 'technical_score': 0, 'local_score': 0, 'seo_score': 0,
-                'issues': [{'id': 'fetch_error', 'category': 'technical', 'severity': 'high', 'message': 'Error al extraer URL', 'recommendation': 'Verifica disponibilidad o bloqueos del sitio.', 'evidence': [u]}]
+                'issues': [{'id': 'fetch_error', 'category': 'technical', 'severity': 'high', 'message': 'Error al extraer URL', 'recommendation': 'Verifica disponibilidad o bloqueos del sitio.', 'evidence': [u]}],
+                'full_text': ''
             })
 
     return jsonify({'status': 'ok', 'data': res})

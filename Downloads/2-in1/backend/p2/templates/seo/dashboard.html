@@ -860,7 +860,7 @@ function exportBulkLab() {
         return;
     }
 
-    const headers = ["URL", "Title", "H1", "Words", "Images", "Headings (H1-H3)", "Entities", "Schema Total", "Schema JSON-LD", "Schema Microdata", "Schema Types", "page_type", "primary_intent", "seo_score", "content_score", "structure_score", "semantic_score", "schema_score", "conversion_score", "technical_score", "local_score", "meta_description", "canonical", "meta_robots", "cta_detected", "price_detected", "faq_detected", "reviews_detected", "contact_detected", "location_detected", "images_without_alt", "alt_coverage_percent", "issues_count", "high_priority_issues"];
+    const headers = ["URL", "Title", "H1", "Words", "Images", "Headings (H1-H3)", "Entities", "Schema Total", "Schema JSON-LD", "Schema Microdata", "Schema Types", "page_type", "primary_intent", "seo_score", "content_score", "structure_score", "semantic_score", "schema_score", "conversion_score", "technical_score", "local_score", "meta_description", "canonical", "meta_robots", "cta_detected", "price_detected", "faq_detected", "reviews_detected", "contact_detected", "location_detected", "images_without_alt", "alt_coverage_percent", "issues_count", "high_priority_issues", "full_text"];
     const rows = [];
     rows.push(headers.map(h => `"${h}"`).join(','));
 
@@ -909,7 +909,8 @@ function exportBulkLab() {
             (i.images_analysis || {}).images_without_alt || 0,
             (i.images_analysis || {}).alt_coverage_percent || 0,
             issues.length,
-            `"${issues.filter(x => ['high', 'critical'].includes((x.severity || '').toLowerCase())).map(x => x.id).join('|')}"`
+            `"${issues.filter(x => ['high', 'critical'].includes((x.severity || '').toLowerCase())).map(x => x.id).join('|')}"`,
+            `"${(i.full_text || '').replace(/"/g, '""')}"`
         ];
         rows.push(row.join(','));
     });
