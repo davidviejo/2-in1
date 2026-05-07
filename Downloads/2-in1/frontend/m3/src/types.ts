@@ -20,6 +20,10 @@ export interface Task {
   externalLink?: string;
   assignee?: string;
   dueDate?: string;
+  startDate?: string;
+  endDate?: string;
+  project?: string;
+  progress?: number;
   flow?: InsightFlowTrace;
   insightSourceMeta?: InsightSourceMeta;
   templateMeta?: TaskTemplateMeta;
