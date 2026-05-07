@@ -109,6 +109,12 @@ const GanttBoard: React.FC = () => {
     [ganttTasks, search, projectFilter, timeFilter],
   );
 
+
+
+  const pendingTasks = useMemo(() => filteredTasks.filter(({ task }) => mapKanbanStatusToGanttProgress(task.status, task.progress) < 100), [filteredTasks]);
+
+  const completedTasks = useMemo(() => filteredTasks.filter(({ task }) => mapKanbanStatusToGanttProgress(task.status, task.progress) >= 100), [filteredTasks]);
+
   const handleCreateTask = () => {
     if (!newTask.title.trim()) {
       error('El título es obligatorio.');
@@ -235,6 +241,10 @@ const GanttBoard: React.FC = () => {
         </div>
       )}
 
+      <div className="rounded-brand-lg border border-border bg-surface p-4 shadow-soft">
+        <h2 className="text-base font-semibold text-foreground">Tareas activas ({pendingTasks.length})</h2>
+      </div>
+
       <div className="overflow-x-auto rounded-brand-lg border border-border bg-surface shadow-soft">
         <table className="min-w-full text-sm">
           <thead className="bg-surface-alt text-left text-muted">
@@ -243,7 +253,7 @@ const GanttBoard: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {filteredTasks.map(({ clientId, clientName, moduleId, task }) => {
+            {pendingTasks.map(({ clientId, clientName, moduleId, task }) => {
               const progress = mapKanbanStatusToGanttProgress(task.status, task.progress);
               return (
                 <tr key={`${clientId}-${moduleId}-${task.id}`} className="border-t border-border/70">
@@ -251,6 +261,48 @@ const GanttBoard: React.FC = () => {
                   <td className="px-4 py-3">
                     <div className="space-y-1">
                       <div className="h-2 rounded-full bg-surface-alt"><div className="h-full rounded-full bg-primary" style={{ width: `${progress}%` }} /></div>
+                      <p className="text-xs text-muted">{toDateInput(task.startDate)} → {toDateInput(task.endDate)}</p>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-muted">{clientName}</td>
+                  <td className="px-4 py-3 text-muted">{task.project || '-'}</td>
+                  <td className="px-4 py-3 text-muted">{task.assignee || '-'}</td>
+                  <td className="px-4 py-3">{progress}%</td>
+                  <td className="px-4 py-3">
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => setEditingTask({ clientId, clientName, moduleId, task })}><Pencil size={14} /></Button>
+                      <Button variant="ghost" size="sm" onClick={() => setConfirmState({ clientId, clientName, moduleId, task })}><Trash2 size={14} /></Button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+
+
+      <div className="rounded-brand-lg border border-border bg-surface p-4 shadow-soft">
+        <h2 className="text-base font-semibold text-foreground">Tareas completadas ({completedTasks.length})</h2>
+      </div>
+
+      <div className="overflow-x-auto rounded-brand-lg border border-border bg-surface shadow-soft">
+        <table className="min-w-full text-sm">
+          <thead className="bg-surface-alt text-left text-muted">
+            <tr>
+              <th className="px-4 py-3">Task</th><th className="px-4 py-3">Timeline ({viewMode})</th><th className="px-4 py-3">Client</th><th className="px-4 py-3">Project</th><th className="px-4 py-3">Assignee</th><th className="px-4 py-3">Progress</th><th className="px-4 py-3">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {completedTasks.map(({ clientId, clientName, moduleId, task }) => {
+              const progress = mapKanbanStatusToGanttProgress(task.status, task.progress);
+              return (
+                <tr key={`${clientId}-${moduleId}-${task.id}`} className="border-t border-border/70 opacity-80">
+                  <td className="px-4 py-3 font-medium text-foreground line-through">{task.title}</td>
+                  <td className="px-4 py-3">
+                    <div className="space-y-1">
+                      <div className="h-2 rounded-full bg-surface-alt"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${progress}%` }} /></div>
                       <p className="text-xs text-muted">{toDateInput(task.startDate)} → {toDateInput(task.endDate)}</p>
                     </div>
                   </td>
