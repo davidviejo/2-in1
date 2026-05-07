@@ -434,13 +434,26 @@ const GanttBoard: React.FC = () => {
 
       <Modal isOpen={!!editingTask} onClose={() => setEditingTask(null)} title="Editar tarea" className="max-w-2xl">
         {editingTask && (
-          <form className="space-y-3" onSubmit={(e) => {e.preventDefault(); setEditingTask(null); success('Tarea actualizada en Kanban y Gantt.');}}>
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleTimelineUpdate(editingTask.clientId, editingTask.moduleId, editingTask.task, {
+                project: editingTask.task.project,
+                assignee: editingTask.task.assignee,
+                startDate: editingTask.task.startDate,
+                endDate: editingTask.task.endDate,
+              });
+              setEditingTask(null);
+              success('Tarea actualizada en Kanban y Gantt.');
+            }}
+          >
             <Input value={editingTask.task.project || ''} placeholder="Proyecto" onChange={(e) => setEditingTask((prev) => prev ? { ...prev, task: { ...prev.task, project: e.target.value } } : prev)} />
             <Input value={editingTask.task.assignee || ''} placeholder="Responsable" onChange={(e) => setEditingTask((prev) => prev ? { ...prev, task: { ...prev.task, assignee: e.target.value } } : prev)} />
             <Input type="date" value={toDateInput(editingTask.task.startDate)} onChange={(e) => setEditingTask((prev) => prev ? { ...prev, task: { ...prev.task, startDate: e.target.value } } : prev)} />
             <Input type="date" value={toDateInput(editingTask.task.endDate)} onChange={(e) => setEditingTask((prev) => prev ? { ...prev, task: { ...prev.task, endDate: e.target.value } } : prev)} />
             <p className="text-xs text-muted">Cliente: {editingTask.clientName}</p>
-            <div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setEditingTask(null)}>Cancelar</Button><Button type="submit" onClick={() => handleTimelineUpdate(editingTask.clientId, editingTask.moduleId, editingTask.task, { project: editingTask.task.project, assignee: editingTask.task.assignee, startDate: editingTask.task.startDate, endDate: editingTask.task.endDate })}>Guardar</Button></div>
+            <div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setEditingTask(null)}>Cancelar</Button><Button type="submit">Guardar</Button></div>
           </form>
         )}
       </Modal>
