@@ -151,11 +151,30 @@ export const buildBackupPayloadAsync = async (
   }
 };
 
+const safeJsonStringify = (value: unknown): string => {
+  const seen = new WeakSet<object>();
+
+  return JSON.stringify(value, (_key, currentValue) => {
+    if (typeof currentValue === 'bigint') {
+      return currentValue.toString();
+    }
+
+    if (typeof currentValue === 'object' && currentValue !== null) {
+      if (seen.has(currentValue)) {
+        return '[Circular]';
+      }
+      seen.add(currentValue);
+    }
+
+    return currentValue;
+  });
+};
+
 const appendJsonArray = (parts: string[], values: unknown[]) => {
   parts.push('[');
   values.forEach((value, index) => {
     if (index > 0) parts.push(',');
-    parts.push(JSON.stringify(value));
+    parts.push(safeJsonStringify(value));
   });
   parts.push(']');
 };
@@ -167,9 +186,9 @@ const appendJsonArray = (parts: string[], values: unknown[]) => {
 export const buildBackupBlob = (payload: BackupPayload): Blob => {
   const parts: string[] = ['{'];
 
-  parts.push('"version":', JSON.stringify(payload.version));
-  parts.push(',"exportedAt":', JSON.stringify(payload.exportedAt));
-  parts.push(',"schema":', JSON.stringify(payload.schema));
+  parts.push('"version":', safeJsonStringify(payload.version));
+  parts.push(',"exportedAt":', safeJsonStringify(payload.exportedAt));
+  parts.push(',"schema":', safeJsonStringify(payload.schema));
 
   parts.push(',"clients":');
   appendJsonArray(parts, payload.clients);
@@ -177,12 +196,12 @@ export const buildBackupBlob = (payload: BackupPayload): Blob => {
   parts.push(',"generalNotes":');
   appendJsonArray(parts, payload.generalNotes);
 
-  parts.push(',"settings":', JSON.stringify(payload.settings));
-  parts.push(',"currentClientId":', JSON.stringify(payload.currentClientId));
-  parts.push(',"storage":', JSON.stringify(payload.storage));
+  parts.push(',"settings":', safeJsonStringify(payload.settings));
+  parts.push(',"currentClientId":', safeJsonStringify(payload.currentClientId));
+  parts.push(',"storage":', safeJsonStringify(payload.storage));
 
   if (payload.indexedDb) {
-    parts.push(',"indexedDb":', JSON.stringify(payload.indexedDb));
+    parts.push(',"indexedDb":', safeJsonStringify(payload.indexedDb));
   }
 
   parts.push('}');

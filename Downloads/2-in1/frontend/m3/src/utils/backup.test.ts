@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import {
   BACKUP_SCHEMA_VERSION,
+  buildBackupBlob,
   buildBackupPayload,
   getMediaFlowStorageSnapshot,
   isBackupPayload,
@@ -96,6 +97,39 @@ describe('backup utilities', () => {
       geoScope: 'local',
       brandTerms: [],
     });
+  });
+
+  it('serializes indexedDB values with BigInt and circular refs without failing', () => {
+    const circular: Record<string, unknown> = { id: 'node-1' };
+    circular.self = circular;
+
+    expect(() =>
+      buildBackupBlob({
+        version: BACKUP_SCHEMA_VERSION,
+        exportedAt: Date.now(),
+        schema: {
+          name: 'mediaflow_backup',
+          version: BACKUP_SCHEMA_VERSION,
+        },
+        clients: [],
+        generalNotes: [],
+        settings: {
+          openaiApiKey: '',
+          geminiApiKey: '',
+          mistralApiKey: '',
+        },
+        currentClientId: '',
+        storage: {},
+        indexedDb: {
+          seoChecklists: {
+            projectA: {
+              stats: { generatedAt: 123n },
+              circular,
+            },
+          },
+        },
+      }),
+    ).not.toThrow();
   });
 
   it('accepts and migrates old payloads without schema version', () => {
