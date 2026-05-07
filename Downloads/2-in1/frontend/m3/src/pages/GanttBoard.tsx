@@ -11,7 +11,8 @@ import { useToast } from '@/components/ui/ToastContext';
 import { analyzeGantt, GanttAnalyzeResponse } from '@/services/ganttService';
 import { Spinner } from '@/components/ui/Spinner';
 
-type ViewMode = 'day' | 'week' | 'month';
+type ViewMode = 'day' | 'week' | 'month' | 'year';
+type TimeFilter = 'all' | 'week' | 'month' | 'year';
 
 const mapKanbanStatusToGanttProgress = (status: string, fallbackProgress?: number): number => {
   if (typeof fallbackProgress === 'number') return Math.max(0, Math.min(100, Math.round(fallbackProgress)));
@@ -32,7 +33,7 @@ const toDateInput = (date?: string) => (date ? new Date(date).toISOString().slic
 
 const GanttBoard: React.FC = () => {
   const { t } = useTranslation();
-  const { clients, currentClientId, updateTaskTimeline, updateTaskStatus, toggleCustomRoadmapTask, switchClient } = useProject();
+  const { clients, currentClientId, updateTaskTimeline, updateTaskStatus, toggleCustomRoadmapTask, switchClient, addTasksBulk } = useProject();
   const { success, info, error } = useToast();
 
   const [viewMode, setViewMode] = useState<ViewMode>('week');
@@ -40,6 +41,10 @@ const GanttBoard: React.FC = () => {
   const [projectFilter, setProjectFilter] = useState('all');
   const [editingTask, setEditingTask] = useState<{ clientId: string; clientName: string; moduleId: number; task: Task } | null>(null);
   const [confirmState, setConfirmState] = useState<{ clientId: string; clientName: string; moduleId: number; task: Task } | null>(null);
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
+  const [createMode, setCreateMode] = useState<'manual' | 'ai'>('manual');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newTask, setNewTask] = useState({ title: '', description: '', startDate: '', endDate: '', assignee: '', project: '', moduleId: 1 });
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<GanttAnalyzeResponse | null>(null);
@@ -91,10 +96,57 @@ const GanttBoard: React.FC = () => {
           .toLowerCase()
           .includes(search.toLowerCase());
         const matchesProject = projectFilter === 'all' || task.project === projectFilter;
-        return matchesSearch && matchesProject;
+        const today = new Date();
+        const taskStart = task.startDate ? new Date(task.startDate) : null;
+        const daysAhead = taskStart ? (taskStart.getTime() - today.getTime()) / (1000 * 60 * 60 * 24) : Number.POSITIVE_INFINITY;
+        const matchesTime =
+          timeFilter === 'all' ||
+          (timeFilter === 'week' && daysAhead >= -7 && daysAhead <= 7) ||
+          (timeFilter === 'month' && daysAhead >= -31 && daysAhead <= 31) ||
+          (timeFilter === 'year' && daysAhead >= -366 && daysAhead <= 366);
+        return matchesSearch && matchesProject && matchesTime;
       }),
-    [ganttTasks, search, projectFilter],
+    [ganttTasks, search, projectFilter, timeFilter],
   );
+
+  const handleCreateTask = () => {
+    if (!newTask.title.trim()) {
+      error('El título es obligatorio.');
+      return;
+    }
+    addTasksBulk([
+      {
+        moduleId: Number(newTask.moduleId) || 1,
+        title: newTask.title.trim(),
+        description: newTask.description.trim() || 'Tarea creada desde Gantt',
+        impact: 'Medium',
+        category: 'Gantt',
+        status: 'pending',
+        isInRoadmap: true,
+      },
+    ]);
+    success('Tarea creada y enviada a Kanban + Gantt.');
+    setShowCreateModal(false);
+    setNewTask({ title: '', description: '', startDate: '', endDate: '', assignee: '', project: '', moduleId: 1 });
+  };
+
+  const handleAIDraft = () => {
+    const prompt = newTask.description.trim();
+    if (!prompt) {
+      info('Escribe un contexto para generar un borrador IA.');
+      return;
+    }
+    const now = new Date();
+    const end = new Date(now);
+    end.setDate(now.getDate() + 7);
+    setNewTask((prev) => ({
+      ...prev,
+      title: prev.title || `IA: ${prompt.slice(0, 48)}`,
+      startDate: prev.startDate || now.toISOString().slice(0, 10),
+      endDate: prev.endDate || end.toISOString().slice(0, 10),
+    }));
+    info('Borrador IA generado. Revísalo y guarda manualmente.');
+  };
 
   const handleTimelineUpdate = (clientId: string, moduleId: number, task: Task, updates: Partial<Pick<Task, 'startDate' | 'endDate' | 'assignee' | 'project' | 'progress'>>) => {
     const nextProgress = updates.progress ?? task.progress ?? mapKanbanStatusToGanttProgress(task.status, task.progress);
@@ -140,11 +192,12 @@ const GanttBoard: React.FC = () => {
           </div>
         </div>
         <div className="flex gap-2">
-          {(['day', 'week', 'month'] as const).map((mode) => (
+          {(['day', 'week', 'month', 'year'] as const).map((mode) => (
             <Button key={mode} variant={viewMode === mode ? 'primary' : 'secondary'} size="sm" onClick={() => setViewMode(mode)}>
               {mode}
             </Button>
           ))}
+          <Button variant="primary" size="sm" onClick={() => setShowCreateModal(true)}>Nueva tarea</Button>
           <Button variant="secondary" size="sm" onClick={handleAnalyzeGantt} disabled={isAnalyzing || filteredTasks.length === 0}>
             {isAnalyzing ? <Spinner size={14} /> : null}
             Analizar Gantt
@@ -159,6 +212,12 @@ const GanttBoard: React.FC = () => {
           <select className="w-full rounded-brand-md border border-border bg-surface-alt px-4 py-2 text-sm text-foreground" value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}>
             <option value="all">Todos los proyectos</option>
             {projects.map((project) => <option key={project} value={project}>{project}</option>)}
+          </select>
+          <select className="w-full rounded-brand-md border border-border bg-surface-alt px-4 py-2 text-sm text-foreground" value={timeFilter} onChange={(e) => setTimeFilter(e.target.value as TimeFilter)}>
+            <option value="all">Todo el tiempo</option>
+            <option value="week">Ventana semanal</option>
+            <option value="month">Ventana mensual</option>
+            <option value="year">Ventana anual</option>
           </select>
         </div>
       </div>
@@ -243,6 +302,26 @@ const GanttBoard: React.FC = () => {
         onCancel={() => setConfirmState(null)}
         isDestructive={false}
       />
+
+      <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="Nueva tarea para Kanban + Gantt" className="max-w-2xl">
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <Button variant={createMode === 'manual' ? 'primary' : 'secondary'} size="sm" onClick={() => setCreateMode('manual')}>Manual</Button>
+            <Button variant={createMode === 'ai' ? 'primary' : 'secondary'} size="sm" onClick={() => setCreateMode('ai')}>IA asistida</Button>
+          </div>
+          <Input placeholder="Título" value={newTask.title} onChange={(e) => setNewTask((prev) => ({ ...prev, title: e.target.value }))} />
+          <Input placeholder={createMode === 'ai' ? 'Describe objetivo, alcance y fechas (prompt IA)' : 'Descripción'} value={newTask.description} onChange={(e) => setNewTask((prev) => ({ ...prev, description: e.target.value }))} />
+          <div className="grid gap-2 md:grid-cols-2">
+            <Input type="date" value={newTask.startDate} onChange={(e) => setNewTask((prev) => ({ ...prev, startDate: e.target.value }))} />
+            <Input type="date" value={newTask.endDate} onChange={(e) => setNewTask((prev) => ({ ...prev, endDate: e.target.value }))} />
+          </div>
+          {createMode === 'ai' && <Button variant="secondary" onClick={handleAIDraft}>Generar borrador IA</Button>}
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setShowCreateModal(false)}>Cancelar</Button>
+            <Button onClick={handleCreateTask}>Crear tarea</Button>
+          </div>
+        </div>
+      </Modal>
     </section>
   );
 };
