@@ -6,10 +6,10 @@ import { Task } from '@/types';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { useToast } from '@/components/ui/ToastContext';
 import { analyzeGantt, GanttAnalyzeResponse } from '@/services/ganttService';
-import Spinner from '@/components/ui/Spinner';
+import { Spinner } from '@/components/ui/Spinner';
 
 type ViewMode = 'day' | 'week' | 'month';
 
