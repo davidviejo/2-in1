@@ -151,6 +151,45 @@ export const buildBackupPayloadAsync = async (
   }
 };
 
+const appendJsonArray = (parts: string[], values: unknown[]) => {
+  parts.push('[');
+  values.forEach((value, index) => {
+    if (index > 0) parts.push(',');
+    parts.push(JSON.stringify(value));
+  });
+  parts.push(']');
+};
+
+/**
+ * Serializa el backup en partes para evitar errores de memoria/"Invalid string length"
+ * cuando hay volúmenes muy altos de clientes, notas o snapshots.
+ */
+export const buildBackupBlob = (payload: BackupPayload): Blob => {
+  const parts: string[] = ['{'];
+
+  parts.push('"version":', JSON.stringify(payload.version));
+  parts.push(',"exportedAt":', JSON.stringify(payload.exportedAt));
+  parts.push(',"schema":', JSON.stringify(payload.schema));
+
+  parts.push(',"clients":');
+  appendJsonArray(parts, payload.clients);
+
+  parts.push(',"generalNotes":');
+  appendJsonArray(parts, payload.generalNotes);
+
+  parts.push(',"settings":', JSON.stringify(payload.settings));
+  parts.push(',"currentClientId":', JSON.stringify(payload.currentClientId));
+  parts.push(',"storage":', JSON.stringify(payload.storage));
+
+  if (payload.indexedDb) {
+    parts.push(',"indexedDb":', JSON.stringify(payload.indexedDb));
+  }
+
+  parts.push('}');
+
+  return new Blob(parts, { type: 'application/json' });
+};
+
 export const isBackupPayload = (value: unknown): value is BackupPayload => {
   if (!value || typeof value !== 'object') return false;
 
