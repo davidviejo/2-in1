@@ -77,7 +77,7 @@ const getTaskDateStyles = (task: Task) => {
 
 const GanttBoard: React.FC = () => {
   const { t } = useTranslation();
-  const { clients, currentClientId, updateTaskTimeline, deleteTask, switchClient, addTasksBulk } = useProject();
+  const { clients, currentClientId, updateTaskTimeline, updateTaskStatus, deleteTask, switchClient, addTasksBulk } = useProject();
   const { success, info, error } = useToast();
 
   const [viewMode, setViewMode] = useState<ViewMode>('week');
@@ -245,19 +245,8 @@ const GanttBoard: React.FC = () => {
 
   const handleTimelineUpdate = (clientId: string, moduleId: number, task: Task, updates: Partial<Pick<Task, 'startDate' | 'endDate' | 'assignee' | 'project' | 'progress'>>) => {
     const nextProgress = updates.progress ?? task.progress ?? mapKanbanStatusToGanttProgress(task.status, task.progress);
-    const shouldRestoreClient = clientId !== currentClientId;
-
-    if (shouldRestoreClient) {
-      switchClient(clientId);
-    }
-
-    setTimeout(() => {
-      updateTaskTimeline(moduleId, task.id, updates);
-      updateTaskStatus(moduleId, task.id, mapGanttProgressToKanbanStatus(nextProgress, task.status));
-      if (shouldRestoreClient) {
-        switchClient(currentClientId);
-      }
-    }, 0);
+    updateTaskTimeline(moduleId, task.id, updates, clientId);
+    updateTaskStatus(moduleId, task.id, mapGanttProgressToKanbanStatus(nextProgress, task.status), clientId);
   };
 
   const exportCsv = () => {
