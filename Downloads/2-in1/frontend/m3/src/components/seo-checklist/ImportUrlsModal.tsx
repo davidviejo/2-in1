@@ -25,6 +25,11 @@ interface ImportErrorSummary {
   duplicateImportedUrlRows: number[];
 }
 
+interface ParsedImportHeaders {
+  checklistColumnsByIndex: Map<number, ChecklistKey>;
+  metadataColumnsByField: Map<'url' | 'kwPrincipal' | 'pageType' | 'geoTarget' | 'cluster' | 'position' | 'secondaryKeywords', number>;
+}
+
 const createSeoPageId = (): string => {
   if (typeof globalThis.crypto?.randomUUID === 'function') {
     return globalThis.crypto.randomUUID();
@@ -141,6 +146,29 @@ const normalizeHeader = (value: string): string =>
     .trim()
     .replace(/\s+/g, ' ');
 
+
+const METADATA_HEADER_ALIASES: Record<string, keyof ParsedImportHeaders['metadataColumnsByField']> = {
+  url: 'url',
+  'keyword principal': 'kwPrincipal',
+  'kw principal': 'kwPrincipal',
+  keyword: 'kwPrincipal',
+  'palabra clave': 'kwPrincipal',
+  'tipo pagina': 'pageType',
+  'tipo de pagina': 'pageType',
+  'page type': 'pageType',
+  geo: 'geoTarget',
+  'geo (opcional)': 'geoTarget',
+  cluster: 'cluster',
+  'cluster (opcional)': 'cluster',
+  'posicion media': 'position',
+  'posición media': 'position',
+  'average position': 'position',
+  'kws secundarias': 'secondaryKeywords',
+  'keywords secundarias': 'secondaryKeywords',
+  'secondary kws': 'secondaryKeywords',
+  'secondary keywords': 'secondaryKeywords',
+};
+
 const CHECKLIST_LABEL_ALIASES: Record<string, ChecklistKey> = CHECKLIST_POINTS.reduce(
   (acc, point) => {
     const normalizedLabel = normalizeHeader(point.label.replace(/^\d+\.\s*/, ''));
@@ -150,18 +178,31 @@ const CHECKLIST_LABEL_ALIASES: Record<string, ChecklistKey> = CHECKLIST_POINTS.r
   {} as Record<string, ChecklistKey>,
 );
 
-const parseChecklistHeaders = (parts: string[]): Map<number, ChecklistKey> => {
-  const parsed = new Map<number, ChecklistKey>();
+const parseImportHeaders = (parts: string[]): ParsedImportHeaders => {
+  const checklistColumnsByIndex = new Map<number, ChecklistKey>();
+  const metadataColumnsByField = new Map<
+    'url' | 'kwPrincipal' | 'pageType' | 'geoTarget' | 'cluster' | 'position' | 'secondaryKeywords',
+    number
+  >();
+
   parts.forEach((header, index) => {
     const normalized = normalizeHeader(header);
+
+    const metadataField = METADATA_HEADER_ALIASES[normalized];
+    if (metadataField) {
+      metadataColumnsByField.set(metadataField, index);
+      return;
+    }
+
     const stateMatch = normalized.match(/^(\d+\.\s*)?(.+?)\s*-\s*estado$/);
     const checklistName = (stateMatch?.[2] || normalized).replace(/^\d+\.\s*/, '').trim();
     const checklistKey = CHECKLIST_LABEL_ALIASES[checklistName];
     if (checklistKey) {
-      parsed.set(index, checklistKey);
+      checklistColumnsByIndex.set(index, checklistKey);
     }
   });
-  return parsed;
+
+  return { checklistColumnsByIndex, metadataColumnsByField };
 };
 
 const buildSeenUrls = (pages: SeoPage[]): Set<string> => {
@@ -184,6 +225,8 @@ const buildImportTemplateTsv = (): string => {
     'Tipo Página',
     'Geo (Opcional)',
     'Cluster (Opcional)',
+    'Posición media (Opcional)',
+    'KWs secundarias (Opcional)',
     ...CHECKLIST_POINTS.map((point) => point.label),
   ];
 
@@ -193,6 +236,8 @@ const buildImportTemplateTsv = (): string => {
     'Article',
     'ES',
     'Cluster Local SEO',
+    '12.4',
+    'keyword secundaria 1 | keyword secundaria 2',
     ...CHECKLIST_POINTS.map(() => 'NA'),
   ];
 
@@ -229,7 +274,7 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
     };
     const seenExistingUrls = ignoreDuplicates ? buildSeenUrls(existingPages) : new Set<string>();
     const seenImportedUrls = new Set<string>();
-    let checklistColumnsByIndex: Map<number, ChecklistKey> | null = null;
+    let parsedHeaders: ParsedImportHeaders | null = null;
     const yieldToMainThread = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
     setIsImporting(true);
@@ -253,7 +298,7 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
               continue;
             }
             if (isHeaderLikeRow(parts)) {
-              checklistColumnsByIndex = parseChecklistHeaders(parts);
+              parsedHeaders = parseImportHeaders(parts);
               continue;
             }
 
@@ -275,12 +320,17 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
             }
             seenImportedUrls.add(normalizedUrlKey);
 
-            const kwPrincipal = parts[1 + metadataOffset] || '';
+            const kwPrincipalIndex = parsedHeaders?.metadataColumnsByField.get('kwPrincipal') ?? (1 + metadataOffset);
+            const pageTypeIndex = parsedHeaders?.metadataColumnsByField.get('pageType') ?? (2 + metadataOffset);
+            const geoTargetIndex = parsedHeaders?.metadataColumnsByField.get('geoTarget') ?? (3 + metadataOffset);
+            const clusterIndex = parsedHeaders?.metadataColumnsByField.get('cluster') ?? (4 + metadataOffset);
+
+            const kwPrincipal = parts[kwPrincipalIndex] || '';
             const isBrandKeyword = kwPrincipal ? isBrandTermMatch(kwPrincipal, brandTerms) : false;
 
             const checklist = createEmptyChecklist();
-            if (checklistColumnsByIndex && checklistColumnsByIndex.size > 0) {
-              checklistColumnsByIndex.forEach((checklistKey, columnIndex) => {
+            if (parsedHeaders?.checklistColumnsByIndex && parsedHeaders.checklistColumnsByIndex.size > 0) {
+              parsedHeaders.checklistColumnsByIndex.forEach((checklistKey, columnIndex) => {
                 const rawStatus = parts[columnIndex];
                 if (!rawStatus) return;
                 checklist[checklistKey] = {
@@ -295,9 +345,9 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
               url: normalizedUrl,
               kwPrincipal: isBrandKeyword ? '' : kwPrincipal,
               isBrandKeyword,
-              pageType: parts[2 + metadataOffset] || 'Article',
-              geoTarget: parts[3 + metadataOffset] || '',
-              cluster: parts[4 + metadataOffset] || '',
+              pageType: parts[pageTypeIndex] || 'Article',
+              geoTarget: parts[geoTargetIndex] || '',
+              cluster: parts[clusterIndex] || '',
               checklist,
             });
           } catch (error) {
