@@ -3,14 +3,80 @@
 {% block content %}
 <div class="container-fluid">
     <h2>📄 AI Prep</h2>
+    <p class="text-muted">Extrae markdown resumido y texto bruto completo para analizar qué escribe la competencia.</p>
+
+    <label for="u" class="form-label">URLs (una por línea)</label>
     <textarea id="u" class="form-control mb-2" rows="5"></textarea>
-    <button onclick="run()" class="btn btn-dark">Extraer Markdown</button>
-    <textarea id="out" class="form-control mt-3 bg-light font-monospace" rows="15"></textarea>
+
+    <div class="d-flex gap-2 mb-3">
+        <button onclick="runExtract()" class="btn btn-dark">Extraer contenido</button>
+        <button onclick="downloadSheet()" class="btn btn-outline-primary" id="downloadBtn" disabled>Descargar sheet (CSV)</button>
+    </div>
+
+    <label for="out" class="form-label">Markdown combinado</label>
+    <textarea id="out" class="form-control mt-1 bg-light font-monospace" rows="10" readonly></textarea>
+
+    <label for="rawOut" class="form-label mt-3">Contenido bruto combinado (full_text)</label>
+    <textarea id="rawOut" class="form-control mt-1 bg-light font-monospace" rows="12" readonly></textarea>
 </div>
 <script>
-function run(){
-    fetch('/api/v1/extract/run', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({urls:document.getElementById('u').value.split('\n')})})
-    .then(r=>r.json()).then(d=>{ document.getElementById('out').value = d.combined; });
+let lastResults = [];
+
+function escapeCsv(value) {
+    const v = String(value ?? '');
+    if (/[",\n]/.test(v)) {
+        return '"' + v.replace(/"/g, '""') + '"';
+    }
+    return v;
+}
+
+function runExtract(){
+    const urls = document.getElementById('u').value.split('\n').map(u => u.trim()).filter(Boolean);
+    fetch('/api/v1/extract/run', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ urls })
+    })
+    .then(r=>r.json())
+    .then(d=>{
+        lastResults = Array.isArray(d.data) ? d.data : [];
+        document.getElementById('out').value = d.combined || '';
+
+        const rawCombined = lastResults
+            .filter(item => !item.error && item.full_text)
+            .map(item => `URL: ${item.url}\n${item.full_text}`)
+            .join('\n\n----------------------\n\n');
+        document.getElementById('rawOut').value = rawCombined;
+        document.getElementById('downloadBtn').disabled = lastResults.length === 0;
+    });
+}
+
+function downloadSheet() {
+    if (!lastResults.length) return;
+
+    const header = ['url', 'word_count', 'error', 'markdown', 'full_text'];
+    const rows = lastResults.map(item => [
+        item.url,
+        item.word_count ?? 0,
+        item.error || '',
+        item.markdown || '',
+        item.full_text || ''
+    ]);
+
+    const csv = [header, ...rows]
+        .map(cols => cols.map(escapeCsv).join(','))
+        .join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'content_extract_results.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
 }
 </script>
 {% endblock %}
