@@ -113,6 +113,11 @@ interface ProjectContextType {
   deleteTask: (moduleId: number, taskId: string) => void;
   toggleTask: (moduleId: number, taskId: string) => void;
   updateTaskStatus: (moduleId: number, taskId: string, newStatus: TaskStatus) => void;
+  updateTaskTimeline: (
+    moduleId: number,
+    taskId: string,
+    updates: Partial<Pick<Task, 'startDate' | 'endDate' | 'assignee' | 'project' | 'progress'>>,
+  ) => void;
   updateTaskNotes: (moduleId: number, taskId: string, notes: string) => void;
   updateTaskImpact: (moduleId: number, taskId: string, impact: 'High' | 'Medium' | 'Low') => void;
   updateTaskDetails: (moduleId: number, taskId: string, updates: Partial<Task>) => void;
@@ -743,6 +748,25 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       updateCurrentClientModules(newModules);
     },
     [modules, updateCurrentClientModules],
+  );
+
+  const updateTaskTimeline = useCallback(
+    (
+      moduleId: number,
+      taskId: string,
+      updates: Partial<Pick<Task, 'startDate' | 'endDate' | 'assignee' | 'project' | 'progress'>>,
+    ) => {
+      const safeProgress =
+        typeof updates.progress === 'number'
+          ? Math.max(0, Math.min(100, Math.round(updates.progress)))
+          : undefined;
+
+      updateTaskDetails(moduleId, taskId, {
+        ...updates,
+        ...(safeProgress === undefined ? {} : { progress: safeProgress }),
+      });
+    },
+    [updateTaskDetails],
   );
 
   const addKanbanColumn = useCallback(
@@ -1437,6 +1461,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       deleteTask,
       toggleTask,
       updateTaskStatus,
+      updateTaskTimeline,
       updateTaskNotes,
       updateTaskImpact,
       updateTaskDetails,
@@ -1484,6 +1509,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       deleteTask,
       toggleTask,
       updateTaskStatus,
+      updateTaskTimeline,
       updateTaskNotes,
       updateTaskImpact,
       updateTaskDetails,
