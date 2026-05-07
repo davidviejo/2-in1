@@ -5,6 +5,7 @@ import { useProject } from '../context/ProjectContext';
 import { useSettings } from '../context/SettingsContext';
 import {
   BACKUP_SCHEMA_VERSION,
+  buildBackupBlob,
   buildBackupPayloadAsync,
   isBackupPayload,
   migrateBackupPayload,
@@ -63,9 +64,7 @@ const DataManagementPanel: React.FC = () => {
         currentClientId,
       });
 
-      // En backups grandes evitamos pretty-print para reducir tamaño y tiempo de bloqueo.
-      const serializedData = JSON.stringify(data);
-      const blob = new Blob([serializedData], { type: 'application/json' });
+      const blob = buildBackupBlob(data);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;

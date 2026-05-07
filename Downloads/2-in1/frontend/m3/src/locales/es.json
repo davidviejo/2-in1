@@ -43,7 +43,8 @@
       "read_json_file": "Leer archivo JSON",
       "update_batch_job": "Actualizar lote",
       "apply_batch_result": "Aplicar resultado del lote",
-      "send_emergency_index_request": "Enviar indexación de emergencia"
+      "send_emergency_index_request": "Enviar indexación de emergencia",
+      "export_data": "Exportar datos"
     },
     "confirm": {
       "confirm_button": "Confirmar",

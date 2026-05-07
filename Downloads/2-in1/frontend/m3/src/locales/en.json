@@ -43,7 +43,8 @@
       "read_json_file": "Read JSON file",
       "update_batch_job": "Update batch job",
       "apply_batch_result": "Apply batch result",
-      "send_emergency_index_request": "Send emergency indexing request"
+      "send_emergency_index_request": "Send emergency indexing request",
+      "export_data": "Export data"
     },
     "confirm": {
       "confirm_button": "Confirm",
