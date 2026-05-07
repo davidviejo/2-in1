@@ -101,6 +101,7 @@ interface ProjectContextType {
   ) => void;
   addTasksBulk: (
     tasks: {
+      clientId?: string;
       moduleId: number;
       title: string;
       description: string;
@@ -108,6 +109,11 @@ interface ProjectContextType {
       category: string;
       status?: TaskStatus;
       isInRoadmap?: boolean;
+      startDate?: string;
+      endDate?: string;
+      assignee?: string;
+      project?: string;
+      progress?: number;
     }[],
   ) => void;
   deleteTask: (moduleId: number, taskId: string) => void;
@@ -612,6 +618,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
   const addTasksBulk = useCallback(
     (
       tasks: {
+        clientId?: string;
         moduleId: number;
         title: string;
         description: string;
@@ -619,18 +626,24 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
         category: string;
         status?: TaskStatus;
         isInRoadmap?: boolean;
+        startDate?: string;
+        endDate?: string;
+        assignee?: string;
+        project?: string;
+        progress?: number;
       }[],
     ) => {
       setClients((prev) =>
         prev.map((c) => {
-          if (c.id !== currentClientId) return c;
+          const tasksForClient = tasks.filter((task) => (task.clientId || currentClientId) === c.id);
+          if (tasksForClient.length === 0) return c;
 
           let newModules = [...c.modules];
           const tasksByModule = new Map<number, any[]>();
           const newRoadmapOrder = [...(c.customRoadmapOrder || [])];
 
           // Group new tasks by module
-          tasks.forEach((task) => {
+          tasksForClient.forEach((task) => {
             if (!tasksByModule.has(task.moduleId)) {
               tasksByModule.set(task.moduleId, []);
             }
@@ -643,6 +656,11 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
               category: task.category,
               isCustom: true,
               isInCustomRoadmap: task.isInRoadmap || false,
+              startDate: task.startDate,
+              endDate: task.endDate,
+              assignee: task.assignee,
+              project: task.project,
+              progress: typeof task.progress === 'number' ? task.progress : undefined,
               templateMeta: c
                 ? {
                     templateId: 'custom-client',
