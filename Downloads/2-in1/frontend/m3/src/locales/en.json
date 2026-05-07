@@ -11,6 +11,8 @@
     "client_roadmap_sub": "Customized",
     "kanban_board": "Kanban Board",
     "kanban_board_sub": "Workflow",
+    "gantt_board": "Gantt Board",
+    "gantt_board_sub": "Task Timeline",
     "ai_roadmap": "AI Roadmap",
     "ai_roadmap_sub": "Generative Strategy",
     "settings": "Settings",
