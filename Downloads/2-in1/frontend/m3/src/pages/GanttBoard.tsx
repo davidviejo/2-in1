@@ -44,7 +44,7 @@ const GanttBoard: React.FC = () => {
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
   const [createMode, setCreateMode] = useState<'manual' | 'ai'>('manual');
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newTask, setNewTask] = useState({ title: '', description: '', startDate: '', endDate: '', assignee: '', project: '', moduleId: 1 });
+  const [newTask, setNewTask] = useState({ title: '', description: '', startDate: '', endDate: '', assignee: '', project: '', moduleId: 1, clientId: currentClientId });
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<GanttAnalyzeResponse | null>(null);
@@ -115,6 +115,11 @@ const GanttBoard: React.FC = () => {
 
   const completedTasks = useMemo(() => filteredTasks.filter(({ task }) => mapKanbanStatusToGanttProgress(task.status, task.progress) >= 100), [filteredTasks]);
 
+  const availableModulesForCreate = useMemo(() => {
+    const selectedClient = clients.find((client) => client.id === newTask.clientId);
+    return selectedClient?.modules ?? [];
+  }, [clients, newTask.clientId]);
+
   const handleCreateTask = () => {
     if (!newTask.title.trim()) {
       error('El título es obligatorio.');
@@ -122,6 +127,7 @@ const GanttBoard: React.FC = () => {
     }
     addTasksBulk([
       {
+        clientId: newTask.clientId,
         moduleId: Number(newTask.moduleId) || 1,
         title: newTask.title.trim(),
         description: newTask.description.trim() || 'Tarea creada desde Gantt',
@@ -129,11 +135,15 @@ const GanttBoard: React.FC = () => {
         category: 'Gantt',
         status: 'pending',
         isInRoadmap: true,
+        startDate: newTask.startDate || undefined,
+        endDate: newTask.endDate || undefined,
+        assignee: newTask.assignee.trim() || undefined,
+        project: newTask.project.trim() || undefined,
       },
     ]);
     success('Tarea creada y enviada a Kanban + Gantt.');
     setShowCreateModal(false);
-    setNewTask({ title: '', description: '', startDate: '', endDate: '', assignee: '', project: '', moduleId: 1 });
+    setNewTask({ title: '', description: '', startDate: '', endDate: '', assignee: '', project: '', moduleId: 1, clientId: currentClientId });
   };
 
   const handleAIDraft = () => {
@@ -363,6 +373,16 @@ const GanttBoard: React.FC = () => {
           </div>
           <Input placeholder="Título" value={newTask.title} onChange={(e) => setNewTask((prev) => ({ ...prev, title: e.target.value }))} />
           <Input placeholder={createMode === 'ai' ? 'Describe objetivo, alcance y fechas (prompt IA)' : 'Descripción'} value={newTask.description} onChange={(e) => setNewTask((prev) => ({ ...prev, description: e.target.value }))} />
+          <select className="w-full rounded-brand-md border border-border bg-surface-alt px-4 py-2 text-sm text-foreground" value={newTask.clientId} onChange={(e) => setNewTask((prev) => ({ ...prev, clientId: e.target.value, moduleId: 1 }))}>
+            {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
+          </select>
+          <select className="w-full rounded-brand-md border border-border bg-surface-alt px-4 py-2 text-sm text-foreground" value={newTask.moduleId} onChange={(e) => setNewTask((prev) => ({ ...prev, moduleId: Number(e.target.value) }))}>
+            {availableModulesForCreate.map((module) => <option key={module.id} value={module.id}>Módulo {module.id}: {module.title}</option>)}
+          </select>
+          <div className="grid gap-2 md:grid-cols-2">
+            <Input placeholder="Proyecto" value={newTask.project} onChange={(e) => setNewTask((prev) => ({ ...prev, project: e.target.value }))} />
+            <Input placeholder="Responsable" value={newTask.assignee} onChange={(e) => setNewTask((prev) => ({ ...prev, assignee: e.target.value }))} />
+          </div>
           <div className="grid gap-2 md:grid-cols-2">
             <Input type="date" value={newTask.startDate} onChange={(e) => setNewTask((prev) => ({ ...prev, startDate: e.target.value }))} />
             <Input type="date" value={newTask.endDate} onChange={(e) => setNewTask((prev) => ({ ...prev, endDate: e.target.value }))} />
