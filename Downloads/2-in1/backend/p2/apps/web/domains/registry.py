@@ -68,6 +68,7 @@ DOMAIN_BOOTSTRAP: Sequence[DomainBootstrap] = (
             BlueprintSpec('apps.web.blueprints.autopilot', 'autopilot_bp'),
             BlueprintSpec('apps.web.blueprints.enhance_tool', 'enhance_bp'),
             BlueprintSpec('apps.web.blueprints.snippet_tool', 'snippet_bp'),
+            BlueprintSpec('apps.web.blueprints.gantt_analysis', 'gantt_bp'),
         ),
         namespaced=(
             BlueprintSpec('apps.web.blueprints.ai_routes', 'ai_bp'),
