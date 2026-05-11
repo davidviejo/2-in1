@@ -194,6 +194,16 @@ const dedupeStable = (items: string[]): string[] => {
 
 const deepCopy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
+const normalizeTaskDates = <T extends { dueDate?: string; endDate?: string }>(task: T): T => {
+  if (task.endDate && !task.dueDate) {
+    return { ...task, dueDate: task.endDate };
+  }
+  if (task.dueDate && !task.endDate) {
+    return { ...task, endDate: task.dueDate };
+  }
+  return task;
+};
+
 const normalizeModules = (modules: ModuleData[]): ModuleData[] => {
   const mergedById = new Map<number, ModuleData>();
 
@@ -201,12 +211,16 @@ const normalizeModules = (modules: ModuleData[]): ModuleData[] => {
     const existing = mergedById.get(module.id);
 
     if (!existing) {
-      mergedById.set(module.id, deepCopy(module));
+      const nextModule = deepCopy(module);
+      nextModule.tasks = nextModule.tasks.map((task) => normalizeTaskDates(task));
+      mergedById.set(module.id, nextModule);
       return;
     }
 
     const seenTaskIds = new Set(existing.tasks.map((task) => task.id));
-    const additionalTasks = module.tasks.filter((task) => !seenTaskIds.has(task.id));
+    const additionalTasks = module.tasks
+      .map((task) => normalizeTaskDates(task))
+      .filter((task) => !seenTaskIds.has(task.id));
 
     mergedById.set(module.id, {
       ...existing,
