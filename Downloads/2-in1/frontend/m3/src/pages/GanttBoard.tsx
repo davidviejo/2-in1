@@ -33,7 +33,13 @@ const mapGanttProgressToKanbanStatus = (progress: number, currentStatus: string)
 type SortField = 'status' | 'assignee' | 'project' | 'title' | 'startDate' | 'endDate';
 type SortOrder = 'asc' | 'desc';
 
-const toDateInput = (date?: string) => (date ? new Date(date).toISOString().slice(0, 10) : '');
+const toDateInput = (date?: string) => {
+  if (!date) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+  const parsed = new Date(date);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return parsed.toISOString().slice(0, 10);
+};
 
 const getTaskDateState = (task: Task): 'overdue' | 'next-week' | 'normal' => {
   const today = new Date();
@@ -441,8 +447,8 @@ const GanttBoard: React.FC = () => {
               handleTimelineUpdate(editingTask.clientId, editingTask.moduleId, editingTask.task, {
                 project: editingTask.task.project,
                 assignee: editingTask.task.assignee,
-                startDate: editingTask.task.startDate,
-                endDate: editingTask.task.endDate,
+                startDate: editingTask.task.startDate || undefined,
+                endDate: editingTask.task.endDate || undefined,
               });
               setEditingTask(null);
               success('Tarea actualizada en Kanban y Gantt.');
