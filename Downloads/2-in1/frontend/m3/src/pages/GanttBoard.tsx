@@ -133,7 +133,7 @@ const GanttBoard: React.FC = () => {
       clients.flatMap((client) =>
         client.modules.flatMap((module) =>
           module.tasks
-            .filter((task) => task.isInCustomRoadmap)
+            .filter((task) => task.isInCustomRoadmap || Boolean(task.startDate || task.endDate))
             .map((task) => ({ clientId: client.id, clientName: client.name, moduleId: module.id, task })),
         ),
       ),
