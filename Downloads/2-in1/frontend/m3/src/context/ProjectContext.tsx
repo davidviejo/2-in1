@@ -790,6 +790,11 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
           : undefined;
 
       if (clientId && clientId !== currentClientId) {
+        const normalizedUpdates: Partial<Task> = { ...updates };
+        if ('endDate' in updates && !('dueDate' in updates)) {
+          normalizedUpdates.dueDate = updates.endDate;
+        }
+
         setClients((prev) =>
           prev.map((c) => {
             if (c.id !== clientId) return c;
@@ -804,7 +809,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
                       ? t
                       : {
                           ...t,
-                          ...updates,
+                          ...normalizedUpdates,
                           ...(safeProgress === undefined ? {} : { progress: safeProgress }),
                         },
                   ),
