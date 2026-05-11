@@ -140,19 +140,23 @@ const GanttBoard: React.FC = () => {
     [clients],
   );
 
-  const projects = useMemo(() => Array.from(new Set(ganttTasks.map(({ task }) => task.project).filter(Boolean))), [ganttTasks]);
+  const getTaskProjectLabel = (task: Task, clientName: string) => task.project?.trim() || clientName;
+
+  const projects = useMemo(() => Array.from(new Set(ganttTasks.map(({ clientName, task }) => getTaskProjectLabel(task, clientName)).filter(Boolean))), [ganttTasks]);
 
   const filteredTasks = useMemo(
     () =>
-      ganttTasks.filter(({ task }) => {
+      ganttTasks.filter(({ task, clientName }) => {
         const matchesSearch = [task.title, task.assignee ?? '', task.project ?? '']
           .join(' ')
           .toLowerCase()
           .includes(search.toLowerCase());
-        const matchesProject = projectFilter === 'all' || task.project === projectFilter;
+        const effectiveProject = getTaskProjectLabel(task, clientName);
+        const matchesProject = projectFilter === 'all' || effectiveProject === projectFilter;
         const today = new Date();
-        const taskStart = task.startDate ? new Date(task.startDate) : null;
-        const daysAhead = taskStart ? (taskStart.getTime() - today.getTime()) / (1000 * 60 * 60 * 24) : Number.POSITIVE_INFINITY;
+        const timelineAnchor = task.startDate || task.endDate || task.dueDate;
+        const taskAnchor = timelineAnchor ? new Date(timelineAnchor) : null;
+        const daysAhead = taskAnchor ? (taskAnchor.getTime() - today.getTime()) / (1000 * 60 * 60 * 24) : Number.POSITIVE_INFINITY;
         const matchesTime =
           timeFilter === 'all' ||
           (timeFilter === 'week' && daysAhead >= -7 && daysAhead <= 7) ||
@@ -195,7 +199,7 @@ const GanttBoard: React.FC = () => {
     const s = start ? start.toLocaleDateString('es-ES') : '—';
     const e = end ? end.toLocaleDateString('es-ES') : '—';
     if (viewMode === 'day') return `${s} · Franja diaria`;
-    if (viewMode === 'week') return `${s} → ${e} · Franja semanal`;
+    if (viewMode === 'week') return `${s} → ${e} · Franja semanal`; // soporta tareas con solo fecha fin (desde Kanban)
     if (viewMode === 'month') return `${s} → ${e} · Mes/Año`; 
     return `${s} → ${e} · Año`;
   };
@@ -385,8 +389,8 @@ const GanttBoard: React.FC = () => {
                       <p className={`text-xs ${dateStyles.textClass}`}>{formatTimelineRange(task)}</p>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-muted">{task.project || '-'}</td>
-                  <td className="px-4 py-3 text-muted">{task.project || '-'}</td>
+                  <td className="px-4 py-3 text-muted">{getTaskProjectLabel(task, clientName)}</td>
+                  <td className="px-4 py-3 text-muted">{getTaskProjectLabel(task, clientName)}</td>
                   <td className="px-4 py-3 text-muted">{task.assignee || '-'}</td>
                   <td className="px-4 py-3">{task.status}</td>
                   <td className="px-4 py-3">
@@ -428,8 +432,8 @@ const GanttBoard: React.FC = () => {
                       <p className={`text-xs ${dateStyles.textClass}`}>{formatTimelineRange(task)}</p>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-muted">{task.project || '-'}</td>
-                  <td className="px-4 py-3 text-muted">{task.project || '-'}</td>
+                  <td className="px-4 py-3 text-muted">{getTaskProjectLabel(task, clientName)}</td>
+                  <td className="px-4 py-3 text-muted">{getTaskProjectLabel(task, clientName)}</td>
                   <td className="px-4 py-3 text-muted">{task.assignee || '-'}</td>
                   <td className="px-4 py-3">{task.status}</td>
                   <td className="px-4 py-3">
