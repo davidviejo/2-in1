@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { GanttChart } from './components/GanttChart';
-import { TaskInput } from './components/TaskInput';
+import { GanttChart } from './GanttChart';
+import { TaskInput } from './TaskInput';
 import { TaskDetailsModal } from './components/TaskDetailsModal';
 import { Task, ViewMode } from './types';
 import { LayoutDashboard, Calendar, Search, Filter, ZoomIn, ZoomOut, CalendarDays, DownloadCloud, BrainCircuit, Moon, Sun } from 'lucide-react';
