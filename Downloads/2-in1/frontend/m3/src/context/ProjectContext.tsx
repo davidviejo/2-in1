@@ -754,13 +754,21 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const updateTaskDetails = useCallback(
     (moduleId: number, taskId: string, updates: Partial<Task>) => {
+      const normalizedUpdates: Partial<Task> = { ...updates };
+      if ('dueDate' in updates && !('endDate' in updates)) {
+        normalizedUpdates.endDate = updates.dueDate;
+      }
+      if ('endDate' in updates && !('dueDate' in updates)) {
+        normalizedUpdates.dueDate = updates.endDate;
+      }
+
       const newModules = modules.map((m) => {
         if (m.id !== moduleId) return m;
         return {
           ...m,
           tasks: m.tasks.map((t) => {
             if (t.id !== taskId) return t;
-            return { ...t, ...updates };
+            return { ...t, ...normalizedUpdates };
           }),
         };
       });
