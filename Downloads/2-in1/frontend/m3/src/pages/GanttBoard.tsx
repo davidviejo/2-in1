@@ -183,7 +183,7 @@ const GanttBoard: React.FC = () => {
       .filter(({ task }) => task.startDate || task.endDate)
       .map(({ clientName, task }) => ({
         date: task.startDate || task.endDate || '',
-        text: `${task.title} · ${task.status} · ${clientName}`,
+        text: `${task.title} · ${task.status} · ${task.project || clientName}`,
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [sortedTasks]);
@@ -251,8 +251,15 @@ const GanttBoard: React.FC = () => {
 
   const handleTimelineUpdate = (clientId: string, moduleId: number, task: Task, updates: Partial<Pick<Task, 'startDate' | 'endDate' | 'assignee' | 'project' | 'progress'>>) => {
     const nextProgress = updates.progress ?? task.progress ?? mapKanbanStatusToGanttProgress(task.status, task.progress);
-    updateTaskTimeline(moduleId, task.id, updates, clientId);
-    updateTaskStatus(moduleId, task.id, mapGanttProgressToKanbanStatus(nextProgress, task.status), clientId);
+    const shouldRestoreClient = clientId !== currentClientId;
+
+    if (shouldRestoreClient) switchClient(clientId);
+
+    setTimeout(() => {
+      updateTaskTimeline(moduleId, task.id, updates, clientId);
+      updateTaskStatus(moduleId, task.id, mapGanttProgressToKanbanStatus(nextProgress, task.status), clientId);
+      if (shouldRestoreClient) switchClient(currentClientId);
+    }, 0);
   };
 
   const exportCsv = () => {
@@ -364,7 +371,7 @@ const GanttBoard: React.FC = () => {
         <table className="min-w-full text-sm">
           <thead className="bg-surface-alt text-left text-muted">
             <tr>
-              <th className="px-4 py-3">Task</th><th className="px-4 py-3">Timeline ({viewMode})</th><th className="px-4 py-3">Project</th><th className="px-4 py-3">Project</th><th className="px-4 py-3">Assignee</th><th className="px-4 py-3">Columna Kanban</th><th className="px-4 py-3">Actions</th>
+              <th className="px-4 py-3">Task</th><th className="px-4 py-3">Timeline ({viewMode})</th><th className="px-4 py-3">Cliente</th><th className="px-4 py-3">Proyecto</th><th className="px-4 py-3">Assignee</th><th className="px-4 py-3">Columna Kanban</th><th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -378,7 +385,7 @@ const GanttBoard: React.FC = () => {
                       <p className={`text-xs ${dateStyles.textClass}`}>{formatTimelineRange(task)}</p>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-muted">{clientName}</td>
+                  <td className="px-4 py-3 text-muted">{task.project || '-'}</td>
                   <td className="px-4 py-3 text-muted">{task.project || '-'}</td>
                   <td className="px-4 py-3 text-muted">{task.assignee || '-'}</td>
                   <td className="px-4 py-3">{task.status}</td>
@@ -407,7 +414,7 @@ const GanttBoard: React.FC = () => {
         <table className="min-w-full text-sm">
           <thead className="bg-surface-alt text-left text-muted">
             <tr>
-              <th className="px-4 py-3">Task</th><th className="px-4 py-3">Timeline ({viewMode})</th><th className="px-4 py-3">Project</th><th className="px-4 py-3">Project</th><th className="px-4 py-3">Assignee</th><th className="px-4 py-3">Columna Kanban</th><th className="px-4 py-3">Actions</th>
+              <th className="px-4 py-3">Task</th><th className="px-4 py-3">Timeline ({viewMode})</th><th className="px-4 py-3">Cliente</th><th className="px-4 py-3">Proyecto</th><th className="px-4 py-3">Assignee</th><th className="px-4 py-3">Columna Kanban</th><th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -421,7 +428,7 @@ const GanttBoard: React.FC = () => {
                       <p className={`text-xs ${dateStyles.textClass}`}>{formatTimelineRange(task)}</p>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-muted">{clientName}</td>
+                  <td className="px-4 py-3 text-muted">{task.project || '-'}</td>
                   <td className="px-4 py-3 text-muted">{task.project || '-'}</td>
                   <td className="px-4 py-3 text-muted">{task.assignee || '-'}</td>
                   <td className="px-4 py-3">{task.status}</td>
