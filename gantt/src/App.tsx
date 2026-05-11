@@ -164,6 +164,33 @@ export default function App() {
     });
   }, [tasks, searchQuery, selectedProject]);
 
+
+  const kanbanColumns = useMemo(() => {
+    const statuses: Array<Task['status']> = ['todo', 'in-progress', 'done'];
+
+    return statuses.map((status) => {
+      const items = filteredTasks.filter((task) => task.status === status);
+      const projectSummary = items.reduce<Record<string, number>>((acc, task) => {
+        const key = task.project?.trim() || task.assignee?.trim() || 'Sin cliente/proyecto';
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
+
+      return {
+        status,
+        items,
+        projectSummary: Object.entries(projectSummary)
+          .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      };
+    });
+  }, [filteredTasks]);
+
+  const statusLabels: Record<Task['status'], string> = {
+    todo: 'Por hacer',
+    'in-progress': 'En progreso',
+    done: 'Completadas'
+  };
+
   const pendingTasksByMonth = useMemo(() => {
     const pendingTasks = filteredTasks.filter((task) => task.status !== 'done');
     const monthLabels = Array.from(
@@ -322,6 +349,36 @@ export default function App() {
             {activeTab === 'gantt-board' ? (
               <>
                 <GanttChart tasks={filteredTasks} viewMode={viewMode} onTaskClick={setSelectedTask} />
+
+                <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-4">
+                  <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-300 mb-3">
+                    Kanban por estado (cliente/proyecto)
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {kanbanColumns.map((column) => (
+                      <div key={column.status} className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-800/20 p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-200">{statusLabels[column.status]}</h4>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200">{column.items.length}</span>
+                        </div>
+                        {column.items.length === 0 ? (
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Sin tareas en este estado.</p>
+                        ) : (
+                          <ul className="space-y-1.5">
+                            {column.projectSummary.map(([projectName, total]) => (
+                              <li key={`${column.status}-${projectName}`} className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-900 rounded-md px-2 py-1 border border-gray-100 dark:border-gray-800">
+                                <span className="truncate pr-2">{projectName}</span>
+                                <span className="font-semibold">{total}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+
                 <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm p-4">
                   <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-300 mb-3">
                     Calendarización mensual de pendientes
