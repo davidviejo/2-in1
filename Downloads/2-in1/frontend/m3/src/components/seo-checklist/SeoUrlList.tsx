@@ -118,6 +118,40 @@ const matchesUrlFilter = (page: SeoPage, rawFilter: string) => {
   return excludesMatch;
 };
 
+type AnalysisAgeFilter = 'all' | 'never' | 'gt_7d' | 'gt_30d' | 'gt_180d' | 'gt_365d';
+
+const ANALYSIS_AGE_FILTER_STORAGE_KEY = 'mediaflow_seo_analysis_age_filter';
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export const matchesAnalysisAge = (page: SeoPage, analysisAgeFilter: AnalysisAgeFilter, nowMs: number) => {
+  if (analysisAgeFilter === 'all') return true;
+
+  const analyzedTimeMs = page.lastAnalyzedAt ? new Date(page.lastAnalyzedAt).getTime() : Number.NaN;
+  const isMissingOrInvalid = !Number.isFinite(analyzedTimeMs);
+  if (isMissingOrInvalid) {
+    return analysisAgeFilter === 'never';
+  }
+  if (analysisAgeFilter === 'never') return false;
+
+  const ageMs = nowMs - analyzedTimeMs;
+  const thresholdDaysByFilter: Record<Exclude<AnalysisAgeFilter, 'all' | 'never'>, number> = {
+    gt_7d: 7,
+    gt_30d: 30,
+    gt_180d: 180,
+    gt_365d: 365,
+  };
+
+  const thresholdDays = thresholdDaysByFilter[analysisAgeFilter];
+  return ageMs > thresholdDays * DAY_MS;
+};
+
+export const matchesPageFilters = (
+  page: SeoPage,
+  rawFilter: string,
+  analysisAgeFilter: AnalysisAgeFilter,
+  nowMs: number,
+) => matchesUrlFilter(page, rawFilter) && matchesAnalysisAge(page, analysisAgeFilter, nowMs);
+
 interface Props {
   pages: SeoPage[];
   onSelect: (page: SeoPage) => void;
@@ -143,6 +177,9 @@ export const SeoUrlList: React.FC<Props> = ({
 }) => {
   const PROCESSING_BATCH_SIZE = 1000;
   const [filter, setFilter] = useState('');
+  const [analysisAgeFilter, setAnalysisAgeFilter] = useState<AnalysisAgeFilter>(
+    () => (localStorage.getItem(ANALYSIS_AGE_FILTER_STORAGE_KEY) as AnalysisAgeFilter) || 'all',
+  );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -186,7 +223,7 @@ export const SeoUrlList: React.FC<Props> = ({
     direction: 'desc',
   });
 
-  const filteredPages = pages.filter((p) => matchesUrlFilter(p, filter));
+  const filteredPages = pages.filter((p) => matchesPageFilters(p, filter, analysisAgeFilter, Date.now()));
 
   const sortedFilteredPages = useMemo(() => {
     const getProgress = (page: SeoPage) => calculateStatusMetrics(page).progress;
@@ -263,6 +300,11 @@ export const SeoUrlList: React.FC<Props> = ({
 
   const handleFilterChange = (val: string) => {
     setFilter(val);
+    setCurrentPage(1);
+  };
+  const handleAnalysisAgeFilterChange = (value: AnalysisAgeFilter) => {
+    setAnalysisAgeFilter(value);
+    localStorage.setItem(ANALYSIS_AGE_FILTER_STORAGE_KEY, value);
     setCurrentPage(1);
   };
 
@@ -1077,6 +1119,19 @@ const downloadTsv = (content: string, filename: string) => {
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm"
           />
         </div>
+        <select
+          value={analysisAgeFilter}
+          onChange={(e) => handleAnalysisAgeFilterChange(e.target.value as AnalysisAgeFilter)}
+          className="w-full sm:w-auto px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+          aria-label="Filtrar por antigüedad de análisis"
+        >
+          <option value="all">Todas</option>
+          <option value="never">No analizadas</option>
+          <option value="gt_7d">&gt; 1 semana</option>
+          <option value="gt_30d">&gt; 1 mes</option>
+          <option value="gt_180d">&gt; 6 meses</option>
+          <option value="gt_365d">&gt; 1 año</option>
+        </select>
         <button
           onClick={handleAnalyzeAll}
           disabled={isAnalyzing || filteredPages.length === 0}
