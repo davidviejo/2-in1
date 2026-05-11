@@ -41,18 +41,35 @@ const toDateInput = (date?: string) => {
   return parsed.toISOString().slice(0, 10);
 };
 
+const toIsoDate = (date: Date) => date.toISOString().slice(0, 10);
+
+const shiftIsoDate = (date: string, days: number): string | undefined => {
+  const parsed = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  parsed.setDate(parsed.getDate() + days);
+  return toIsoDate(parsed);
+};
+
+const resolveTimelineDates = (task: Task): { startDate?: string; endDate?: string } => {
+  const endDate = task.dueDate || task.endDate;
+  const startDate = task.startDate || (endDate ? shiftIsoDate(endDate, -7) : undefined);
+  return { startDate, endDate };
+};
+
 const getTaskDateState = (task: Task): 'overdue' | 'next-week' | 'normal' => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  if (task.endDate) {
-    const endDate = new Date(task.endDate);
+  const timeline = resolveTimelineDates(task);
+
+  if (timeline.endDate) {
+    const endDate = new Date(timeline.endDate);
     endDate.setHours(0, 0, 0, 0);
     if (endDate < today) return 'overdue';
   }
 
-  if (task.startDate) {
-    const startDate = new Date(task.startDate);
+  if (timeline.startDate) {
+    const startDate = new Date(timeline.startDate);
     startDate.setHours(0, 0, 0, 0);
     const diffDays = Math.round((startDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
     if (diffDays >= 7 && diffDays <= 13) return 'next-week';
@@ -111,8 +128,7 @@ const GanttBoard: React.FC = () => {
           title: task.title,
           status: task.status,
           progress: mapKanbanStatusToGanttProgress(task.status, task.progress),
-          startDate: task.startDate,
-          endDate: task.endDate,
+          ...resolveTimelineDates(task),
           assignee: task.assignee,
           project: task.project,
         })),
@@ -133,7 +149,7 @@ const GanttBoard: React.FC = () => {
       clients.flatMap((client) =>
         client.modules.flatMap((module) =>
           module.tasks
-            .filter((task) => task.isInCustomRoadmap || Boolean(task.startDate || task.endDate))
+            .filter((task) => task.isInCustomRoadmap || Boolean(task.startDate || task.endDate || task.dueDate))
             .map((task) => ({ clientId: client.id, clientName: client.name, moduleId: module.id, task })),
         ),
       ),
@@ -154,7 +170,8 @@ const GanttBoard: React.FC = () => {
         const effectiveProject = getTaskProjectLabel(task, clientName);
         const matchesProject = projectFilter === 'all' || effectiveProject === projectFilter;
         const today = new Date();
-        const timelineAnchor = task.startDate || task.endDate || task.dueDate;
+        const { startDate, endDate } = resolveTimelineDates(task);
+        const timelineAnchor = startDate || endDate;
         const taskAnchor = timelineAnchor ? new Date(timelineAnchor) : null;
         const daysAhead = taskAnchor ? (taskAnchor.getTime() - today.getTime()) / (1000 * 60 * 60 * 24) : Number.POSITIVE_INFINITY;
         const matchesTime =
@@ -184,17 +201,18 @@ const GanttBoard: React.FC = () => {
 
   const calendarItems = useMemo(() => {
     return sortedTasks
-      .filter(({ task }) => task.startDate || task.endDate)
+      .filter(({ task }) => { const { startDate, endDate } = resolveTimelineDates(task); return Boolean(startDate || endDate); })
       .map(({ clientName, task }) => ({
-        date: task.startDate || task.endDate || '',
+        date: resolveTimelineDates(task).startDate || resolveTimelineDates(task).endDate || '',
         text: `${task.title} · ${task.status} · ${task.project || clientName}`,
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [sortedTasks]);
 
   const formatTimelineRange = (task: Task) => {
-    const start = task.startDate ? new Date(task.startDate) : null;
-    const end = task.endDate ? new Date(task.endDate) : null;
+    const timeline = resolveTimelineDates(task);
+    const start = timeline.startDate ? new Date(timeline.startDate) : null;
+    const end = timeline.endDate ? new Date(timeline.endDate) : null;
     if (!start && !end) return 'Sin fechas';
     const s = start ? start.toLocaleDateString('es-ES') : '—';
     const e = end ? end.toLocaleDateString('es-ES') : '—';
@@ -458,8 +476,7 @@ const GanttBoard: React.FC = () => {
               handleTimelineUpdate(editingTask.clientId, editingTask.moduleId, editingTask.task, {
                 project: editingTask.task.project,
                 assignee: editingTask.task.assignee,
-                startDate: editingTask.task.startDate || undefined,
-                endDate: editingTask.task.endDate || undefined,
+                ...resolveTimelineDates(editingTask.task),
               });
               setEditingTask(null);
               success('Tarea actualizada en Kanban y Gantt.');
@@ -467,8 +484,8 @@ const GanttBoard: React.FC = () => {
           >
             <Input value={editingTask.task.project || ''} placeholder="Proyecto" onChange={(e) => setEditingTask((prev) => prev ? { ...prev, task: { ...prev.task, project: e.target.value } } : prev)} />
             <Input value={editingTask.task.assignee || ''} placeholder="Responsable" onChange={(e) => setEditingTask((prev) => prev ? { ...prev, task: { ...prev.task, assignee: e.target.value } } : prev)} />
-            <Input type="date" value={toDateInput(editingTask.task.startDate)} onChange={(e) => setEditingTask((prev) => prev ? { ...prev, task: { ...prev.task, startDate: e.target.value } } : prev)} />
-            <Input type="date" value={toDateInput(editingTask.task.endDate)} onChange={(e) => setEditingTask((prev) => prev ? { ...prev, task: { ...prev.task, endDate: e.target.value } } : prev)} />
+            <Input type="date" value={toDateInput(resolveTimelineDates(editingTask.task).startDate)} onChange={(e) => setEditingTask((prev) => prev ? { ...prev, task: { ...prev.task, startDate: e.target.value } } : prev)} />
+            <Input type="date" value={toDateInput(resolveTimelineDates(editingTask.task).endDate)} onChange={(e) => setEditingTask((prev) => prev ? { ...prev, task: { ...prev.task, endDate: e.target.value } } : prev)} />
             <p className="text-xs text-muted">Cliente: {editingTask.clientName}</p>
             <div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setEditingTask(null)}>Cancelar</Button><Button type="submit">Guardar</Button></div>
           </form>
