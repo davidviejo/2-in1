@@ -5,10 +5,49 @@ import { TaskDetailsModal } from './components/TaskDetailsModal';
 import { Task, ViewMode } from './types';
 import { LayoutDashboard, Calendar, Search, Filter, ZoomIn, ZoomOut, CalendarDays, DownloadCloud, BrainCircuit, Moon, Sun } from 'lucide-react';
 import { addDays, startOfDay } from 'date-fns';
-import { analyzeBottlenecks } from './services/ai';
 
 
 const STORAGE_KEY = 'gantt.tasks.v1';
+
+const getClientName = (task: Task) =>
+  task.project?.trim() || task.assignee?.trim() || 'Sin cliente/proyecto';
+
+const buildClientKanbanAnalysis = (items: Task[]) => {
+  if (items.length === 0) {
+    return 'No hay tareas para analizar.';
+  }
+
+  const summary = items.reduce<Record<string, Record<Task['status'], number>>>((acc, task) => {
+    const client = getClientName(task);
+    if (!acc[client]) {
+      acc[client] = { todo: 0, 'in-progress': 0, done: 0 };
+    }
+    acc[client][task.status] += 1;
+    return acc;
+  }, {});
+
+  const sortedClients = Object.entries(summary).sort((a, b) => a[0].localeCompare(b[0]));
+
+  return sortedClients
+    .map(([client, statuses]) => {
+      const total = statuses.todo + statuses['in-progress'] + statuses.done;
+      const notCompleted = statuses.todo + statuses['in-progress'];
+      const generalStatus =
+        notCompleted === 0
+          ? '✅ Completado'
+          : statuses['in-progress'] > 0
+            ? '🟡 En ejecución'
+            : '🔴 Pendiente';
+
+      return [
+        `Cliente: ${client}`,
+        `Estado general: ${generalStatus}`,
+        `Kanban -> Por hacer: ${statuses.todo}, En progreso: ${statuses['in-progress']}, Completadas: ${statuses.done}, Total: ${total}`,
+        `No completadas: ${notCompleted}`
+      ].join('\n');
+    })
+    .join('\n\n');
+};
 
 const serializeTasks = (items: Task[]) => JSON.stringify(items.map(task => ({
   ...task,
@@ -94,11 +133,11 @@ export default function App() {
   const handleAnalyze = async () => {
     setIsAnalyzing(true);
     try {
-      const analysis = await analyzeBottlenecks(tasks, new Date());
-      setAiInsights(analysis || 'No se encontraron problemas evidentes.');
-    } catch(e) {
+      const analysis = buildClientKanbanAnalysis(filteredTasks);
+      setAiInsights(analysis);
+    } catch (e) {
       console.error(e);
-      setAiInsights('Error al analizar las tareas.');
+      setAiInsights('Error al analizar las tareas por cliente.');
     }
     setIsAnalyzing(false);
   };
@@ -171,7 +210,7 @@ export default function App() {
     return statuses.map((status) => {
       const items = filteredTasks.filter((task) => task.status === status);
       const projectSummary = items.reduce<Record<string, number>>((acc, task) => {
-        const key = task.project?.trim() || task.assignee?.trim() || 'Sin cliente/proyecto';
+        const key = getClientName(task);
         acc[key] = (acc[key] || 0) + 1;
         return acc;
       }, {});
