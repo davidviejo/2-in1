@@ -99,10 +99,10 @@ type FilterState = {
   searchType: GSCSearchType;
 };
 
-type ImpactViewMode = 'individual' | 'global';
+type ImpactViewMode = 'individual' | 'cluster_analytics' | 'global';
 
 const parseImpactViewMode = (value: string | null): ImpactViewMode | null => {
-  if (value === 'individual' || value === 'global') return value;
+  if (value === 'individual' || value === 'cluster_analytics' || value === 'global') return value;
   return null;
 };
 
@@ -259,6 +259,19 @@ const MAX_TIMELINE_POINTS = 366;
 
 const splitByLines = (value: string[]) => value.join('\n');
 
+const getPathLevels = (rawUrl: string) => {
+  try {
+    const url = new URL(rawUrl);
+    const segments = url.pathname.split('/').filter(Boolean);
+    return {
+      level1: segments[0] ? `/${segments[0]}/` : '/',
+      level2: segments[1] ? `/${segments[0]}/${segments[1]}/` : segments[0] ? `/${segments[0]}/` : '/',
+    };
+  } catch {
+    return { level1: '/', level2: '/' };
+  }
+};
+
 const toErrorMessage = (error: unknown) => (error instanceof Error ? error.message : 'Error desconocido');
 
 const sampleTimelineRows = <T,>(rows: T[], limit: number): T[] => {
@@ -389,6 +402,8 @@ const GscImpactPage: React.FC = () => {
   const [countryRows, setCountryRows] = useState<ImpactRow[]>([]);
   const [clusterRulesText, setClusterRulesText] = useState('');
   const [clusterDepthLevels, setClusterDepthLevels] = useState(4);
+  const [selectedClusterLevel1, setSelectedClusterLevel1] = useState('all');
+  const [selectedClusterLevel2, setSelectedClusterLevel2] = useState('all');
 
   const {
     gscAccessToken,
@@ -567,7 +582,7 @@ const GscImpactPage: React.FC = () => {
 
   useEffect(() => {
     const fetchImpact = async () => {
-      if (viewMode !== 'individual') {
+      if (viewMode === 'global') {
         setLoadingImpact(false);
         return;
       }
@@ -1007,6 +1022,58 @@ const GscImpactPage: React.FC = () => {
     () => buildClusterHealthScores(filteredUrlRows, windowDays),
     [filteredUrlRows, windowDays],
   );
+  const clusterHierarchyRows = useMemo(() => {
+    const grouped = new Map<string, ImpactRow[]>();
+    filteredUrlRows.forEach((row) => {
+      const levels = getPathLevels(row.key);
+      const bucketKey = `${levels.level1}|||${levels.level2}`;
+      const current = grouped.get(bucketKey) || [];
+      current.push(row);
+      grouped.set(bucketKey, current);
+    });
+
+    return Array.from(grouped.entries())
+      .map(([key, rows]) => {
+        const [level1, level2] = key.split('|||');
+        const summary = summarizeRows(rows, windowDays);
+        const deltaClicksDay = summary.post.clicksPerDay - summary.pre.clicksPerDay;
+        const deltaCtrPp = (summary.post.ctr - summary.pre.ctr) * 100;
+        const deltaPosition = summary.post.position - summary.pre.position;
+        const opportunity = Math.max(0, -deltaClicksDay) * 3 + Math.max(0, -deltaCtrPp) * 12 + Math.max(0, deltaPosition) * 6;
+        return { level1, level2, urls: rows.length, deltaClicksDay, deltaCtrPp, deltaPosition, opportunity };
+      })
+      .sort((a, b) => b.opportunity - a.opportunity);
+  }, [filteredUrlRows, windowDays]);
+  const availableClusterLevel1 = useMemo(
+    () => Array.from(new Set(clusterHierarchyRows.map((row) => row.level1))).sort((a, b) => a.localeCompare(b)),
+    [clusterHierarchyRows],
+  );
+  const availableClusterLevel2 = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          clusterHierarchyRows
+            .filter((row) => selectedClusterLevel1 === 'all' || row.level1 === selectedClusterLevel1)
+            .map((row) => row.level2),
+        ),
+      ).sort((a, b) => a.localeCompare(b)),
+    [clusterHierarchyRows, selectedClusterLevel1],
+  );
+  const filteredClusterHierarchyRows = useMemo(
+    () =>
+      clusterHierarchyRows.filter((row) => {
+        if (selectedClusterLevel1 !== 'all' && row.level1 !== selectedClusterLevel1) return false;
+        if (selectedClusterLevel2 !== 'all' && row.level2 !== selectedClusterLevel2) return false;
+        return true;
+      }),
+    [clusterHierarchyRows, selectedClusterLevel1, selectedClusterLevel2],
+  );
+
+  useEffect(() => {
+    if (selectedClusterLevel2 !== 'all' && !availableClusterLevel2.includes(selectedClusterLevel2)) {
+      setSelectedClusterLevel2('all');
+    }
+  }, [availableClusterLevel2, selectedClusterLevel2]);
 
   const deviceBreakdown = useMemo(() => breakdownFromRows(deviceRows, (row) => row.key), [deviceRows, windowDays]);
   const countryBreakdown = useMemo(() => breakdownFromRows(countryRows, (row) => row.key), [countryRows, windowDays]);
@@ -1509,6 +1576,7 @@ const GscImpactPage: React.FC = () => {
                   onChange={(e) => setViewMode(e.target.value as ImpactViewMode)}
                 >
                   <option value="individual">Impacto GSC por rollout (propiedad)</option>
+                  <option value="cluster_analytics">Analítica por cluster (propiedad)</option>
                   <option value="global">Impacto global GSC (portfolio)</option>
                 </select>
               </div>
@@ -2369,6 +2437,91 @@ const GscImpactPage: React.FC = () => {
             </p>
             {impactError && <p className="mt-2 text-sm text-danger">{impactError}</p>}
           </section>
+
+          {viewMode === 'cluster_analytics' && (
+            <section className="surface-panel p-6">
+              <h3 className="text-lg font-semibold">Analítica por clusterizaciones</h3>
+              <p className="section-subtitle">
+                Prioriza oportunidades por clúster (caída de clicks/day, CTR y posición) y reutiliza el CASE/regex para Looker Studio.
+              </p>
+              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <label className="metric-label">CASE cluster proyecto (Data Studio / Looker Studio)</label>
+                  <textarea className="form-control min-h-[140px] font-mono text-xs" value={lookerClusterCase} readOnly />
+                </div>
+                <div>
+                  <label className="metric-label">CASE cluster nivel 1 (regex por path)</label>
+                  <textarea className="form-control min-h-[140px] font-mono text-xs" value={lookerDepthCases[0]?.expression || ''} readOnly />
+                </div>
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <label className="metric-label">Cluster nivel 1</label>
+                  <select
+                    className="form-control"
+                    value={selectedClusterLevel1}
+                    onChange={(e) => {
+                      setSelectedClusterLevel1(e.target.value);
+                      setSelectedClusterLevel2('all');
+                    }}
+                  >
+                    <option value="all">Todos</option>
+                    {availableClusterLevel1.map((cluster) => (
+                      <option key={`cluster-level1-${cluster}`} value={cluster}>
+                        {cluster}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="metric-label">Cluster nivel 2 (dependiente de nivel 1)</label>
+                  <select
+                    className="form-control"
+                    value={selectedClusterLevel2}
+                    onChange={(e) => setSelectedClusterLevel2(e.target.value)}
+                  >
+                    <option value="all">Todos</option>
+                    {availableClusterLevel2.map((cluster) => (
+                      <option key={`cluster-level2-${cluster}`} value={cluster}>
+                        {cluster}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="mt-4 overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-muted">
+                      <th className="px-2 py-2">Cluster nivel 1</th>
+                      <th className="px-2 py-2">Cluster nivel 2</th>
+                      <th className="px-2 py-2">URLs</th>
+                      <th className="px-2 py-2">Δ clicks/day</th>
+                      <th className="px-2 py-2">Δ CTR pp</th>
+                      <th className="px-2 py-2">Δ posición</th>
+                      <th className="px-2 py-2">Score oportunidad</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredClusterHierarchyRows.slice(0, 50).map((row) => (
+                      <tr key={`cluster-opportunity-${row.level1}-${row.level2}`} className="border-t border-border/50">
+                        <td className="px-2 py-2 font-medium">{row.level1}</td>
+                        <td className="px-2 py-2">{row.level2}</td>
+                        <td className="px-2 py-2">{row.urls}</td>
+                        <td className="px-2 py-2">{row.deltaClicksDay.toFixed(2)}</td>
+                        <td className="px-2 py-2">{row.deltaCtrPp.toFixed(2)}</td>
+                        <td className="px-2 py-2">{row.deltaPosition.toFixed(2)}</td>
+                        <td className="px-2 py-2">{row.opportunity.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {filteredClusterHierarchyRows.length === 0 && (
+                  <p className="mt-2 text-sm text-muted">Sin datos suficientes para construir oportunidades por cluster.</p>
+                )}
+              </div>
+            </section>
+          )}
 
           <section className="surface-panel p-6">
             <h3 className="text-lg font-semibold">Patrones detectados</h3>
