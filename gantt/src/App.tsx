@@ -27,7 +27,8 @@ const parseStoredTasks = (raw: string | null): Task[] | null => {
         ...task,
         startDate: new Date(task.startDate),
         endDate: new Date(task.endDate)
-      }));
+      }))
+      .filter((task) => !Number.isNaN(task.startDate.getTime()) && !Number.isNaN(task.endDate.getTime()));
   } catch (error) {
     console.error('No se pudo leer las tareas guardadas.', error);
     return null;

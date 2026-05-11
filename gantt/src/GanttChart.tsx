@@ -12,13 +12,21 @@ interface GanttChartProps {
 export function GanttChart({ tasks, viewMode, onTaskClick }: GanttChartProps) {
   const pixelsPerDay = viewMode === 'day' ? 48 : viewMode === 'week' ? 12 : 4;
 
-  const { startDate, chartItems } = useMemo(() => {
-    let rawStart = startOfDay(new Date());
-    let rawEnd = addDays(rawStart, 14);
+  const { startDate, chartItems, validTasks } = useMemo(() => {
+    const today = startOfDay(new Date());
+    const valid = tasks.filter((task) => (
+      task.startDate instanceof Date &&
+      !Number.isNaN(task.startDate.getTime()) &&
+      task.endDate instanceof Date &&
+      !Number.isNaN(task.endDate.getTime())
+    ));
 
-    if (tasks.length > 0) {
-      rawStart = min(tasks.map(t => startOfDay(t.startDate)));
-      rawEnd = max(tasks.map(t => startOfDay(t.endDate)));
+    let rawStart = addDays(today, -14);
+    let rawEnd = addDays(today, 14);
+
+    if (valid.length > 0) {
+      rawStart = min(valid.map(t => startOfDay(t.startDate)));
+      rawEnd = max(valid.map(t => startOfDay(t.endDate)));
     }
 
     let start = rawStart;
@@ -64,7 +72,8 @@ export function GanttChart({ tasks, viewMode, onTaskClick }: GanttChartProps) {
     return {
       startDate: start,
       endDate: end,
-      chartItems: items
+      chartItems: items,
+      validTasks: valid
     };
   }, [tasks, viewMode, pixelsPerDay]);
 
@@ -89,7 +98,9 @@ export function GanttChart({ tasks, viewMode, onTaskClick }: GanttChartProps) {
 
           {tasks.length === 0 ? (
             <div className="text-gray-400 dark:text-gray-500 text-sm py-4 text-center">No hay tareas programadas.</div>
-          ) : tasks.map((task) => {
+          ) : validTasks.length === 0 ? (
+            <div className="text-amber-600 dark:text-amber-400 text-sm py-4 text-center">Hay tareas sin fechas válidas. Mostrando rango por defecto.</div>
+          ) : validTasks.map((task) => {
             const startOffset = differenceInDays(startOfDay(task.startDate), startDate);
             const duration = differenceInDays(startOfDay(task.endDate), startOfDay(task.startDate)) + 1;
 
