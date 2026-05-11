@@ -23,7 +23,14 @@ import { GSCDimensionFilterGroup, GSCRow, GSCSearchType } from '@/types';
 import { gscDatasetManager } from '@/services/gscDatasetManager';
 import { inspectUrlsBatch, UrlInspectionErrorItem, UrlInspectionRow } from '@/services/gscInspectionService';
 import { GscImpactSegmentationRepository } from '@/services/gscImpactSegmentationRepository';
-import { parseBrandTermsInput, parseTemplateManualMap, parseTemplateRules } from '@/utils/gscFilters';
+import {
+  buildLookerStudioClusterCase,
+  buildLookerStudioUrlLevelCase,
+  parseBrandTermsInput,
+  parseCustomClusters,
+  parseTemplateManualMap,
+  parseTemplateRules,
+} from '@/utils/gscFilters';
 import { buildClusterHealthScores } from '@/features/gsc-impact/clusterHealthScore';
 import { QuerySegmentFilter } from '@/features/gsc-impact/segmentation/coreEngine';
 import {
@@ -380,6 +387,7 @@ const GscImpactPage: React.FC = () => {
   const [timeSeriesRows, setTimeSeriesRows] = useState<GSCRow[]>([]);
   const [deviceRows, setDeviceRows] = useState<ImpactRow[]>([]);
   const [countryRows, setCountryRows] = useState<ImpactRow[]>([]);
+  const [clusterRulesText, setClusterRulesText] = useState('');
 
   const {
     gscAccessToken,
@@ -435,6 +443,17 @@ const GscImpactPage: React.FC = () => {
     () => parseTemplateManualMap(filters.templateManualMapText),
     [filters.templateManualMapText],
   );
+  const parsedCustomClusters = useMemo(() => parseCustomClusters(clusterRulesText), [clusterRulesText]);
+  const selectedDomain = useMemo(() => {
+    if (!selectedSite) return '';
+    return selectedSite.replace(/^sc-domain:/i, '').replace(/^https?:\/\//i, '').replace(/\/$/, '');
+  }, [selectedSite]);
+  const lookerClusterCase = useMemo(
+    () => (selectedDomain ? buildLookerStudioClusterCase(selectedDomain, parsedCustomClusters) : ''),
+    [parsedCustomClusters, selectedDomain],
+  );
+  const lookerLevel1Case = useMemo(() => buildLookerStudioUrlLevelCase(1), []);
+  const lookerLevel2Case = useMemo(() => buildLookerStudioUrlLevelCase(2), []);
 
   useEffect(() => {
     setFilters(buildFilterState(searchParams, { persistedConfig, useSharedRuleParams }));
@@ -2252,6 +2271,38 @@ const GscImpactPage: React.FC = () => {
                   onChange={(e) => setFilters((prev) => ({ ...prev, templateManualMapText: e.target.value }))}
                   placeholder="/landing/pricing|Pricing"
                 />
+              </div>
+            </div>
+
+            <div className="mt-3 surface-subtle p-3">
+              <h4 className="text-sm font-semibold">Clustering por niveles + código Data Looker Studio</h4>
+              <p className="mt-1 text-xs text-muted">
+                Define clusters de nivel 1/nivel 2 por path y genera CASE para usarlo como campo calculado en Looker Studio.
+              </p>
+              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <label className="metric-label">Reglas de cluster (Cluster|/path1,/path2)</label>
+                  <textarea
+                    className="form-control min-h-[112px]"
+                    value={clusterRulesText}
+                    onChange={(e) => setClusterRulesText(e.target.value)}
+                    placeholder={"Home|/\nBlog|/blog\nBilbao|/bilbao"}
+                  />
+                </div>
+                <div>
+                  <label className="metric-label">CASE cluster proyecto (auto con dominio GSC)</label>
+                  <textarea className="form-control min-h-[112px] font-mono text-xs" value={lookerClusterCase} readOnly />
+                </div>
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <label className="metric-label">CASE cluster nivel 1 (path)</label>
+                  <textarea className="form-control min-h-[88px] font-mono text-xs" value={lookerLevel1Case} readOnly />
+                </div>
+                <div>
+                  <label className="metric-label">CASE cluster nivel 2 (subpath)</label>
+                  <textarea className="form-control min-h-[88px] font-mono text-xs" value={lookerLevel2Case} readOnly />
+                </div>
               </div>
             </div>
 

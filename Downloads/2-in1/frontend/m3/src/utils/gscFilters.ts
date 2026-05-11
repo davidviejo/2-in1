@@ -4,7 +4,7 @@ import {
   type PartialProjectSegmentationConfig,
 } from '@/features/gsc-impact/segmentation/configAdapter';
 import { type QuerySegmentFilter } from '@/features/gsc-impact/segmentation/coreEngine';
-import { type ProjectTemplateRule } from '@/features/gsc-impact/segmentation/types';
+import { type ProjectCustomCluster, type ProjectTemplateRule } from '@/features/gsc-impact/segmentation/types';
 
 export type TemplateRule = ProjectTemplateRule;
 
@@ -47,6 +47,51 @@ export const parseTemplateRules = (value: string): TemplateRule[] =>
 
 export const parseTemplateManualMap = (value: string): Record<string, string> =>
   parseFromProjectConfig({ manualMappings: value }, 'manualMappings');
+
+export const parseCustomClusters = (value: string): ProjectCustomCluster[] =>
+  parseFromProjectConfig(
+    {
+      customClusters: value
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+          const [nameRaw, pathsRaw] = line.split('|');
+          const paths = (pathsRaw || '')
+            .split(',')
+            .map((path) => path.trim())
+            .filter(Boolean);
+          return { name: (nameRaw || '').trim(), paths };
+        }),
+    },
+    'customClusters',
+  );
+
+const escapeRegexForLooker = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+export const buildLookerStudioClusterCase = (domain: string, clusters: ProjectCustomCluster[]): string => {
+  const cleanDomain = domain.trim().replace(/^https?:\/\//i, '').replace(/\/$/, '');
+  const escapedDomain = escapeRegexForLooker(cleanDomain);
+  const lines = clusters.flatMap((cluster) =>
+    cluster.paths.map(
+      (path) =>
+        `  WHEN REGEXP_MATCH(Landing Page, ".*${escapedDomain}${escapeRegexForLooker(path)}(/.*)?$") THEN "${cluster.name}"`,
+    ),
+  );
+
+  return ['CASE', ...lines, '  ELSE "Sin clasificar"', 'END'].join('\n');
+};
+
+export const buildLookerStudioUrlLevelCase = (level: number): string => {
+  const depth = Math.max(1, Math.floor(level));
+  return [
+    'CASE',
+    `  WHEN REGEXP_MATCH(Landing Page, "https?://[^/]+(?:/[^/?#]+){${depth},}.*")`,
+    `    THEN REGEXP_EXTRACT(Landing Page, "https?://[^/]+(?:/[^/?#]+){${depth - 1}}/([^/?#]+)")`,
+    '  ELSE "Sin clasificar"',
+    'END',
+  ].join('\n');
+};
 
 export const classifyTemplateByUrl = (
   urlOrPath: string,
