@@ -388,6 +388,7 @@ const GscImpactPage: React.FC = () => {
   const [deviceRows, setDeviceRows] = useState<ImpactRow[]>([]);
   const [countryRows, setCountryRows] = useState<ImpactRow[]>([]);
   const [clusterRulesText, setClusterRulesText] = useState('');
+  const [clusterDepthLevels, setClusterDepthLevels] = useState(4);
 
   const {
     gscAccessToken,
@@ -452,8 +453,13 @@ const GscImpactPage: React.FC = () => {
     () => (selectedDomain ? buildLookerStudioClusterCase(selectedDomain, parsedCustomClusters) : ''),
     [parsedCustomClusters, selectedDomain],
   );
-  const lookerLevel1Case = useMemo(() => buildLookerStudioUrlLevelCase(1), []);
-  const lookerLevel2Case = useMemo(() => buildLookerStudioUrlLevelCase(2), []);
+  const lookerDepthCases = useMemo(() => {
+    const safeDepth = Math.min(10, Math.max(1, Math.floor(clusterDepthLevels)));
+    return Array.from({ length: safeDepth }, (_, index) => ({
+      level: index + 1,
+      expression: buildLookerStudioUrlLevelCase(index + 1),
+    }));
+  }, [clusterDepthLevels]);
 
   useEffect(() => {
     setFilters(buildFilterState(searchParams, { persistedConfig, useSharedRuleParams }));
@@ -2297,12 +2303,23 @@ const GscImpactPage: React.FC = () => {
               <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div>
                   <label className="metric-label">CASE cluster nivel 1 (path)</label>
-                  <textarea className="form-control min-h-[88px] font-mono text-xs" value={lookerLevel1Case} readOnly />
+                  <Input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={clusterDepthLevels}
+                    onChange={(e) => setClusterDepthLevels(Number(e.target.value) || 1)}
+                  />
+                  <p className="mt-1 text-xs text-muted">Genera automáticamente CASE desde nivel 1 hasta nivel {Math.min(10, Math.max(1, clusterDepthLevels))}.</p>
                 </div>
-                <div>
-                  <label className="metric-label">CASE cluster nivel 2 (subpath)</label>
-                  <textarea className="form-control min-h-[88px] font-mono text-xs" value={lookerLevel2Case} readOnly />
-                </div>
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                {lookerDepthCases.map((depthCase) => (
+                  <div key={`depth-case-${depthCase.level}`}>
+                    <label className="metric-label">CASE cluster nivel {depthCase.level}</label>
+                    <textarea className="form-control min-h-[88px] font-mono text-xs" value={depthCase.expression} readOnly />
+                  </div>
+                ))}
               </div>
             </div>
 
