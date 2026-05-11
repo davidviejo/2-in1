@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { differenceInDays, startOfDay, addDays, min, max, format, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval, startOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Task, ViewMode } from '../types';
+import { Task, ViewMode } from './types';
 
 interface GanttChartProps {
   tasks: Task[];
