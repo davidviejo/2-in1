@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { GoogleUser } from '../types';
 import { getUserInfo } from '../services/googleSearchConsole';
 import { useToast } from '../components/ui/ToastContext';
+import { SettingsRepository } from '../services/settingsRepository';
 
 export const useGSCAuth = () => {
   const { error: showError, success: showSuccess } = useToast();
@@ -35,9 +36,22 @@ export const useGSCAuth = () => {
   const [gscAccessToken, setGscAccessToken] = useState<string | null>(() => getStorageItem('mediaflow_gsc_token'));
   const [googleUser, setGoogleUser] = useState<GoogleUser | null>(null);
   const [showGscConfig, setShowGscConfig] = useState(false);
-  const [clientId, setClientId] = useState(
-    () => getStorageItem('mediaflow_gsc_client_id') || import.meta.env.VITE_GOOGLE_CLIENT_ID || '',
-  );
+  const [clientId, setClientId] = useState(() => {
+    const localClientId = getStorageItem('mediaflow_gsc_client_id');
+    if (localClientId) return localClientId;
+
+    try {
+      const settingsClientId = SettingsRepository.getSettings().gscClientId?.trim();
+      if (settingsClientId) {
+        setStorageItem('mediaflow_gsc_client_id', settingsClientId);
+        return settingsClientId;
+      }
+    } catch (error) {
+      console.warn('[useGSCAuth] No se pudo leer gscClientId desde SettingsRepository.', error);
+    }
+
+    return import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+  });
 
   const handleSaveClientId = (id: string) => {
     if (!id) {
