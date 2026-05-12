@@ -17,6 +17,7 @@ import {
 } from '../services/pythonEngineClient';
 import { Capabilities, AnalysisConfigPayload, SeoPage } from '../types/seoChecklist';
 import { processAnalysisResult } from '../utils/seoUtils';
+import { buildSeoUrlCanonicalKey } from '../utils/seoUrlNormalizer';
 import { AutoClusterizationPanel } from '../components/seo-checklist/AutoClusterizationPanel';
 import { AutoAssignKeywordsPanel } from '../components/seo-checklist/AutoAssignKeywordsPanel';
 
@@ -166,11 +167,27 @@ const SeoChecklistPage: React.FC = () => {
   };
 
   const handleApplyResult = (result: AnalysisResponse) => {
-    const page = pages.find((p) => p.id === result.pageId);
+    const rawResultUrl = (result as AnalysisResponse & { url?: string; itemUrl?: string }).url
+      || (result as AnalysisResponse & { url?: string; itemUrl?: string }).itemUrl;
+    const normalizedResultUrl = typeof rawResultUrl === 'string' && rawResultUrl.trim()
+      ? buildSeoUrlCanonicalKey(rawResultUrl)
+      : null;
+
+    const page = pages.find((candidate) => {
+      if (result.pageId && candidate.id === result.pageId) return true;
+      if (!normalizedResultUrl) return false;
+      try {
+        return buildSeoUrlCanonicalKey(candidate.url) === normalizedResultUrl;
+      } catch {
+        return false;
+      }
+    });
+
     if (!page) {
-      console.warn('Page not found for result', result.pageId);
+      console.warn('Page not found for result', { pageId: result.pageId, url: rawResultUrl });
       return;
     }
+
     const updates = processAnalysisResult(page, result);
     updatePage(page.id, updates);
   };
