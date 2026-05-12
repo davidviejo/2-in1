@@ -30,8 +30,14 @@ const Settings: React.FC = () => {
   const [gscClientId, setGscClientId] = useState(settings.gscClientId || '');
   const [brandTermsText, setBrandTermsText] = useState((settings.brandTerms || []).join('\n'));
   const [projectNotes, setProjectNotes] = useState(currentClient?.notes?.[0]?.content || '');
+  const [websiteDomain, setWebsiteDomain] = useState(currentClient?.websiteDomain || '');
   const [brandedKeywordsText, setBrandedKeywordsText] = useState((currentClient?.brandedKeywords || []).join('\n'));
   const [clusterDraft, setClusterDraft] = useState((currentClient?.seoClusters || []).map((cluster) => `${cluster.name}: ${cluster.urls.join(', ')}`).join('\n'));
+  const [nestedClusterRulesText, setNestedClusterRulesText] = useState(
+    (currentClient?.nestedClusterRules || [])
+      .map((rule) => `${rule.parentCluster} => ${rule.targetLabel} | ${rule.useRegex ? 'regex' : 'contains'} | ${rule.pattern}`)
+      .join('\n'),
+  );
 
   const parsedBrandTerms = useMemo(() => parseBrandTerms(brandTermsText), [brandTermsText]);
   const parsedBrandedKeywords = useMemo(() => parseBrandTerms(brandedKeywordsText), [brandedKeywordsText]);
@@ -54,6 +60,25 @@ const Settings: React.FC = () => {
           };
         }),
     [clusterDraft],
+  );
+  const parsedNestedClusterRules = useMemo(
+    () =>
+      nestedClusterRulesText
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line, index) => {
+          const [mappingPart, modePart = 'contains', ...patternParts] = line.split('|').map((item) => item.trim());
+          const [parentCluster = '', targetLabel = ''] = mappingPart.split('=>').map((item) => item.trim());
+          return {
+            id: `nested-rule-${index}`,
+            parentCluster: parentCluster || `Cluster ${index + 1}`,
+            targetLabel: targetLabel || `Subcluster ${index + 1}`,
+            useRegex: modePart.toLowerCase() === 'regex',
+            pattern: patternParts.join('|') || '',
+          };
+        }),
+    [nestedClusterRulesText],
   );
 
   const handleSave = async () => {
@@ -122,6 +147,12 @@ const Settings: React.FC = () => {
                 const nextClient = clients.find((client) => client.id === nextClientId);
                 setBrandedKeywordsText((nextClient?.brandedKeywords || []).join('\n'));
                 setClusterDraft((nextClient?.seoClusters || []).map((cluster) => `${cluster.name}: ${cluster.urls.join(', ')}`).join('\n'));
+                setWebsiteDomain(nextClient?.websiteDomain || '');
+                setNestedClusterRulesText(
+                  (nextClient?.nestedClusterRules || [])
+                    .map((rule) => `${rule.parentCluster} => ${rule.targetLabel} | ${rule.useRegex ? 'regex' : 'contains'} | ${rule.pattern}`)
+                    .join('\n'),
+                );
                 setProjectNotes(nextClient?.notes?.[0]?.content || '');
               }}
               className="form-control"
@@ -130,12 +161,25 @@ const Settings: React.FC = () => {
             </select>
           </div>
           <div className="space-y-1">
+            <label className="text-xs text-muted">Sitio web (dominio principal)</label>
+            <Input value={websiteDomain} onChange={(e) => setWebsiteDomain(e.target.value)} placeholder="https://www.tudominio.com" />
+          </div>
+          <div className="space-y-1">
             <label className="text-xs text-muted">KWs branded (una por línea)</label>
             <textarea value={brandedKeywordsText} onChange={(e) => setBrandedKeywordsText(e.target.value)} className="form-textarea" />
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">Clusters manuales (formato: Cluster: url1, url2)</label>
             <textarea value={clusterDraft} onChange={(e) => setClusterDraft(e.target.value)} className="form-textarea" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-muted">Clusters anidados (formato: Cluster padre =&gt; Subcluster | regex|contains | patrón)</label>
+            <textarea
+              value={nestedClusterRulesText}
+              onChange={(e) => setNestedClusterRulesText(e.target.value)}
+              className="form-textarea"
+              placeholder="Blog => Guías SEO | regex | /guia|tutorial/i"
+            />
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">Datos relevantes del proyecto</label>
@@ -156,6 +200,8 @@ const Settings: React.FC = () => {
                 brandTerms: currentClient?.brandTerms || [],
                 analysisProjectTypes: currentClient?.analysisProjectTypes || [],
                 brandedKeywords: parsedBrandedKeywords,
+                websiteDomain,
+                nestedClusterRules: parsedNestedClusterRules,
                 seoClusters: parsedSeoClusters,
               })
             }

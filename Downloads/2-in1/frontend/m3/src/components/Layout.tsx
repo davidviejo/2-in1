@@ -113,7 +113,7 @@ interface LayoutProps {
   onDeleteNote?: (noteId: string, type: 'project' | 'general') => void;
 }
 
-type TabType = 'analitica' | 'estrategia' | 'acciones' | 'backend' | 'admin';
+type TabType = 'analitica' | 'estrategia' | 'acciones' | 'ajustes' | 'backend' | 'admin';
 
 const Layout: React.FC<LayoutProps> = ({
   children,
@@ -167,12 +167,10 @@ const Layout: React.FC<LayoutProps> = ({
     ) {
       return 'estrategia';
     }
-    if (
-      path.startsWith('/app/kanban') ||
-      path.startsWith('/app/gantt') ||
-      path.startsWith('/app/settings') ||
-      path.startsWith('/app/completed-tasks')
-    ) {
+    if (path.startsWith('/app/settings')) {
+      return 'ajustes';
+    }
+    if (path.startsWith('/app/kanban') || path.startsWith('/app/gantt') || path.startsWith('/app/completed-tasks')) {
       return 'acciones';
     }
     if (path.startsWith('/app/admin')) {
@@ -222,6 +220,9 @@ const Layout: React.FC<LayoutProps> = ({
         break;
       case 'admin':
         navigate('/app/admin/ideas');
+        break;
+      case 'ajustes':
+        navigate('/app/settings');
         break;
     }
   };
@@ -394,6 +395,18 @@ const Layout: React.FC<LayoutProps> = ({
             />
           </>
         );
+      case 'ajustes':
+        return (
+          <>
+            <NavItem
+              to="/app/settings"
+              icon={<Shield size={20} />}
+              label="Ajustes"
+              subLabel="Dominio, KW de marca y regex"
+              onClick={() => setIsMobileMenuOpen(false)}
+            />
+          </>
+        );
       default:
         return null;
     }
@@ -416,11 +429,12 @@ const Layout: React.FC<LayoutProps> = ({
 
           {/* Tabs */}
           <nav className="hidden lg:flex items-center space-x-1">
-            {(['analitica', 'estrategia', 'acciones', 'backend', 'admin'] as TabType[]).map(
+            {(['analitica', 'estrategia', 'acciones', 'ajustes', 'backend', 'admin'] as TabType[]).map(
               (tab) => {
                 let toPath = '/app/';
                 if (tab === 'estrategia') toPath = '/app/client-roadmap';
                 if (tab === 'acciones') toPath = '/app/kanban';
+                if (tab === 'ajustes') toPath = '/app/settings';
                 if (tab === 'admin') toPath = '/app/admin/ideas';
                 if (tab === 'backend') toPath = '/app/tools-hub';
 
@@ -504,11 +518,12 @@ const Layout: React.FC<LayoutProps> = ({
 
             {/* Mobile Tabs */}
             <div className="grid grid-cols-2 gap-2 mb-4">
-              {(['analitica', 'estrategia', 'acciones', 'backend', 'admin'] as TabType[]).map(
+              {(['analitica', 'estrategia', 'acciones', 'ajustes', 'backend', 'admin'] as TabType[]).map(
                 (tab) => {
                   let toPath = '/app/';
                   if (tab === 'estrategia') toPath = '/app/client-roadmap';
                   if (tab === 'acciones') toPath = '/app/kanban';
+                  if (tab === 'ajustes') toPath = '/app/settings';
                   if (tab === 'admin') toPath = '/app/admin/ideas';
                   if (tab === 'backend') toPath = '/app/tools-hub';
 

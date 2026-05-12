@@ -80,7 +80,7 @@ interface ProjectContextType {
   deleteClient: (id: string) => void;
   switchClient: (id: string) => void;
   updateCurrentClientProfile: (
-    updates: Pick<Client, 'projectType' | 'sector' | 'geoScope' | 'brandTerms' | 'analysisProjectTypes' | 'brandedKeywords' | 'seoClusters'>,
+    updates: Pick<Client, 'projectType' | 'sector' | 'geoScope' | 'brandTerms' | 'analysisProjectTypes' | 'brandedKeywords' | 'seoClusters' | 'websiteDomain' | 'nestedClusterRules'>,
   ) => void;
   saveClientSnapshot: (snapshot: Omit<SeoPerformanceSnapshot, 'id' | 'timestamp'>) => void;
 
@@ -488,7 +488,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
   );
 
   const updateCurrentClientProfile = useCallback(
-    (updates: Pick<Client, 'projectType' | 'sector' | 'geoScope' | 'brandTerms' | 'analysisProjectTypes' | 'brandedKeywords' | 'seoClusters'>) => {
+    (updates: Pick<Client, 'projectType' | 'sector' | 'geoScope' | 'brandTerms' | 'analysisProjectTypes' | 'brandedKeywords' | 'seoClusters' | 'websiteDomain' | 'nestedClusterRules'>) => {
       setClients((prev) =>
         prev.map((client) => {
           if (client.id !== currentClientId) {
@@ -506,6 +506,8 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
             geoScope,
             brandTerms: normalizeBrandTerms(updates.brandTerms),
             brandedKeywords: normalizeBrandTerms(updates.brandedKeywords),
+            websiteDomain: normalizeTextValue(updates.websiteDomain),
+            nestedClusterRules: Array.isArray(updates.nestedClusterRules) ? updates.nestedClusterRules : [],
             seoClusters: updates.seoClusters,
           });
         }),
