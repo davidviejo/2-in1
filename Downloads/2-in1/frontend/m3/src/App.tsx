@@ -166,7 +166,10 @@ export const AppRoutes: React.FC = () => {
                 <Route path="ai-roadmap" element={<AIRoadmap />} />
                 <Route path="ia-visibility" element={<IAVisibility />} />
                 <Route path="gsc-impact" element={<GscImpactPage />} />
-                <Route path="clustering-site" element={<GscImpactPage lockedViewMode="cluster_levels" />} />
+                <Route
+                  path="clustering-site"
+                  element={<GscImpactPage lockedViewMode="cluster_levels" standaloneClusterLevels />}
+                />
                 <Route path="gsc-impact/portfolio" element={<Navigate to="/app/gsc-impact?view=global" replace />} />
                 <Route path="gsc-impact/portolio" element={<Navigate to="/app/gsc-impact?view=global" replace />} />
                 <Route path="settings" element={<Settings />} />
