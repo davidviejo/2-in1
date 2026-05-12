@@ -22,10 +22,18 @@ const normalizeImportedJson = (raw: string) => raw.replace(/^\uFEFF/, '').replac
 const MAX_IMPORT_FILE_SIZE_BYTES = 250 * 1024 * 1024;
 const CHUNK_UPLOAD_SIZE_BYTES = 8 * 1024 * 1024;
 const projectApiHttpClient = createHttpClient({ service: 'api' });
+const MB_DIVISOR = 1024 * 1024;
 
 type PendingBackupState = {
   payload: ReturnType<typeof migrateBackupPayload>;
   importedFromServer: boolean;
+};
+
+type BackupImportProgressState = {
+  isImporting: boolean;
+  percent: number;
+  step: string;
+  detail?: string;
 };
 
 const DataManagementPanel: React.FC = () => {
@@ -37,6 +45,11 @@ const DataManagementPanel: React.FC = () => {
   const [pendingBackup, setPendingBackup] = React.useState<PendingBackupState | null>(null);
   const [isExportingBackup, setIsExportingBackup] = React.useState(false);
   const [backupExportProgress, setBackupExportProgress] = React.useState({ percent: 0, step: '' });
+  const [backupImportProgress, setBackupImportProgress] = React.useState<BackupImportProgressState>({
+    isImporting: false,
+    percent: 0,
+    step: '',
+  });
 
   const formatMesColumn = (dueDate?: string) => {
     if (!dueDate) return '';
@@ -162,8 +175,21 @@ const DataManagementPanel: React.FC = () => {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    setBackupImportProgress({
+      isImporting: true,
+      percent: 2,
+      step: 'Preparando importación…',
+      detail: `${(file.size / MB_DIVISOR).toFixed(1)} MB · ${file.name}`,
+    });
+
     if (file.size > MAX_IMPORT_FILE_SIZE_BYTES) {
       try {
+        setBackupImportProgress({
+          isImporting: true,
+          percent: 8,
+          step: 'Solicitando sesión de subida…',
+          detail: `${(file.size / MB_DIVISOR).toFixed(1)} MB · ${file.name}`,
+        });
         const { uploadId } = await projectApiHttpClient.request<{ uploadId: string }>(
           '/api/v1/project-api/snapshot/import-file/chunked/start',
           {
@@ -173,7 +199,9 @@ const DataManagementPanel: React.FC = () => {
           },
         );
 
+        const totalChunks = Math.ceil(file.size / CHUNK_UPLOAD_SIZE_BYTES);
         for (let offset = 0; offset < file.size; offset += CHUNK_UPLOAD_SIZE_BYTES) {
+          const chunkIndex = Math.floor(offset / CHUNK_UPLOAD_SIZE_BYTES) + 1;
           const chunk = file.slice(offset, offset + CHUNK_UPLOAD_SIZE_BYTES);
           await projectApiHttpClient.request(`/api/v1/project-api/snapshot/import-file/chunked/${uploadId}/chunk`, {
             method: 'POST',
@@ -181,8 +209,21 @@ const DataManagementPanel: React.FC = () => {
             headers: { 'Content-Type': 'application/octet-stream' },
             timeoutMs: 5 * 60 * 1000,
           });
+          const uploadPercent = Math.round((chunkIndex / totalChunks) * 78);
+          setBackupImportProgress({
+            isImporting: true,
+            percent: Math.min(86, 8 + uploadPercent),
+            step: `Subiendo backup por bloques… (${chunkIndex}/${totalChunks})`,
+            detail: `${(Math.min(file.size, offset + CHUNK_UPLOAD_SIZE_BYTES) / MB_DIVISOR).toFixed(1)} MB enviados`,
+          });
         }
 
+        setBackupImportProgress({
+          isImporting: true,
+          percent: 92,
+          step: 'Finalizando en servidor y validando JSON…',
+          detail: 'Esperando respuesta del backend',
+        });
         const remoteSnapshot = await projectApiHttpClient.request<unknown>(
           `/api/v1/project-api/snapshot/import-file/chunked/${uploadId}/finish`,
           {
@@ -194,6 +235,12 @@ const DataManagementPanel: React.FC = () => {
           setPendingBackup({
             payload: migrateBackupPayload(remoteSnapshot),
             importedFromServer: true,
+          });
+          setBackupImportProgress({
+            isImporting: true,
+            percent: 100,
+            step: 'Upload completado. Pendiente de confirmación para restaurar.',
+            detail: 'Revisa y confirma para aplicar los datos al navegador actual.',
           });
           successAction('Backup grande cargado en servidor. Confirma para restaurar en este navegador.');
         } else {
@@ -207,11 +254,28 @@ const DataManagementPanel: React.FC = () => {
         } else {
           error('No se pudo subir el backup grande al servidor. Verifica backend y vuelve a intentar.', 6000);
         }
+        setBackupImportProgress({ isImporting: false, percent: 0, step: '' });
       }
     } else {
       const reader = new FileReader();
+      reader.onprogress = (progressEvent) => {
+        if (!progressEvent.lengthComputable) return;
+        const percent = Math.max(6, Math.min(86, Math.round((progressEvent.loaded / progressEvent.total) * 80)));
+        setBackupImportProgress({
+          isImporting: true,
+          percent,
+          step: 'Leyendo archivo JSON local…',
+          detail: `${(progressEvent.loaded / MB_DIVISOR).toFixed(1)} MB de ${(progressEvent.total / MB_DIVISOR).toFixed(1)} MB`,
+        });
+      };
       reader.onload = (e) => {
         try {
+          setBackupImportProgress({
+            isImporting: true,
+            percent: 90,
+            step: 'Validando estructura del backup…',
+            detail: 'Parseando JSON local',
+          });
           const fileContent = e.target?.result;
           if (typeof fileContent !== 'string') {
             throw new Error('El archivo importado no es texto válido');
@@ -225,8 +289,15 @@ const DataManagementPanel: React.FC = () => {
               payload: migrateBackupPayload(data),
               importedFromServer: false,
             });
+            setBackupImportProgress({
+              isImporting: true,
+              percent: 100,
+              step: 'Archivo listo. Pendiente de confirmación para restaurar.',
+              detail: 'Confirma la restauración para reemplazar los datos actuales.',
+            });
           } else {
             errorAction(t('feedback.actions.import_backup'));
+            setBackupImportProgress({ isImporting: false, percent: 0, step: '' });
           }
         } catch (err) {
           console.error(err);
@@ -239,6 +310,7 @@ const DataManagementPanel: React.FC = () => {
           } else {
             errorAction(t('feedback.actions.read_json_file'));
           }
+          setBackupImportProgress({ isImporting: false, percent: 0, step: '' });
         }
       };
       reader.readAsText(file);
@@ -282,6 +354,7 @@ const DataManagementPanel: React.FC = () => {
 
     successAction(t('feedback.actions.restore_data'));
     setPendingBackup(null);
+    setBackupImportProgress({ isImporting: false, percent: 0, step: '' });
     setTimeout(() => window.location.reload(), 1200);
   };
 
@@ -327,6 +400,24 @@ const DataManagementPanel: React.FC = () => {
             />
           </div>
           <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-300">{backupExportProgress.step}</p>
+        </div>
+      )}
+      {backupImportProgress.isImporting && (
+        <div className="mb-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 p-2">
+          <div className="flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-200 mb-1">
+            <span>Importando backup…</span>
+            <span>{backupImportProgress.percent}%</span>
+          </div>
+          <div className="h-1.5 w-full rounded-full bg-slate-200 dark:bg-slate-600 overflow-hidden">
+            <div
+              className="h-full bg-emerald-500 transition-all duration-300"
+              style={{ width: `${backupImportProgress.percent}%` }}
+            />
+          </div>
+          <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-300">{backupImportProgress.step}</p>
+          {backupImportProgress.detail && (
+            <p className="text-[10px] text-slate-400 dark:text-slate-300">{backupImportProgress.detail}</p>
+          )}
         </div>
       )}
       <div className="grid grid-cols-1">
