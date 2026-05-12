@@ -23,6 +23,7 @@ import {
   normalizeSubSector,
 } from '../utils/projectMetadata';
 import { buildContextualRoadmap } from '@/config/projectContextualRoadmap';
+import { createEntityId } from '@/utils/createEntityId';
 
 const CLIENTS_KEY = 'mediaflow_clients_cache_v2';
 const LEGACY_CLIENTS_KEY = 'mediaflow_clients';
@@ -58,7 +59,7 @@ const normalizeIAVisibilityHistoryItem = (item: unknown): IAVisibilityRunResult 
   const sentimentSummary = raw.sentimentSummary && typeof raw.sentimentSummary === 'object' ? raw.sentimentSummary : {};
 
   return {
-    id: typeof raw.id === 'string' && raw.id.length > 0 ? raw.id : crypto.randomUUID(),
+    id: typeof raw.id === 'string' && raw.id.length > 0 ? raw.id : createEntityId(),
     createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : Date.now(),
     prompt: typeof raw.prompt === 'string' ? raw.prompt : '',
     answer: typeof raw.answer === 'string' ? raw.answer : '',
@@ -139,7 +140,7 @@ const normalizeSeoSnapshot = (rawSnapshot: unknown): SeoPerformanceSnapshot | nu
   }
 
   return {
-    id: typeof snapshot.id === 'string' && snapshot.id.length > 0 ? snapshot.id : crypto.randomUUID(),
+    id: typeof snapshot.id === 'string' && snapshot.id.length > 0 ? snapshot.id : createEntityId(),
     scope: snapshot.scope,
     scopeId: snapshot.scopeId,
     scopeLabel: snapshot.scopeLabel,
@@ -167,7 +168,7 @@ const normalizeNote = (note: unknown, fallbackScope: Note['scopeType'], fallback
     return null;
   }
   return {
-    id: typeof raw.id === 'string' && raw.id.length > 0 ? raw.id : crypto.randomUUID(),
+    id: typeof raw.id === 'string' && raw.id.length > 0 ? raw.id : createEntityId(),
     content: raw.content,
     scopeType: raw.scopeType || fallbackScope,
     scopeId: raw.scopeId || fallbackScopeId,
@@ -376,7 +377,7 @@ const mergeWithTemplateModules = (currentModules: ModuleData[], templateModules:
 const createFallbackClient = (): Client => {
   const mediaStrategy = StrategyFactory.getStrategy('media');
   return {
-    id: crypto.randomUUID(),
+    id: createEntityId(),
     name: 'Proyecto Demo',
     vertical: 'media',
     projectType: getProjectTypeFromVertical('media'),
