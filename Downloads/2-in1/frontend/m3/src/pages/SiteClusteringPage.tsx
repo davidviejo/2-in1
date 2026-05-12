@@ -129,7 +129,7 @@ const SiteClusteringPage: React.FC = () => {
 
         <div className="flex items-center gap-2 text-xs text-slate-500">
           <ShieldCheck size={14} />
-          Método: agregación por niveles de ruta (/<nivel-1>/<nivel-2>) para panel de control operativo.
+          Método: agregación por niveles de ruta (<code>/&lt;nivel-1&gt;/&lt;nivel-2&gt;</code>) para panel de control operativo.
         </div>
       </section>
 
