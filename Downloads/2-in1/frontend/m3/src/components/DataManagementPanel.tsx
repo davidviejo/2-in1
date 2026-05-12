@@ -23,13 +23,18 @@ const MAX_IMPORT_FILE_SIZE_BYTES = 250 * 1024 * 1024;
 const CHUNK_UPLOAD_SIZE_BYTES = 8 * 1024 * 1024;
 const projectApiHttpClient = createHttpClient({ service: 'api' });
 
+type PendingBackupState = {
+  payload: ReturnType<typeof migrateBackupPayload>;
+  importedFromServer: boolean;
+};
+
 const DataManagementPanel: React.FC = () => {
   const { t } = useTranslation();
   const { successAction, errorAction, error } = useToast();
   const { clients, generalNotes, restoreProjectData, currentClientId } = useProject();
   const { settings, updateSettings } = useSettings();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [pendingBackup, setPendingBackup] = React.useState<ReturnType<typeof migrateBackupPayload> | null>(null);
+  const [pendingBackup, setPendingBackup] = React.useState<PendingBackupState | null>(null);
   const [isExportingBackup, setIsExportingBackup] = React.useState(false);
   const [backupExportProgress, setBackupExportProgress] = React.useState({ percent: 0, step: '' });
 
@@ -186,7 +191,10 @@ const DataManagementPanel: React.FC = () => {
           },
         );
         if (isBackupPayload(remoteSnapshot)) {
-          setPendingBackup(migrateBackupPayload(remoteSnapshot));
+          setPendingBackup({
+            payload: migrateBackupPayload(remoteSnapshot),
+            importedFromServer: true,
+          });
           successAction('Backup grande cargado en servidor. Confirma para restaurar en este navegador.');
         } else {
           error('El servidor recibió el archivo pero no devolvió un backup válido.', 6000);
@@ -213,7 +221,10 @@ const DataManagementPanel: React.FC = () => {
           const data = JSON.parse(content);
 
           if (isBackupPayload(data)) {
-            setPendingBackup(migrateBackupPayload(data));
+            setPendingBackup({
+              payload: migrateBackupPayload(data),
+              importedFromServer: false,
+            });
           } else {
             errorAction(t('feedback.actions.import_backup'));
           }
@@ -251,20 +262,22 @@ const DataManagementPanel: React.FC = () => {
 
   const handleConfirmRestore = async () => {
     if (!pendingBackup) return;
+    const { payload, importedFromServer } = pendingBackup;
 
-    if (pendingBackup.storage) {
-      restoreMediaFlowStorageSnapshot(pendingBackup.storage);
+    if (payload.storage) {
+      restoreMediaFlowStorageSnapshot(payload.storage);
     }
-    await restoreSeoChecklistIndexedDbSnapshot(pendingBackup.indexedDb?.seoChecklists);
+    await restoreSeoChecklistIndexedDbSnapshot(payload.indexedDb?.seoChecklists);
 
     restoreProjectData(
-      pendingBackup.clients,
-      pendingBackup.generalNotes || [],
-      pendingBackup.currentClientId,
+      payload.clients,
+      payload.generalNotes || [],
+      payload.currentClientId,
+      { skipRemoteSync: importedFromServer },
     );
 
-    if (pendingBackup.settings) {
-      updateSettings(pendingBackup.settings);
+    if (payload.settings) {
+      updateSettings(payload.settings);
     }
 
     successAction(t('feedback.actions.restore_data'));
