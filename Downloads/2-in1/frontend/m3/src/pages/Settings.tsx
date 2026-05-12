@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Save, Key, AlertTriangle } from 'lucide-react';
 import { useToast } from '../components/ui/ToastContext';
 import { useSettings } from '../context/SettingsContext';
+import { useProject } from '../context/ProjectContext';
 import DataManagementPanel from '../components/DataManagementPanel';
 import { parseBrandTerms } from '../utils/brandTerms';
 import { Button } from '../components/ui/Button';
@@ -10,6 +11,7 @@ import { Input } from '../components/ui/Input';
 
 const Settings: React.FC = () => {
   const { settings, updateSettings, saveSettings, serverSyncError, getApiKeySource } = useSettings();
+  const { clients, currentClientId, switchClient, currentClient, updateCurrentClientProfile } = useProject();
   const { success, warning } = useToast();
 
   const [openaiKey, setOpenaiKey] = useState(settings.openaiApiKey || '');
@@ -27,8 +29,32 @@ const Settings: React.FC = () => {
   const [mistralModel, setMistralModel] = useState(settings.mistralModel || 'mistral-large-latest');
   const [gscClientId, setGscClientId] = useState(settings.gscClientId || '');
   const [brandTermsText, setBrandTermsText] = useState((settings.brandTerms || []).join('\n'));
+  const [projectNotes, setProjectNotes] = useState(currentClient?.notes?.[0]?.content || '');
+  const [brandedKeywordsText, setBrandedKeywordsText] = useState((currentClient?.brandedKeywords || []).join('\n'));
+  const [clusterDraft, setClusterDraft] = useState((currentClient?.seoClusters || []).map((cluster) => `${cluster.name}: ${cluster.urls.join(', ')}`).join('\n'));
 
   const parsedBrandTerms = useMemo(() => parseBrandTerms(brandTermsText), [brandTermsText]);
+  const parsedBrandedKeywords = useMemo(() => parseBrandTerms(brandedKeywordsText), [brandedKeywordsText]);
+  const parsedSeoClusters = useMemo(
+    () =>
+      clusterDraft
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line, index) => {
+          const [namePart, ...rest] = line.split(':');
+          const urlsText = rest.join(':');
+          return {
+            id: `${namePart.trim().toLowerCase().replace(/\s+/g, '-') || 'cluster'}-${index}`,
+            name: namePart.trim() || `Cluster ${index + 1}`,
+            urls: urlsText
+              .split(',')
+              .map((url) => url.trim())
+              .filter(Boolean),
+          };
+        }),
+    [clusterDraft],
+  );
 
   const handleSave = async () => {
     const nextSettings = {
@@ -78,6 +104,65 @@ const Settings: React.FC = () => {
           Ajustes locales (Gemini, Mistral, GSC y términos de marca) se mantienen en este navegador.
         </p>
         {serverSyncError && <p className="mt-2 text-sm text-warning">{serverSyncError}</p>}
+      </Card>
+
+      <Card>
+        <div className="mb-6 border-b border-border pb-4">
+          <h2 className="text-lg font-bold text-foreground">Panel de ajustes por cliente</h2>
+          <p className="text-sm text-muted">Define datos SEO del proyecto y consulta snapshots guardados.</p>
+        </div>
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <label className="text-xs text-muted">Cliente activo</label>
+            <select
+              value={currentClientId}
+              onChange={(e) => {
+                const nextClientId = e.target.value;
+                switchClient(nextClientId);
+                const nextClient = clients.find((client) => client.id === nextClientId);
+                setBrandedKeywordsText((nextClient?.brandedKeywords || []).join('\n'));
+                setClusterDraft((nextClient?.seoClusters || []).map((cluster) => `${cluster.name}: ${cluster.urls.join(', ')}`).join('\n'));
+                setProjectNotes(nextClient?.notes?.[0]?.content || '');
+              }}
+              className="form-control"
+            >
+              {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-muted">KWs branded (una por línea)</label>
+            <textarea value={brandedKeywordsText} onChange={(e) => setBrandedKeywordsText(e.target.value)} className="form-textarea" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-muted">Clusters manuales (formato: Cluster: url1, url2)</label>
+            <textarea value={clusterDraft} onChange={(e) => setClusterDraft(e.target.value)} className="form-textarea" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-muted">Datos relevantes del proyecto</label>
+            <textarea value={projectNotes} onChange={(e) => setProjectNotes(e.target.value)} className="form-textarea" />
+          </div>
+          <div className="rounded-brand-md border border-border bg-surface-alt p-3 text-sm">
+            <p className="font-semibold text-foreground">Historial de snapshots SEO</p>
+            <p className="text-muted">Snapshots guardados para este cliente: {(currentClient?.seoSnapshots || []).length}.</p>
+            <p className="text-xs text-muted mt-1">Puedes ver el detalle completo desde el Dashboard en “Histórico de snapshots SEO”.</p>
+          </div>
+          <Button
+            variant="secondary"
+            onClick={() =>
+              updateCurrentClientProfile({
+                projectType: currentClient?.projectType,
+                sector: currentClient?.sector,
+                geoScope: currentClient?.geoScope,
+                brandTerms: currentClient?.brandTerms || [],
+                analysisProjectTypes: currentClient?.analysisProjectTypes || [],
+                brandedKeywords: parsedBrandedKeywords,
+                seoClusters: parsedSeoClusters,
+              })
+            }
+          >
+            Guardar ajustes del cliente
+          </Button>
+        </div>
       </Card>
 
       <Card>

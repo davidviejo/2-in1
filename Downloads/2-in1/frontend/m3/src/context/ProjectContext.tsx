@@ -80,7 +80,7 @@ interface ProjectContextType {
   deleteClient: (id: string) => void;
   switchClient: (id: string) => void;
   updateCurrentClientProfile: (
-    updates: Pick<Client, 'projectType' | 'sector' | 'geoScope' | 'brandTerms' | 'analysisProjectTypes'>,
+    updates: Pick<Client, 'projectType' | 'sector' | 'geoScope' | 'brandTerms' | 'analysisProjectTypes' | 'brandedKeywords' | 'seoClusters'>,
   ) => void;
   saveClientSnapshot: (snapshot: Omit<SeoPerformanceSnapshot, 'id' | 'timestamp'>) => void;
 
@@ -194,6 +194,14 @@ const normalizeProjectClientProfile = (client: Client): Client => {
     country: normalizeCountry(client.country, normalizeGeoScope(client.geoScope, projectType)),
     primaryLanguage: normalizePrimaryLanguage(client.primaryLanguage),
     brandTerms: normalizeBrandTerms(client.brandTerms),
+    brandedKeywords: normalizeBrandTerms(client.brandedKeywords),
+    seoClusters: (client.seoClusters || [])
+      .map((cluster) => ({
+        id: normalizeTextValue(cluster?.id) || createEntityId(),
+        name: normalizeTextValue(cluster?.name),
+        urls: normalizeBrandTerms(cluster?.urls),
+      }))
+      .filter((cluster) => cluster.name),
     initialConfigPreset: normalizeInitialConfigPreset(client.initialConfigPreset, projectType),
     subSector: normalizeSubSector(client.subSector),
     iaVisibility: client.iaVisibility || createDefaultIAVisibilityState(),
@@ -477,7 +485,7 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
   );
 
   const updateCurrentClientProfile = useCallback(
-    (updates: Pick<Client, 'projectType' | 'sector' | 'geoScope' | 'brandTerms' | 'analysisProjectTypes'>) => {
+    (updates: Pick<Client, 'projectType' | 'sector' | 'geoScope' | 'brandTerms' | 'analysisProjectTypes' | 'brandedKeywords' | 'seoClusters'>) => {
       setClients((prev) =>
         prev.map((client) => {
           if (client.id !== currentClientId) {
@@ -494,6 +502,8 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
             sector: normalizeSector(updates.sector),
             geoScope,
             brandTerms: normalizeBrandTerms(updates.brandTerms),
+            brandedKeywords: normalizeBrandTerms(updates.brandedKeywords),
+            seoClusters: updates.seoClusters,
           });
         }),
       );
