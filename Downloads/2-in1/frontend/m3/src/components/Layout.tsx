@@ -113,7 +113,7 @@ interface LayoutProps {
   onDeleteNote?: (noteId: string, type: 'project' | 'general') => void;
 }
 
-type TabType = 'analitica' | 'estrategia' | 'acciones' | 'backend' | 'admin';
+type TabType = 'analitica' | 'estrategia' | 'acciones' | 'ajustes' | 'backend' | 'admin';
 
 const Layout: React.FC<LayoutProps> = ({
   children,
@@ -170,10 +170,12 @@ const Layout: React.FC<LayoutProps> = ({
     if (
       path.startsWith('/app/kanban') ||
       path.startsWith('/app/gantt') ||
-      path.startsWith('/app/settings') ||
       path.startsWith('/app/completed-tasks')
     ) {
       return 'acciones';
+    }
+    if (path.startsWith('/app/settings')) {
+      return 'ajustes';
     }
     if (path.startsWith('/app/admin')) {
       return 'admin';
@@ -219,6 +221,9 @@ const Layout: React.FC<LayoutProps> = ({
         break;
       case 'acciones':
         navigate('/app/kanban');
+        break;
+      case 'ajustes':
+        navigate('/app/settings');
         break;
       case 'admin':
         navigate('/app/admin/ideas');
@@ -416,13 +421,14 @@ const Layout: React.FC<LayoutProps> = ({
 
           {/* Tabs */}
           <nav className="hidden lg:flex items-center space-x-1">
-            {(['analitica', 'estrategia', 'acciones', 'backend', 'admin'] as TabType[]).map(
+            {(['analitica', 'estrategia', 'acciones', 'ajustes', 'backend', 'admin'] as TabType[]).map(
               (tab) => {
                 let toPath = '/app/';
                 if (tab === 'estrategia') toPath = '/app/client-roadmap';
                 if (tab === 'acciones') toPath = '/app/kanban';
                 if (tab === 'admin') toPath = '/app/admin/ideas';
                 if (tab === 'backend') toPath = '/app/tools-hub';
+                if (tab === 'ajustes') toPath = '/app/settings';
 
                 return (
                   <NavLink
@@ -438,7 +444,7 @@ const Layout: React.FC<LayoutProps> = ({
                         : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'
                     }`}
                   >
-                    {tab === 'backend' ? 'Tools Hub' : tab === 'analitica' ? 'Analítica' : tab}
+                    {tab === 'backend' ? 'Tools Hub' : tab === 'analitica' ? 'Analítica' : tab === 'ajustes' ? 'Ajustes' : tab}
                   </NavLink>
                 );
               },
@@ -504,13 +510,14 @@ const Layout: React.FC<LayoutProps> = ({
 
             {/* Mobile Tabs */}
             <div className="grid grid-cols-2 gap-2 mb-4">
-              {(['analitica', 'estrategia', 'acciones', 'backend', 'admin'] as TabType[]).map(
+              {(['analitica', 'estrategia', 'acciones', 'ajustes', 'backend', 'admin'] as TabType[]).map(
                 (tab) => {
                   let toPath = '/app/';
                   if (tab === 'estrategia') toPath = '/app/client-roadmap';
                   if (tab === 'acciones') toPath = '/app/kanban';
                   if (tab === 'admin') toPath = '/app/admin/ideas';
                   if (tab === 'backend') toPath = '/app/tools-hub';
+                if (tab === 'ajustes') toPath = '/app/settings';
 
                   return (
                     <NavLink

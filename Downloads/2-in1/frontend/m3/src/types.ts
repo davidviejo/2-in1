@@ -402,7 +402,9 @@ export interface Client {
     id: string;
     name: string;
     urls: string[];
+    regex?: string;
   }[];
+  website?: string;
   initialConfigPreset?: ProjectInitialConfigPreset;
   subSector?: string;
   modules: ModuleData[];

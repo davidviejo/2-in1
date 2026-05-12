@@ -31,7 +31,8 @@ const Settings: React.FC = () => {
   const [brandTermsText, setBrandTermsText] = useState((settings.brandTerms || []).join('\n'));
   const [projectNotes, setProjectNotes] = useState(currentClient?.notes?.[0]?.content || '');
   const [brandedKeywordsText, setBrandedKeywordsText] = useState((currentClient?.brandedKeywords || []).join('\n'));
-  const [clusterDraft, setClusterDraft] = useState((currentClient?.seoClusters || []).map((cluster) => `${cluster.name}: ${cluster.urls.join(', ')}`).join('\n'));
+  const [website, setWebsite] = useState(currentClient?.website || '');
+  const [clusterDraft, setClusterDraft] = useState((currentClient?.seoClusters || []).map((cluster) => `${cluster.name}: ${cluster.urls.join(', ')}${cluster.regex ? ` | regex=${cluster.regex}` : ''}`).join('\n'));
 
   const parsedBrandTerms = useMemo(() => parseBrandTerms(brandTermsText), [brandTermsText]);
   const parsedBrandedKeywords = useMemo(() => parseBrandTerms(brandedKeywordsText), [brandedKeywordsText]);
@@ -43,7 +44,8 @@ const Settings: React.FC = () => {
         .filter(Boolean)
         .map((line, index) => {
           const [namePart, ...rest] = line.split(':');
-          const urlsText = rest.join(':');
+          const rawConfig = rest.join(':');
+          const [urlsText, regexPart] = rawConfig.split('|regex=');
           return {
             id: `${namePart.trim().toLowerCase().replace(/\s+/g, '-') || 'cluster'}-${index}`,
             name: namePart.trim() || `Cluster ${index + 1}`,
@@ -51,6 +53,7 @@ const Settings: React.FC = () => {
               .split(',')
               .map((url) => url.trim())
               .filter(Boolean),
+            regex: regexPart?.trim() || undefined,
           };
         }),
     [clusterDraft],
@@ -121,7 +124,8 @@ const Settings: React.FC = () => {
                 switchClient(nextClientId);
                 const nextClient = clients.find((client) => client.id === nextClientId);
                 setBrandedKeywordsText((nextClient?.brandedKeywords || []).join('\n'));
-                setClusterDraft((nextClient?.seoClusters || []).map((cluster) => `${cluster.name}: ${cluster.urls.join(', ')}`).join('\n'));
+                setWebsite(nextClient?.website || '');
+                setClusterDraft((nextClient?.seoClusters || []).map((cluster) => `${cluster.name}: ${cluster.urls.join(', ')}${cluster.regex ? ` | regex=${cluster.regex}` : ''}`).join('\n'));
                 setProjectNotes(nextClient?.notes?.[0]?.content || '');
               }}
               className="form-control"
@@ -130,11 +134,15 @@ const Settings: React.FC = () => {
             </select>
           </div>
           <div className="space-y-1">
-            <label className="text-xs text-muted">KWs branded (una por línea)</label>
+            <label className="text-xs text-muted">Sitio web (dominio)</label>
+            <Input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://www.tudominio.com" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-muted">KWs branded / KW de marca (una por línea)</label>
             <textarea value={brandedKeywordsText} onChange={(e) => setBrandedKeywordsText(e.target.value)} className="form-textarea" />
           </div>
           <div className="space-y-1">
-            <label className="text-xs text-muted">Clusters manuales (formato: Cluster: url1, url2)</label>
+            <label className="text-xs text-muted">Clusters anidados (formato: Cluster: url1, url2 | regex=patrón)</label>
             <textarea value={clusterDraft} onChange={(e) => setClusterDraft(e.target.value)} className="form-textarea" />
           </div>
           <div className="space-y-1">
@@ -157,6 +165,7 @@ const Settings: React.FC = () => {
                 analysisProjectTypes: currentClient?.analysisProjectTypes || [],
                 brandedKeywords: parsedBrandedKeywords,
                 seoClusters: parsedSeoClusters,
+                website,
               })
             }
           >
