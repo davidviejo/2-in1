@@ -398,6 +398,14 @@ export interface Client {
   primaryLanguage?: string;
   brandTerms?: string[];
   brandedKeywords?: string[];
+  websiteDomain?: string;
+  nestedClusterRules?: {
+    id: string;
+    parentCluster: string;
+    pattern: string;
+    useRegex: boolean;
+    targetLabel: string;
+  }[];
   seoClusters?: {
     id: string;
     name: string;
