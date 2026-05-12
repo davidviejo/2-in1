@@ -289,6 +289,13 @@ const Layout: React.FC<LayoutProps> = ({
               onClick={() => setIsMobileMenuOpen(false)}
             />
             <NavItem
+              to="/app/gsc-clusters"
+              icon={<BarChart3 size={20} />}
+              label="Clusters GSC · Niveles"
+              subLabel="Página dedicada de clusterización"
+              onClick={() => setIsMobileMenuOpen(false)}
+            />
+            <NavItem
               to="/app/gsc-impact?view=global"
               icon={<Globe size={20} />}
               label="Impacto GSC · Portfolio"
