@@ -16,6 +16,7 @@ const AIRoadmap = lazy(() => import('./pages/AIRoadmap'));
 const SeoChecklistPage = lazy(() => import('./pages/SeoChecklistPage'));
 const IAVisibility = lazy(() => import('./pages/IAVisibility'));
 const GscImpactPage = lazy(() => import('./pages/GscImpactPage'));
+const SiteClusteringPage = lazy(() => import('./pages/SiteClusteringPage'));
 const Settings = lazy(() => import('./pages/Settings'));
 const AdminIdeasPage = lazy(() => import('./pages/admin/AdminIdeasPage'));
 const TrendsMediaPage = lazy(() => import('./pages/TrendsMediaPage'));
@@ -172,7 +173,7 @@ export const AppRoutes: React.FC = () => {
                 <Route path="gsc-impact" element={<GscImpactPage />} />
                 <Route
                   path="clustering-site"
-                  element={<GscImpactPage lockedViewMode="cluster_levels" standaloneClusterLevels />}
+                  element={<SiteClusteringPage />}
                 />
                 <Route path="gsc-impact/portfolio" element={<Navigate to="/app/gsc-impact?view=global" replace />} />
                 <Route path="gsc-impact/portolio" element={<Navigate to="/app/gsc-impact?view=global" replace />} />
