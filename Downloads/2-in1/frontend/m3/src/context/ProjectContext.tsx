@@ -172,6 +172,9 @@ interface ProjectContextType {
     backupClients: Client[],
     backupNotes: Note[],
     backupCurrentClientId?: string,
+    options?: {
+      skipRemoteSync?: boolean;
+    },
   ) => void;
 
   // Reset
@@ -1479,7 +1482,14 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, [flushSnapshotSyncNextTick]);
 
   const restoreProjectData = useCallback(
-    (backupClients: Client[], backupNotes: Note[], backupCurrentClientId?: string) => {
+    (
+      backupClients: Client[],
+      backupNotes: Note[],
+      backupCurrentClientId?: string,
+      options?: {
+        skipRemoteSync?: boolean;
+      },
+    ) => {
       setClients((prev) => {
         const backupIds = new Set(backupClients.map((c) => c.id));
         // Keep clients that are NOT in backup (preserves locally created clients not present in backup)
@@ -1503,7 +1513,9 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
           setCurrentClientId(backupCurrentClientId);
         }
       }
-      flushSnapshotSyncNextTick(['clients', 'generalNotes', 'currentClientId']);
+      if (!options?.skipRemoteSync) {
+        flushSnapshotSyncNextTick(['clients', 'generalNotes', 'currentClientId']);
+      }
     },
     [flushSnapshotSyncNextTick],
   );
