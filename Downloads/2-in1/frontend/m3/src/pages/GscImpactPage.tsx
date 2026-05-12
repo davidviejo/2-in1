@@ -1171,6 +1171,26 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode, standalon
     () => clusterRowsBySearch.filter((row) => row.opportunity >= 10).slice(0, 10),
     [clusterRowsBySearch],
   );
+  const clusterPersonalizedResponses = useMemo(() => {
+    if (viewMode !== 'cluster_levels') return [];
+    const focusedCluster = clusterRowsBySearch[0];
+    const topOpportunity = clusterOpportunityRows[0];
+    const responses: string[] = [];
+    if (focusedCluster) {
+      responses.push(
+        `Prioriza ${focusedCluster.level1} → ${focusedCluster.level2}: concentra ${focusedCluster.urls} URLs y score ${focusedCluster.opportunity.toFixed(2)}.`,
+      );
+    }
+    if (topOpportunity && (!focusedCluster || topOpportunity.level2 !== focusedCluster.level2 || topOpportunity.level1 !== focusedCluster.level1)) {
+      responses.push(
+        `Recuperación sugerida: ${topOpportunity.level1} → ${topOpportunity.level2} con Δ clicks/day ${topOpportunity.deltaClicksDay.toFixed(2)} y Δ CTR ${topOpportunity.deltaCtrPp.toFixed(2)} pp.`,
+      );
+    }
+    if (!responses.length) {
+      responses.push('Ajusta filtros o reglas de niveles para desbloquear respuestas personalizadas accionables.');
+    }
+    return responses;
+  }, [clusterOpportunityRows, clusterRowsBySearch, viewMode]);
   const exportClusterLevelsCsv = () => {
     const headers = ['Cluster nivel 1', 'Cluster nivel 2', 'URLs', 'Delta clicks/day', 'Delta CTR pp', 'Delta posición', 'Score oportunidad'];
     const rows = clusterRowsBySearch.map((row) => [
@@ -1653,8 +1673,12 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode, standalon
               <BarChart3 size={24} />
             </div>
             <div>
-              <h1 className="section-title">Impacto GSC por rollout</h1>
-              <p className="section-subtitle">Análisis solo Search Console (sin GA4).</p>
+              <h1 className="section-title">{standaloneClusterLevels ? 'Clustering por niveles' : 'Impacto GSC por rollout'}</h1>
+              <p className="section-subtitle">
+                {standaloneClusterLevels
+                  ? 'Conecta Search Console con el mismo flujo del Panel de Control y trabaja una vista dedicada de niveles.'
+                  : 'Análisis solo Search Console (sin GA4).'}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -1668,7 +1692,7 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode, standalon
             {!gscAccessToken ? (
               <Button onClick={() => login()}>
                 <LogIn size={16} />
-                Conectar Search Console (sin GA4)
+                  {standaloneClusterLevels ? 'Conectar Search Console (como Panel de Control)' : 'Conectar Search Console (sin GA4)'}
               </Button>
             ) : (
               <>
@@ -1685,14 +1709,19 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode, standalon
           </div>
         </div>
         {googleUser && (
-          <p className="section-subtitle">Conectado como {googleUser.email}. Módulo solo Search Console (sin GA4).</p>
+          <p className="section-subtitle">
+            Conectado como {googleUser.email}.{' '}
+            {standaloneClusterLevels ? 'Conexión activa con la misma lógica del Panel de Control.' : 'Módulo solo Search Console (sin GA4).'}
+          </p>
         )}
       </header>
 
       {!gscAccessToken ? (
         <Card className="p-6">
           <p className="section-subtitle">
-            Para usar esta vista debes autenticarte con Google Search Console. Este reporte funciona solo Search Console (sin GA4).
+            {standaloneClusterLevels
+              ? 'Para usar Clustering por niveles, autentícate en Search Console con el mismo esquema usado en Panel de Control.'
+              : 'Para usar esta vista debes autenticarte con Google Search Console. Este reporte funciona solo Search Console (sin GA4).'}
           </p>
         </Card>
       ) : (
@@ -2786,6 +2815,16 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode, standalon
                     </div>
                   ))}
                   {clusterOpportunityRows.length === 0 && <p className="text-sm text-muted">No se detectaron oportunidades relevantes con los filtros actuales.</p>}
+                </div>
+              </div>
+              <div className="mt-4">
+                <h4 className="text-sm font-semibold">Respuestas personalizadas para clustering por niveles</h4>
+                <div className="mt-2 space-y-2">
+                  {clusterPersonalizedResponses.map((response) => (
+                    <div key={response} className="surface-subtle p-3 text-sm">
+                      {response}
+                    </div>
+                  ))}
                 </div>
               </div>
             </section>
