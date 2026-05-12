@@ -50,10 +50,10 @@ export const parseTemplateManualMap = (value: string): Record<string, string> =>
 
 export type ClusterLevelRule = { level1: string; level2: string; paths: string[] };
 
-export const parseCustomClusters = (value: string): ProjectCustomCluster[] =>
+export const parseCustomClusters = (value: unknown): ProjectCustomCluster[] =>
   parseFromProjectConfig(
     {
-      customClusters: value
+      customClusters: (typeof value === 'string' ? value : '')
         .split(/\r?\n/)
         .map((line) => line.trim())
         .filter(Boolean)
@@ -71,8 +71,8 @@ export const parseCustomClusters = (value: string): ProjectCustomCluster[] =>
 
 
 
-export const parseClusterLevelRules = (value: string): ClusterLevelRule[] =>
-  value
+export const parseClusterLevelRules = (value: unknown): ClusterLevelRule[] =>
+  (typeof value === 'string' ? value : '')
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)

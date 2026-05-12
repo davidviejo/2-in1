@@ -46,6 +46,11 @@ describe('gscFilters', () => {
     ]);
   });
 
+
+  it('returns empty clustering rules when persisted values are malformed', () => {
+    expect(parseCustomClusters({ legacy: true } as unknown as string)).toEqual([]);
+    expect(parseClusterLevelRules(123 as unknown as string)).toEqual([]);
+  });
   it('builds looker CASE expression for custom clusters', () => {
     const customCase = buildLookerStudioClusterCase('mvocaesteticadental.com', [
       { name: 'Blog', paths: ['/blog'] },
