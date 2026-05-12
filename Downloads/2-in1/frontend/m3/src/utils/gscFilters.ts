@@ -48,6 +48,8 @@ export const parseTemplateRules = (value: string): TemplateRule[] =>
 export const parseTemplateManualMap = (value: string): Record<string, string> =>
   parseFromProjectConfig({ manualMappings: value }, 'manualMappings');
 
+export type ClusterLevelRule = { level1: string; level2: string; paths: string[] };
+
 export const parseCustomClusters = (value: string): ProjectCustomCluster[] =>
   parseFromProjectConfig(
     {
@@ -67,6 +69,38 @@ export const parseCustomClusters = (value: string): ProjectCustomCluster[] =>
     'customClusters',
   );
 
+
+
+export const parseClusterLevelRules = (value: string): ClusterLevelRule[] =>
+  value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [level1Raw, level2Raw, pathsRaw] = line.split('|');
+      const paths = (pathsRaw || '')
+        .split(',')
+        .map((path) => path.trim())
+        .filter(Boolean);
+      return {
+        level1: (level1Raw || '').trim(),
+        level2: (level2Raw || '').trim(),
+        paths,
+      };
+    })
+    .filter((row) => row.level1 && row.level2 && row.paths.length > 0);
+
+export const buildLookerStudioClusterLevelCase = (domain: string, rules: ClusterLevelRule[], level: 1 | 2): string => {
+  const cleanDomain = domain.trim().replace(/^https?:\/\//i, '').replace(/\/$/, '');
+  const escapedDomain = escapeRegexForLooker(cleanDomain);
+  const lines = rules.flatMap((rule) =>
+    rule.paths.map((path) =>
+      `  WHEN REGEXP_MATCH(Landing Page, ".*${escapedDomain}${escapeRegexForLooker(path)}(/.*)?$") THEN "${level === 1 ? rule.level1 : rule.level2}"`,
+    ),
+  );
+
+  return ['CASE', ...lines, '  ELSE "Sin clasificar"', 'END'].join('\n');
+};
 const escapeRegexForLooker = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export const buildLookerStudioClusterCase = (domain: string, clusters: ProjectCustomCluster[]): string => {

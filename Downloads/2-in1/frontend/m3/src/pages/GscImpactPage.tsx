@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { BarChart3, LogIn, LogOut, RefreshCcw, Settings2 } from 'lucide-react';
 import {
+  Bar,
+  BarChart,
   CartesianGrid,
   Legend,
   Line,
@@ -25,8 +27,10 @@ import { inspectUrlsBatch, UrlInspectionErrorItem, UrlInspectionRow } from '@/se
 import { GscImpactSegmentationRepository } from '@/services/gscImpactSegmentationRepository';
 import {
   buildLookerStudioClusterCase,
+  buildLookerStudioClusterLevelCase,
   buildLookerStudioUrlLevelCase,
   parseBrandTermsInput,
+  parseClusterLevelRules,
   parseCustomClusters,
   parseTemplateManualMap,
   parseTemplateRules,
@@ -99,10 +103,10 @@ type FilterState = {
   searchType: GSCSearchType;
 };
 
-type ImpactViewMode = 'individual' | 'cluster_analytics' | 'global';
+type ImpactViewMode = 'individual' | 'cluster_analytics' | 'cluster_levels' | 'global';
 
 const parseImpactViewMode = (value: string | null): ImpactViewMode | null => {
-  if (value === 'individual' || value === 'cluster_analytics' || value === 'global') return value;
+  if (value === 'individual' || value === 'cluster_analytics' || value === 'cluster_levels' || value === 'global') return value;
   return null;
 };
 
@@ -401,6 +405,7 @@ const GscImpactPage: React.FC = () => {
   const [deviceRows, setDeviceRows] = useState<ImpactRow[]>([]);
   const [countryRows, setCountryRows] = useState<ImpactRow[]>([]);
   const [clusterRulesText, setClusterRulesText] = useState('');
+  const [clusterLevelRulesText, setClusterLevelRulesText] = useState('');
   const [clusterDepthLevels, setClusterDepthLevels] = useState(4);
   const [selectedClusterLevel1, setSelectedClusterLevel1] = useState('all');
   const [selectedClusterLevel2, setSelectedClusterLevel2] = useState('all');
@@ -460,6 +465,7 @@ const GscImpactPage: React.FC = () => {
     [filters.templateManualMapText],
   );
   const parsedCustomClusters = useMemo(() => parseCustomClusters(clusterRulesText), [clusterRulesText]);
+  const parsedClusterLevelRules = useMemo(() => parseClusterLevelRules(clusterLevelRulesText), [clusterLevelRulesText]);
   const selectedDomain = useMemo(() => {
     if (!selectedSite) return '';
     return selectedSite.replace(/^sc-domain:/i, '').replace(/^https?:\/\//i, '').replace(/\/$/, '');
@@ -467,6 +473,14 @@ const GscImpactPage: React.FC = () => {
   const lookerClusterCase = useMemo(
     () => (selectedDomain ? buildLookerStudioClusterCase(selectedDomain, parsedCustomClusters) : ''),
     [parsedCustomClusters, selectedDomain],
+  );
+  const lookerClusterLevel1Case = useMemo(
+    () => (selectedDomain ? buildLookerStudioClusterLevelCase(selectedDomain, parsedClusterLevelRules, 1) : ''),
+    [parsedClusterLevelRules, selectedDomain],
+  );
+  const lookerClusterLevel2Case = useMemo(
+    () => (selectedDomain ? buildLookerStudioClusterLevelCase(selectedDomain, parsedClusterLevelRules, 2) : ''),
+    [parsedClusterLevelRules, selectedDomain],
   );
   const lookerDepthCases = useMemo(() => {
     const safeDepth = Math.min(10, Math.max(1, Math.floor(clusterDepthLevels)));
@@ -1577,6 +1591,7 @@ const GscImpactPage: React.FC = () => {
                 >
                   <option value="individual">Impacto GSC por rollout (propiedad)</option>
                   <option value="cluster_analytics">Analítica por cluster (propiedad)</option>
+                  <option value="cluster_levels">Clustering por niveles (única)</option>
                   <option value="global">Impacto global GSC (portfolio)</option>
                 </select>
               </div>
@@ -2368,6 +2383,25 @@ const GscImpactPage: React.FC = () => {
                   <textarea className="form-control min-h-[112px] font-mono text-xs" value={lookerClusterCase} readOnly />
                 </div>
               </div>
+              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+                <div>
+                  <label className="metric-label">Reglas niveles (Nivel1|Nivel2|/path1,/path2)</label>
+                  <textarea
+                    className="form-control min-h-[112px]"
+                    value={clusterLevelRulesText}
+                    onChange={(e) => setClusterLevelRulesText(e.target.value)}
+                    placeholder={"Servicios|Implantes|/implantes\nServicios|Ortodoncia|/ortodoncia"}
+                  />
+                </div>
+                <div>
+                  <label className="metric-label">CASE cluster nivel 1 (reglas)</label>
+                  <textarea className="form-control min-h-[112px] font-mono text-xs" value={lookerClusterLevel1Case} readOnly />
+                </div>
+                <div>
+                  <label className="metric-label">CASE cluster nivel 2 (reglas)</label>
+                  <textarea className="form-control min-h-[112px] font-mono text-xs" value={lookerClusterLevel2Case} readOnly />
+                </div>
+              </div>
               <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div>
                   <label className="metric-label">CASE cluster nivel 1 (path)</label>
@@ -2519,6 +2553,41 @@ const GscImpactPage: React.FC = () => {
                 {filteredClusterHierarchyRows.length === 0 && (
                   <p className="mt-2 text-sm text-muted">Sin datos suficientes para construir oportunidades por cluster.</p>
                 )}
+              </div>
+            </section>
+          )}
+          {viewMode === 'cluster_levels' && (
+            <section className="surface-panel p-6">
+              <h3 className="text-lg font-semibold">Clustering por niveles (vista única)</h3>
+              <p className="section-subtitle">Filtra por nivel 1 y nivel 2, con foco en subniveles y evolución de oportunidad.</p>
+              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <label className="metric-label">Cluster nivel 1</label>
+                  <select className="form-control" value={selectedClusterLevel1} onChange={(e) => { setSelectedClusterLevel1(e.target.value); setSelectedClusterLevel2('all'); }}>
+                    <option value="all">Todos</option>
+                    {availableClusterLevel1.map((cluster) => <option key={`cluster-levels-1-${cluster}`} value={cluster}>{cluster}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="metric-label">Cluster nivel 2</label>
+                  <select className="form-control" value={selectedClusterLevel2} onChange={(e) => setSelectedClusterLevel2(e.target.value)}>
+                    <option value="all">Todos</option>
+                    {availableClusterLevel2.map((cluster) => <option key={`cluster-levels-2-${cluster}`} value={cluster}>{cluster}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="mt-4 h-[320px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={filteredClusterHierarchyRows.slice(0, 20)}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="level2" />
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    <Bar dataKey="opportunity" fill="#0f766e" name="Score oportunidad" />
+                    <Bar dataKey="urls" fill="#334155" name="URLs" />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
             </section>
           )}
