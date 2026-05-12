@@ -70,7 +70,7 @@ export type HistoricalImportPreview = {
   issues: HistoricalImportIssue[];
 };
 
-function splitCsvLine(line: string): string[] {
+function splitDelimitedLine(line: string, delimiter: ',' | '\t'): string[] {
   const values: string[] = [];
   let current = '';
   let insideQuotes = false;
@@ -89,7 +89,7 @@ function splitCsvLine(line: string): string[] {
       continue;
     }
 
-    if (char === ',' && !insideQuotes) {
+    if (char === delimiter && !insideQuotes) {
       values.push(current.trim());
       current = '';
       continue;
@@ -112,10 +112,11 @@ function parseCsvRows(content: string): ParsedRow[] {
     return [];
   }
 
-  const headers = splitCsvLine(lines[0]);
+  const delimiter: ',' | '\t' = lines[0].includes('\t') ? '\t' : ',';
+  const headers = splitDelimitedLine(lines[0], delimiter).map((header) => header.trim());
 
   return lines.slice(1).map((line, offset) => {
-    const cells = splitCsvLine(line);
+    const cells = splitDelimitedLine(line, delimiter);
     const values: Record<string, unknown> = {};
 
     headers.forEach((header, index) => {

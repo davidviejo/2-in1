@@ -43,4 +43,22 @@ describe('historical import preview', () => {
     expect(preview.issues.some((issue) => issue.field === 'prompt')).toBe(true);
     expect(preview.issues.some((issue) => issue.field === 'response')).toBe(true);
   });
+
+  it('parses TSV exports and keeps mapped columns aligned', async () => {
+    const preview = await previewHistoricalImport('project-1', {
+      fileType: 'csv',
+      fileContent: 'project\tprompt\tmodel\tresponse\tcitations\nproject-1\t"Who is best?"\tgpt-4o\t"Answer text"\t"https://example.com/article"',
+      mapping: {
+        projectColumn: 'project',
+        promptColumn: 'prompt',
+        modelColumn: 'model',
+        responseColumn: 'response',
+        citationsColumn: 'citations'
+      }
+    });
+
+    expect(preview.issues).toEqual([]);
+    expect(preview.validRows).toBe(1);
+    expect(preview.citationCount).toBe(1);
+  });
 });
