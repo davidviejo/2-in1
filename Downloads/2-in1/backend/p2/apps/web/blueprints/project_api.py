@@ -3,7 +3,9 @@ import logging
 import os
 import threading
 import time
+import uuid
 from copy import deepcopy
+from tempfile import gettempdir
 from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, jsonify, request
@@ -26,6 +28,8 @@ _METRICS: Dict[str, float] = {
     'write_total_ms': 0.0,
     'version_conflicts': 0,
 }
+_UPLOADS_DIR = os.path.join(gettempdir(), 'project_api_uploads')
+_CHUNK_UPLOADS: Dict[str, Dict[str, Any]] = {}
 
 
 def _record_metric(metric_name: str, value: float = 1.0) -> None:
@@ -651,6 +655,112 @@ def import_snapshot_file():
     metadata = _extract_patch_request_metadata(raw_data)
 
     with _LOCK:
+        current = _load_store()
+        conflict_response = _validate_expected_version(
+            expected_version=metadata['expectedVersion'],
+            current_snapshot=current,
+            resource='snapshot',
+            resource_id='project',
+            updated_fields=metadata['updatedFields'],
+            origin_client_id=metadata['originClientId'],
+        )
+        if conflict_response is not None:
+            return conflict_response
+
+        incoming['version'] = int(current.get('version', 1))
+        mutation_meta = _build_mutation_meta(
+            origin_client_id=metadata['originClientId'],
+            resource='snapshot',
+            resource_id='project',
+            updated_fields=metadata['updatedFields'],
+            base_version=int(current.get('version', 1)),
+            new_version=int(current.get('version', 1)) + 1,
+        )
+        saved = _save_snapshot_with_meta(incoming, mutation_meta)
+
+    return jsonify(saved)
+
+
+@project_api_bp.route('/snapshot/import-file/chunked/start', methods=['POST'])
+def start_chunked_snapshot_import():
+    payload = request.get_json(silent=True) or {}
+    filename = str(payload.get('filename') or 'backup.json')
+    total_size = int(payload.get('totalSize') or 0)
+
+    os.makedirs(_UPLOADS_DIR, exist_ok=True)
+    upload_id = uuid.uuid4().hex
+    temp_path = os.path.join(_UPLOADS_DIR, f'{upload_id}.json')
+    with open(temp_path, 'wb'):
+        pass
+
+    with _LOCK:
+        _CHUNK_UPLOADS[upload_id] = {
+            'path': temp_path,
+            'filename': filename,
+            'totalSize': total_size,
+            'receivedBytes': 0,
+            'createdAt': int(time.time() * 1000),
+        }
+
+    return jsonify({'uploadId': upload_id})
+
+
+@project_api_bp.route('/snapshot/import-file/chunked/<upload_id>/chunk', methods=['POST'])
+def upload_snapshot_chunk(upload_id: str):
+    chunk_data = request.get_data(cache=False, as_text=False)
+    if not chunk_data:
+        return jsonify({'error': 'invalid_request', 'message': 'Missing chunk body.'}), 400
+
+    with _LOCK:
+        upload = _CHUNK_UPLOADS.get(upload_id)
+        if upload is None:
+            return jsonify({'error': 'not_found', 'message': 'Upload session not found.'}), 404
+        temp_path = upload['path']
+
+    try:
+        with open(temp_path, 'ab') as temp_file:
+            temp_file.write(chunk_data)
+    except OSError as exc:
+        return jsonify({'error': 'io_error', 'message': f'Failed writing chunk: {exc}'}), 500
+
+    with _LOCK:
+        upload = _CHUNK_UPLOADS.get(upload_id)
+        if upload is not None:
+            upload['receivedBytes'] = int(upload.get('receivedBytes', 0)) + len(chunk_data)
+            received = int(upload['receivedBytes'])
+        else:
+            received = 0
+
+    return jsonify({'uploadId': upload_id, 'receivedBytes': received})
+
+
+@project_api_bp.route('/snapshot/import-file/chunked/<upload_id>/finish', methods=['POST'])
+def finish_chunked_snapshot_import(upload_id: str):
+    with _LOCK:
+        upload = _CHUNK_UPLOADS.get(upload_id)
+        if upload is None:
+            return jsonify({'error': 'not_found', 'message': 'Upload session not found.'}), 404
+        temp_path = upload['path']
+
+    try:
+        with open(temp_path, encoding='utf-8') as uploaded_file:
+            raw_data = json.load(uploaded_file)
+    except (OSError, TypeError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        return jsonify({'error': 'invalid_json', 'message': f'Could not parse uploaded JSON file: {exc}'}), 400
+    finally:
+        try:
+            os.remove(temp_path)
+        except OSError:
+            pass
+
+    if not isinstance(raw_data, dict):
+        return jsonify({'error': 'invalid_payload', 'message': 'Backup file must contain a JSON object.'}), 400
+
+    incoming = _normalize_snapshot(raw_data)
+    metadata = _extract_patch_request_metadata(raw_data)
+
+    with _LOCK:
+        _CHUNK_UPLOADS.pop(upload_id, None)
         current = _load_store()
         conflict_response = _validate_expected_version(
             expected_version=metadata['expectedVersion'],

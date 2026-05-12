@@ -15,11 +15,12 @@ import {
 import { useToast } from './ui/ToastContext';
 import ConfirmDialog from './ui/ConfirmDialog';
 import { useTranslation } from 'react-i18next';
-import { createHttpClient } from '../services/httpClient';
+import { HttpClientError, createHttpClient } from '../services/httpClient';
 
 
 const normalizeImportedJson = (raw: string) => raw.replace(/^\uFEFF/, '').replace(/\u0000/g, '').trim();
 const MAX_IMPORT_FILE_SIZE_BYTES = 250 * 1024 * 1024;
+const CHUNK_UPLOAD_SIZE_BYTES = 8 * 1024 * 1024;
 const projectApiHttpClient = createHttpClient({ service: 'api' });
 
 const DataManagementPanel: React.FC = () => {
@@ -31,6 +32,7 @@ const DataManagementPanel: React.FC = () => {
   const [pendingBackup, setPendingBackup] = React.useState<ReturnType<typeof migrateBackupPayload> | null>(null);
   const [isExportingBackup, setIsExportingBackup] = React.useState(false);
   const [backupExportProgress, setBackupExportProgress] = React.useState({ percent: 0, step: '' });
+  const [importUploadProgress, setImportUploadProgress] = React.useState({ percent: 0, uploadedMB: 0, totalMB: 0, step: '' });
 
   const formatMesColumn = (dueDate?: string) => {
     if (!dueDate) return '';
@@ -158,22 +160,64 @@ const DataManagementPanel: React.FC = () => {
 
     if (file.size > MAX_IMPORT_FILE_SIZE_BYTES) {
       try {
-        const formData = new FormData();
-        formData.append('file', file);
-        const remoteSnapshot = await projectApiHttpClient.request<unknown>('/api/v1/project-api/snapshot/import-file', {
+        const totalBytes = file.size;
+        const totalMB = Math.max(0.01, totalBytes / (1024 * 1024));
+        setImportUploadProgress({ percent: 1, uploadedMB: 0, totalMB, step: 'Iniciando sesión de carga…' });
+
+        const { uploadId } = await projectApiHttpClient.request<{ uploadId: string }>(
+          '/api/v1/project-api/snapshot/import-file/chunked/start',
+          {
+            method: 'POST',
+            body: { filename: file.name, totalSize: file.size },
+            timeoutMs: 60_000,
+          },
+        );
+
+        setImportUploadProgress((prev) => ({ ...prev, percent: 2, step: 'Subiendo backup al servidor…' }));
+        for (let offset = 0; offset < file.size; offset += CHUNK_UPLOAD_SIZE_BYTES) {
+          const chunk = file.slice(offset, offset + CHUNK_UPLOAD_SIZE_BYTES);
+          await projectApiHttpClient.request(`/api/v1/project-api/snapshot/import-file/chunked/${uploadId}/chunk`, {
+            method: 'POST',
+            body: chunk,
+            headers: { 'Content-Type': 'application/octet-stream' },
+            timeoutMs: 5 * 60 * 1000,
+          });
+
+          const uploadedBytes = Math.min(offset + chunk.size, totalBytes);
+          const percent = Math.min(95, Math.round((uploadedBytes / totalBytes) * 95));
+          setImportUploadProgress({
+            percent,
+            uploadedMB: uploadedBytes / (1024 * 1024),
+            totalMB,
+            step: 'Subiendo backup al servidor…',
+          });
+        }
+
+        setImportUploadProgress((prev) => ({ ...prev, percent: 97, step: 'Procesando backup en backend…' }));
+        const remoteSnapshot = await projectApiHttpClient.request<unknown>(
+          `/api/v1/project-api/snapshot/import-file/chunked/${uploadId}/finish`,
+          {
           method: 'POST',
-          body: formData,
           timeoutMs: 30 * 60 * 1000,
-        });
+          },
+        );
         if (isBackupPayload(remoteSnapshot)) {
           setPendingBackup(migrateBackupPayload(remoteSnapshot));
+          setImportUploadProgress((prev) => ({ ...prev, percent: 100, step: 'Carga completada. Listo para restaurar.' }));
           successAction('Backup grande cargado en servidor. Confirma para restaurar en este navegador.');
         } else {
           error('El servidor recibió el archivo pero no devolvió un backup válido.', 6000);
+          setImportUploadProgress({ percent: 0, uploadedMB: 0, totalMB: 0, step: '' });
         }
       } catch (uploadError) {
         console.error(uploadError);
-        error('No se pudo subir el backup grande al servidor. Verifica backend y vuelve a intentar.', 6000);
+
+        if (uploadError instanceof HttpClientError && uploadError.status === 413) {
+          error('El backup excede el límite permitido por el backend. Aumenta MAX_CONTENT_LENGTH_MB y reinicia el servidor.', 7000);
+        } else {
+          error('No se pudo subir el backup grande al servidor. Verifica backend y vuelve a intentar.', 6000);
+        }
+        setImportUploadProgress({ percent: 0, uploadedMB: 0, totalMB: 0, step: '' });
       }
     } else {
       const reader = new FileReader();
@@ -249,6 +293,25 @@ const DataManagementPanel: React.FC = () => {
 
   return (
     <div className="bg-slate-100 dark:bg-slate-800 rounded-xl p-4 mt-6 border border-slate-200 dark:border-slate-700">
+      {importUploadProgress.percent > 0 && (
+        <div className="mb-4 rounded-lg border border-blue-200 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20 p-3">
+          <div className="flex items-center justify-between text-xs sm:text-sm text-slate-700 dark:text-slate-200 mb-2">
+            <span>{importUploadProgress.step}</span>
+            <span>{importUploadProgress.percent}%</span>
+          </div>
+          <div className="h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-blue-600 transition-all duration-300"
+              style={{ width: `${importUploadProgress.percent}%` }}
+            />
+          </div>
+          {importUploadProgress.totalMB > 0 && importUploadProgress.percent < 100 && (
+            <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">
+              {importUploadProgress.uploadedMB.toFixed(1)} MB / {importUploadProgress.totalMB.toFixed(1)} MB
+            </p>
+          )}
+        </div>
+      )}
       <ConfirmDialog
         isOpen={!!pendingBackup}
         title={t('feedback.confirm.restore_backup_title')}

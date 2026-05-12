@@ -8,7 +8,7 @@ class Config:
 
     # Upload size limit (Flask/Werkzeug).
     # Can be increased for large project import backups via env var.
-    MAX_CONTENT_LENGTH_MB = max(1, int(os.environ.get('MAX_CONTENT_LENGTH_MB', 128)))
+    MAX_CONTENT_LENGTH_MB = max(1, int(os.environ.get('MAX_CONTENT_LENGTH_MB', 256)))
     MAX_CONTENT_LENGTH = MAX_CONTENT_LENGTH_MB * 1024 * 1024
 
     # Database
