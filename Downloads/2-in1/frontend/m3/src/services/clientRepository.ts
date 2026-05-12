@@ -404,21 +404,28 @@ const createFallbackClient = (): Client => {
 };
 
 export class ClientRepository {
+
+  static normalizeIncomingClients(input: unknown): Client[] {
+    if (!Array.isArray(input)) {
+      return [createFallbackClient()];
+    }
+
+    const migratedClients = input
+      .filter((client): client is Client => Boolean(client) && typeof client === 'object')
+      .map((client) => normalizeClient(client, { validateDuplicateTaskIds: true }));
+    const normalized = this.migrateModules(migratedClients);
+
+    return normalized.length > 0 ? normalized : [createFallbackClient()];
+  }
+
   static getClients(): Client[] {
     const savedClients = localStorage.getItem(CLIENTS_KEY);
 
     if (savedClients) {
       try {
         const parsedClients = JSON.parse(savedClients);
-        const migratedClients = parsedClients.map((client: Client) =>
-          normalizeClient(client, { validateDuplicateTaskIds: true }),
-        );
-        const normalized = this.migrateModules(migratedClients);
-        if (normalized.length === 0) {
-          const fallbackClient = createFallbackClient();
-          localStorage.setItem(CLIENTS_KEY, JSON.stringify([fallbackClient]));
-          return [fallbackClient];
-        }
+        const normalized = this.normalizeIncomingClients(parsedClients);
+        localStorage.setItem(CLIENTS_KEY, JSON.stringify(normalized));
         return normalized;
       } catch (e) {
         console.error('Failed to parse clients', e);
@@ -429,15 +436,7 @@ export class ClientRepository {
     if (legacyClients) {
       try {
         const parsedClients = JSON.parse(legacyClients);
-        const migratedClients = parsedClients.map((client: Client) =>
-          normalizeClient(client, { validateDuplicateTaskIds: true }),
-        );
-        const normalized = this.migrateModules(migratedClients);
-        if (normalized.length === 0) {
-          const fallbackClient = createFallbackClient();
-          localStorage.setItem(CLIENTS_KEY, JSON.stringify([fallbackClient]));
-          return [fallbackClient];
-        }
+        const normalized = this.normalizeIncomingClients(parsedClients);
         localStorage.setItem(CLIENTS_KEY, JSON.stringify(normalized));
         return normalized;
       } catch (e) {

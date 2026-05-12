@@ -329,12 +329,15 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
         return;
       }
 
-      setClients(snapshot.clients);
-      setGeneralNotes(snapshot.generalNotes);
+      const hydratedClients = ClientRepository.normalizeIncomingClients(snapshot.clients);
+      const hydratedGeneralNotes = Array.isArray(snapshot.generalNotes) ? snapshot.generalNotes : [];
+
+      setClients(hydratedClients);
+      setGeneralNotes(hydratedGeneralNotes);
       const nextClientId =
-        snapshot.currentClientId && snapshot.clients.some((client) => client.id === snapshot.currentClientId)
+        snapshot.currentClientId && hydratedClients.some((client) => client.id === snapshot.currentClientId)
           ? snapshot.currentClientId
-          : snapshot.clients[0]?.id || '';
+          : hydratedClients[0]?.id || '';
       setCurrentClientId(nextClientId);
       setIsHydrated(true);
     };
