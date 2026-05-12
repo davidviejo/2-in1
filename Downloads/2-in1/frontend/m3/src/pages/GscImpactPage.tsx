@@ -254,6 +254,7 @@ const SHARED_RULES_PARAM = 'sharedRules';
 const GSC_ANALYSIS_PAGE_SIZE = 25000;
 const GSC_ANALYSIS_MAX_PAGES = 40;
 const GSC_ANALYSIS_MAX_ROWS = GSC_ANALYSIS_PAGE_SIZE * GSC_ANALYSIS_MAX_PAGES;
+const CLUSTER_LEVELS_SETTINGS_STORAGE_KEY = 'gsc-impact-cluster-levels-settings-v1';
 const PORTFOLIO_BATCH_SIZE = 5;
 const DISPLAY_LIMIT_OPTIONS = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000] as const;
 const DISPLAY_LIMIT_DEFAULT = 1000;
@@ -413,6 +414,7 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode }) => {
   const [clusterDepthLevels, setClusterDepthLevels] = useState(4);
   const [selectedClusterLevel1, setSelectedClusterLevel1] = useState('all');
   const [selectedClusterLevel2, setSelectedClusterLevel2] = useState('all');
+  const [clusterAdvancedPeriodsEnabled, setClusterAdvancedPeriodsEnabled] = useState(false);
 
   const {
     gscAccessToken,
@@ -468,6 +470,46 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode }) => {
     () => parseTemplateManualMap(filters.templateManualMapText),
     [filters.templateManualMapText],
   );
+
+  useEffect(() => {
+    if (viewMode !== 'cluster_levels') return;
+    try {
+      const raw = localStorage.getItem(CLUSTER_LEVELS_SETTINGS_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      if (typeof parsed.displayLimit === 'number') setDisplayLimit(parseDisplayLimit(parsed.displayLimit));
+      if (typeof parsed.clusterDepthLevels === 'number') {
+        setClusterDepthLevels(Math.max(2, Math.min(6, Math.round(parsed.clusterDepthLevels))));
+      }
+      setClusterAdvancedPeriodsEnabled(Boolean(parsed.clusterAdvancedPeriodsEnabled));
+      setFilters((prev) => ({
+        ...prev,
+        segmentFilter:
+          parsed.segmentFilter === 'all' || parsed.segmentFilter === 'brand' || parsed.segmentFilter === 'non_brand' || parsed.segmentFilter === 'question'
+            ? parsed.segmentFilter
+            : prev.segmentFilter,
+        minImpressions: typeof parsed.minImpressions === 'number' ? parsed.minImpressions : prev.minImpressions,
+        minClicks: typeof parsed.minClicks === 'number' ? parsed.minClicks : prev.minClicks,
+      }));
+    } catch {
+      // ignore malformed persisted values
+    }
+  }, [viewMode]);
+
+  useEffect(() => {
+    if (viewMode !== 'cluster_levels') return;
+    localStorage.setItem(
+      CLUSTER_LEVELS_SETTINGS_STORAGE_KEY,
+      JSON.stringify({
+        displayLimit,
+        segmentFilter: filters.segmentFilter,
+        minImpressions: filters.minImpressions,
+        minClicks: filters.minClicks,
+        clusterDepthLevels,
+        clusterAdvancedPeriodsEnabled,
+      }),
+    );
+  }, [viewMode, displayLimit, filters.segmentFilter, filters.minImpressions, filters.minClicks, clusterDepthLevels, clusterAdvancedPeriodsEnabled]);
   const parsedCustomClusters = useMemo(() => parseCustomClusters(clusterRulesText), [clusterRulesText]);
   const parsedClusterLevelRules = useMemo(() => parseClusterLevelRules(clusterLevelRulesText), [clusterLevelRulesText]);
   const selectedDomain = useMemo(() => {
@@ -1700,7 +1742,7 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode }) => {
               <div>
                 <label className="metric-label">Resultados visibles (Top N)</label>
                 <input
-                  className="form-control"
+                  className="form-control min-w-[180px]"
                   type="number"
                   min={1}
                   max={DISPLAY_LIMIT_HARD_LIMIT}
@@ -2191,22 +2233,24 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode }) => {
                 </select>
               </div>
 
-              <div>
-                <label className="metric-label">Fecha rollout (helper)</label>
-                <input
-                  className="form-control"
-                  type="date"
-                  value={rolloutDate}
-                  onChange={(e) => setRolloutDate(e.target.value)}
-                />
-                <Button
-                  className="mt-2"
-                  variant="secondary"
-                  onClick={() => setPeriodRanges(buildDefaultRanges(rolloutDate))}
-                >
-                  Aplicar rangos recomendados
-                </Button>
-              </div>
+              {(viewMode !== 'cluster_levels' || clusterAdvancedPeriodsEnabled) && (
+                <div>
+                  <label className="metric-label">Fecha rollout (helper)</label>
+                  <input
+                    className="form-control"
+                    type="date"
+                    value={rolloutDate}
+                    onChange={(e) => setRolloutDate(e.target.value)}
+                  />
+                  <Button
+                    className="mt-2"
+                    variant="secondary"
+                    onClick={() => setPeriodRanges(buildDefaultRanges(rolloutDate))}
+                  >
+                    Aplicar rangos recomendados
+                  </Button>
+                </div>
+              )}
 
               <div>
                 <label className="metric-label">Segmentación query</label>
@@ -2248,6 +2292,20 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode }) => {
               </div>
             </div>
 
+            {viewMode === 'cluster_levels' && (
+              <div className="mt-3 surface-subtle p-2 text-sm">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={clusterAdvancedPeriodsEnabled}
+                    onChange={(e) => setClusterAdvancedPeriodsEnabled(e.target.checked)}
+                  />
+                  Activar análisis avanzado por ventanas (pre/rollout/post)
+                </label>
+              </div>
+            )}
+
+            {(viewMode !== 'cluster_levels' || clusterAdvancedPeriodsEnabled) && (
             <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
               <div>
                 <label className="metric-label">Pre-update · start</label>
@@ -2334,6 +2392,7 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode }) => {
                 />
               </div>
             </div>
+            )}
 
             <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
               <div>
