@@ -203,6 +203,8 @@ export const AppRoutes: React.FC = () => {
           }
         />
 
+        <Route path="clustering-site" element={<Navigate to="/app/clustering-site" replace />} />
+        <Route path="gsc-impact/clustering-site" element={<Navigate to="/app/clustering-site" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
