@@ -334,6 +334,12 @@ const downloadTsv = (content: string, filename: string) => {
   URL.revokeObjectURL(url);
 };
 
+const sanitizeFileNameChunk = (value: string) =>
+  value
+    .trim()
+    .replace(/[\\/:*?"<>|]/g, '')
+    .replace(/\s+/g, '_');
+
   const calculateStatusMetrics = (page: SeoPage) => {
     const items = Object.values(page.checklist) as ChecklistItem[];
     const siCount = items.filter((i) => i.status_manual === 'SI').length;
@@ -343,6 +349,7 @@ const downloadTsv = (content: string, filename: string) => {
   };
 
   const handleExport = async () => {
+    const exportProjectName = sanitizeFileNameChunk(currentClient?.name || 'Proyecto');
     const exportPages = selectedIds.size > 0
       ? pages.filter((p) => selectedIds.has(p.id))
       : pages;
@@ -480,11 +487,11 @@ const downloadTsv = (content: string, filename: string) => {
         });
 
         const dateTag = new Date().toISOString().slice(0, 10);
-        downloadTsv(buildTsv(summaryHeaders, summaryData), `SEO_Checklist_Resumen_${dateTag}.tsv`);
+        downloadTsv(buildTsv(summaryHeaders, summaryData), `${exportProjectName}_SEO_Checklist_Resumen_${dateTag}.tsv`);
         await new Promise((resolve) => setTimeout(resolve, EXPORT_DOWNLOAD_PAUSE_MS));
-        downloadTsv(buildTsv(detailHeaders, detailData), `SEO_Checklist_Detalle_${dateTag}.tsv`);
+        downloadTsv(buildTsv(detailHeaders, detailData), `${exportProjectName}_SEO_Checklist_Detalle_${dateTag}.tsv`);
         await new Promise((resolve) => setTimeout(resolve, EXPORT_DOWNLOAD_PAUSE_MS));
-        downloadTsv(buildTsv(clusterHeaders, clusterRows), `SEO_Checklist_Clusterizacion_${dateTag}.tsv`);
+        downloadTsv(buildTsv(clusterHeaders, clusterRows), `${exportProjectName}_SEO_Checklist_Clusterizacion_${dateTag}.tsv`);
 
         setGscSyncStatus(`Exportación masiva completada. Se exportaron 3 datasets completos (Resumen, Detalle y Clusterización) con ${exportPages.length.toLocaleString()} URL(s).`);
         return;
