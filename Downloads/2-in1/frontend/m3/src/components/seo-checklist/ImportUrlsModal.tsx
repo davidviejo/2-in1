@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { X, Clipboard, Upload } from 'lucide-react';
 import {
   SeoPage,
@@ -250,6 +250,7 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
   const [importErrors, setImportErrors] = useState<ImportErrorSummary | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { settings } = useSettings();
   const brandTerms = useMemo(() => settings.brandTerms || [], [settings.brandTerms]);
 
@@ -387,6 +388,23 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
     }
   };
 
+
+
+  const handleFileImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const content = await file.text();
+      setInputText(content);
+      setImportErrors(null);
+    } finally {
+      if (event.target) {
+        event.target.value = '';
+      }
+    }
+  };
+
   const handleDownloadTemplate = () => {
     const blob = new Blob([buildImportTemplateTsv()], {
       type: 'text/tab-separated-values;charset=utf-8;',
@@ -425,13 +443,29 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
               URL | Keyword Principal | Tipo Página | Geo (Opcional) | Cluster (Opcional)
             </code>
           </p>
-          <button
-            type="button"
-            onClick={handleDownloadTemplate}
-            className="mb-4 inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-          >
-            Descargar plantilla de importación (TSV)
-          </button>
+          <div className="mb-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={handleDownloadTemplate}
+              className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            >
+              Descargar plantilla de importación (TSV)
+            </button>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            >
+              Cargar archivo TSV/CSV
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=",.tsv,.csv,text/tab-separated-values,text/csv,text/plain"
+              onChange={handleFileImport}
+              className="hidden"
+            />
+          </div>
           {brandTerms.length > 0 && (
             <p className="text-xs text-amber-600 dark:text-amber-400 mb-4">
               Términos de marca activos: {brandTerms.join(', ')}. Si la keyword coincide, la URL
