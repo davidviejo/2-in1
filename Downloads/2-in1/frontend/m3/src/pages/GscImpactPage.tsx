@@ -19,6 +19,7 @@ import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Spinner } from '@/components/ui/Spinner';
+import { GSCDateRangeControl } from '@/components/GSCDateRangeControl';
 import { useGSCAuth } from '@/hooks/useGSCAuth';
 import { useGSCData } from '@/hooks/useGSCData';
 import { GSCDimensionFilterGroup, GSCRow, GSCSearchType } from '@/types';
@@ -354,9 +355,10 @@ const buildFilterState = (
 
 interface GscImpactPageProps {
   lockedViewMode?: ImpactViewMode;
+  standaloneClusterLevels?: boolean;
 }
 
-const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode }) => {
+const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode, standaloneClusterLevels = false }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { currentClientId, currentClient, addTask } = useProject();
   const useSharedRuleParams = searchParams.get(SHARED_RULES_PARAM) === '1';
@@ -535,6 +537,16 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode }) => {
       expression: buildLookerStudioUrlLevelCase(index + 1),
     }));
   }, [clusterDepthLevels]);
+
+  const handleClusterLevelsRangeChange = (start: string, end: string) => {
+    setPeriodRanges((prev) => ({
+      ...prev,
+      post: {
+        start,
+        end,
+      },
+    }));
+  };
 
   useEffect(() => {
     setFilters(buildFilterState(searchParams, { persistedConfig, useSharedRuleParams }));
@@ -2233,7 +2245,7 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode }) => {
                 </select>
               </div>
 
-              {(viewMode !== 'cluster_levels' || clusterAdvancedPeriodsEnabled) && (
+              {(viewMode !== 'cluster_levels' || (clusterAdvancedPeriodsEnabled && !standaloneClusterLevels)) && (
                 <div>
                   <label className="metric-label">Fecha rollout (helper)</label>
                   <input
@@ -2292,8 +2304,29 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode }) => {
               </div>
             </div>
 
-            {viewMode === 'cluster_levels' && (
+            {viewMode === 'cluster_levels' && standaloneClusterLevels && (
               <div className="mt-3 surface-subtle p-2 text-sm">
+                <p className="mb-2 font-semibold">Rango principal GSC (clustering por niveles)</p>
+                <GSCDateRangeControl
+                  startDate={periodRanges.post.start}
+                  endDate={periodRanges.post.end}
+                  onRangeChange={handleClusterLevelsRangeChange}
+                />
+              </div>
+            )}
+
+            {viewMode === 'cluster_levels' && !standaloneClusterLevels && (
+              <div className="mt-3 surface-subtle p-2 text-sm">
+                {!clusterAdvancedPeriodsEnabled && (
+                  <div className="mb-3">
+                    <p className="mb-2 font-semibold">Rango principal GSC (clustering por niveles)</p>
+                    <GSCDateRangeControl
+                      startDate={periodRanges.post.start}
+                      endDate={periodRanges.post.end}
+                      onRangeChange={handleClusterLevelsRangeChange}
+                    />
+                  </div>
+                )}
                 <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
@@ -2305,7 +2338,7 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode }) => {
               </div>
             )}
 
-            {(viewMode !== 'cluster_levels' || clusterAdvancedPeriodsEnabled) && (
+            {(viewMode !== 'cluster_levels' || (clusterAdvancedPeriodsEnabled && !standaloneClusterLevels)) && (
             <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
               <div>
                 <label className="metric-label">Pre-update · start</label>
