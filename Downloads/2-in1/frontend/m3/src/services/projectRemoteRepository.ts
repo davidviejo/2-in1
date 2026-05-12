@@ -3,6 +3,7 @@ import { Client, Note } from '../types';
 import { ClientRepository } from './clientRepository';
 import { ProjectSnapshotDTO } from '../types/projectApi';
 import { StrategyFactory } from '../strategies/StrategyFactory';
+import { createEntityId } from '@/utils/createEntityId';
 
 const PROJECT_SYNC_META_KEY = 'mediaflow_project_sync_meta_v1';
 const LEGACY_IMPORTED_FLAG_KEY = 'mediaflow_legacy_uploaded_v1';
@@ -19,7 +20,7 @@ const getOriginClientId = (): string => {
   if (existing) {
     return existing;
   }
-  const next = crypto.randomUUID();
+  const next = createEntityId();
   sessionStorage.setItem(TAB_ORIGIN_KEY, next);
   return next;
 };

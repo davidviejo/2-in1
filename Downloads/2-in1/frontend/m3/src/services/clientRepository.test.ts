@@ -237,4 +237,23 @@ describe('ClientRepository', () => {
     });
   });
 
+  it('creates fallback client ids when crypto.randomUUID is unavailable', () => {
+    const originalCrypto = globalThis.crypto;
+
+    Object.defineProperty(globalThis, 'crypto', {
+      value: { getRandomValues: originalCrypto.getRandomValues.bind(originalCrypto) },
+      configurable: true,
+    });
+
+    const clients = ClientRepository.getClients();
+
+    expect(clients[0].id).toMatch(/^id-\d+-[a-z0-9]{8}$/);
+
+    Object.defineProperty(globalThis, 'crypto', {
+      value: originalCrypto,
+      configurable: true,
+    });
+  });
+
+
 });
