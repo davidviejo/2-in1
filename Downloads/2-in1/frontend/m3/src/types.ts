@@ -397,6 +397,12 @@ export interface Client {
   country?: string;
   primaryLanguage?: string;
   brandTerms?: string[];
+  brandedKeywords?: string[];
+  seoClusters?: {
+    id: string;
+    name: string;
+    urls: string[];
+  }[];
   initialConfigPreset?: ProjectInitialConfigPreset;
   subSector?: string;
   modules: ModuleData[];
