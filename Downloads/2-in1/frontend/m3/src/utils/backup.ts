@@ -54,6 +54,13 @@ interface BuildBackupPayloadOptions {
   storage?: Storage;
 }
 
+export interface BackupExportProgress {
+  step: string;
+  percent: number;
+}
+
+type BackupExportProgressCallback = (progress: BackupExportProgress) => void;
+
 const CHECKLIST_DB_NAME = 'mediaflow-seo-checklist-db';
 const CHECKLIST_DB_STORE = 'seo-checklists';
 
@@ -136,10 +143,14 @@ export const buildBackupPayload = ({
 
 export const buildBackupPayloadAsync = async (
   options: BuildBackupPayloadOptions,
+  onProgress?: BackupExportProgressCallback,
 ): Promise<BackupPayload> => {
+  onProgress?.({ step: 'Preparando datos base', percent: 20 });
   const basePayload = buildBackupPayload(options);
+  onProgress?.({ step: 'Leyendo checklists SEO', percent: 55 });
   try {
     const seoChecklists = await readSeoChecklistIndexedDbSnapshot();
+    onProgress?.({ step: 'Checklists SEO listos', percent: 75 });
     return {
       ...basePayload,
       indexedDb: {
@@ -147,6 +158,7 @@ export const buildBackupPayloadAsync = async (
       },
     };
   } catch {
+    onProgress?.({ step: 'Continuando sin checklists SEO', percent: 75 });
     return basePayload;
   }
 };
@@ -194,6 +206,7 @@ const appendJsonObject = (parts: string[], value: Record<string, unknown>) => {
  * cuando hay volúmenes muy altos de clientes, notas o snapshots.
  */
 export const buildBackupBlob = (payload: BackupPayload): Blob => {
+  // No heavy async work here, but expose a stable perceived stage in UI.
   const parts: string[] = ['{'];
 
   parts.push('"version":', safeJsonStringify(payload.version));
