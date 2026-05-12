@@ -15,11 +15,12 @@ import {
 import { useToast } from './ui/ToastContext';
 import ConfirmDialog from './ui/ConfirmDialog';
 import { useTranslation } from 'react-i18next';
-import { createHttpClient } from '../services/httpClient';
+import { HttpClientError, createHttpClient } from '../services/httpClient';
 
 
 const normalizeImportedJson = (raw: string) => raw.replace(/^\uFEFF/, '').replace(/\u0000/g, '').trim();
 const MAX_IMPORT_FILE_SIZE_BYTES = 250 * 1024 * 1024;
+const CHUNK_UPLOAD_SIZE_BYTES = 8 * 1024 * 1024;
 const projectApiHttpClient = createHttpClient({ service: 'api' });
 
 const DataManagementPanel: React.FC = () => {
@@ -158,13 +159,32 @@ const DataManagementPanel: React.FC = () => {
 
     if (file.size > MAX_IMPORT_FILE_SIZE_BYTES) {
       try {
-        const formData = new FormData();
-        formData.append('file', file);
-        const remoteSnapshot = await projectApiHttpClient.request<unknown>('/api/v1/project-api/snapshot/import-file', {
+        const { uploadId } = await projectApiHttpClient.request<{ uploadId: string }>(
+          '/api/v1/project-api/snapshot/import-file/chunked/start',
+          {
+            method: 'POST',
+            body: { filename: file.name, totalSize: file.size },
+            timeoutMs: 60_000,
+          },
+        );
+
+        for (let offset = 0; offset < file.size; offset += CHUNK_UPLOAD_SIZE_BYTES) {
+          const chunk = file.slice(offset, offset + CHUNK_UPLOAD_SIZE_BYTES);
+          await projectApiHttpClient.request(`/api/v1/project-api/snapshot/import-file/chunked/${uploadId}/chunk`, {
+            method: 'POST',
+            body: chunk,
+            headers: { 'Content-Type': 'application/octet-stream' },
+            timeoutMs: 5 * 60 * 1000,
+          });
+        }
+
+        const remoteSnapshot = await projectApiHttpClient.request<unknown>(
+          `/api/v1/project-api/snapshot/import-file/chunked/${uploadId}/finish`,
+          {
           method: 'POST',
-          body: formData,
           timeoutMs: 30 * 60 * 1000,
-        });
+          },
+        );
         if (isBackupPayload(remoteSnapshot)) {
           setPendingBackup(migrateBackupPayload(remoteSnapshot));
           successAction('Backup grande cargado en servidor. Confirma para restaurar en este navegador.');
@@ -173,7 +193,12 @@ const DataManagementPanel: React.FC = () => {
         }
       } catch (uploadError) {
         console.error(uploadError);
-        error('No se pudo subir el backup grande al servidor. Verifica backend y vuelve a intentar.', 6000);
+
+        if (uploadError instanceof HttpClientError && uploadError.status === 413) {
+          error('El backup excede el límite permitido por el backend. Aumenta MAX_CONTENT_LENGTH_MB y reinicia el servidor.', 7000);
+        } else {
+          error('No se pudo subir el backup grande al servidor. Verifica backend y vuelve a intentar.', 6000);
+        }
       }
     } else {
       const reader = new FileReader();
