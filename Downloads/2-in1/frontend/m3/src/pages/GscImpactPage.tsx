@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { BarChart3, LogIn, LogOut, RefreshCcw, Settings2 } from 'lucide-react';
+import { BarChart3, Copy, Download, LogIn, LogOut, RefreshCcw, Settings2 } from 'lucide-react';
 import {
   Bar,
   BarChart,
@@ -1082,6 +1082,56 @@ const GscImpactPage: React.FC = () => {
       }),
     [clusterHierarchyRows, selectedClusterLevel1, selectedClusterLevel2],
   );
+  const [clusterSearchTerm, setClusterSearchTerm] = useState('');
+  const clusterRowsBySearch = useMemo(() => {
+    const normalizedTerm = clusterSearchTerm.trim().toLowerCase();
+    if (!normalizedTerm) return filteredClusterHierarchyRows;
+    return filteredClusterHierarchyRows.filter((row) =>
+      [row.level1, row.level2].some((value) => value.toLowerCase().includes(normalizedTerm)),
+    );
+  }, [clusterSearchTerm, filteredClusterHierarchyRows]);
+  const clusterExecutiveSummary = useMemo(() => {
+    const totalUrls = clusterRowsBySearch.reduce((sum, row) => sum + row.urls, 0);
+    const uniqueLevel1 = new Set(clusterRowsBySearch.map((row) => row.level1)).size;
+    const uniqueLevel2 = new Set(clusterRowsBySearch.map((row) => `${row.level1}|||${row.level2}`)).size;
+    const topOpportunity = clusterRowsBySearch[0];
+    const opportunityCoverage = totalUrls > 0
+      ? (clusterRowsBySearch.filter((row) => row.opportunity >= 15).reduce((sum, row) => sum + row.urls, 0) / totalUrls) * 100
+      : 0;
+    return { totalUrls, uniqueLevel1, uniqueLevel2, topOpportunity, opportunityCoverage };
+  }, [clusterRowsBySearch]);
+  const clusterOpportunityRows = useMemo(
+    () => clusterRowsBySearch.filter((row) => row.opportunity >= 10).slice(0, 10),
+    [clusterRowsBySearch],
+  );
+  const exportClusterLevelsCsv = () => {
+    const headers = ['Cluster nivel 1', 'Cluster nivel 2', 'URLs', 'Delta clicks/day', 'Delta CTR pp', 'Delta posición', 'Score oportunidad'];
+    const rows = clusterRowsBySearch.map((row) => [
+      row.level1,
+      row.level2,
+      row.urls,
+      row.deltaClicksDay.toFixed(2),
+      row.deltaCtrPp.toFixed(2),
+      row.deltaPosition.toFixed(2),
+      row.opportunity.toFixed(2),
+    ]);
+    const csv = [headers, ...rows]
+      .map((line) => line.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 10);
+    link.href = url;
+    link.download = `clustering_site_levels_${stamp}.csv`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+  };
+  const copyClusterLevelsCase = async () => {
+    if (!lookerClusterLevel1Case && !lookerClusterLevel2Case) return;
+    const payload = `-- CASE cluster nivel 1 --\n${lookerClusterLevel1Case}\n\n-- CASE cluster nivel 2 --\n${lookerClusterLevel2Case}`;
+    await navigator.clipboard.writeText(payload);
+  };
 
   useEffect(() => {
     if (selectedClusterLevel2 !== 'all' && !availableClusterLevel2.includes(selectedClusterLevel2)) {
@@ -2560,6 +2610,16 @@ const GscImpactPage: React.FC = () => {
             <section className="surface-panel p-6">
               <h3 className="text-lg font-semibold">Clustering por niveles (vista única)</h3>
               <p className="section-subtitle">Filtra por nivel 1 y nivel 2, con foco en subniveles y evolución de oportunidad.</p>
+              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
+                <Card className="p-4"><p className="text-xs text-muted">URLs analizadas</p><p className="text-2xl font-semibold">{clusterExecutiveSummary.totalUrls}</p></Card>
+                <Card className="p-4"><p className="text-xs text-muted">Clusters nivel 1</p><p className="text-2xl font-semibold">{clusterExecutiveSummary.uniqueLevel1}</p></Card>
+                <Card className="p-4"><p className="text-xs text-muted">Clusters nivel 2</p><p className="text-2xl font-semibold">{clusterExecutiveSummary.uniqueLevel2}</p></Card>
+                <Card className="p-4"><p className="text-xs text-muted">Cobertura de oportunidad</p><p className="text-2xl font-semibold">{clusterExecutiveSummary.opportunityCoverage.toFixed(1)}%</p></Card>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button variant="secondary" onClick={exportClusterLevelsCsv}><Download size={14} /> Exportar CSV</Button>
+                <Button variant="secondary" onClick={copyClusterLevelsCase}><Copy size={14} /> Copiar CASE L1/L2</Button>
+              </div>
               <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div>
                   <label className="metric-label">Cluster nivel 1</label>
@@ -2576,9 +2636,13 @@ const GscImpactPage: React.FC = () => {
                   </select>
                 </div>
               </div>
+              <div className="mt-3">
+                <label className="metric-label">Buscar cluster (L1 o L2)</label>
+                <Input className="form-control" value={clusterSearchTerm} onChange={(e) => setClusterSearchTerm(e.target.value)} placeholder="Ej: servicios, blog, implantes..." />
+              </div>
               <div className="mt-4 h-[320px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={filteredClusterHierarchyRows.slice(0, 20)}>
+                  <BarChart data={clusterRowsBySearch.slice(0, 20)}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="level2" />
                     <YAxis />
@@ -2588,6 +2652,34 @@ const GscImpactPage: React.FC = () => {
                     <Bar dataKey="urls" fill="#334155" name="URLs" />
                   </BarChart>
                 </ResponsiveContainer>
+              </div>
+              <div className="mt-4 overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-muted">
+                      <th className="px-2 py-2">Cluster nivel 1</th><th className="px-2 py-2">Cluster nivel 2</th><th className="px-2 py-2">URLs</th><th className="px-2 py-2">Δ clicks/day</th><th className="px-2 py-2">Δ CTR pp</th><th className="px-2 py-2">Δ posición</th><th className="px-2 py-2">Score oportunidad</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {clusterRowsBySearch.slice(0, 80).map((row) => (
+                      <tr key={`cluster-level-row-${row.level1}-${row.level2}`} className="border-t border-border/50">
+                        <td className="px-2 py-2 font-medium">{row.level1}</td><td className="px-2 py-2">{row.level2}</td><td className="px-2 py-2">{row.urls}</td><td className="px-2 py-2">{row.deltaClicksDay.toFixed(2)}</td><td className="px-2 py-2">{row.deltaCtrPp.toFixed(2)}</td><td className="px-2 py-2">{row.deltaPosition.toFixed(2)}</td><td className="px-2 py-2">{row.opportunity.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-4">
+                <h4 className="text-sm font-semibold">Oportunidades detectadas (Top 10)</h4>
+                <div className="mt-2 space-y-2">
+                  {clusterOpportunityRows.map((row) => (
+                    <div key={`opp-${row.level1}-${row.level2}`} className="surface-subtle p-3 text-sm">
+                      <p className="font-semibold">{row.level1} → {row.level2}</p>
+                      <p>URLs: {row.urls} · Δ clicks/day: {row.deltaClicksDay.toFixed(2)} · Δ CTR: {row.deltaCtrPp.toFixed(2)} pp · Δ posición: {row.deltaPosition.toFixed(2)} · Score: {row.opportunity.toFixed(2)}</p>
+                    </div>
+                  ))}
+                  {clusterOpportunityRows.length === 0 && <p className="text-sm text-muted">No se detectaron oportunidades relevantes con los filtros actuales.</p>}
+                </div>
               </div>
             </section>
           )}
