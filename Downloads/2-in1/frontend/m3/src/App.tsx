@@ -92,6 +92,10 @@ export const AppRoutes: React.FC = () => {
         <Route
           path="/app/*"
           element={
+            <ErrorBoundary
+              title="No pudimos cargar la aplicación"
+              message="Se produjo un error inesperado al renderizar la interfaz interna. Recarga la página y, si persiste, revisa la configuración local del navegador (localStorage/cache) o la consola de errores."
+            >
             <Layout
               modules={modules}
               globalScore={globalScore}
@@ -195,6 +199,7 @@ export const AppRoutes: React.FC = () => {
                 <Route path="*" element={<Navigate to="/app" replace />} />
               </Routes>
             </Layout>
+            </ErrorBoundary>
           }
         />
 
