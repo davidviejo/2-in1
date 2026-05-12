@@ -3,6 +3,7 @@ import { Network, RefreshCw, ShieldCheck } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useGSCAuth } from '@/hooks/useGSCAuth';
 import { useGSCData } from '@/hooks/useGSCData';
+import { useProject } from '@/context/ProjectContext';
 
 type ClusterRow = {
   cluster: string;
@@ -39,13 +40,55 @@ const toPathClusterByLevel = (url: string, level: number): string => {
   }
 };
 
-const buildRowsByLevel = (gscData: Array<{ keys?: string[]; clicks?: number; impressions?: number; position?: number }>, level: number): ClusterRow[] => {
+
+const parseRegexPattern = (rawPattern: string): RegExp | null => {
+  const trimmed = rawPattern.trim();
+  const regexMatch = trimmed.match(/^\/(.*)\/([a-z]*)$/i);
+  if (!regexMatch) return null;
+  try {
+    return new RegExp(regexMatch[1], regexMatch[2]);
+  } catch {
+    return null;
+  }
+};
+
+const matchesManualPattern = (url: string, pattern: string): boolean => {
+  const trimmedPattern = pattern.trim();
+  if (!trimmedPattern) return false;
+
+  const parsedRegex = parseRegexPattern(trimmedPattern);
+  if (parsedRegex) {
+    return parsedRegex.test(url);
+  }
+
+  return url.toLowerCase().includes(trimmedPattern.toLowerCase());
+};
+
+const resolveClusterName = (
+  url: string,
+  level: number,
+  manualClusters: Array<{ name?: string; urls?: string[] }>,
+): string => {
+  for (const cluster of manualClusters) {
+    if (!cluster?.name || !Array.isArray(cluster.urls)) continue;
+    const hasMatch = cluster.urls.some((pattern) => matchesManualPattern(url, pattern));
+    if (hasMatch) return cluster.name;
+  }
+
+  return toPathClusterByLevel(url, level);
+};
+
+const buildRowsByLevel = (
+  gscData: Array<{ keys?: string[]; clicks?: number; impressions?: number; position?: number }>,
+  level: number,
+  manualClusters: Array<{ name?: string; urls?: string[] }>,
+): ClusterRow[] => {
   const bucket = new Map<string, { urls: Set<string>; clicks: number; impressions: number; posWeighted: number; topQuery: string; topClicks: number }>();
 
   for (const row of gscData) {
     const page = row.keys?.[0] || '';
     const query = row.keys?.[1] || '';
-    const cluster = toPathClusterByLevel(page, level);
+    const cluster = resolveClusterName(page, level, manualClusters);
     const existing = bucket.get(cluster) || {
       urls: new Set<string>(),
       clicks: 0,
@@ -94,6 +137,7 @@ const SiteClusteringPage: React.FC = () => {
   const [clusterDepth, setClusterDepth] = useState(2);
 
   const { gscAccessToken, googleUser, login, handleLogoutGsc } = useGSCAuth();
+  const { currentClient } = useProject();
   const { gscSites, selectedSite, setSelectedSite, gscData, isLoadingGsc } = useGSCData(gscAccessToken, startDate, endDate, 'previous_period', {
     autoRun: false,
     runKey,
@@ -124,9 +168,9 @@ const SiteClusteringPage: React.FC = () => {
     }
     return Array.from({ length: maxDepth }, (_, i) => ({
       level: i + 1,
-      rows: buildRowsByLevel(gscData, i + 1),
+      rows: buildRowsByLevel(gscData, i + 1, currentClient?.seoClusters || []),
     }));
-  }, [gscData, hasStartedAnalysis, maxDepth]);
+  }, [currentClient?.seoClusters, gscData, hasStartedAnalysis, maxDepth]);
 
   const selectedLevelRows = levelData.find((item) => item.level === selectedLevel)?.rows || [];
   const selectedClustersForChart = selectedLevelRows.slice(0, 10);
