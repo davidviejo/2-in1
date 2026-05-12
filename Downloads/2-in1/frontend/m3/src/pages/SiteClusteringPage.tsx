@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Network, RefreshCw, ShieldCheck } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Link } from 'react-router-dom';
 import { useGSCAuth } from '@/hooks/useGSCAuth';
 import { useGSCData } from '@/hooks/useGSCData';
 
@@ -86,9 +87,19 @@ const SiteClusteringPage: React.FC = () => {
   const [startDate, setStartDate] = useState(defaultStartDate);
   const [endDate, setEndDate] = useState(defaultEndDate);
   const [selectedLevel, setSelectedLevel] = useState(1);
+  const [runKey, setRunKey] = useState(0);
+  const [hasStartedAnalysis, setHasStartedAnalysis] = useState(false);
 
   const { gscAccessToken, googleUser, login, handleLogoutGsc } = useGSCAuth();
-  const { gscSites, selectedSite, setSelectedSite, gscData, isLoadingGsc } = useGSCData(gscAccessToken, startDate, endDate);
+  const { gscSites, selectedSite, setSelectedSite, gscData, isLoadingGsc } = useGSCData(gscAccessToken, startDate, endDate, 'previous_period', {
+    autoRun: false,
+    runKey,
+  });
+
+  const handleStartAnalysis = () => {
+    setHasStartedAnalysis(true);
+    setRunKey((prev) => prev + 1);
+  };
 
   const maxDepth = useMemo(() => {
     let depth = 1;
@@ -105,11 +116,14 @@ const SiteClusteringPage: React.FC = () => {
   }, [gscData]);
 
   const levelData = useMemo<LevelData[]>(() => {
+    if (!hasStartedAnalysis) {
+      return [];
+    }
     return Array.from({ length: maxDepth }, (_, i) => ({
       level: i + 1,
       rows: buildRowsByLevel(gscData, i + 1),
     }));
-  }, [gscData, maxDepth]);
+  }, [gscData, hasStartedAnalysis, maxDepth]);
 
   const selectedLevelRows = levelData.find((item) => item.level === selectedLevel)?.rows || [];
   const selectedClustersForChart = selectedLevelRows.slice(0, 10);
@@ -170,7 +184,27 @@ const SiteClusteringPage: React.FC = () => {
             </select>
           </div>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleStartAnalysis}
+            disabled={!gscAccessToken || !selectedSite || isLoadingGsc}
+            className="px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            Iniciar análisis
+          </button>
+          <Link
+            to="/app/gsc-impact?view=cluster_levels"
+            className="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-600 text-sm font-semibold text-slate-700 dark:text-slate-200"
+          >
+            Ajustes de clúster manual + importación
+          </Link>
+        </div>
         <div className="flex items-center gap-2 text-xs text-slate-500"><ShieldCheck size={14} />Método: agregación jerárquica por prefijos de ruta para comparar clústeres por nivel.</div>
+        {!hasStartedAnalysis && (
+          <p className="text-xs text-slate-500">
+            Selecciona propiedad y rango de fechas, y pulsa <strong>Iniciar análisis</strong> para ejecutar el procesamiento.
+          </p>
+        )}
       </section>
 
       <section className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm">
