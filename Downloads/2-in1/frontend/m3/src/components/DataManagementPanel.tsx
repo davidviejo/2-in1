@@ -23,6 +23,31 @@ const MAX_IMPORT_FILE_SIZE_BYTES = 250 * 1024 * 1024;
 const CHUNK_UPLOAD_SIZE_BYTES = 8 * 1024 * 1024;
 const projectApiHttpClient = createHttpClient({ service: 'api' });
 
+
+type ImportUploadStage = 'idle' | 'session_start' | 'chunk_upload' | 'backend_processing' | 'completed';
+
+type ImportUploadProgress = {
+  active: boolean;
+  stage: ImportUploadStage;
+  stageLabel: string;
+  percent: number;
+  uploadedBytes: number;
+  totalBytes: number;
+  speedMbps: number;
+  etaSeconds: number | null;
+};
+
+const INITIAL_IMPORT_UPLOAD_PROGRESS: ImportUploadProgress = {
+  active: false,
+  stage: 'idle',
+  stageLabel: '',
+  percent: 0,
+  uploadedBytes: 0,
+  totalBytes: 0,
+  speedMbps: 0,
+  etaSeconds: null,
+};
+
 const DataManagementPanel: React.FC = () => {
   const { t } = useTranslation();
   const { successAction, errorAction, error } = useToast();
@@ -32,6 +57,7 @@ const DataManagementPanel: React.FC = () => {
   const [pendingBackup, setPendingBackup] = React.useState<ReturnType<typeof migrateBackupPayload> | null>(null);
   const [isExportingBackup, setIsExportingBackup] = React.useState(false);
   const [backupExportProgress, setBackupExportProgress] = React.useState({ percent: 0, step: '' });
+  const [importUploadProgress, setImportUploadProgress] = React.useState<ImportUploadProgress>(INITIAL_IMPORT_UPLOAD_PROGRESS);
 
   const formatMesColumn = (dueDate?: string) => {
     if (!dueDate) return '';
@@ -153,11 +179,56 @@ const DataManagementPanel: React.FC = () => {
     XLSX.writeFile(workbook, `MediaFlow_Tareas_Sheet_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
+
+  const formatMegabytes = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+
+  const formatEta = (etaSeconds: number | null) => {
+    if (etaSeconds === null || !Number.isFinite(etaSeconds) || etaSeconds < 0) return '—';
+    if (etaSeconds < 60) return `${Math.round(etaSeconds)} s`;
+    const minutes = Math.floor(etaSeconds / 60);
+    const seconds = Math.round(etaSeconds % 60);
+    return `${minutes}m ${seconds}s`;
+  };
+
   const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     if (file.size > MAX_IMPORT_FILE_SIZE_BYTES) {
+      const uploadStartedAt = Date.now();
+      let uploadedBytes = 0;
+      const totalBytes = file.size;
+
+      const updateChunkProgress = (nextUploadedBytes: number) => {
+        const elapsedSeconds = Math.max((Date.now() - uploadStartedAt) / 1000, 0.001);
+        const speedBytesPerSecond = nextUploadedBytes / elapsedSeconds;
+        const remainingBytes = Math.max(totalBytes - nextUploadedBytes, 0);
+        const etaSeconds = speedBytesPerSecond > 0 ? remainingBytes / speedBytesPerSecond : null;
+        const percent = Math.min(95, Math.round((nextUploadedBytes / totalBytes) * 95));
+
+        setImportUploadProgress({
+          active: true,
+          stage: 'chunk_upload',
+          stageLabel: 'Subiendo chunks…',
+          percent,
+          uploadedBytes: nextUploadedBytes,
+          totalBytes,
+          speedMbps: speedBytesPerSecond / (1024 * 1024),
+          etaSeconds,
+        });
+      };
+
+      setImportUploadProgress({
+        active: true,
+        stage: 'session_start',
+        stageLabel: 'Iniciando sesión de carga…',
+        percent: 2,
+        uploadedBytes: 0,
+        totalBytes,
+        speedMbps: 0,
+        etaSeconds: null,
+      });
+
       try {
         const { uploadId } = await projectApiHttpClient.request<{ uploadId: string }>(
           '/api/v1/project-api/snapshot/import-file/chunked/start',
@@ -176,23 +247,50 @@ const DataManagementPanel: React.FC = () => {
             headers: { 'Content-Type': 'application/octet-stream' },
             timeoutMs: 5 * 60 * 1000,
           });
+
+          uploadedBytes = Math.min(offset + chunk.size, totalBytes);
+          updateChunkProgress(uploadedBytes);
         }
+
+        setImportUploadProgress((previous) => ({
+          ...previous,
+          active: true,
+          stage: 'backend_processing',
+          stageLabel: 'Procesando importación en backend…',
+          percent: 97,
+          uploadedBytes: totalBytes,
+          totalBytes,
+          etaSeconds: null,
+        }));
 
         const remoteSnapshot = await projectApiHttpClient.request<unknown>(
           `/api/v1/project-api/snapshot/import-file/chunked/${uploadId}/finish`,
           {
-          method: 'POST',
-          timeoutMs: 30 * 60 * 1000,
+            method: 'POST',
+            timeoutMs: 30 * 60 * 1000,
           },
         );
         if (isBackupPayload(remoteSnapshot)) {
           setPendingBackup(migrateBackupPayload(remoteSnapshot));
+          setImportUploadProgress((previous) => ({
+            ...previous,
+            active: true,
+            stage: 'completed',
+            stageLabel: 'Importación finalizada',
+            percent: 100,
+            uploadedBytes: totalBytes,
+            totalBytes,
+            etaSeconds: 0,
+          }));
           successAction('Backup grande cargado en servidor. Confirma para restaurar en este navegador.');
+          setTimeout(() => setImportUploadProgress(INITIAL_IMPORT_UPLOAD_PROGRESS), 1400);
         } else {
+          setImportUploadProgress(INITIAL_IMPORT_UPLOAD_PROGRESS);
           error('El servidor recibió el archivo pero no devolvió un backup válido.', 6000);
         }
       } catch (uploadError) {
         console.error(uploadError);
+        setImportUploadProgress(INITIAL_IMPORT_UPLOAD_PROGRESS);
 
         if (uploadError instanceof HttpClientError && uploadError.status === 413) {
           error('El backup excede el límite permitido por el backend. Aumenta MAX_CONTENT_LENGTH_MB y reinicia el servidor.', 7000);
@@ -314,6 +412,24 @@ const DataManagementPanel: React.FC = () => {
             />
           </div>
           <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-300">{backupExportProgress.step}</p>
+        </div>
+      )}
+      {importUploadProgress.active && (
+        <div className="mb-3 rounded-lg border border-indigo-200 dark:border-indigo-600 bg-indigo-50/60 dark:bg-indigo-900/20 p-2">
+          <div className="flex items-center justify-between text-[11px] text-indigo-800 dark:text-indigo-200 mb-1">
+            <span>{importUploadProgress.stageLabel}</span>
+            <span>{importUploadProgress.percent}%</span>
+          </div>
+          <div className="h-2 w-full rounded-full bg-indigo-100 dark:bg-indigo-950/50 overflow-hidden">
+            <div
+              className="h-full bg-indigo-500 transition-all duration-300 animate-pulse"
+              style={{ width: `${importUploadProgress.percent}%` }}
+            />
+          </div>
+          <div className="mt-1 flex items-center justify-between text-[10px] text-indigo-700 dark:text-indigo-200">
+            <span>{formatMegabytes(importUploadProgress.uploadedBytes)} / {formatMegabytes(importUploadProgress.totalBytes)}</span>
+            <span>{importUploadProgress.speedMbps.toFixed(2)} MB/s · ETA {formatEta(importUploadProgress.etaSeconds)}</span>
+          </div>
         </div>
       )}
       <div className="grid grid-cols-1">
