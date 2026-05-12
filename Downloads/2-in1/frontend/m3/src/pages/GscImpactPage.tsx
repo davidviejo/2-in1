@@ -351,7 +351,11 @@ const buildFilterState = (
   };
 };
 
-const GscImpactPage: React.FC = () => {
+interface GscImpactPageProps {
+  lockedViewMode?: ImpactViewMode;
+}
+
+const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { currentClientId, currentClient, addTask } = useProject();
   const useSharedRuleParams = searchParams.get(SHARED_RULES_PARAM) === '1';
@@ -361,7 +365,7 @@ const GscImpactPage: React.FC = () => {
   );
   const initialFilters = buildFilterState(searchParams, { persistedConfig, useSharedRuleParams });
   const initialRolloutDate = searchParams.get('rolloutDate') || toISODate(new Date());
-  const initialViewMode = parseImpactViewMode(searchParams.get('view')) || 'individual';
+  const initialViewMode = lockedViewMode || parseImpactViewMode(searchParams.get('view')) || 'individual';
   const initialRangesFromParams = buildPeriodRangesFromParams(searchParams, initialRolloutDate);
   const useCustomRulesParam = searchParams.get('useCustomRules');
   const initialUseCustomRules =
@@ -504,12 +508,18 @@ const GscImpactPage: React.FC = () => {
   }, [currentClientId, searchParams]);
 
   useEffect(() => {
+    if (lockedViewMode) {
+      if (viewMode !== lockedViewMode) {
+        setViewMode(lockedViewMode);
+      }
+      return;
+    }
     const nextViewMode = parseImpactViewMode(searchParams.get('view'));
     if (!nextViewMode) return;
     if (nextViewMode !== viewMode) {
       setViewMode(nextViewMode);
     }
-  }, [searchParams, viewMode]);
+  }, [lockedViewMode, searchParams, viewMode]);
 
   useEffect(() => {
     const nextTopN = parseDisplayLimit(searchParams.get('topN'));
@@ -530,7 +540,9 @@ const GscImpactPage: React.FC = () => {
     next.set('searchType', filters.searchType);
     next.set('useCustomRules', useCustomRules ? '1' : '0');
     next.set('rolloutDate', rolloutDate);
-    next.set('view', viewMode);
+    if (!lockedViewMode) {
+      next.set('view', viewMode);
+    }
     next.set('includeBrand', globalFilters.includeBrandInTotals ? '1' : '0');
     next.set('minDailyClicks', String(globalFilters.minimumDailyClicks));
     next.set('onlyNegative', globalFilters.onlyNegative ? '1' : '0');
@@ -558,6 +570,7 @@ const GscImpactPage: React.FC = () => {
     useCustomRules,
     useSharedRuleParams,
     viewMode,
+    lockedViewMode,
   ]);
 
   useEffect(() => {
@@ -1632,7 +1645,8 @@ const GscImpactPage: React.FC = () => {
         <>
           <section className="surface-panel p-6">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-              <div>
+              {!lockedViewMode && (
+                <div>
                 <label className="metric-label">Vista</label>
                 <select
                   className="form-control"
@@ -1645,6 +1659,7 @@ const GscImpactPage: React.FC = () => {
                   <option value="global">Impacto global GSC (portfolio)</option>
                 </select>
               </div>
+              )}
               {viewMode === 'global' && (
                 <>
                   <div>
