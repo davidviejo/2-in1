@@ -1,5 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Network, RefreshCw, ShieldCheck } from 'lucide-react';
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useGSCAuth } from '@/hooks/useGSCAuth';
 import { useGSCData } from '@/hooks/useGSCData';
 
@@ -12,64 +13,106 @@ type ClusterRow = {
   topQuery: string;
 };
 
-const toPathCluster = (url: string): string => {
+type LevelData = {
+  level: number;
+  rows: ClusterRow[];
+};
+
+const getDefaultDates = () => {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(end.getDate() - 27);
+  return {
+    endDate: end.toISOString().split('T')[0],
+    startDate: start.toISOString().split('T')[0],
+  };
+};
+
+const toPathClusterByLevel = (url: string, level: number): string => {
   try {
     const path = new URL(url).pathname.replace(/\/+$/, '');
     const segments = path.split('/').filter(Boolean);
     if (segments.length === 0) return '/';
-    if (segments.length === 1) return `/${segments[0]}`;
-    return `/${segments[0]}/${segments[1]}`;
+    return `/${segments.slice(0, level).join('/')}`;
   } catch {
     return '/sin-ruta';
   }
 };
 
+const buildRowsByLevel = (gscData: Array<{ keys?: string[]; clicks?: number; impressions?: number; position?: number }>, level: number): ClusterRow[] => {
+  const bucket = new Map<string, { urls: Set<string>; clicks: number; impressions: number; posWeighted: number; topQuery: string; topClicks: number }>();
+
+  for (const row of gscData) {
+    const page = row.keys?.[0] || '';
+    const query = row.keys?.[1] || '';
+    const cluster = toPathClusterByLevel(page, level);
+    const existing = bucket.get(cluster) || {
+      urls: new Set<string>(),
+      clicks: 0,
+      impressions: 0,
+      posWeighted: 0,
+      topQuery: '-',
+      topClicks: -1,
+    };
+
+    if (page) existing.urls.add(page);
+    const clicks = row.clicks || 0;
+    const impressions = row.impressions || 0;
+    existing.clicks += clicks;
+    existing.impressions += impressions;
+    existing.posWeighted += (row.position || 0) * Math.max(impressions, 1);
+
+    if (clicks > existing.topClicks && query) {
+      existing.topClicks = clicks;
+      existing.topQuery = query;
+    }
+    bucket.set(cluster, existing);
+  }
+
+  return Array.from(bucket.entries())
+    .map(([cluster, data]) => ({
+      cluster,
+      urls: data.urls.size,
+      clicks: Math.round(data.clicks),
+      impressions: Math.round(data.impressions),
+      avgPosition: data.impressions > 0 ? Number((data.posWeighted / data.impressions).toFixed(2)) : 0,
+      topQuery: data.topQuery,
+    }))
+    .sort((a, b) => b.clicks - a.clicks);
+};
+
 const SiteClusteringPage: React.FC = () => {
+  const { startDate: defaultStartDate, endDate: defaultEndDate } = getDefaultDates();
+  const [startDate, setStartDate] = useState(defaultStartDate);
+  const [endDate, setEndDate] = useState(defaultEndDate);
+  const [selectedLevel, setSelectedLevel] = useState(1);
+
   const { gscAccessToken, googleUser, login, handleLogoutGsc } = useGSCAuth();
-  const { gscSites, selectedSite, setSelectedSite, gscData, isLoadingGsc } = useGSCData(gscAccessToken);
+  const { gscSites, selectedSite, setSelectedSite, gscData, isLoadingGsc } = useGSCData(gscAccessToken, startDate, endDate);
 
-  const clusters = useMemo<ClusterRow[]>(() => {
-    const bucket = new Map<string, { urls: Set<string>; clicks: number; impressions: number; posWeighted: number; topQuery: string; topClicks: number }>();
-
+  const maxDepth = useMemo(() => {
+    let depth = 1;
     for (const row of gscData) {
       const page = row.keys?.[0] || '';
-      const query = row.keys?.[1] || '';
-      const cluster = toPathCluster(page);
-      const existing = bucket.get(cluster) || {
-        urls: new Set<string>(),
-        clicks: 0,
-        impressions: 0,
-        posWeighted: 0,
-        topQuery: '-',
-        topClicks: -1,
-      };
-
-      if (page) existing.urls.add(page);
-      const clicks = row.clicks || 0;
-      const impressions = row.impressions || 0;
-      existing.clicks += clicks;
-      existing.impressions += impressions;
-      existing.posWeighted += (row.position || 0) * Math.max(impressions, 1);
-
-      if (clicks > existing.topClicks && query) {
-        existing.topClicks = clicks;
-        existing.topQuery = query;
+      try {
+        const segments = new URL(page).pathname.split('/').filter(Boolean).length;
+        depth = Math.max(depth, segments || 1);
+      } catch {
+        depth = Math.max(depth, 1);
       }
-      bucket.set(cluster, existing);
     }
-
-    return Array.from(bucket.entries())
-      .map(([cluster, data]) => ({
-        cluster,
-        urls: data.urls.size,
-        clicks: Math.round(data.clicks),
-        impressions: Math.round(data.impressions),
-        avgPosition: data.impressions > 0 ? Number((data.posWeighted / data.impressions).toFixed(2)) : 0,
-        topQuery: data.topQuery,
-      }))
-      .sort((a, b) => b.clicks - a.clicks)
-      .slice(0, 50);
+    return Math.min(Math.max(depth, 1), 6);
   }, [gscData]);
+
+  const levelData = useMemo<LevelData[]>(() => {
+    return Array.from({ length: maxDepth }, (_, i) => ({
+      level: i + 1,
+      rows: buildRowsByLevel(gscData, i + 1),
+    }));
+  }, [gscData, maxDepth]);
+
+  const selectedLevelRows = levelData.find((item) => item.level === selectedLevel)?.rows || [];
+  const selectedClustersForChart = selectedLevelRows.slice(0, 10);
 
   return (
     <div className="max-w-6xl mx-auto animate-fade-in pb-20 space-y-6">
@@ -82,7 +125,7 @@ const SiteClusteringPage: React.FC = () => {
             <div>
               <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Clustering de site</h1>
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                Panel de control con datos de Google Search Console por clúster de URLs (sin módulo Impacto GSC).
+                Tablas por nivel, comparación visual por clúster y selección de rango temporal desde Google Search Console.
               </p>
             </div>
           </div>
@@ -103,63 +146,82 @@ const SiteClusteringPage: React.FC = () => {
       </header>
 
       <section className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Propiedad GSC</label>
-            <select
-              className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-sm"
-              value={selectedSite}
-              onChange={(e) => setSelectedSite(e.target.value)}
-              disabled={!gscAccessToken || gscSites.length === 0}
-            >
+            <select className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-sm" value={selectedSite} onChange={(e) => setSelectedSite(e.target.value)} disabled={!gscAccessToken || gscSites.length === 0}>
               {gscSites.map((site) => (
                 <option key={site.siteUrl} value={site.siteUrl}>{site.siteUrl}</option>
               ))}
             </select>
           </div>
-          <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-            <p className="text-xs text-slate-500">Clústeres detectados</p>
-            <p className="text-2xl font-semibold text-slate-900 dark:text-white">{clusters.length}</p>
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Desde</label>
+            <input type="date" className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-sm" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
           </div>
-          <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-            <p className="text-xs text-slate-500">Filas GSC analizadas</p>
-            <p className="text-2xl font-semibold text-slate-900 dark:text-white">{gscData.length}</p>
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Hasta</label>
+            <input type="date" className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-sm" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Nivel para gráfica</label>
+            <select className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-sm" value={selectedLevel} onChange={(e) => setSelectedLevel(Number(e.target.value))}>
+              {levelData.map((item) => <option key={item.level} value={item.level}>Nivel {item.level}</option>)}
+            </select>
           </div>
         </div>
-
-        <div className="flex items-center gap-2 text-xs text-slate-500">
-          <ShieldCheck size={14} />
-          Método: agregación por niveles de ruta (<code>/&lt;nivel-1&gt;/&lt;nivel-2&gt;</code>) para panel de control operativo.
-        </div>
+        <div className="flex items-center gap-2 text-xs text-slate-500"><ShieldCheck size={14} />Método: agregación jerárquica por prefijos de ruta para comparar clústeres por nivel.</div>
       </section>
 
       <section className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-slate-900 dark:text-white">Ranking de clústeres</h2>
+          <h2 className="font-semibold text-slate-900 dark:text-white">Comparativa gráfica (nivel {selectedLevel})</h2>
           {isLoadingGsc && <span className="text-xs text-slate-500 inline-flex items-center gap-1"><RefreshCw size={12} className="animate-spin" /> Cargando…</span>}
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left border-b border-slate-200 dark:border-slate-700 text-slate-500">
-                <th className="py-2 pr-3">Clúster</th><th className="py-2 pr-3">URLs</th><th className="py-2 pr-3">Clics</th><th className="py-2 pr-3">Impresiones</th><th className="py-2 pr-3">Pos. media</th><th className="py-2 pr-3">Top query</th>
-              </tr>
-            </thead>
-            <tbody>
-              {clusters.map((row) => (
-                <tr key={row.cluster} className="border-b border-slate-100 dark:border-slate-700/40">
-                  <td className="py-2 pr-3 font-medium text-slate-800 dark:text-slate-200">{row.cluster}</td>
-                  <td className="py-2 pr-3">{row.urls}</td>
-                  <td className="py-2 pr-3">{row.clicks}</td>
-                  <td className="py-2 pr-3">{row.impressions}</td>
-                  <td className="py-2 pr-3">{row.avgPosition}</td>
-                  <td className="py-2 pr-3 text-slate-600 dark:text-slate-300">{row.topQuery}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="h-80">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={selectedClustersForChart}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="cluster" hide />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Bar dataKey="clicks" name="Clics" fill="#334155" />
+              <Bar dataKey="impressions" name="Impresiones" fill="#64748b" />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       </section>
+
+      {levelData.map((level) => (
+        <section key={level.level} className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-slate-900 dark:text-white">Tabla clústeres nivel {level.level}</h2>
+            <span className="text-xs text-slate-500">{level.rows.length} clústeres</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left border-b border-slate-200 dark:border-slate-700 text-slate-500">
+                  <th className="py-2 pr-3">Clúster</th><th className="py-2 pr-3">URLs</th><th className="py-2 pr-3">Clics</th><th className="py-2 pr-3">Impresiones</th><th className="py-2 pr-3">Pos. media</th><th className="py-2 pr-3">Top query</th>
+                </tr>
+              </thead>
+              <tbody>
+                {level.rows.slice(0, 50).map((row) => (
+                  <tr key={`${level.level}-${row.cluster}`} className="border-b border-slate-100 dark:border-slate-700/40">
+                    <td className="py-2 pr-3 font-medium text-slate-800 dark:text-slate-200">{row.cluster}</td>
+                    <td className="py-2 pr-3">{row.urls}</td>
+                    <td className="py-2 pr-3">{row.clicks}</td>
+                    <td className="py-2 pr-3">{row.impressions}</td>
+                    <td className="py-2 pr-3">{row.avgPosition}</td>
+                    <td className="py-2 pr-3 text-slate-600 dark:text-slate-300">{row.topQuery}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ))}
     </div>
   );
 };
