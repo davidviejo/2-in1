@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Network, RefreshCw, ShieldCheck } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Link } from 'react-router-dom';
 import { useGSCAuth } from '@/hooks/useGSCAuth';
 import { useGSCData } from '@/hooks/useGSCData';
 
@@ -89,6 +88,10 @@ const SiteClusteringPage: React.FC = () => {
   const [selectedLevel, setSelectedLevel] = useState(1);
   const [runKey, setRunKey] = useState(0);
   const [hasStartedAnalysis, setHasStartedAnalysis] = useState(false);
+  const [manualClusterRules, setManualClusterRules] = useState('');
+  const [clusterRulesFileName, setClusterRulesFileName] = useState('');
+  const [minimumClicks, setMinimumClicks] = useState(10);
+  const [clusterDepth, setClusterDepth] = useState(2);
 
   const { gscAccessToken, googleUser, login, handleLogoutGsc } = useGSCAuth();
   const { gscSites, selectedSite, setSelectedSite, gscData, isLoadingGsc } = useGSCData(gscAccessToken, startDate, endDate, 'previous_period', {
@@ -192,12 +195,6 @@ const SiteClusteringPage: React.FC = () => {
           >
             Iniciar análisis
           </button>
-          <Link
-            to="/app/gsc-impact?view=cluster_levels"
-            className="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-600 text-sm font-semibold text-slate-700 dark:text-slate-200"
-          >
-            Ajustes de clúster manual + importación
-          </Link>
         </div>
         <div className="flex items-center gap-2 text-xs text-slate-500"><ShieldCheck size={14} />Método: agregación jerárquica por prefijos de ruta para comparar clústeres por nivel.</div>
         {!hasStartedAnalysis && (
@@ -205,6 +202,55 @@ const SiteClusteringPage: React.FC = () => {
             Selecciona propiedad y rango de fechas, y pulsa <strong>Iniciar análisis</strong> para ejecutar el procesamiento.
           </p>
         )}
+      </section>
+
+      <section className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+        <div>
+          <h2 className="font-semibold text-slate-900 dark:text-white">Ajustes de clúster manual</h2>
+          <p className="text-xs text-slate-500 mt-1">Configura reglas manuales e importa un archivo para ajustar el clustering sin depender de otras páginas.</p>
+        </div>
+        <div>
+          <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Reglas manuales</label>
+          <textarea
+            className="w-full min-h-32 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-sm"
+            value={manualClusterRules}
+            onChange={(e) => setManualClusterRules(e.target.value)}
+            placeholder="Una regla por línea. Ej: /blog/* => cluster: contenido"
+          />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Importar reglas</label>
+            <input
+              type="file"
+              accept=".txt,.csv,.json"
+              onChange={(e) => setClusterRulesFileName(e.target.files?.[0]?.name || '')}
+              className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-slate-900 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-white"
+            />
+            {clusterRulesFileName && <p className="text-xs text-slate-500 mt-2">Archivo cargado: {clusterRulesFileName}</p>}
+          </div>
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Mínimo de clics</label>
+            <input
+              type="number"
+              min={0}
+              value={minimumClicks}
+              onChange={(e) => setMinimumClicks(Number(e.target.value) || 0)}
+              className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Profundidad de clúster</label>
+            <input
+              type="number"
+              min={1}
+              max={6}
+              value={clusterDepth}
+              onChange={(e) => setClusterDepth(Math.min(Math.max(Number(e.target.value) || 1, 1), 6))}
+              className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-sm"
+            />
+          </div>
+        </div>
       </section>
 
       <section className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm">
