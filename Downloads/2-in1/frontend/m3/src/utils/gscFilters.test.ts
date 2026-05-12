@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   classifyTemplateByUrl,
   buildLookerStudioClusterCase,
+  buildLookerStudioClusterLevelCase,
   buildLookerStudioUrlLevelCase,
   matchesPathPrefix,
   matchesQuerySegment,
   parseBrandTermsInput,
   parseCustomClusters,
+  parseClusterLevelRules,
   parseTemplateManualMap,
   parseTemplateRules,
 } from './gscFilters';
@@ -53,6 +55,27 @@ describe('gscFilters', () => {
     expect(customCase).toContain('WHEN REGEXP_MATCH');
     expect(customCase).toContain('THEN "Blog"');
     expect(customCase).toContain('ELSE "Sin clasificar"');
+  });
+
+
+  it('parses cluster level rules from textarea format', () => {
+    const parsed = parseClusterLevelRules('Servicios|Implantes|/implantes\nBlog|Guías|/blog,/blog/seo');
+    expect(parsed).toEqual([
+      { level1: 'Servicios', level2: 'Implantes', paths: ['/implantes'] },
+      { level1: 'Blog', level2: 'Guías', paths: ['/blog', '/blog/seo'] },
+    ]);
+  });
+
+  it('builds looker CASE expression for cluster levels', () => {
+    const level1Case = buildLookerStudioClusterLevelCase('example.com', [
+      { level1: 'Servicios', level2: 'Implantes', paths: ['/implantes'] },
+    ], 1);
+    const level2Case = buildLookerStudioClusterLevelCase('example.com', [
+      { level1: 'Servicios', level2: 'Implantes', paths: ['/implantes'] },
+    ], 2);
+
+    expect(level1Case).toContain('THEN "Servicios"');
+    expect(level2Case).toContain('THEN "Implantes"');
   });
 
   it('builds URL level CASE expression for looker', () => {
