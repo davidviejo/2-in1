@@ -23,6 +23,7 @@ vi.mock('./context/ProjectContext', () => ({
     generalNotes: [],
     switchClient: vi.fn(),
     addClient: vi.fn(),
+    renameClient: vi.fn(),
     deleteClient: vi.fn(),
     resetCurrentProject: vi.fn(),
     addTask: vi.fn(),
@@ -35,9 +36,13 @@ vi.mock('./context/ProjectContext', () => ({
     handleReorderRoadmap: vi.fn(),
     addManualCompletedTask: vi.fn(),
     deleteCompletedTaskLog: vi.fn(),
+    updateCompletedTaskImpact: vi.fn(),
     addNote: vi.fn(),
     updateNote: vi.fn(),
     deleteNote: vi.fn(),
+    togglePinNote: vi.fn(),
+    toggleInternalNote: vi.fn(),
+    convertNoteToTask: vi.fn(),
   }),
 }));
 
@@ -53,7 +58,11 @@ vi.mock('./pages/IAVisibility', () => ({ default: () => <div>ia visibility</div>
 vi.mock('./pages/SeoChecklistPage', () => ({ default: () => <div>seo checklist</div> }));
 vi.mock('./pages/Settings', () => ({ default: () => <div>settings</div> }));
 vi.mock('./pages/admin/AdminIdeasPage', () => ({ default: () => <div>admin ideas</div> }));
-vi.mock('./pages/portal/LandingPage', () => ({ default: () => <div>landing</div> }));
+vi.mock('./pages/portal/LandingPage', () => ({
+  default: () => {
+    throw new Error('Landing error');
+  },
+}));
 vi.mock('./pages/portal/ClientsLogin', () => ({ default: () => <div>clients login</div> }));
 vi.mock('./pages/portal/ProjectsList', () => ({ default: () => <div>projects list</div> }));
 vi.mock('./pages/portal/ProjectLogin', () => ({ default: () => <div>project login</div> }));
@@ -61,6 +70,16 @@ vi.mock('./pages/portal/ProjectOverview', () => ({ default: () => <div>project o
 vi.mock('./pages/portal/OperatorPage', () => ({ default: () => <div>operator</div> }));
 
 describe('AppRoutes', () => {
+  it('renders fallback when landing fails to render', async () => {
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <AppRoutes />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('No pudimos cargar la portada')).toBeTruthy();
+  });
+
   it('renders the internal dashboard when entering /app', async () => {
     render(
       <MemoryRouter initialEntries={['/app']}>
