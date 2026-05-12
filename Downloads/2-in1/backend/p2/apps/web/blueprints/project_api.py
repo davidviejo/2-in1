@@ -633,6 +633,50 @@ def put_snapshot():
     return jsonify(saved)
 
 
+@project_api_bp.route('/snapshot/import-file', methods=['POST'])
+def import_snapshot_file():
+    uploaded_file = request.files.get('file')
+    if uploaded_file is None:
+        return jsonify({'error': 'invalid_request', 'message': 'Missing file field.'}), 400
+
+    try:
+        raw_data = json.load(uploaded_file)
+    except (TypeError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        return jsonify({'error': 'invalid_json', 'message': f'Could not parse JSON file: {exc}'}), 400
+
+    if not isinstance(raw_data, dict):
+        return jsonify({'error': 'invalid_payload', 'message': 'Backup file must contain a JSON object.'}), 400
+
+    incoming = _normalize_snapshot(raw_data)
+    metadata = _extract_patch_request_metadata(raw_data)
+
+    with _LOCK:
+        current = _load_store()
+        conflict_response = _validate_expected_version(
+            expected_version=metadata['expectedVersion'],
+            current_snapshot=current,
+            resource='snapshot',
+            resource_id='project',
+            updated_fields=metadata['updatedFields'],
+            origin_client_id=metadata['originClientId'],
+        )
+        if conflict_response is not None:
+            return conflict_response
+
+        incoming['version'] = int(current.get('version', 1))
+        mutation_meta = _build_mutation_meta(
+            origin_client_id=metadata['originClientId'],
+            resource='snapshot',
+            resource_id='project',
+            updated_fields=metadata['updatedFields'],
+            base_version=int(current.get('version', 1)),
+            new_version=int(current.get('version', 1)) + 1,
+        )
+        saved = _save_snapshot_with_meta(incoming, mutation_meta)
+
+    return jsonify(saved)
+
+
 @project_api_bp.route('/clients/<client_id>', methods=['PATCH'])
 def patch_client(client_id: str):
     data = request.get_json(silent=True) or {}
