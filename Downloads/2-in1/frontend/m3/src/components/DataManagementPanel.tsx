@@ -16,6 +16,9 @@ import { useToast } from './ui/ToastContext';
 import ConfirmDialog from './ui/ConfirmDialog';
 import { useTranslation } from 'react-i18next';
 
+
+const normalizeImportedJson = (raw: string) => raw.replace(/^\uFEFF/, '').replace(/\u0000/g, '').trim();
+
 const DataManagementPanel: React.FC = () => {
   const { t } = useTranslation();
   const { successAction, errorAction } = useToast();
@@ -147,7 +150,12 @@ const DataManagementPanel: React.FC = () => {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const content = e.target?.result as string;
+        const fileContent = e.target?.result;
+        if (typeof fileContent !== 'string') {
+          throw new Error('El archivo importado no es texto válido');
+        }
+
+        const content = normalizeImportedJson(fileContent);
         const data = JSON.parse(content);
 
         if (isBackupPayload(data)) {
