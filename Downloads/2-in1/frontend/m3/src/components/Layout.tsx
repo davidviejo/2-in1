@@ -282,6 +282,13 @@ const Layout: React.FC<LayoutProps> = ({
               onClick={() => setIsMobileMenuOpen(false)}
             />
             <NavItem
+              to="/app/clustering-site"
+              icon={<BarChart3 size={20} />}
+              label="Clustering de site"
+              subLabel="Clustering por niveles"
+              onClick={() => setIsMobileMenuOpen(false)}
+            />
+            <NavItem
               to="/app/gsc-impact?view=individual"
               icon={<BarChart3 size={20} />}
               label="Impacto GSC · Propiedad"
