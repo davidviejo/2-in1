@@ -27,6 +27,7 @@ const DataManagementPanel: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingBackup, setPendingBackup] = React.useState<ReturnType<typeof migrateBackupPayload> | null>(null);
   const [isExportingBackup, setIsExportingBackup] = React.useState(false);
+  const [backupExportProgress, setBackupExportProgress] = React.useState({ percent: 0, step: '' });
 
   const formatMesColumn = (dueDate?: string) => {
     if (!dueDate) return '';
@@ -57,6 +58,7 @@ const DataManagementPanel: React.FC = () => {
     if (isExportingBackup) return;
 
     setIsExportingBackup(true);
+    setBackupExportProgress({ percent: 10, step: 'Iniciando exportación…' });
     try {
       await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -65,21 +67,25 @@ const DataManagementPanel: React.FC = () => {
         generalNotes,
         settings,
         currentClientId,
-      });
+      }, (progress) => setBackupExportProgress(progress));
 
+      setBackupExportProgress({ percent: 85, step: 'Construyendo archivo JSON…' });
       const blob = buildBackupBlob(data);
+      setBackupExportProgress({ percent: 95, step: 'Generando descarga…' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `MediaFlow_Backup_${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
+      setBackupExportProgress({ percent: 100, step: 'Completado' });
       successAction('Backup JSON exportado correctamente.');
     } catch (err) {
       console.error(err);
       errorAction(t('feedback.actions.export_data'));
     } finally {
       setIsExportingBackup(false);
+      setTimeout(() => setBackupExportProgress({ percent: 0, step: '' }), 900);
     }
   };
 
@@ -228,6 +234,21 @@ const DataManagementPanel: React.FC = () => {
           <Upload size={14} /> Restaurar
         </button>
       </div>
+      {isExportingBackup && (
+        <div className="mb-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 p-2">
+          <div className="flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-200 mb-1">
+            <span>Exportando backup…</span>
+            <span>{backupExportProgress.percent}%</span>
+          </div>
+          <div className="h-1.5 w-full rounded-full bg-slate-200 dark:bg-slate-600 overflow-hidden">
+            <div
+              className="h-full bg-blue-500 transition-all duration-300"
+              style={{ width: `${backupExportProgress.percent}%` }}
+            />
+          </div>
+          <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-300">{backupExportProgress.step}</p>
+        </div>
+      )}
       <div className="grid grid-cols-1">
         <button
           onClick={handleExportCSV}
