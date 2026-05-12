@@ -62,6 +62,35 @@ export const BatchJobMonitor: React.FC<Props> = ({
 
   const selectedJob = jobs.find((j) => j.id === selectedJobId);
 
+  useEffect(() => {
+    const syncActiveJobs = async () => {
+      const activeJobs = jobs.filter((job) => !TERMINAL_STATUSES.includes(job.status));
+      if (activeJobs.length === 0) return;
+
+      await Promise.all(
+        activeJobs.map(async (job) => {
+          try {
+            const updated = await getBatchJob(job.id);
+            onJobUpdate(updated);
+          } catch (error) {
+            if (error instanceof BatchJobNotFoundError) {
+              onRemoveJob(job.id);
+              if (selectedJobId === job.id) {
+                setSelectedJobId(null);
+              }
+              return;
+            }
+            console.error(error);
+          }
+        }),
+      );
+    };
+
+    syncActiveJobs();
+    const interval = setInterval(syncActiveJobs, 3000);
+    return () => clearInterval(interval);
+  }, [jobs, onJobUpdate, onRemoveJob, selectedJobId]);
+
   // Poll selected job
   useEffect(() => {
     if (!selectedJobId) return;
@@ -124,6 +153,8 @@ export const BatchJobMonitor: React.FC<Props> = ({
     };
 
     fetchItems();
+    const interval = setInterval(fetchItems, 3000);
+    return () => clearInterval(interval);
   }, [selectedJobId, activeTab, itemsPage]);
 
   useEffect(() => {
