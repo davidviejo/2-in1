@@ -15,13 +15,16 @@ import {
 import { useToast } from './ui/ToastContext';
 import ConfirmDialog from './ui/ConfirmDialog';
 import { useTranslation } from 'react-i18next';
+import { createHttpClient } from '../services/httpClient';
 
 
 const normalizeImportedJson = (raw: string) => raw.replace(/^\uFEFF/, '').replace(/\u0000/g, '').trim();
+const MAX_IMPORT_FILE_SIZE_BYTES = 250 * 1024 * 1024;
+const projectApiHttpClient = createHttpClient({ service: 'api' });
 
 const DataManagementPanel: React.FC = () => {
   const { t } = useTranslation();
-  const { successAction, errorAction } = useToast();
+  const { successAction, errorAction, error } = useToast();
   const { clients, generalNotes, restoreProjectData, currentClientId } = useProject();
   const { settings, updateSettings } = useSettings();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -143,37 +146,76 @@ const DataManagementPanel: React.FC = () => {
     XLSX.writeFile(workbook, `MediaFlow_Tareas_Sheet_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
-  const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
+    if (file.size > MAX_IMPORT_FILE_SIZE_BYTES) {
       try {
-        const fileContent = e.target?.result;
-        if (typeof fileContent !== 'string') {
-          throw new Error('El archivo importado no es texto válido');
-        }
-
-        const content = normalizeImportedJson(fileContent);
-        const data = JSON.parse(content);
-
-        if (isBackupPayload(data)) {
-          setPendingBackup(migrateBackupPayload(data));
+        const formData = new FormData();
+        formData.append('file', file);
+        const remoteSnapshot = await projectApiHttpClient.request<unknown>('/api/v1/project-api/snapshot/import-file', {
+          method: 'POST',
+          body: formData,
+          timeoutMs: 30 * 60 * 1000,
+        });
+        if (isBackupPayload(remoteSnapshot)) {
+          setPendingBackup(migrateBackupPayload(remoteSnapshot));
+          successAction('Backup grande cargado en servidor. Confirma para restaurar en este navegador.');
         } else {
-          errorAction(t('feedback.actions.import_backup'));
+          error('El servidor recibió el archivo pero no devolvió un backup válido.', 6000);
         }
-      } catch (err) {
-        console.error(err);
-        errorAction(t('feedback.actions.read_json_file'));
+      } catch (uploadError) {
+        console.error(uploadError);
+        error('No se pudo subir el backup grande al servidor. Verifica backend y vuelve a intentar.', 6000);
       }
-    };
-    reader.readAsText(file);
+    } else {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const fileContent = e.target?.result;
+          if (typeof fileContent !== 'string') {
+            throw new Error('El archivo importado no es texto válido');
+          }
+
+          const content = normalizeImportedJson(fileContent);
+          const data = JSON.parse(content);
+
+          if (isBackupPayload(data)) {
+            setPendingBackup(migrateBackupPayload(data));
+          } else {
+            errorAction(t('feedback.actions.import_backup'));
+          }
+        } catch (err) {
+          console.error(err);
+          const message = err instanceof Error ? err.message : '';
+          if (/Invalid string length|out of memory|memory/i.test(message)) {
+            error(
+              'No se pudo leer el backup localmente. Se recomienda subirlo por servidor para tamaños grandes.',
+              6000,
+            );
+          } else {
+            errorAction(t('feedback.actions.read_json_file'));
+          }
+        }
+      };
+      reader.readAsText(file);
+    }
 
     // Reset input
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    void handleImport(event).catch((unexpectedError) => {
+      console.error(unexpectedError);
+      errorAction(t('feedback.actions.import_backup'));
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    });
   };
 
   const handleConfirmRestore = async () => {
@@ -238,7 +280,7 @@ const DataManagementPanel: React.FC = () => {
         <input
           type="file"
           ref={fileInputRef}
-          onChange={handleImport}
+          onChange={handleFileChange}
           className="hidden"
           accept=".json"
         />
