@@ -255,7 +255,8 @@ const SHARED_RULES_PARAM = 'sharedRules';
 const GSC_ANALYSIS_PAGE_SIZE = 25000;
 const GSC_ANALYSIS_MAX_PAGES = 40;
 const GSC_ANALYSIS_MAX_ROWS = GSC_ANALYSIS_PAGE_SIZE * GSC_ANALYSIS_MAX_PAGES;
-const CLUSTER_LEVELS_SETTINGS_STORAGE_KEY = 'gsc-impact-cluster-levels-settings-v1';
+const CLUSTER_LEVELS_SETTINGS_STORAGE_KEY = 'mediaflow_gsc-impact-cluster-levels-settings-v1';
+const LEGACY_CLUSTER_LEVELS_SETTINGS_STORAGE_KEY = 'gsc-impact-cluster-levels-settings-v1';
 const PORTFOLIO_BATCH_SIZE = 5;
 const DISPLAY_LIMIT_OPTIONS = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000] as const;
 const DISPLAY_LIMIT_DEFAULT = 1000;
@@ -476,7 +477,9 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode, standalon
   useEffect(() => {
     if (viewMode !== 'cluster_levels') return;
     try {
-      const raw = localStorage.getItem(CLUSTER_LEVELS_SETTINGS_STORAGE_KEY);
+      const raw =
+        localStorage.getItem(CLUSTER_LEVELS_SETTINGS_STORAGE_KEY) ||
+        localStorage.getItem(LEGACY_CLUSTER_LEVELS_SETTINGS_STORAGE_KEY);
       if (!raw) return;
       const parsed = JSON.parse(raw) as Record<string, unknown>;
       if (typeof parsed.displayLimit === 'number') setDisplayLimit(parseDisplayLimit(parsed.displayLimit));
@@ -511,6 +514,7 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode, standalon
         clusterAdvancedPeriodsEnabled,
       }),
     );
+    localStorage.removeItem(LEGACY_CLUSTER_LEVELS_SETTINGS_STORAGE_KEY);
   }, [viewMode, displayLimit, filters.segmentFilter, filters.minImpressions, filters.minClicks, clusterDepthLevels, clusterAdvancedPeriodsEnabled]);
   const parsedCustomClusters = useMemo(() => parseCustomClusters(clusterRulesText), [clusterRulesText]);
   const parsedClusterLevelRules = useMemo(() => parseClusterLevelRules(clusterLevelRulesText), [clusterLevelRulesText]);
