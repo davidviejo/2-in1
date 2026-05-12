@@ -1,5 +1,10 @@
 import React, { Suspense, lazy } from 'react';
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import {
+  createHashRouter,
+  Navigate,
+  Outlet,
+  RouterProvider,
+} from 'react-router-dom';
 import Layout from './components/Layout';
 import { ToastProvider } from './components/ui/ToastContext';
 import { ProjectProvider, useProject } from './context/ProjectContext';
@@ -30,19 +35,7 @@ const ProjectLogin = lazy(() => import('./pages/portal/ProjectLogin'));
 const ProjectOverview = lazy(() => import('./pages/portal/ProjectOverview'));
 const OperatorPage = lazy(() => import('./pages/portal/OperatorPage'));
 
-const publicRoutes = (
-  <>
-    <Route path="/" element={<LandingPage />} />
-    <Route path="/clientes" element={<ClientsLogin />} />
-    <Route path="/clientes/dashboard" element={<ProjectsList />} />
-    <Route path="/p/:slug" element={<ProjectLogin />} />
-    <Route path="/c/:slug/overview" element={<ProjectOverview />} />
-  </>
-);
-
-const operatorRoutes = <Route path="/operator" element={<OperatorPage />} />;
-
-export const AppRoutes: React.FC = () => {
+const AppLayout: React.FC = () => {
   const {
     modules,
     globalScore,
@@ -75,6 +68,162 @@ export const AppRoutes: React.FC = () => {
   } = useProject();
 
   return (
+    <Layout
+      modules={modules}
+      globalScore={globalScore}
+      clients={clients}
+      currentClientId={currentClientId}
+      onSwitchClient={switchClient}
+      onAddClient={addClient}
+      onRenameClient={renameClient}
+      onDeleteClient={deleteClient}
+      generalNotes={generalNotes}
+      projectNotes={currentClient?.notes || []}
+      onAddNote={addNote}
+      onUpdateNote={updateNote}
+      onDeleteNote={deleteNote}
+      onTogglePinNote={togglePinNote}
+      onToggleInternalNote={toggleInternalNote}
+      onConvertNoteToTask={convertNoteToTask}
+    >
+      <Outlet
+        context={{
+          modules,
+          globalScore,
+          currentClient,
+          resetCurrentProject,
+          toggleTask,
+          addTask,
+          deleteTask,
+          updateTaskNotes,
+          updateTaskImpact,
+          toggleCustomRoadmapTask,
+          toggleTaskCommunicated,
+          handleReorderRoadmap,
+          addManualCompletedTask,
+          deleteCompletedTaskLog,
+          updateCompletedTaskImpact,
+        }}
+      />
+    </Layout>
+  );
+};
+
+const AppRoutes: React.FC = () => {
+  const {
+    modules,
+    globalScore,
+    currentClient,
+    resetCurrentProject,
+    toggleTask,
+    addTask,
+    deleteTask,
+    updateTaskNotes,
+    updateTaskImpact,
+    toggleCustomRoadmapTask,
+    toggleTaskCommunicated,
+    handleReorderRoadmap,
+    addManualCompletedTask,
+    deleteCompletedTaskLog,
+    updateCompletedTaskImpact,
+  } = useProject();
+
+  const router = createHashRouter([
+    { path: '/', element: <LandingPage /> },
+    { path: '/clientes', element: <ClientsLogin /> },
+    { path: '/clientes/dashboard', element: <ProjectsList /> },
+    { path: '/p/:slug', element: <ProjectLogin /> },
+    { path: '/c/:slug/overview', element: <ProjectOverview /> },
+    { path: '/operator', element: <OperatorPage /> },
+    {
+      path: '/app',
+      element: <AppLayout />,
+      children: [
+        {
+          index: true,
+          element: (
+            <ErrorBoundary
+              title="No pudimos cargar el Dashboard"
+              message="Se produjo un error al renderizar esta vista. Si persiste, revisa la integración de Search Console y vuelve a intentar."
+            >
+              <Dashboard
+                modules={modules}
+                globalScore={globalScore}
+                onReset={resetCurrentProject}
+              />
+            </ErrorBoundary>
+          ),
+        },
+        {
+          path: 'module/:id',
+          element: (
+            <ModuleDetail
+              modules={modules}
+              onToggleTask={toggleTask}
+              onAddTask={addTask}
+              onDeleteTask={deleteTask}
+              onUpdateTaskNotes={updateTaskNotes}
+              onUpdateTaskImpact={updateTaskImpact}
+              clientVertical={currentClient?.vertical || 'media'}
+              clientName={currentClient?.name || 'Cliente'}
+              onToggleCustomRoadmap={toggleCustomRoadmapTask}
+              onToggleTaskCommunicated={toggleTaskCommunicated}
+            />
+          ),
+        },
+        {
+          path: 'client-roadmap',
+          element: (
+            <ClientRoadmap
+              modules={modules}
+              customRoadmapOrder={currentClient?.customRoadmapOrder}
+              onReorder={handleReorderRoadmap}
+              onToggleTask={toggleTask}
+              onRemoveFromRoadmap={toggleCustomRoadmapTask}
+              onUpdateTaskNotes={updateTaskNotes}
+              onUpdateTaskImpact={updateTaskImpact}
+              clientVertical={currentClient?.vertical || 'media'}
+              clientName={currentClient?.name || 'Cliente'}
+              onToggleTaskCommunicated={toggleTaskCommunicated}
+            />
+          ),
+        },
+        { path: 'kanban', element: <KanbanBoard /> },
+        { path: 'gantt', element: <GanttBoard /> },
+        { path: 'checklist', element: <SeoChecklistPage /> },
+        { path: 'ai-roadmap', element: <AIRoadmap /> },
+        { path: 'ia-visibility', element: <IAVisibility /> },
+        { path: 'gsc-impact', element: <GscImpactPage /> },
+        { path: 'clustering-site', element: <SiteClusteringPage /> },
+        { path: 'gsc-impact/portfolio', element: <Navigate to='/app/gsc-impact?view=global' replace /> },
+        { path: 'gsc-impact/portolio', element: <Navigate to='/app/gsc-impact?view=global' replace /> },
+        { path: 'settings', element: <Settings /> },
+        { path: 'trends-media', element: <TrendsMediaPage /> },
+        { path: 'tools-hub', element: <ToolsHub /> },
+        { path: 'admin/ideas', element: <AdminIdeasPage /> },
+        {
+          path: 'completed-tasks',
+          element: (
+            <CompletedTasks
+              completedTasks={currentClient?.completedTasksLog || []}
+              onAddManualTask={addManualCompletedTask}
+              onDeleteLogEntry={deleteCompletedTaskLog}
+              onUpdateImpact={updateCompletedTaskImpact}
+              projectContext={{
+                projectType: currentClient?.projectType || 'MEDIA',
+                sector: currentClient?.sector || 'Otro',
+                geoScope: currentClient?.geoScope || 'global',
+              }}
+            />
+          ),
+        },
+        { path: '*', element: <Navigate to='/app' replace /> },
+      ],
+    },
+    { path: '*', element: <Navigate to='/' replace /> },
+  ]);
+
+  return (
     <Suspense
       fallback={
         <div className="flex justify-center p-8">
@@ -86,125 +235,7 @@ export const AppRoutes: React.FC = () => {
         title="No pudimos cargar la portada"
         message="Se produjo un error inesperado al cargar esta página. Recarga e inténtalo nuevamente en unos segundos."
       >
-        <Routes>
-          {/* 1) Rutas públicas */}
-        {publicRoutes}
-
-        {/* 2) Operador */}
-        {operatorRoutes}
-
-        {/* 3) Rutas internas */}
-        <Route
-          path="/app/*"
-          element={
-            <Layout
-              modules={modules}
-              globalScore={globalScore}
-              clients={clients}
-              currentClientId={currentClientId}
-              onSwitchClient={switchClient}
-              onAddClient={addClient}
-              onRenameClient={renameClient}
-              onDeleteClient={deleteClient}
-              generalNotes={generalNotes}
-              projectNotes={currentClient?.notes || []}
-              onAddNote={addNote}
-              onUpdateNote={updateNote}
-              onDeleteNote={deleteNote}
-              onTogglePinNote={togglePinNote}
-              onToggleInternalNote={toggleInternalNote}
-              onConvertNoteToTask={convertNoteToTask}
-            >
-              <Routes>
-                <Route
-                  index
-                  element={
-                    <ErrorBoundary
-                      title="No pudimos cargar el Dashboard"
-                      message="Se produjo un error al renderizar esta vista. Si persiste, revisa la integración de Search Console y vuelve a intentar."
-                    >
-                      <Dashboard
-                        modules={modules}
-                        globalScore={globalScore}
-                        onReset={resetCurrentProject}
-                      />
-                    </ErrorBoundary>
-                  }
-                />
-                <Route
-                  path="module/:id"
-                  element={
-                    <ModuleDetail
-                      modules={modules}
-                      onToggleTask={toggleTask}
-                      onAddTask={addTask}
-                      onDeleteTask={deleteTask}
-                      onUpdateTaskNotes={updateTaskNotes}
-                      onUpdateTaskImpact={updateTaskImpact}
-                      clientVertical={currentClient?.vertical || 'media'}
-                      clientName={currentClient?.name || 'Cliente'}
-                      onToggleCustomRoadmap={toggleCustomRoadmapTask}
-                      onToggleTaskCommunicated={toggleTaskCommunicated}
-                    />
-                  }
-                />
-                <Route
-                  path="client-roadmap"
-                  element={
-                    <ClientRoadmap
-                      modules={modules}
-                      customRoadmapOrder={currentClient?.customRoadmapOrder}
-                      onReorder={handleReorderRoadmap}
-                      onToggleTask={toggleTask}
-                      onRemoveFromRoadmap={toggleCustomRoadmapTask}
-                      onUpdateTaskNotes={updateTaskNotes}
-                      onUpdateTaskImpact={updateTaskImpact}
-                      clientVertical={currentClient?.vertical || 'media'}
-                      clientName={currentClient?.name || 'Cliente'}
-                      onToggleTaskCommunicated={toggleTaskCommunicated}
-                    />
-                  }
-                />
-                <Route path="kanban" element={<KanbanBoard />} />
-                <Route path="gantt" element={<GanttBoard />} />
-                <Route path="checklist" element={<SeoChecklistPage />} />
-                <Route path="ai-roadmap" element={<AIRoadmap />} />
-                <Route path="ia-visibility" element={<IAVisibility />} />
-                <Route path="gsc-impact" element={<GscImpactPage />} />
-                <Route
-                  path="clustering-site"
-                  element={<SiteClusteringPage />}
-                />
-                <Route path="gsc-impact/portfolio" element={<Navigate to="/app/gsc-impact?view=global" replace />} />
-                <Route path="gsc-impact/portolio" element={<Navigate to="/app/gsc-impact?view=global" replace />} />
-                <Route path="settings" element={<Settings />} />
-                <Route path="trends-media" element={<TrendsMediaPage />} />
-                <Route path="tools-hub" element={<ToolsHub />} />
-                <Route path="admin/ideas" element={<AdminIdeasPage />} />
-                <Route
-                  path="completed-tasks"
-                  element={
-                    <CompletedTasks
-                      completedTasks={currentClient?.completedTasksLog || []}
-                      onAddManualTask={addManualCompletedTask}
-                      onDeleteLogEntry={deleteCompletedTaskLog}
-                      onUpdateImpact={updateCompletedTaskImpact}
-                      projectContext={{
-                        projectType: currentClient?.projectType || 'MEDIA',
-                        sector: currentClient?.sector || 'Otro',
-                        geoScope: currentClient?.geoScope || 'global',
-                      }}
-                    />
-                  }
-                />
-                <Route path="*" element={<Navigate to="/app" replace />} />
-              </Routes>
-            </Layout>
-          }
-        />
-
-        <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <RouterProvider router={router} />
       </ErrorBoundary>
     </Suspense>
   );
@@ -215,9 +246,7 @@ const App: React.FC = () => {
     <ToastProvider>
       <SettingsProvider>
         <ProjectProvider>
-          <HashRouter>
-            <AppRoutes />
-          </HashRouter>
+          <AppRoutes />
         </ProjectProvider>
       </SettingsProvider>
     </ToastProvider>
