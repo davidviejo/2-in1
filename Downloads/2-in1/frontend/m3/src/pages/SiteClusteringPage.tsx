@@ -86,9 +86,34 @@ const SiteClusteringPage: React.FC = () => {
   const [startDate, setStartDate] = useState(defaultStartDate);
   const [endDate, setEndDate] = useState(defaultEndDate);
   const [selectedLevel, setSelectedLevel] = useState(1);
+  const [runKey, setRunKey] = useState(0);
+  const [hasStartedAnalysis, setHasStartedAnalysis] = useState(false);
+  const [manualClustersText, setManualClustersText] = useState('');
+  const [importStatus, setImportStatus] = useState('');
+  const [minClicksThreshold, setMinClicksThreshold] = useState(10);
+  const [clusterDepth, setClusterDepth] = useState(2);
 
   const { gscAccessToken, googleUser, login, handleLogoutGsc } = useGSCAuth();
-  const { gscSites, selectedSite, setSelectedSite, gscData, isLoadingGsc } = useGSCData(gscAccessToken, startDate, endDate);
+  const { gscSites, selectedSite, setSelectedSite, gscData, isLoadingGsc } = useGSCData(gscAccessToken, startDate, endDate, 'previous_period', {
+    autoRun: false,
+    runKey,
+  });
+
+  const handleStartAnalysis = () => {
+    setHasStartedAnalysis(true);
+    setRunKey((prev) => prev + 1);
+  };
+  const handleImportManualClusters: React.ChangeEventHandler<HTMLInputElement> = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      setManualClustersText(text);
+      setImportStatus(`Importado: ${file.name}`);
+    } catch {
+      setImportStatus('No se pudo importar el archivo.');
+    }
+  };
 
   const maxDepth = useMemo(() => {
     let depth = 1;
@@ -105,11 +130,14 @@ const SiteClusteringPage: React.FC = () => {
   }, [gscData]);
 
   const levelData = useMemo<LevelData[]>(() => {
+    if (!hasStartedAnalysis) {
+      return [];
+    }
     return Array.from({ length: maxDepth }, (_, i) => ({
       level: i + 1,
       rows: buildRowsByLevel(gscData, i + 1),
     }));
-  }, [gscData, maxDepth]);
+  }, [gscData, hasStartedAnalysis, maxDepth]);
 
   const selectedLevelRows = levelData.find((item) => item.level === selectedLevel)?.rows || [];
   const selectedClustersForChart = selectedLevelRows.slice(0, 10);
@@ -170,7 +198,49 @@ const SiteClusteringPage: React.FC = () => {
             </select>
           </div>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleStartAnalysis}
+            disabled={!gscAccessToken || !selectedSite || isLoadingGsc}
+            className="px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            Iniciar análisis
+          </button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="md:col-span-2">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Clusters manuales (formato libre)</label>
+            <textarea
+              className="w-full h-32 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-sm"
+              value={manualClustersText}
+              onChange={(event) => setManualClustersText(event.target.value)}
+              placeholder={'Cluster A|/categoria-a,/categoria-b\nCluster B|/categoria-c'}
+            />
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <label className="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 text-sm cursor-pointer">
+                Importar clusters
+                <input type="file" accept=".txt,.csv,.json" className="hidden" onChange={handleImportManualClusters} />
+              </label>
+              {importStatus && <span className="text-xs text-slate-500">{importStatus}</span>}
+            </div>
+          </div>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Mínimo de clics</label>
+              <input type="number" min={0} className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-sm" value={minClicksThreshold} onChange={(event) => setMinClicksThreshold(Number(event.target.value) || 0)} />
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Profundidad de cluster</label>
+              <input type="number" min={1} max={6} className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-sm" value={clusterDepth} onChange={(event) => setClusterDepth(Math.max(1, Math.min(6, Number(event.target.value) || 1)))} />
+            </div>
+          </div>
+        </div>
         <div className="flex items-center gap-2 text-xs text-slate-500"><ShieldCheck size={14} />Método: agregación jerárquica por prefijos de ruta para comparar clústeres por nivel.</div>
+        {!hasStartedAnalysis && (
+          <p className="text-xs text-slate-500">
+            Selecciona propiedad y rango de fechas, y pulsa <strong>Iniciar análisis</strong> para ejecutar el procesamiento.
+          </p>
+        )}
       </section>
 
       <section className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm">
