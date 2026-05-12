@@ -1115,7 +1115,9 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode, standalon
 
     return Array.from(grouped.entries())
       .map(([key, rows]) => {
-        const [level1, level2] = key.split('|||');
+        const [rawLevel1, rawLevel2] = key.split('|||');
+        const level1 = rawLevel1 || 'Sin nivel 1';
+        const level2 = rawLevel2 || 'Sin nivel 2';
         const summary = summarizeRows(rows, windowDays);
         const deltaClicksDay = summary.post.clicksPerDay - summary.pre.clicksPerDay;
         const deltaCtrPp = (summary.post.ctr - summary.pre.ctr) * 100;
@@ -1154,7 +1156,7 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode, standalon
     const normalizedTerm = clusterSearchTerm.trim().toLowerCase();
     if (!normalizedTerm) return filteredClusterHierarchyRows;
     return filteredClusterHierarchyRows.filter((row) =>
-      [row.level1, row.level2].some((value) => value.toLowerCase().includes(normalizedTerm)),
+      [row.level1, row.level2].some((value) => (value || '').toLowerCase().includes(normalizedTerm)),
     );
   }, [clusterSearchTerm, filteredClusterHierarchyRows]);
   const clusterExecutiveSummary = useMemo(() => {
