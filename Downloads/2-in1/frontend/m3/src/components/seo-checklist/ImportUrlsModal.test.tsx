@@ -28,7 +28,37 @@ describe('ImportUrlsModal', () => {
     });
   });
 
-  it('importa URLs aunque randomUUID no esté disponible', async () => {
+  
+  it('carga archivo TSV y permite importar conservando el orden de filas', async () => {
+    const onImport = vi.fn();
+
+    render(<ImportUrlsModal isOpen onClose={vi.fn()} onImport={onImport} existingPages={[]} />);
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const tsv = [
+      'URL	Keyword Principal',
+      'https://example.com/uno	kw uno',
+      'https://example.com/dos	kw dos',
+    ].join('\n');
+    const file = new File([tsv], 'urls.tsv', { type: 'text/tab-separated-values' });
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect((screen.getByPlaceholderText(/https:\/\/example.com\/page1/i) as HTMLTextAreaElement).value).toContain('https://example.com/uno');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Importar URLs' }));
+
+    await waitFor(() => {
+      expect(onImport).toHaveBeenCalled();
+    });
+
+    const importedPages = onImport.mock.calls.flatMap(([chunk]) => chunk);
+    expect(importedPages[0].url).toBe('https://example.com/uno');
+    expect(importedPages[1].url).toBe('https://example.com/dos');
+  });
+it('importa URLs aunque randomUUID no esté disponible', async () => {
     const onImport = vi.fn();
 
     render(
