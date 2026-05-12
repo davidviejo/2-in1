@@ -48,7 +48,7 @@ export const parseTemplateRules = (value: string): TemplateRule[] =>
 export const parseTemplateManualMap = (value: string): Record<string, string> =>
   parseFromProjectConfig({ manualMappings: value }, 'manualMappings');
 
-export type ClusterLevelRule = { level1: string; level2: string; paths: string[] };
+export type ClusterLevelRule = { level1: string; level2: string; levels: string[]; paths: string[] };
 
 export const parseCustomClusters = (value: unknown): ProjectCustomCluster[] =>
   parseFromProjectConfig(
@@ -77,7 +77,10 @@ export const parseClusterLevelRules = (value: unknown): ClusterLevelRule[] =>
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      const [level1Raw, level2Raw, pathsRaw] = line.split('|');
+      const chunks = line.split('|');
+      const pathsRaw = chunks[chunks.length - 1] || '';
+      const levels = chunks.slice(0, -1).map((chunk) => chunk.trim()).filter(Boolean);
+      const [level1Raw, level2Raw] = levels;
       const paths = (pathsRaw || '')
         .split(',')
         .map((path) => path.trim())
@@ -85,10 +88,11 @@ export const parseClusterLevelRules = (value: unknown): ClusterLevelRule[] =>
       return {
         level1: (level1Raw || '').trim(),
         level2: (level2Raw || '').trim(),
+        levels,
         paths,
       };
     })
-    .filter((row) => row.level1 && row.level2 && row.paths.length > 0);
+    .filter((row) => row.levels.length >= 2 && row.paths.length > 0);
 
 export const buildLookerStudioClusterLevelCase = (domain: string, rules: ClusterLevelRule[], level: 1 | 2): string => {
   const cleanDomain = domain.trim().replace(/^https?:\/\//i, '').replace(/\/$/, '');
@@ -112,6 +116,47 @@ export const buildLookerStudioClusterCase = (domain: string, clusters: ProjectCu
         `  WHEN REGEXP_MATCH(Landing Page, ".*${escapedDomain}${escapeRegexForLooker(path)}(/.*)?$") THEN "${cluster.name}"`,
     ),
   );
+
+  return ['CASE', ...lines, '  ELSE "Sin clasificar"', 'END'].join('\n');
+};
+
+export const buildLookerStudioClusterCaseGroupedRegex = (clusters: ProjectCustomCluster[], field = 'Página de destino'): string => {
+  const lines = clusters
+    .map((cluster) => {
+      const pattern = cluster.paths
+        .map((path) => `${escapeRegexForLooker(normalizePath(path))}.*`)
+        .join('|');
+
+      if (!pattern) return '';
+      return `  WHEN REGEXP_MATCH(${field},'${pattern}') THEN "${cluster.name}"`;
+    })
+    .filter(Boolean);
+
+  return ['CASE', ...lines, '  ELSE "Sin clasificar"', 'END'].join('\n');
+};
+
+export const buildLookerStudioClusterLevelCaseGroupedRegex = (
+  rules: ClusterLevelRule[],
+  level: number,
+  field = 'Página de destino',
+): string => {
+  const grouped = new Map<string, string[]>();
+
+  rules.forEach((rule) => {
+    const key = rule.levels[Math.max(0, level - 1)] || '';
+    if (!key) return;
+    const current = grouped.get(key) || [];
+    current.push(...rule.paths.map((path) => `${escapeRegexForLooker(normalizePath(path))}.*`));
+    grouped.set(key, current);
+  });
+
+  const lines = Array.from(grouped.entries())
+    .map(([label, paths]) => {
+      const uniquePattern = Array.from(new Set(paths)).join('|');
+      if (!uniquePattern) return '';
+      return `  WHEN REGEXP_MATCH(${field},'${uniquePattern}') THEN "${label}"`;
+    })
+    .filter(Boolean);
 
   return ['CASE', ...lines, '  ELSE "Sin clasificar"', 'END'].join('\n');
 };

@@ -27,15 +27,12 @@ import { gscDatasetManager } from '@/services/gscDatasetManager';
 import { inspectUrlsBatch, UrlInspectionErrorItem, UrlInspectionRow } from '@/services/gscInspectionService';
 import { GscImpactSegmentationRepository } from '@/services/gscImpactSegmentationRepository';
 import {
-  buildLookerStudioClusterCase,
-  buildLookerStudioClusterLevelCase,
-  buildLookerStudioUrlLevelCase,
   parseBrandTermsInput,
-  parseClusterLevelRules,
-  parseCustomClusters,
   parseTemplateManualMap,
   parseTemplateRules,
 } from '@/utils/gscFilters';
+import { useClusterizationRules } from '@/features/clustering-site/useClusterizationRules';
+import { ClusterizationRulesPanel } from '@/features/clustering-site/ClusterizationRulesPanel';
 import { buildClusterHealthScores } from '@/features/gsc-impact/clusterHealthScore';
 import { QuerySegmentFilter } from '@/features/gsc-impact/segmentation/coreEngine';
 import {
@@ -412,8 +409,6 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode, standalon
   const [timeSeriesRows, setTimeSeriesRows] = useState<GSCRow[]>([]);
   const [deviceRows, setDeviceRows] = useState<ImpactRow[]>([]);
   const [countryRows, setCountryRows] = useState<ImpactRow[]>([]);
-  const [clusterRulesText, setClusterRulesText] = useState('');
-  const [clusterLevelRulesText, setClusterLevelRulesText] = useState('');
   const [clusterDepthLevels, setClusterDepthLevels] = useState(4);
   const [selectedClusterLevel1, setSelectedClusterLevel1] = useState('all');
   const [selectedClusterLevel2, setSelectedClusterLevel2] = useState('all');
@@ -516,31 +511,30 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode, standalon
     );
     localStorage.removeItem(LEGACY_CLUSTER_LEVELS_SETTINGS_STORAGE_KEY);
   }, [viewMode, displayLimit, filters.segmentFilter, filters.minImpressions, filters.minClicks, clusterDepthLevels, clusterAdvancedPeriodsEnabled]);
-  const parsedCustomClusters = useMemo(() => parseCustomClusters(clusterRulesText), [clusterRulesText]);
-  const parsedClusterLevelRules = useMemo(() => parseClusterLevelRules(clusterLevelRulesText), [clusterLevelRulesText]);
   const selectedDomain = useMemo(() => {
     if (!selectedSite) return '';
     return selectedSite.replace(/^sc-domain:/i, '').replace(/^https?:\/\//i, '').replace(/\/$/, '');
   }, [selectedSite]);
-  const lookerClusterCase = useMemo(
-    () => (selectedDomain ? buildLookerStudioClusterCase(selectedDomain, parsedCustomClusters) : ''),
-    [parsedCustomClusters, selectedDomain],
-  );
-  const lookerClusterLevel1Case = useMemo(
-    () => (selectedDomain ? buildLookerStudioClusterLevelCase(selectedDomain, parsedClusterLevelRules, 1) : ''),
-    [parsedClusterLevelRules, selectedDomain],
-  );
-  const lookerClusterLevel2Case = useMemo(
-    () => (selectedDomain ? buildLookerStudioClusterLevelCase(selectedDomain, parsedClusterLevelRules, 2) : ''),
-    [parsedClusterLevelRules, selectedDomain],
-  );
-  const lookerDepthCases = useMemo(() => {
-    const safeDepth = Math.min(10, Math.max(1, Math.floor(clusterDepthLevels)));
-    return Array.from({ length: safeDepth }, (_, index) => ({
-      level: index + 1,
-      expression: buildLookerStudioUrlLevelCase(index + 1),
-    }));
-  }, [clusterDepthLevels]);
+  const {
+    clusterRulesText,
+    setClusterRulesText,
+    clusterLevelRulesText,
+    setClusterLevelRulesText,
+    clusterRulesetName,
+    setClusterRulesetName,
+    clusterRulesets,
+    lookerClusterCase,
+    lookerClusterCaseGroupedRegex,
+    lookerClusterLevel1Case,
+    lookerClusterLevel2Case,
+    lookerClusterLevel1CaseGroupedRegex,
+    lookerClusterLevel2CaseGroupedRegex,
+    lookerClusterLevelGroupedCases,
+    lookerDepthCases,
+    saveCurrentClusterRuleset,
+    loadClusterRuleset,
+    deleteClusterRuleset,
+  } = useClusterizationRules(selectedDomain, clusterDepthLevels);
 
   const handleClusterLevelsRangeChange = (start: string, end: string) => {
     setPeriodRanges((prev) => ({
@@ -1222,7 +1216,10 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode, standalon
   };
   const copyClusterLevelsCase = async () => {
     if (!lookerClusterLevel1Case && !lookerClusterLevel2Case) return;
-    const payload = `-- CASE cluster nivel 1 --\n${lookerClusterLevel1Case}\n\n-- CASE cluster nivel 2 --\n${lookerClusterLevel2Case}`;
+    const groupedPayload = lookerClusterLevelGroupedCases
+      .map((item) => `-- CASE cluster nivel ${item.level} (regex agrupado) --\n${item.expression}`)
+      .join('\n\n');
+    const payload = `-- CASE cluster nivel 1 --\n${lookerClusterLevel1Case}\n\n-- CASE cluster nivel 2 --\n${lookerClusterLevel2Case}\n\n${groupedPayload}`;
     await navigator.clipboard.writeText(payload);
   };
 
@@ -2555,67 +2552,28 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode, standalon
               </div>
             </div>
 
-            <div className="mt-3 surface-subtle p-3">
-              <h4 className="text-sm font-semibold">Clustering por niveles + código Data Looker Studio</h4>
-              <p className="mt-1 text-xs text-muted">
-                Define clusters de nivel 1/nivel 2 por path y genera CASE para usarlo como campo calculado en Looker Studio.
-              </p>
-              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div>
-                  <label className="metric-label">Reglas de cluster (Cluster|/path1,/path2)</label>
-                  <textarea
-                    className="form-control min-h-[112px]"
-                    value={clusterRulesText}
-                    onChange={(e) => setClusterRulesText(e.target.value)}
-                    placeholder={"Home|/\nBlog|/blog\nBilbao|/bilbao"}
-                  />
-                </div>
-                <div>
-                  <label className="metric-label">CASE cluster proyecto (auto con dominio GSC)</label>
-                  <textarea className="form-control min-h-[112px] font-mono text-xs" value={lookerClusterCase} readOnly />
-                </div>
-              </div>
-              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-                <div>
-                  <label className="metric-label">Reglas niveles (Nivel1|Nivel2|/path1,/path2)</label>
-                  <textarea
-                    className="form-control min-h-[112px]"
-                    value={clusterLevelRulesText}
-                    onChange={(e) => setClusterLevelRulesText(e.target.value)}
-                    placeholder={"Servicios|Implantes|/implantes\nServicios|Ortodoncia|/ortodoncia"}
-                  />
-                </div>
-                <div>
-                  <label className="metric-label">CASE cluster nivel 1 (reglas)</label>
-                  <textarea className="form-control min-h-[112px] font-mono text-xs" value={lookerClusterLevel1Case} readOnly />
-                </div>
-                <div>
-                  <label className="metric-label">CASE cluster nivel 2 (reglas)</label>
-                  <textarea className="form-control min-h-[112px] font-mono text-xs" value={lookerClusterLevel2Case} readOnly />
-                </div>
-              </div>
-              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div>
-                  <label className="metric-label">CASE cluster nivel 1 (path)</label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={10}
-                    value={clusterDepthLevels}
-                    onChange={(e) => setClusterDepthLevels(Number(e.target.value) || 1)}
-                  />
-                  <p className="mt-1 text-xs text-muted">Genera automáticamente CASE desde nivel 1 hasta nivel {Math.min(10, Math.max(1, clusterDepthLevels))}.</p>
-                </div>
-              </div>
-              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-                {lookerDepthCases.map((depthCase) => (
-                  <div key={`depth-case-${depthCase.level}`}>
-                    <label className="metric-label">CASE cluster nivel {depthCase.level}</label>
-                    <textarea className="form-control min-h-[88px] font-mono text-xs" value={depthCase.expression} readOnly />
-                  </div>
-                ))}
-              </div>
-            </div>
+            <ClusterizationRulesPanel
+              clusterRulesText={clusterRulesText}
+              setClusterRulesText={setClusterRulesText}
+              clusterLevelRulesText={clusterLevelRulesText}
+              setClusterLevelRulesText={setClusterLevelRulesText}
+              lookerClusterCase={lookerClusterCase}
+              lookerClusterCaseGroupedRegex={lookerClusterCaseGroupedRegex}
+              clusterRulesetName={clusterRulesetName}
+              setClusterRulesetName={setClusterRulesetName}
+              saveCurrentClusterRuleset={saveCurrentClusterRuleset}
+              clusterRulesets={clusterRulesets}
+              loadClusterRuleset={loadClusterRuleset}
+              deleteClusterRuleset={deleteClusterRuleset}
+              lookerClusterLevel1Case={lookerClusterLevel1Case}
+              lookerClusterLevel2Case={lookerClusterLevel2Case}
+              lookerClusterLevel1CaseGroupedRegex={lookerClusterLevel1CaseGroupedRegex}
+              lookerClusterLevel2CaseGroupedRegex={lookerClusterLevel2CaseGroupedRegex}
+              lookerClusterLevelGroupedCases={lookerClusterLevelGroupedCases}
+              clusterDepthLevels={clusterDepthLevels}
+              setClusterDepthLevels={setClusterDepthLevels}
+              lookerDepthCases={lookerDepthCases}
+            />
 
             <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
               <div className="surface-subtle p-3 text-sm">
