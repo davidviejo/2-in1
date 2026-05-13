@@ -142,6 +142,15 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
   const [strategyWorkbookName, setStrategyWorkbookName] = useState('');
   const [fileKeywords, setFileKeywords] = useState<ParsedFileKeyword[]>([]);
   const [selectionConfirmed, setSelectionConfirmed] = useState(false);
+  const [gscLoadProgress, setGscLoadProgress] = useState({
+    active: false,
+    processed: 0,
+    total: 0,
+    updated: 0,
+    currentUrl: '',
+    currentAttempt: '',
+    logs: [] as string[],
+  });
 
   const selectedPages = useMemo(() => pages.filter((p) => selectedPageIds.has(p.id)), [pages, selectedPageIds]);
   const gscKwCandidates = useMemo(() => selectedPages.flatMap(getTopGscKeywords), [selectedPages]);
@@ -200,22 +209,48 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
       let updated = 0;
       const updates = [] as Array<Partial<SeoPage> & { id: string }>;
 
-      for (const page of selectedPages) {
+      setGscLoadProgress({
+        active: true,
+        processed: 0,
+        total: selectedPages.length,
+        updated: 0,
+        currentUrl: '',
+        currentAttempt: '',
+        logs: [],
+      });
+
+      for (const [index, page] of selectedPages.entries()) {
         const normalizedPageUrl = normalizeUrlCandidate(page.url);
-        const response = await querySearchAnalyticsPaged(token, {
-          siteUrl,
-          startDate,
-          endDate,
-          dimensions: ['query', 'page'],
-          allowHighCardinality: true,
-          rowLimit: 1000,
-          maxRows: 2000,
-          dimensionFilterGroups: [{
-            groupType: 'and',
-            filters: [{ dimension: 'page', operator: 'equals', expression: normalizedPageUrl }],
-          }],
-        });
-        const rows = (response.rows || [])
+        const withSlash = normalizedPageUrl.endsWith('/') ? normalizedPageUrl : `${normalizedPageUrl}/`;
+        const withoutSlash = normalizedPageUrl.endsWith('/') ? normalizedPageUrl.slice(0, -1) : normalizedPageUrl;
+        const attempts = [withSlash, withoutSlash].filter((value, idx, arr) => value && arr.indexOf(value) === idx);
+
+        let rows: Array<{ query: string; clicks: number; impressions: number; ctr: number; position: number }> = [];
+        let matchedExpression = '';
+
+        for (const expression of attempts) {
+          setGscLoadProgress((prev) => ({
+            ...prev,
+            currentUrl: page.url,
+            currentAttempt: expression,
+            logs: [...prev.logs, `🔎 ${page.url} → buscando con ${expression}`].slice(-30),
+          }));
+
+          const response = await querySearchAnalyticsPaged(token, {
+            siteUrl,
+            startDate,
+            endDate,
+            dimensions: ['query', 'page'],
+            allowHighCardinality: true,
+            rowLimit: 1000,
+            maxRows: 2000,
+            dimensionFilterGroups: [{
+              groupType: 'and',
+              filters: [{ dimension: 'page', operator: 'equals', expression }],
+            }],
+          });
+
+          rows = (response.rows || [])
           .map((row: any) => ({
             query: String(row.keys?.[0] || row.query || '').trim(),
             clicks: Number(row.clicks || 0),
@@ -227,7 +262,23 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
           .sort((a, b) => b.clicks - a.clicks || b.impressions - a.impressions)
           .slice(0, 50);
 
-        if (rows.length === 0) continue;
+          if (rows.length > 0) {
+            matchedExpression = expression;
+            break;
+          }
+        }
+
+        if (rows.length === 0) {
+          setGscLoadProgress((prev) => ({
+            ...prev,
+            processed: index + 1,
+            currentUrl: page.url,
+            currentAttempt: 'sin match',
+            logs: [...prev.logs, `⚠️ ${page.url} sin resultados con/sin "/"`].slice(-30),
+          }));
+          continue;
+        }
+
         updates.push({
           id: page.id,
           checklist: {
@@ -242,6 +293,14 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
           },
         });
         updated += 1;
+        setGscLoadProgress((prev) => ({
+          ...prev,
+          processed: index + 1,
+          updated,
+          currentUrl: page.url,
+          currentAttempt: matchedExpression,
+          logs: [...prev.logs, `✅ ${page.url} cargada con ${matchedExpression} (${rows.length} kws)`].slice(-30),
+        }));
       }
 
       if (updates.length > 0) onBulkUpdate(updates);
@@ -250,6 +309,7 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
       console.error(error);
       setStatus('Error cargando keywords GSC por URL.');
     } finally {
+      setGscLoadProgress((prev) => ({ ...prev, active: false, currentAttempt: '' }));
       setLoading(false);
     }
   };
@@ -385,6 +445,18 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
     return (
     <div className="space-y-4">
       <p className="text-sm text-slate-600">{status}</p>
+      <div className="rounded border p-3 space-y-2">
+        <h3 className="font-semibold">Progreso de carga GSC por URL</h3>
+        <p className="text-xs text-slate-700">
+          Estado: {gscLoadProgress.active ? 'en curso' : 'inactivo'} · {gscLoadProgress.processed}/{gscLoadProgress.total} URLs procesadas · {gscLoadProgress.updated} con keywords.
+        </p>
+        <p className="text-xs text-slate-700">
+          URL actual: {gscLoadProgress.currentUrl || '-'} · intento: {gscLoadProgress.currentAttempt || '-'}
+        </p>
+        <div className="max-h-28 overflow-auto rounded border bg-slate-50 p-2 text-xs text-slate-700 space-y-1">
+          {gscLoadProgress.logs.length === 0 ? <p>Sin actividad todavía.</p> : gscLoadProgress.logs.map((line, idx) => <p key={`${line}-${idx}`}>{line}</p>)}
+        </div>
+      </div>
       <div className="rounded border p-3 grid gap-3 md:grid-cols-2">
         <div>
           <label className="text-xs">DataForSEO Login</label>
