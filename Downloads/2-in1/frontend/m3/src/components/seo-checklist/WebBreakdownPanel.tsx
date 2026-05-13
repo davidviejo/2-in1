@@ -17,9 +17,8 @@ export const WebBreakdownPanel: React.FC<Props> = ({ pages, onBulkUpdate }) => {
           return [];
         }
       })();
-      const level1 = pathTokens[0] || '/';
-      const level2 = pathTokens[1] || '/';
-      const baseCluster = `${level1} / ${level2}`;
+      const level1 = pathTokens[0] || 'home';
+      const baseCluster = level1;
       const cluster = (page.cluster || '').trim() || baseCluster;
       const curr = map.get(cluster) || { cluster, urls: 0, clicks: 0, depth: pathTokens.length, withoutCluster: 0, fullUrls: [] as string[] };
       curr.urls += 1;
@@ -42,7 +41,7 @@ export const WebBreakdownPanel: React.FC<Props> = ({ pages, onBulkUpdate }) => {
           return [];
         }
       })();
-      const derivedCluster = `${pathTokens[0] || '/'} / ${pathTokens[1] || '/'}`;
+      const derivedCluster = pathTokens[0] || 'home';
       return ((page.cluster || '').trim() || derivedCluster) === selectedCluster;
     });
   }, [pages, selectedCluster]);
