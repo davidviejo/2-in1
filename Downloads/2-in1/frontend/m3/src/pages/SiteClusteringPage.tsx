@@ -67,9 +67,19 @@ const toPathClusterByLevel = (url: string, level: number): string => {
 const parseRegexPattern = (rawPattern: string): RegExp | null => {
   const trimmed = rawPattern.trim();
   const regexMatch = trimmed.match(/^\/(.*)\/([a-z]*)$/i);
-  if (!regexMatch) return null;
+  if (regexMatch) {
+    try {
+      return new RegExp(regexMatch[1], regexMatch[2]);
+    } catch {
+      return null;
+    }
+  }
+
+  const looksLikeRegex = /[\^$]|\(\?[:!=<]/.test(trimmed);
+  if (!looksLikeRegex) return null;
+
   try {
-    return new RegExp(regexMatch[1], regexMatch[2]);
+    return new RegExp(trimmed, 'i');
   } catch {
     return null;
   }
@@ -85,6 +95,8 @@ type ManualClusterRule = {
 
 const parseManualClusterRules = (rulesText: string): ManualClusterRule[] =>
   rulesText
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\r')
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
