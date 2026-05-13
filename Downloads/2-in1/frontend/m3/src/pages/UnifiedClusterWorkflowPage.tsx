@@ -62,10 +62,21 @@ const UnifiedClusterWorkflowPage: React.FC = () => {
       <section className="card p-5">
         <h1 className="text-2xl font-semibold">Flujo único: Auditoría + Agrupación + Clusterización</h1>
         <p className="text-sm text-slate-500 mt-2">Una sola pestaña para ejecutar todo el proceso sin salir de esta vista.</p>
+        <div className="mt-4 rounded-xl border bg-slate-50 p-4">
+          <h2 className="text-sm font-semibold mb-2">¿Qué puedes hacer aquí?</h2>
+          <ol className="list-decimal list-inside text-sm text-slate-700 space-y-1">
+            <li>Revisar el estado de la auditoría por URL.</li>
+            <li>Validar clusters actuales y detectar páginas sin cluster.</li>
+            <li>Definir reglas Regex por niveles para clasificar URLs.</li>
+            <li>Preparar keywords principales/secundarias/adicionales para clusterización.</li>
+            <li>Cargar una sheet CSV final para asignaciones y control operativo.</li>
+          </ol>
+        </div>
       </section>
 
       <section className="card p-5">
         <h2 className="text-lg font-semibold mb-3">1) Resumen de auditoría (M1, M2, M3...)</h2>
+        <p className="text-sm text-slate-500 mb-3">Mide el avance del checklist SEO y te indica cuántas URLs ya están listas para pasar a clusterización.</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="rounded-xl border p-3"><p className="text-xs text-slate-500">Total URLs</p><p className="text-xl font-bold">{mSummary.total}</p></div>
           <div className="rounded-xl border p-3"><p className="text-xs text-slate-500">Completadas</p><p className="text-xl font-bold">{mSummary.completed}</p></div>
@@ -76,7 +87,7 @@ const UnifiedClusterWorkflowPage: React.FC = () => {
 
       <section className="card p-5">
         <h2 className="text-lg font-semibold mb-3 flex items-center gap-2"><Layers3 size={18} />2) Agrupación y Clusterización</h2>
-        <p className="text-sm text-slate-500 mb-3">Bloque central para revisar URLs y campos existentes de cluster.</p>
+        <p className="text-sm text-slate-500 mb-3">Bloque central para revisar URLs y campos existentes de cluster. Si ves "Sin cluster", esa URL necesita clasificación manual o por reglas.</p>
         <div className="max-h-72 overflow-auto border rounded-xl">
           <table className="w-full text-sm">
             <thead className="bg-slate-50"><tr><th className="p-2 text-left">URL</th><th className="p-2 text-left">KW principal</th><th className="p-2 text-left">Cluster</th></tr></thead>
@@ -91,12 +102,13 @@ const UnifiedClusterWorkflowPage: React.FC = () => {
 
       <section className="card p-5">
         <h2 className="text-lg font-semibold mb-3 flex items-center gap-2"><Regex size={18} />3) Reglas Regex por niveles (1,2,3,4...)</h2>
+        <p className="text-sm text-slate-500 mb-3">Escribe una regla por línea con formato <span className="font-mono">patrón =&gt; Nivel</span>. Úsalo para estandarizar cómo se agrupan URLs por intención o taxonomía.</p>
         <textarea value={regexRules} onChange={(e) => setRegexRules(e.target.value)} rows={6} className="w-full rounded-xl border p-3 font-mono text-sm" />
       </section>
 
       <section className="card p-5">
         <h2 className="text-lg font-semibold mb-3 flex items-center gap-2"><Link2 size={18} />4) Clusterización de KWs con DataForSEO (GSC no principal/secundaria)</h2>
-        <p className="text-sm text-slate-500 mb-3">Incluye hasta 10 keywords adicionales por página para clusterizar.</p>
+        <p className="text-sm text-slate-500 mb-3">Incluye hasta 10 keywords adicionales por página para clusterizar. Este bloque te sirve para validar cobertura semántica antes de exportar la asignación final.</p>
         <div className="max-h-80 overflow-auto border rounded-xl">
           <table className="w-full text-sm">
             <thead className="bg-slate-50"><tr><th className="p-2 text-left">Página</th><th className="p-2 text-left">KW principal</th><th className="p-2 text-left">KW secundaria</th><th className="p-2 text-left">Otras KWs (max 10)</th></tr></thead>
@@ -111,7 +123,7 @@ const UnifiedClusterWorkflowPage: React.FC = () => {
 
       <section className="card p-5">
         <h2 className="text-lg font-semibold mb-3 flex items-center gap-2"><Upload size={18} />5) Subida de Sheet de asignaciones</h2>
-        <p className="text-sm text-slate-500 mb-3">Formato CSV: page,primary,secondary,others (others separado por |).</p>
+        <p className="text-sm text-slate-500 mb-3">Formato CSV: page,primary,secondary,others (others separado por |). Esta carga consolida el resultado final de asignaciones para seguimiento operativo.</p>
         <input type="file" accept=".csv,text/csv" onChange={handleUpload} className="mb-4" />
         <div className="rounded-xl border p-3 text-sm flex items-center gap-2"><Table2 size={16} /> Registros cargados: <strong>{uploadedKeywords.length}</strong></div>
       </section>
