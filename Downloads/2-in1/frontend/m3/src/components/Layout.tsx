@@ -112,7 +112,7 @@ interface LayoutProps {
   onDeleteNote?: (noteId: string, type: 'project' | 'general') => void;
 }
 
-type TabType = 'analitica' | 'estrategia' | 'acciones' | 'ajustes' | 'backend' | 'admin';
+type TabType = 'analitica' | 'intelligence' | 'estrategia' | 'acciones' | 'ajustes' | 'backend' | 'admin';
 
 const Layout: React.FC<LayoutProps> = ({
   children,
@@ -160,8 +160,20 @@ const Layout: React.FC<LayoutProps> = ({
       return 'analitica';
     }
     if (
+      path.startsWith('/app/command-center') ||
+      path.startsWith('/app/opportunities') ||
+      path.startsWith('/app/content-gap') ||
+      path.startsWith('/app/cannibalization') ||
+      path.startsWith('/app/internal-linking') ||
+      path.startsWith('/app/serp-ai-monitor')
+    ) {
+      return 'intelligence';
+    }
+    if (
       path.startsWith('/app/client-roadmap') ||
       path.startsWith('/app/ai-roadmap') ||
+      path.startsWith('/app/forecast') ||
+      path.startsWith('/app/content-briefs') ||
       path.startsWith('/app/ia-visibility') ||
       path.startsWith('/app/module')
     ) {
@@ -214,6 +226,9 @@ const Layout: React.FC<LayoutProps> = ({
         break;
       case 'estrategia':
         navigate('/app/client-roadmap');
+        break;
+      case 'intelligence':
+        navigate('/app/command-center');
         break;
       case 'acciones':
         navigate('/app/kanban');
@@ -296,6 +311,19 @@ const Layout: React.FC<LayoutProps> = ({
               subLabel="Vista global multi-site"
               onClick={() => setIsMobileMenuOpen(false)}
             />
+            <NavItem to="/app/indexation" icon={<Search size={20} />} label="Indexation Monitor" onClick={() => setIsMobileMenuOpen(false)} />
+            <NavItem to="/app/crawl-monitor" icon={<Activity size={20} />} label="Crawl Monitor" onClick={() => setIsMobileMenuOpen(false)} />
+          </>
+        );
+      case 'intelligence':
+        return (
+          <>
+            <NavItem to="/app/command-center" icon={<Cpu size={20} />} label="Command Center" onClick={() => setIsMobileMenuOpen(false)} />
+            <NavItem to="/app/opportunities" icon={<Sparkles size={20} />} label="Opportunities" onClick={() => setIsMobileMenuOpen(false)} />
+            <NavItem to="/app/content-gap" icon={<BookOpen size={20} />} label="Content Gap" onClick={() => setIsMobileMenuOpen(false)} />
+            <NavItem to="/app/cannibalization" icon={<Layers size={20} />} label="Cannibalization" onClick={() => setIsMobileMenuOpen(false)} />
+            <NavItem to="/app/internal-linking" icon={<Activity size={20} />} label="Internal Linking" onClick={() => setIsMobileMenuOpen(false)} />
+            <NavItem to="/app/serp-ai-monitor" icon={<Globe size={20} />} label="SERP & AI Visibility" onClick={() => setIsMobileMenuOpen(false)} />
           </>
         );
       case 'estrategia':
@@ -315,6 +343,8 @@ const Layout: React.FC<LayoutProps> = ({
               subLabel={t('nav.ai_roadmap_sub')}
               onClick={() => setIsMobileMenuOpen(false)}
             />
+            <NavItem to="/app/forecast" icon={<BarChart3 size={20} />} label="Forecast SEO" onClick={() => setIsMobileMenuOpen(false)} />
+            <NavItem to="/app/content-briefs" icon={<ClipboardList size={20} />} label="Content Briefs" onClick={() => setIsMobileMenuOpen(false)} />
             <div className="my-4 border-t border-slate-100 dark:border-slate-800"></div>
             <div className="px-4 mb-2 text-xs font-bold text-slate-400 uppercase tracking-wider">
               Módulos de Auditoría
@@ -360,6 +390,7 @@ const Layout: React.FC<LayoutProps> = ({
               subLabel={t('nav.completed_tasks_sub')}
               onClick={() => setIsMobileMenuOpen(false)}
             />
+            <NavItem to="/app/impact-ledger" icon={<Database size={20} />} label="Impact Ledger" onClick={() => setIsMobileMenuOpen(false)} />
             <NavItem
               to="/app/tools-hub"
               icon={<Tool size={20} />}
@@ -415,10 +446,11 @@ const Layout: React.FC<LayoutProps> = ({
 
           {/* Tabs */}
           <nav className="hidden lg:flex items-center space-x-1">
-            {(['analitica', 'estrategia', 'acciones', 'ajustes', 'backend', 'admin'] as TabType[]).map(
+            {(['analitica', 'intelligence', 'estrategia', 'acciones', 'ajustes', 'backend', 'admin'] as TabType[]).map(
               (tab) => {
                 let toPath = '/app/';
                 if (tab === 'estrategia') toPath = '/app/client-roadmap';
+                if (tab === 'intelligence') toPath = '/app/command-center';
                 if (tab === 'acciones') toPath = '/app/kanban';
                 if (tab === 'ajustes') toPath = '/app/settings';
                 if (tab === 'admin') toPath = '/app/admin/ideas';
@@ -438,7 +470,7 @@ const Layout: React.FC<LayoutProps> = ({
                         : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'
                     }`}
                   >
-                    {tab === 'backend' ? 'Tools Hub' : tab === 'analitica' ? 'Analítica' : tab}
+                    {tab === 'backend' ? 'Tools Hub' : tab === 'analitica' ? 'Analítica' : tab === 'intelligence' ? 'Intelligence' : tab}
                   </NavLink>
                 );
               },
@@ -504,10 +536,11 @@ const Layout: React.FC<LayoutProps> = ({
 
             {/* Mobile Tabs */}
             <div className="grid grid-cols-2 gap-2 mb-4">
-              {(['analitica', 'estrategia', 'acciones', 'ajustes', 'backend', 'admin'] as TabType[]).map(
+              {(['analitica', 'intelligence', 'estrategia', 'acciones', 'ajustes', 'backend', 'admin'] as TabType[]).map(
                 (tab) => {
                   let toPath = '/app/';
                   if (tab === 'estrategia') toPath = '/app/client-roadmap';
+                  if (tab === 'intelligence') toPath = '/app/command-center';
                   if (tab === 'acciones') toPath = '/app/kanban';
                   if (tab === 'ajustes') toPath = '/app/settings';
                   if (tab === 'admin') toPath = '/app/admin/ideas';
@@ -528,7 +561,7 @@ const Layout: React.FC<LayoutProps> = ({
                           : 'text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50'
                       }`}
                     >
-                      {tab === 'backend' ? 'Tools' : tab === 'analitica' ? 'Analítica' : tab}
+                      {tab === 'backend' ? 'Tools' : tab === 'analitica' ? 'Analítica' : tab === 'intelligence' ? 'Intelligence' : tab}
                     </NavLink>
                   );
                 },
