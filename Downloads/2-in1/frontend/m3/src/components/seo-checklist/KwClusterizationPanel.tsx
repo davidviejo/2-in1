@@ -10,7 +10,6 @@ type KwCandidate = { id: string; keyword: string; url: string; clicks: number; i
 
 type ParsedFileKeyword = { keyword: string; url?: string };
 
-const MAX_GSC_EXTRA_KWS_PER_URL = 10;
 const ACCEPTED_FILE_COLUMNS = ['id', 'parent', 'kw padre', 'kw_padre', 'keyword', 'kw', 'child', 'children', 'url', 'tipo'];
 
 const normalizeHeader = (value: unknown) => String(value || '').trim().toLowerCase();
@@ -45,7 +44,6 @@ const getTopGscKeywords = (page: SeoPage): KwCandidate[] => {
   topRows.forEach((row) => {
     const key = row.keyword.toLowerCase();
     if (seen.has(key)) return;
-    if (ordered.length >= 2 + MAX_GSC_EXTRA_KWS_PER_URL) return;
     ordered.push({ keyword: row.keyword, clicks: row.clicks, impressions: row.impressions });
     seen.add(key);
   });
@@ -149,6 +147,8 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
   const [strategyWorkbookName, setStrategyWorkbookName] = useState('');
   const [fileKeywords, setFileKeywords] = useState<ParsedFileKeyword[]>([]);
   const [selectionConfirmed, setSelectionConfirmed] = useState(false);
+  const [urlFilter, setUrlFilter] = useState('');
+  const [keywordFilter, setKeywordFilter] = useState('');
   const [gscLoadProgress, setGscLoadProgress] = useState({
     active: false,
     processed: 0,
@@ -172,6 +172,22 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
     }));
   }, [fileKeywords]);
   const kwCandidates = useMemo(() => [...gscKwCandidates, ...fileKwCandidates], [gscKwCandidates, fileKwCandidates]);
+
+  const filteredPages = useMemo(() => {
+    const needle = urlFilter.trim().toLowerCase();
+    if (!needle) return pages;
+    return pages.filter((page) => page.url.toLowerCase().includes(needle));
+  }, [pages, urlFilter]);
+
+  const filteredKwCandidates = useMemo(() => {
+    const urlNeedle = urlFilter.trim().toLowerCase();
+    const kwNeedle = keywordFilter.trim().toLowerCase();
+    return kwCandidates.filter((kw) => {
+      const matchesUrl = !urlNeedle || kw.url.toLowerCase().includes(urlNeedle);
+      const matchesKeyword = !kwNeedle || kw.keyword.toLowerCase().includes(kwNeedle);
+      return matchesUrl && matchesKeyword;
+    });
+  }, [kwCandidates, keywordFilter, urlFilter]);
 
   const groupedResult = useMemo(() => {
     const map = new Map<string, KwCandidate[]>();
@@ -318,7 +334,7 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
   };
 
 
-  const handleQuickSelectKeywords = (mode: 'top3' | 'all') => {
+  const handleQuickSelectKeywords = (mode: 'top3' | 'top4to10' | 'top10plus' | 'all') => {
     if (selectedPages.length === 0) {
       setStatus('Primero selecciona URLs para autoseleccionar keywords.');
       return;
@@ -337,8 +353,15 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
 
     groupedByUrl.forEach((items) => {
       const ordered = [...items].sort((a, b) => b.clicks - a.clicks || b.impressions - a.impressions || a.keyword.localeCompare(b.keyword));
-      const limit = mode === 'top3' ? 3 : ordered.length;
-      ordered.slice(0, limit).forEach((kw) => next.add(kw.id));
+      if (mode === 'top3') {
+        ordered.slice(0, 3).forEach((kw) => next.add(kw.id));
+      } else if (mode === 'top4to10') {
+        ordered.slice(3, 10).forEach((kw) => next.add(kw.id));
+      } else if (mode === 'top10plus') {
+        ordered.slice(10).forEach((kw) => next.add(kw.id));
+      } else {
+        ordered.forEach((kw) => next.add(kw.id));
+      }
     });
 
     setSelectedKeywordIds(next);
@@ -347,7 +370,11 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
     setStatus(
       mode === 'top3'
         ? `Selección rápida aplicada: top 3 keywords por URL (${selectedCount} keywords marcadas).`
-        : `Selección rápida aplicada: todas las keywords de URLs seleccionadas (${selectedCount} keywords marcadas).`,
+        : mode === 'top4to10'
+          ? `Selección rápida aplicada: posiciones 4 a 10 por URL (${selectedCount} keywords marcadas).`
+          : mode === 'top10plus'
+            ? `Selección rápida aplicada: posiciones +10 por URL (${selectedCount} keywords marcadas).`
+            : `Selección rápida aplicada: todas las keywords de URLs seleccionadas (${selectedCount} keywords marcadas).`,
     );
   };
 
@@ -514,8 +541,9 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="rounded border p-3">
           <h3 className="font-semibold mb-2">URLs disponibles</h3>
+          <input className="form-control mb-2" placeholder="Filtrar URLs" value={urlFilter} onChange={(e) => setUrlFilter(e.target.value)} />
           <div className="max-h-72 overflow-auto space-y-1">
-            {pages.map((page) => (
+            {filteredPages.map((page) => (
               <label key={page.id} className="flex gap-2 text-xs">
                 <input type="checkbox" checked={selectedPageIds.has(page.id)} onChange={(e) => {
                   const next = new Set(selectedPageIds);
@@ -530,8 +558,9 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
         </div>
         <div className="rounded border p-3">
           <h3 className="font-semibold mb-2">Keywords disponibles (GSC + archivo)</h3>
+          <input className="form-control mb-2" placeholder="Filtrar keywords" value={keywordFilter} onChange={(e) => setKeywordFilter(e.target.value)} />
           <div className="max-h-72 overflow-auto space-y-1">
-            {kwCandidates.map((kw) => (
+            {filteredKwCandidates.map((kw) => (
               <label key={kw.id} className="flex gap-2 text-xs">
                 <input type="checkbox" checked={selectedKeywordIds.has(kw.id)} onChange={(e) => {
                   const next = new Set(selectedKeywordIds);
@@ -565,6 +594,8 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
         <p className="text-xs text-slate-600">Acelera la selección de keywords para las URLs marcadas.</p>
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => handleQuickSelectKeywords('top3')} disabled={loading || selectedPages.length === 0}>Top 3 por URL</Button>
+          <Button onClick={() => handleQuickSelectKeywords('top4to10')} disabled={loading || selectedPages.length === 0}>Top 4-10 por URL</Button>
+          <Button onClick={() => handleQuickSelectKeywords('top10plus')} disabled={loading || selectedPages.length === 0}>Top +10 por URL</Button>
           <Button onClick={() => handleQuickSelectKeywords('all')} disabled={loading || selectedPages.length === 0}>Todas por URL</Button>
         </div>
       </div>
