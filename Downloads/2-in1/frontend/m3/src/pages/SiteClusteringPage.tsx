@@ -77,24 +77,45 @@ const parseRegexPattern = (rawPattern: string): RegExp | null => {
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-const parseManualClusterRules = (rulesText: string): Array<{ name: string; urls: string[] }> =>
+type ManualClusterRule = {
+  name: string;
+  urls: string[];
+  level?: number;
+};
+
+const parseManualClusterRules = (rulesText: string): ManualClusterRule[] =>
   rulesText
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      const [left, right] = line.split('=>').map((part) => part.trim());
-      if (!left || !right) return null;
+      if (line.includes('=>')) {
+        const [left, right] = line.split('=>').map((part) => part.trim());
+        if (!left || !right) return null;
 
-      const clusterName = right.replace(/^cluster\s*:\s*/i, '').trim();
-      if (!clusterName) return null;
+        const clusterName = right.replace(/^cluster\s*:\s*/i, '').trim();
+        if (!clusterName) return null;
+
+        return {
+          name: clusterName,
+          urls: [left],
+        };
+      }
+
+      const [namePart, levelPart, patternsPart] = line.split('|').map((part) => part.trim());
+      if (!namePart || !patternsPart) return null;
+      const level = Number(levelPart);
 
       return {
-        name: clusterName,
-        urls: [left],
+        name: namePart,
+        level: Number.isFinite(level) && level > 0 ? Math.floor(level) : undefined,
+        urls: patternsPart
+          .split(',')
+          .map((pattern) => pattern.trim())
+          .filter(Boolean),
       };
     })
-    .filter((item): item is { name: string; urls: string[] } => Boolean(item));
+    .filter((item): item is ManualClusterRule => Boolean(item) && item.urls.length > 0);
 
 const matchesManualPattern = (url: string, pattern: string): boolean => {
   const trimmedPattern = pattern.trim();
@@ -119,10 +140,11 @@ const matchesManualPattern = (url: string, pattern: string): boolean => {
 const resolveClusterName = (
   url: string,
   level: number,
-  manualClusters: Array<{ name?: string; urls?: string[] }>,
+  manualClusters: Array<{ name?: string; urls?: string[]; level?: number }>,
 ): string => {
   for (const cluster of manualClusters) {
     if (!cluster?.name || !Array.isArray(cluster.urls)) continue;
+    if (typeof cluster.level === 'number' && cluster.level > 0 && cluster.level !== level) continue;
     const hasMatch = cluster.urls.some((pattern) => matchesManualPattern(url, pattern));
     if (hasMatch) return cluster.name;
   }
@@ -133,7 +155,7 @@ const resolveClusterName = (
 const buildRowsByLevel = (
   gscData: Array<{ keys?: string[]; clicks?: number; impressions?: number; position?: number }>,
   level: number,
-  manualClusters: Array<{ name?: string; urls?: string[] }>,
+  manualClusters: Array<{ name?: string; urls?: string[]; level?: number }>,
 ): ClusterRow[] => {
   const bucket = new Map<string, { urls: Set<string>; clicks: number; impressions: number; posWeighted: number; topQuery: string; topClicks: number }>();
 
@@ -455,7 +477,7 @@ const SiteClusteringPage: React.FC = () => {
             className="w-full min-h-32 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-sm"
             value={manualClusterRules}
             onChange={(e) => setManualClusterRules(e.target.value)}
-            placeholder="Una regla por línea. Ej: /blog/* => cluster: contenido"
+            placeholder={'Una regla por línea.\nNuevo formato: Cluster|Nivel|/path1,/path2\nEj: Blog Posts|1|/blog/*,/articulos/*\nCompatible legacy: /blog/* => cluster: contenido'}
           />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
