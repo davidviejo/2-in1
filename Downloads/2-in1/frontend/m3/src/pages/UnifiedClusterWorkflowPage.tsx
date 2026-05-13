@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useSeoChecklist } from '@/hooks/useSeoChecklist';
-import { Upload, Layers3, Regex, Link2, Table2, Info, CheckCircle2 } from 'lucide-react';
+import { Upload, Layers3, Regex, Link2, Table2, Info, CheckCircle2, RefreshCw } from 'lucide-react';
 
 type UploadedKeyword = {
   page: string;
@@ -57,9 +57,10 @@ const workflowSteps = [
 ];
 
 const UnifiedClusterWorkflowPage: React.FC = () => {
-  const { pages } = useSeoChecklist();
+  const { pages, refreshPages } = useSeoChecklist();
   const [regexRules, setRegexRules] = useState('^/blog/ => Nivel 1: Blog\n^/categoria/seo/ => Nivel 2: SEO\n^/categoria/seo/local/ => Nivel 3: SEO Local');
   const [uploadedKeywords, setUploadedKeywords] = useState<UploadedKeyword[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const mSummary = useMemo(() => {
     const completed = pages.filter((page) => page.status === 'completed').length;
@@ -85,12 +86,29 @@ const UnifiedClusterWorkflowPage: React.FC = () => {
     setUploadedKeywords(parseSheetLikeText(text));
   };
 
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await refreshPages();
+    setIsRefreshing(false);
+  };
+
   return (
     <div className="space-y-6 p-4 md:p-6">
       <section className="card p-5 space-y-4">
         <div>
           <h1 className="text-2xl font-semibold">Flujo único: Auditoría + Agrupación + Clusterización</h1>
           <p className="text-sm text-slate-500 mt-2">Esta página concentra todo el proceso de Cluster/KW para trabajar de punta a punta sin navegar a otros módulos.</p>
+        </div>
+        <div>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium disabled:opacity-60"
+          >
+            <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+            {isRefreshing ? 'Actualizando...' : 'Actualizar datos'}
+          </button>
         </div>
         <div className="rounded-xl border p-4 bg-slate-50/70">
           <div className="flex items-center gap-2 text-sm font-medium mb-2"><Info size={16} /> ¿Qué hace cada bloque?</div>
