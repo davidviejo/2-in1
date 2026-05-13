@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createDefaultProjectSegmentationConfig, parseProjectSegmentationConfig } from './configAdapter';
+import { applyProjectOverrides, createDefaultProjectSegmentationConfig, parseProjectSegmentationConfig } from './configAdapter';
 
 describe('configAdapter', () => {
   it('creates an empty and explicit default config', () => {
@@ -50,5 +50,34 @@ describe('configAdapter', () => {
       ...createDefaultProjectSegmentationConfig(),
       regexRules: [],
     });
+  });
+
+  it('matches cluster rules with exact and wildcard paths prioritizing the most specific one', () => {
+    const config = parseProjectSegmentationConfig({
+      customClusters: [
+        { name: 'Home', paths: ['/'] },
+        { name: 'Informacional Rinoplastia', paths: ['/rinoplastia/*'] },
+        { name: 'Geolocal Madrid', paths: ['/rinoplastia-en-madrid', '/rinoplastia-en-madrid/*'] },
+      ],
+    });
+
+    const base = {
+      normalizedPath: '/rinoplastia-en-madrid/precio',
+      normalizedQuery: '',
+      isBrandQuery: false,
+      isQuestionQuery: false,
+      queryMatchesSegment: true,
+      template: 'Sin template',
+      matchesPathPrefix: true,
+      maxImpressions: 0,
+      meetsMinImpressions: true,
+      source: 'base' as const,
+      ruleId: null,
+      ruleType: null,
+    };
+
+    expect(applyProjectOverrides(base, config).cluster).toBe('Geolocal Madrid');
+    expect(applyProjectOverrides({ ...base, normalizedPath: '/rinoplastia' }, config).cluster).toBe('Home');
+    expect(applyProjectOverrides({ ...base, normalizedPath: '/rinoplastia/tecnica' }, config).cluster).toBe('Informacional Rinoplastia');
   });
 });

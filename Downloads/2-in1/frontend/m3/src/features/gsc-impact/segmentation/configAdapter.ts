@@ -73,11 +73,54 @@ const resolveCustomSegment = (
   return { segment: null, ruleId: null, ruleType: null };
 };
 
+
+const wildcardToRegex = (value: string) =>
+  value
+    .split('*')
+    .map((chunk) => chunk.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('.*');
+
+const pathPatternWeight = (pattern: string): number => {
+  const normalized = normalizePath(pattern);
+  if (!normalized) return -1;
+
+  const wildcardPenalty = (normalized.match(/\*/g) || []).length;
+  const normalizedLength = normalized.replace(/\*/g, '').length;
+  const rootPenalty = normalized === '/' ? 1 : 0;
+
+  return normalizedLength * 10 - wildcardPenalty * 5 - rootPenalty;
+};
+
+const pathMatchesPattern = (normalizedPath: string, pattern: string): boolean => {
+  const normalizedPattern = normalizePath(pattern);
+  if (!normalizedPattern) return false;
+
+  if (!normalizedPattern.includes('*')) {
+    if (normalizedPattern === '/') return normalizedPath === '/';
+    return normalizedPath === normalizedPattern || normalizedPath.startsWith(`${normalizedPattern}/`);
+  }
+
+  try {
+    const regex = new RegExp(`^${wildcardToRegex(normalizedPattern)}$`, 'i');
+    return regex.test(normalizedPath);
+  } catch {
+    return false;
+  }
+};
+
 const resolveCluster = (
   normalizedPath: string,
   clusters: ProjectCustomCluster[],
 ): { cluster: string | null; ruleId: string | null; ruleType: string | null } => {
-  const match = clusters.find((cluster) => cluster.paths.some((path) => normalizedPath.startsWith(path)));
+  const candidates = clusters
+    .filter((cluster) => cluster.paths.some((path) => pathMatchesPattern(normalizedPath, path)))
+    .sort((a, b) => {
+      const bestA = Math.max(...a.paths.map((path) => pathPatternWeight(path)));
+      const bestB = Math.max(...b.paths.map((path) => pathPatternWeight(path)));
+      return bestB - bestA;
+    });
+
+  const match = candidates[0];
   if (!match) return { cluster: null, ruleId: null, ruleType: null };
   return {
     cluster: match.name,
