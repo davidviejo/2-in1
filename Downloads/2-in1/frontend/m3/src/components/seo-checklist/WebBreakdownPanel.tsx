@@ -17,15 +17,16 @@ export const WebBreakdownPanel: React.FC<Props> = ({ pages, onBulkUpdate }) => {
           return [];
         }
       })();
-      const level1 = pathTokens[0] || 'sin-nivel';
-      const level2 = pathTokens[1] || 'sin-subnivel';
+      const level1 = pathTokens[0] || '/';
+      const level2 = pathTokens[1] || '/';
       const baseCluster = `${level1} / ${level2}`;
       const cluster = (page.cluster || '').trim() || baseCluster;
-      const curr = map.get(cluster) || { cluster, urls: 0, clicks: 0, depth: pathTokens.length, withoutCluster: 0 };
+      const curr = map.get(cluster) || { cluster, urls: 0, clicks: 0, depth: pathTokens.length, withoutCluster: 0, fullUrls: [] as string[] };
       curr.urls += 1;
       curr.clicks += Number(page.gscMetrics?.clicks || 0);
       curr.depth = Math.max(curr.depth, pathTokens.length);
       if (!(page.cluster || '').trim() && pathTokens.length <= 1) curr.withoutCluster += 1;
+      curr.fullUrls.push(page.url);
       map.set(cluster, curr);
     });
     return [...map.values()].sort((a, b) => b.clicks - a.clicks);
@@ -33,7 +34,17 @@ export const WebBreakdownPanel: React.FC<Props> = ({ pages, onBulkUpdate }) => {
 
   const filteredPages = useMemo(() => {
     if (selectedCluster === 'all') return pages;
-    return pages.filter((page) => (page.cluster || 'Sin cluster') === selectedCluster);
+    return pages.filter((page) => {
+      const pathTokens = (() => {
+        try {
+          return new URL(page.url).pathname.split('/').filter(Boolean);
+        } catch {
+          return [];
+        }
+      })();
+      const derivedCluster = `${pathTokens[0] || '/'} / ${pathTokens[1] || '/'}`;
+      return ((page.cluster || '').trim() || derivedCluster) === selectedCluster;
+    });
   }, [pages, selectedCluster]);
 
   const applyRegexCluster = () => {
@@ -82,9 +93,9 @@ export const WebBreakdownPanel: React.FC<Props> = ({ pages, onBulkUpdate }) => {
       </div>
       <div className="overflow-auto rounded border">
         <table className="w-full text-xs">
-          <thead><tr><th className="px-2 py-2 text-left">Cluster</th><th className="px-2 py-2 text-left">URLs</th><th className="px-2 py-2 text-left">Clics</th><th className="px-2 py-2 text-left">Niveles</th><th className="px-2 py-2 text-left">Sin cluster manual</th></tr></thead>
+          <thead><tr><th className="px-2 py-2 text-left">Cluster</th><th className="px-2 py-2 text-left">URLs</th><th className="px-2 py-2 text-left">Clics</th><th className="px-2 py-2 text-left">Niveles</th><th className="px-2 py-2 text-left">Sin cluster manual</th><th className="px-2 py-2 text-left">URLs completas asignadas</th></tr></thead>
           <tbody>
-            {clusters.map((c) => <tr key={c.cluster}><td className="px-2 py-1">{c.cluster}</td><td className="px-2 py-1">{c.urls}</td><td className="px-2 py-1">{c.clicks}</td><td className="px-2 py-1">{c.depth}</td><td className="px-2 py-1">{c.withoutCluster}</td></tr>)}
+            {clusters.map((c) => <tr key={c.cluster}><td className="px-2 py-1">{c.cluster}</td><td className="px-2 py-1">{c.urls}</td><td className="px-2 py-1">{c.clicks}</td><td className="px-2 py-1">{c.depth}</td><td className="px-2 py-1">{c.withoutCluster}</td><td className="px-2 py-1 max-w-xl break-all">{c.fullUrls.join(' | ')}</td></tr>)}
           </tbody>
         </table>
       </div>
