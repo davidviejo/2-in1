@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { SeoPage } from '@/types/seoChecklist';
 import { Button } from '@/components/ui/Button';
-import { openaiApi } from '@/services/openaiApi';
 
 type Props = { pages: SeoPage[]; onBulkUpdate: (updates: Array<Partial<SeoPage> & { id: string }>) => void };
 
@@ -49,20 +48,32 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
     }
     setLoading(true);
     try {
-      const payload = selected.map((kw) => ({ id: kw.id, url: kw.url, title: kw.keyword, h1: kw.keyword }));
-      const response = await openaiApi.clusterize(payload);
-      const clusterByKeyword = new Map<string, string>();
-      (response.clusters || []).forEach((item) => {
-        clusterByKeyword.set(item.id, item.cluster || 'Sin cluster');
+      const keywordClusterMap = new Map<string, string>();
+      selectedPages.forEach((page) => {
+        const clusters = page.checklist?.OPORTUNIDADES?.autoData?.clusters;
+        if (!Array.isArray(clusters)) return;
+        clusters.forEach((cluster: any) => {
+          const clusterName = String(cluster.kwObjetivo || cluster.clusterId || '').trim();
+          if (!clusterName) return;
+          const strategyKeywords = [cluster.kwObjetivo, ...(cluster.variations || [])]
+            .map((value: any) => String(value || '').trim().toLowerCase())
+            .filter(Boolean);
+          strategyKeywords.forEach((keyword: string) => {
+            if (!keywordClusterMap.has(keyword)) keywordClusterMap.set(keyword, clusterName);
+          });
+        });
       });
 
       const updates = selectedPages.map((page) => {
         const selectedForPage = selected.filter((kw) => kw.url === page.url);
-        const cluster = selectedForPage.map((kw) => clusterByKeyword.get(kw.id)).find(Boolean) || page.cluster || '';
+        const cluster = selectedForPage
+          .map((kw) => keywordClusterMap.get(kw.keyword.toLowerCase()))
+          .find(Boolean) || page.cluster || '';
         return { id: page.id, cluster };
       });
       onBulkUpdate(updates);
-      setStatus(`Clusterización KWs completada. ${selected.length} keywords procesadas.`);
+      const matched = selected.filter((kw) => keywordClusterMap.has(kw.keyword.toLowerCase())).length;
+      setStatus(`Clusterización KWs (DataForSEO/Estrategia) completada. ${matched}/${selected.length} keywords mapeadas.`);
     } catch (e) {
       console.error(e);
       setStatus('Error al clusterizar keywords.');
