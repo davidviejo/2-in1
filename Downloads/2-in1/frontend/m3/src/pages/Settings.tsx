@@ -166,11 +166,24 @@ const Settings: React.FC = () => {
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">KWs branded (una por línea)</label>
-            <textarea value={brandedKeywordsText} onChange={(e) => setBrandedKeywordsText(e.target.value)} className="form-textarea" />
+            <textarea
+              value={brandedKeywordsText}
+              onChange={(e) => setBrandedKeywordsText(e.target.value)}
+              className="form-textarea"
+              placeholder={"marca
+nombre producto
+marca + servicio"}
+            />
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">Clusters manuales (formato: Cluster: url1, url2)</label>
-            <textarea value={clusterDraft} onChange={(e) => setClusterDraft(e.target.value)} className="form-textarea" />
+            <textarea
+              value={clusterDraft}
+              onChange={(e) => setClusterDraft(e.target.value)}
+              className="form-textarea"
+              placeholder={"Blog SEO: /blog/seo, /blog/tutoriales
+Servicios Locales: /servicios/madrid, /servicios/barcelona"}
+            />
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">Clusters anidados (formato: Cluster padre =&gt; Subcluster | regex|contains | patrón)</label>
@@ -183,7 +196,12 @@ const Settings: React.FC = () => {
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">Datos relevantes del proyecto</label>
-            <textarea value={projectNotes} onChange={(e) => setProjectNotes(e.target.value)} className="form-textarea" />
+            <textarea
+              value={projectNotes}
+              onChange={(e) => setProjectNotes(e.target.value)}
+              className="form-textarea"
+              placeholder="Ej: Prioridad Q2 = ganar visibilidad en servicios locales y optimizar categorías con alta impresión y bajo CTR."
+            />
           </div>
           <div className="rounded-brand-md border border-border bg-surface-alt p-3 text-sm">
             <p className="font-semibold text-foreground">Historial de snapshots SEO</p>
