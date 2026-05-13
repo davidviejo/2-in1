@@ -185,7 +185,7 @@ export const resolveClusterName = (
   return toPathClusterByLevel(url, level);
 };
 
-const buildRowsByLevel = (
+export const buildRowsByLevel = (
   gscData: Array<{ keys?: string[]; page?: string; url?: string; query?: string; clicks?: number; impressions?: number; position?: number }>,
   level: number,
   manualClusters: Array<{ name?: string; urls?: string[]; level?: number }>,
@@ -331,7 +331,7 @@ const SiteClusteringPage: React.FC = () => {
   const { gscAccessToken, googleUser, login, handleLogoutGsc } = useGSCAuth();
   const { currentClient, updateCurrentClientProfile } = useProject();
   const { pages: checklistPages } = useSeoChecklist();
-  const { gscSites, selectedSite, setSelectedSite, gscData, pageDateData, isLoadingGsc } = useGSCData(gscAccessToken, startDate, endDate, 'previous_period', {
+  const { gscSites, selectedSite, setSelectedSite, gscData, queryPageData, pageDateData, isLoadingGsc } = useGSCData(gscAccessToken, startDate, endDate, 'previous_period', {
     autoRun: false,
     runKey,
   });
@@ -366,9 +366,9 @@ const SiteClusteringPage: React.FC = () => {
     }
     return Array.from({ length: maxDepth }, (_, i) => ({
       level: i + 1,
-      rows: buildRowsByLevel(gscData, i + 1, mergedManualClusters),
+      rows: buildRowsByLevel(queryPageData, i + 1, mergedManualClusters),
     }));
-  }, [gscData, hasStartedAnalysis, maxDepth, mergedManualClusters]);
+  }, [queryPageData, hasStartedAnalysis, maxDepth, mergedManualClusters]);
 
 
 
