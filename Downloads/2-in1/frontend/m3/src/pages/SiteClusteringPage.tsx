@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Network, RefreshCw, ShieldCheck } from 'lucide-react';
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useGSCAuth } from '@/hooks/useGSCAuth';
 import { useGSCData } from '@/hooks/useGSCData';
 import { useProject } from '@/context/ProjectContext';
@@ -29,17 +29,32 @@ const getDefaultDates = () => {
   };
 };
 
-const toPathClusterByLevel = (url: string, level: number): string => {
+const getPathname = (url: string): string => {
+  const trimmedUrl = (url || '').trim();
+  if (!trimmedUrl) return '';
+
+  const looksLikeAbsoluteUrl = /^[a-z][a-z\d+\-.]*:\/\//i.test(trimmedUrl);
+
   try {
-    const path = new URL(url).pathname.replace(/\/+$/, '');
-    const segments = path.split('/').filter(Boolean);
-    if (segments.length === 0) return '/';
-    return `/${segments.slice(0, level).join('/')}`;
+    if (looksLikeAbsoluteUrl) {
+      return new URL(trimmedUrl).pathname;
+    }
+
+    return new URL(trimmedUrl, 'https://placeholder.local').pathname;
   } catch {
-    return '/sin-ruta';
+    if (trimmedUrl.startsWith('/')) return trimmedUrl;
+    return '';
   }
 };
 
+const toPathClusterByLevel = (url: string, level: number): string => {
+  const path = getPathname(url).replace(/\/+$/, '');
+  if (!path) return '/sin-ruta';
+
+  const segments = path.split('/').filter(Boolean);
+  if (segments.length === 0) return '/';
+  return `/${segments.slice(0, level).join('/')}`;
+};
 
 const parseRegexPattern = (rawPattern: string): RegExp | null => {
   const trimmed = rawPattern.trim();
@@ -304,15 +319,15 @@ const SiteClusteringPage: React.FC = () => {
         </div>
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={selectedClustersForChart}>
+            <LineChart data={selectedClustersForChart}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="cluster" hide />
               <YAxis />
               <Tooltip />
               <Legend />
-              <Bar dataKey="clicks" name="Clics" fill="#334155" />
-              <Bar dataKey="impressions" name="Impresiones" fill="#64748b" />
-            </BarChart>
+              <Line type="monotone" dataKey="clicks" name="Clics" stroke="#334155" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="impressions" name="Impresiones" stroke="#64748b" strokeWidth={2} dot={false} />
+            </LineChart>
           </ResponsiveContainer>
         </div>
       </section>
