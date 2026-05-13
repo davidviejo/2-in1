@@ -322,11 +322,12 @@ export const useSeoChecklist = () => {
       setPages((prev) => {
         const updated = prev.map((p) => {
           if (p.id !== pageId) return p;
-          const currentItem = p.checklist[key];
+          const safeChecklist = normalizeChecklist(p.checklist);
+          const currentItem = safeChecklist[key];
           return {
             ...p,
             checklist: {
-              ...p.checklist,
+              ...safeChecklist,
               [key]: mergeChecklistItemWithBusinessRules(
                 currentItem || buildFallbackChecklistItem(key),
                 updates,
