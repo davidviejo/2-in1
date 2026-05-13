@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { SeoPage } from '@/types/seoChecklist';
 import { Button } from '@/components/ui/Button';
+import { querySearchAnalyticsPaged } from '@/services/googleSearchConsole';
 
 type Props = { pages: SeoPage[]; onBulkUpdate: (updates: Array<Partial<SeoPage> & { id: string }>) => void };
 
@@ -61,6 +62,26 @@ const getTopGscKeywords = (page: SeoPage): KwCandidate[] => {
 
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+
+const normalizeUrlCandidate = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  try {
+    const parsed = new URL(trimmed);
+    const pathname = parsed.pathname !== '/' ? parsed.pathname.replace(/\/+$/, '') || '/' : '/';
+    return `${parsed.protocol}//${parsed.host}${pathname}`;
+  } catch {
+    return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
+  }
+};
+
+const getClusterizationBackendBaseUrl = () => {
+  const configured = String(import.meta.env.VITE_PYTHON_ENGINE_URL || import.meta.env.VITE_API_URL || '').trim();
+  if (!configured) return '';
+  return configured.endsWith('/') ? configured.slice(0, -1) : configured;
+};
+
 
 interface BackendClusterResult {
   id?: string;
@@ -160,6 +181,113 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
     };
   }, [selectedKeywords, useDataforseoForClusterization]);
 
+  const loadFreshGscKeywords = async () => {
+    if (selectedPages.length === 0) {
+      setStatus('Selecciona al menos 1 URL para cargar keywords desde GSC.');
+      return;
+    }
+    const token = localStorage.getItem('mediaflow_gsc_token');
+    const siteUrl = (localStorage.getItem('mediaflow_gsc_selected_site') || '').trim();
+    if (!token || !siteUrl) {
+      setStatus('Falta token o propiedad GSC activa. Conecta GSC en Dashboard y selecciona la propiedad.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const endDate = new Date().toISOString().slice(0, 10);
+      const startDate = new Date(Date.now() - 56 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      let updated = 0;
+      const updates = [] as Array<Partial<SeoPage> & { id: string }>;
+
+      for (const page of selectedPages) {
+        const normalizedPageUrl = normalizeUrlCandidate(page.url);
+        const response = await querySearchAnalyticsPaged(token, {
+          siteUrl,
+          startDate,
+          endDate,
+          dimensions: ['query', 'page'],
+          allowHighCardinality: true,
+          rowLimit: 1000,
+          maxRows: 2000,
+          dimensionFilterGroups: [{
+            groupType: 'and',
+            filters: [{ dimension: 'page', operator: 'equals', expression: normalizedPageUrl }],
+          }],
+        });
+        const rows = (response.rows || [])
+          .map((row: any) => ({
+            query: String(row.keys?.[0] || row.query || '').trim(),
+            clicks: Number(row.clicks || 0),
+            impressions: Number(row.impressions || 0),
+            ctr: Number(row.ctr || 0),
+            position: Number(row.position || 0),
+          }))
+          .filter((row) => row.query)
+          .sort((a, b) => b.clicks - a.clicks || b.impressions - a.impressions)
+          .slice(0, 50);
+
+        if (rows.length === 0) continue;
+        updates.push({
+          id: page.id,
+          checklist: {
+            ...page.checklist,
+            OPORTUNIDADES: {
+              ...page.checklist.OPORTUNIDADES,
+              autoData: {
+                ...(page.checklist.OPORTUNIDADES?.autoData || {}),
+                gscQueries: rows,
+              },
+            },
+          },
+        });
+        updated += 1;
+      }
+
+      if (updates.length > 0) onBulkUpdate(updates);
+      setStatus(`Keywords GSC refrescadas para ${updated}/${selectedPages.length} URLs seleccionadas (hasta 50 por URL).`);
+    } catch (error) {
+      console.error(error);
+      setStatus('Error cargando keywords GSC por URL.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+  const handleQuickSelectKeywords = (mode: 'top3' | 'all') => {
+    if (selectedPages.length === 0) {
+      setStatus('Primero selecciona URLs para autoseleccionar keywords.');
+      return;
+    }
+
+    const selectedUrlSet = new Set(selectedPages.map((page) => page.url));
+    const next = new Set(selectedKeywordIds);
+    const groupedByUrl = new Map<string, KwCandidate[]>();
+
+    kwCandidates.forEach((kw) => {
+      if (!selectedUrlSet.has(kw.url)) return;
+      const list = groupedByUrl.get(kw.url) || [];
+      list.push(kw);
+      groupedByUrl.set(kw.url, list);
+    });
+
+    groupedByUrl.forEach((items) => {
+      const ordered = [...items].sort((a, b) => b.clicks - a.clicks || b.impressions - a.impressions || a.keyword.localeCompare(b.keyword));
+      const limit = mode === 'top3' ? 3 : ordered.length;
+      ordered.slice(0, limit).forEach((kw) => next.add(kw.id));
+    });
+
+    setSelectedKeywordIds(next);
+    setSelectionConfirmed(false);
+    const selectedCount = Array.from(next.values()).length;
+    setStatus(
+      mode === 'top3'
+        ? `Selección rápida aplicada: top 3 keywords por URL (${selectedCount} keywords marcadas).`
+        : `Selección rápida aplicada: todas las keywords de URLs seleccionadas (${selectedCount} keywords marcadas).`,
+    );
+  };
+
   const handleConfirmSelection = () => {
     if (selectedKeywords.length === 0) {
       setStatus('Selecciona al menos 1 keyword antes de confirmar con OK.');
@@ -192,7 +320,8 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
         if (dataforseoLogin) formData.append('dataforseo_login', dataforseoLogin);
         if (dataforseoPassword) formData.append('dataforseo_password', dataforseoPassword);
 
-        const startResponse = await fetch('/seo/run', { method: 'POST', body: formData });
+        const backendBaseUrl = getClusterizationBackendBaseUrl();
+        const startResponse = await fetch(`${backendBaseUrl}/seo/run`, { method: 'POST', body: formData });
         const startPayload = await startResponse.json();
         if (!startResponse.ok || startPayload?.status !== 'ok') {
           throw new Error(startPayload?.message || 'No se pudo iniciar la clusterización backend');
@@ -200,7 +329,7 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
 
         let statusPayload: { active?: boolean; results?: BackendClusterResult[]; error?: string } = {};
         for (let attempt = 0; attempt < 90; attempt += 1) {
-          const statusResponse = await fetch('/seo/status');
+          const statusResponse = await fetch(`${backendBaseUrl}/seo/status`);
           statusPayload = await statusResponse.json();
           if (!statusPayload.active) break;
           await sleep(2000);
@@ -343,6 +472,7 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
       </div>
 
       <div className="flex gap-2">
+        <Button onClick={loadFreshGscKeywords} disabled={loading || selectedPages.length === 0}>Cargar keywords GSC por URL</Button>
         <Button onClick={handleConfirmSelection}>OK</Button>
         <Button onClick={runClusterization} disabled={loading || !selectionConfirmed}>{loading ? 'Procesando...' : 'Iniciar clusterización KWs'}</Button>
       </div>
@@ -353,6 +483,15 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
         <p className="text-xs text-slate-700">Ajustes: detail={dataforseoDetail}, mode={dataforseoExecutionMode}, credenciales={dataforseoLogin && dataforseoPassword ? 'ok' : 'pendiente'}.</p>
         <p className="text-xs text-slate-700">Archivo cargado: {strategyWorkbookName || 'sin archivo'} ({fileKeywords.length} keywords válidas).</p>
         <p className="text-xs text-slate-700">Keywords finales a analizar: {selectionSummary.total} (GSC: {selectionSummary.fromGsc}, archivo: {selectionSummary.fromFile}).</p>
+      </div>
+
+      <div className="rounded border p-3 space-y-2">
+        <h3 className="font-semibold">Selección rápida de KWs</h3>
+        <p className="text-xs text-slate-600">Acelera la selección de keywords para las URLs marcadas.</p>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => handleQuickSelectKeywords('top3')} disabled={loading || selectedPages.length === 0}>Top 3 por URL</Button>
+          <Button onClick={() => handleQuickSelectKeywords('all')} disabled={loading || selectedPages.length === 0}>Todas por URL</Button>
+        </div>
       </div>
 
       <div className="rounded border p-3">
