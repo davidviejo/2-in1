@@ -40,6 +40,7 @@ const getDefaultDates = () => {
 export const getPathname = (url: string): string => {
   const trimmedUrl = (url || '').trim();
   if (!trimmedUrl) return '';
+  if (!trimmedUrl.startsWith('/') && !/^[a-z][a-z\d+\-.]*:\/\//i.test(trimmedUrl)) return '';
 
   const looksLikeAbsoluteUrl = /^[a-z][a-z\d+\-.]*:\/\//i.test(trimmedUrl);
 
@@ -57,7 +58,7 @@ export const getPathname = (url: string): string => {
 
 const toPathClusterByLevel = (url: string, level: number): string => {
   const path = getPathname(url).replace(/\/+$/, '');
-  if (!path) return '/sin-ruta';
+  if (!path) return 'Sin cluster';
 
   const segments = path.split('/').filter(Boolean);
   if (segments.length === 0) return '/';
@@ -109,6 +110,7 @@ type ManualClusterRule = {
   urls: string[];
   level?: number;
 };
+const UNASSIGNED_CLUSTER = 'Sin cluster';
 
 export const parseManualClusterRules = (rulesText: string): ManualClusterRule[] =>
   rulesText
@@ -299,13 +301,13 @@ export const buildAutoClustersFromChecklist = (pages: Array<{ url: string }>) =>
 
   return Array.from(groups.entries())
     .filter(([, children]) => children.size > 1)
-    .map(([parentPath]) => {
+    .map(([parentPath, children]) => {
       const parentDepth = parentPath.split('/').filter(Boolean).length;
       return {
         id: `auto-${parentPath}`,
         name: parentPath,
         level: parentDepth > 0 ? parentDepth : 1,
-        urls: [parentPath, `${parentPath}/*`],
+        urls: Array.from(children).sort((a, b) => a.localeCompare(b)),
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -405,15 +407,14 @@ const SiteClusteringPage: React.FC = () => {
   };
 
   const selectedLevelRows = levelData.find((item) => item.level === selectedLevel)?.rows || [];
+  const assignedRows = selectedLevelRows.filter((row) => row.cluster !== UNASSIGNED_CLUSTER);
+  const unassignedRows = selectedLevelRows.filter((row) => row.cluster === UNASSIGNED_CLUSTER);
   const [selectedChartClusters, setSelectedChartClusters] = useState<string[]>([]);
   const clusterTimeline = useMemo(
     () => buildClusterTimeline(pageDateData, selectedLevel, mergedManualClusters),
     [pageDateData, selectedLevel, mergedManualClusters],
   );
-  const clusterOptions = useMemo(
-    () => selectedLevelRows.slice(0, 15).map((row) => row.cluster),
-    [selectedLevelRows],
-  );
+  const clusterOptions = useMemo(() => assignedRows.slice(0, 15).map((row) => row.cluster), [assignedRows]);
   const activeClusters = selectedChartClusters.length > 0 ? selectedChartClusters : clusterOptions.slice(0, 5);
   const timelineChartData = useMemo(() => {
     const pointsByWeek = new Map<string, Record<string, string | number>>();
@@ -520,7 +521,7 @@ const SiteClusteringPage: React.FC = () => {
             className="w-full min-h-32 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-sm"
             value={manualClusterRules}
             onChange={(e) => setManualClusterRules(e.target.value)}
-            placeholder={'Una regla por línea.\nNuevo formato: Cluster|Nivel|/path1,/path2\nEj: Blog Posts|1|/blog/*,/articulos/*\nCompatible legacy: /blog/* => cluster: contenido'}
+            placeholder={'Una regla por línea.\nFormato oficial: Cluster|Nivel|/path1,/path2\nEj: Blog Posts|1|/blog/*,/articulos/*\nCompatible legacy: /blog/* => cluster: contenido'}
           />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -608,7 +609,7 @@ const SiteClusteringPage: React.FC = () => {
         <section key={level.level} className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold text-slate-900 dark:text-white">Tabla clústeres nivel {level.level}</h2>
-            <span className="text-xs text-slate-500">{level.rows.length} clústeres</span>
+            <span className="text-xs text-slate-500">{level.rows.filter((row) => row.cluster !== UNASSIGNED_CLUSTER).length} clústeres</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -618,7 +619,7 @@ const SiteClusteringPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {level.rows.slice(0, 50).map((row) => (
+                {level.rows.filter((row) => row.cluster !== UNASSIGNED_CLUSTER).slice(0, 50).map((row) => (
                   <tr key={`${level.level}-${row.cluster}`} className="border-b border-slate-100 dark:border-slate-700/40">
                     <td className="py-2 pr-3 font-medium text-slate-800 dark:text-slate-200">{row.cluster}</td>
                     <td className="py-2 pr-3">{row.urls}</td>
@@ -631,6 +632,13 @@ const SiteClusteringPage: React.FC = () => {
               </tbody>
             </table>
           </div>
+          {unassignedRows.length > 0 && level.level === selectedLevel && (
+            <div className="mt-6">
+              <h3 className="font-semibold text-slate-900 dark:text-white">URLs sin cluster asignado</h3>
+              <p className="text-xs text-slate-500 mt-1">Estas URLs no coinciden con reglas manuales. Puedes asignarlas editando reglas en formato Cluster|Nivel|/path1,/path2.</p>
+              <p className="text-xs text-slate-500 mt-2">Total de URLs agrupadas sin cluster: {unassignedRows[0].urls}</p>
+            </div>
+          )}
         </section>
       ))}
     </div>

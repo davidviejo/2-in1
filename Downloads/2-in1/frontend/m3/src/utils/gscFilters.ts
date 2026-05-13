@@ -58,11 +58,28 @@ export const parseCustomClusters = (value: unknown): ProjectCustomCluster[] =>
         .map((line) => line.trim())
         .filter(Boolean)
         .map((line) => {
-          const [nameRaw, pathsRaw] = line.split('|');
-          const paths = (pathsRaw || '')
-            .split(',')
-            .map((path) => path.trim())
-            .filter(Boolean);
+          if (line.includes('=>')) {
+            const [patternRaw, nameRaw] = line.split('=>').map((part) => part.trim());
+            const name = (nameRaw || '').replace(/^cluster\s*:\s*/i, '').trim();
+            const path = (patternRaw || '').trim();
+            return { name, paths: path ? [path] : [] };
+          }
+
+          const chunks = line.split('|').map((part) => part.trim());
+          if (chunks.length >= 3) {
+            const [nameRaw, levelRaw, ...pathChunks] = chunks;
+            const parsedLevel = Number(levelRaw);
+            const level = Number.isFinite(parsedLevel) && parsedLevel > 0 ? Math.floor(parsedLevel) : undefined;
+            const paths = pathChunks
+              .join('|')
+              .split(',')
+              .map((path) => path.trim())
+              .filter(Boolean);
+            return { name: (nameRaw || '').trim(), paths, level };
+          }
+
+          const [nameRaw, pathsRaw] = chunks;
+          const paths = (pathsRaw || '').split(',').map((path) => path.trim()).filter(Boolean);
           return { name: (nameRaw || '').trim(), paths };
         }),
     },

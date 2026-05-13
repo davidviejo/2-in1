@@ -39,11 +39,27 @@ describe('gscFilters', () => {
   });
 
   it('parses custom clusters from textarea format', () => {
-    const parsed = parseCustomClusters('Blog|/blog\nLocal|/bilbao,/valencia');
+    const parsed = parseCustomClusters('Blog|1|/blog\nLocal|2|/bilbao,/valencia');
     expect(parsed).toEqual([
-      { name: 'Blog', paths: ['/blog'] },
-      { name: 'Local', paths: ['/bilbao', '/valencia'] },
+      { name: 'Blog', level: 1, paths: ['/blog'] },
+      { name: 'Local', level: 2, paths: ['/bilbao', '/valencia'] },
     ]);
+  });
+
+  it('supports legacy pattern => cluster format and ignores invalid lines', () => {
+    const parsed = parseCustomClusters([
+      '/blog/* => cluster: Blog',
+      '/servicios/madrid => Local Madrid',
+      '',
+      'Cluster sin paths|3|',
+      'SoloNombre|',
+    ].join('\n'));
+
+    expect(parsed).toEqual([
+      { name: 'Blog', paths: ['/blog/*'] },
+      { name: 'Local Madrid', paths: ['/servicios/madrid'] },
+    ]);
+    expect(JSON.stringify(parsed)).not.toContain('/sin-ruta');
   });
 
 
@@ -66,8 +82,8 @@ describe('gscFilters', () => {
   it('parses cluster level rules from textarea format', () => {
     const parsed = parseClusterLevelRules('Servicios|Implantes|/implantes\nBlog|Guías|/blog,/blog/seo');
     expect(parsed).toEqual([
-      { level1: 'Servicios', level2: 'Implantes', paths: ['/implantes'] },
-      { level1: 'Blog', level2: 'Guías', paths: ['/blog', '/blog/seo'] },
+      { level1: 'Servicios', level2: 'Implantes', levels: ['Servicios', 'Implantes'], paths: ['/implantes'] },
+      { level1: 'Blog', level2: 'Guías', levels: ['Blog', 'Guías'], paths: ['/blog', '/blog/seo'] },
     ]);
   });
 

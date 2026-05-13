@@ -233,11 +233,13 @@ const normalizeCustomClusters = (value: unknown): ProjectCustomCluster[] =>
     .map((cluster) => {
       const record = asRecord(cluster);
       const name = typeof record?.name === 'string' ? record.name.trim() : '';
+      const levelValue = typeof record?.level === 'number' ? record.level : Number(record?.level);
+      const level = Number.isFinite(levelValue) && levelValue > 0 ? Math.floor(levelValue) : undefined;
       const paths = ensureArray(record?.paths)
         .map((path) => (typeof path === 'string' ? normalizePath(path) : ''))
         .filter(Boolean);
 
-      return { name, paths };
+      return { name, paths, level };
     })
     .filter((cluster) => cluster.name && cluster.paths.length > 0);
 
