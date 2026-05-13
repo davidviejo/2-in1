@@ -19,6 +19,11 @@ type LevelData = {
   rows: ClusterRow[];
 };
 
+type ManualClusterRule = {
+  pattern: string;
+  levels: string[];
+};
+
 const getDefaultDates = () => {
   const end = new Date();
   const start = new Date();
@@ -82,12 +87,12 @@ const matchesManualPattern = (url: string, pattern: string): boolean => {
 const resolveClusterName = (
   url: string,
   level: number,
-  manualClusters: Array<{ name?: string; urls?: string[] }>,
+  manualClusterRules: ManualClusterRule[],
 ): string => {
-  for (const cluster of manualClusters) {
-    if (!cluster?.name || !Array.isArray(cluster.urls)) continue;
-    const hasMatch = cluster.urls.some((pattern) => matchesManualPattern(url, pattern));
-    if (hasMatch) return cluster.name;
+  for (const rule of manualClusterRules) {
+    if (!rule.pattern || rule.levels.length === 0) continue;
+    if (!matchesManualPattern(url, rule.pattern)) continue;
+    return rule.levels[Math.min(level - 1, rule.levels.length - 1)] || rule.levels[rule.levels.length - 1];
   }
 
   return toPathClusterByLevel(url, level);
@@ -96,14 +101,14 @@ const resolveClusterName = (
 const buildRowsByLevel = (
   gscData: Array<{ keys?: string[]; clicks?: number; impressions?: number; position?: number }>,
   level: number,
-  manualClusters: Array<{ name?: string; urls?: string[] }>,
+  manualClusterRules: ManualClusterRule[],
 ): ClusterRow[] => {
   const bucket = new Map<string, { urls: Set<string>; clicks: number; impressions: number; posWeighted: number; topQuery: string; topClicks: number }>();
 
   for (const row of gscData) {
     const page = row.keys?.[0] || '';
     const query = row.keys?.[1] || '';
-    const cluster = resolveClusterName(page, level, manualClusters);
+    const cluster = resolveClusterName(page, level, manualClusterRules);
     const existing = bucket.get(cluster) || {
       urls: new Set<string>(),
       clicks: 0,
@@ -163,6 +168,29 @@ const SiteClusteringPage: React.FC = () => {
     setRunKey((prev) => prev + 1);
   };
 
+  const parsedManualClusterRules = useMemo<ManualClusterRule[]>(() => {
+    const rulesFromTextarea = manualClusterRules
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [patternPart, levelsPart = ''] = line.split('=>').map((item) => item.trim());
+        const levels = levelsPart
+          .split('>')
+          .map((item) => item.trim())
+          .filter(Boolean);
+        if (!patternPart || levels.length === 0) return null;
+        return { pattern: patternPart, levels };
+      })
+      .filter((rule): rule is ManualClusterRule => rule !== null);
+
+    const rulesFromProject = (currentClient?.seoClusters || []).flatMap((cluster) =>
+      (cluster.urls || []).map((pattern) => ({ pattern, levels: [cluster.name] })),
+    );
+
+    return [...rulesFromTextarea, ...rulesFromProject];
+  }, [currentClient?.seoClusters, manualClusterRules]);
+
   const maxDepth = useMemo(() => {
     let depth = 1;
     for (const row of gscData) {
@@ -174,8 +202,9 @@ const SiteClusteringPage: React.FC = () => {
         depth = Math.max(depth, 1);
       }
     }
-    return Math.min(Math.max(depth, 1), 6);
-  }, [gscData]);
+    const detectedDepth = Math.min(Math.max(depth, 1), 6);
+    return Math.min(Math.max(Math.max(clusterDepth, detectedDepth), 1), 6);
+  }, [clusterDepth, gscData]);
 
   const levelData = useMemo<LevelData[]>(() => {
     if (!hasStartedAnalysis) {
@@ -183,9 +212,9 @@ const SiteClusteringPage: React.FC = () => {
     }
     return Array.from({ length: maxDepth }, (_, i) => ({
       level: i + 1,
-      rows: buildRowsByLevel(gscData, i + 1, currentClient?.seoClusters || []),
+      rows: buildRowsByLevel(gscData, i + 1, parsedManualClusterRules),
     }));
-  }, [currentClient?.seoClusters, gscData, hasStartedAnalysis, maxDepth]);
+  }, [gscData, hasStartedAnalysis, maxDepth, parsedManualClusterRules]);
 
   const selectedLevelRows = levelData.find((item) => item.level === selectedLevel)?.rows || [];
   const selectedClustersForChart = selectedLevelRows.slice(0, 10);
@@ -266,7 +295,7 @@ const SiteClusteringPage: React.FC = () => {
       <section className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
         <div>
           <h2 className="font-semibold text-slate-900 dark:text-white">Ajustes de clúster manual</h2>
-          <p className="text-xs text-slate-500 mt-1">Configura reglas manuales e importa un archivo para ajustar el clustering sin depender de otras páginas.</p>
+          <p className="text-xs text-slate-500 mt-1">Configura reglas manuales multi-nivel (patrón =&gt; Nivel 1 &gt; Nivel 2...) e importa un archivo para ajustar el clustering sin depender de otras páginas.</p>
         </div>
         <div>
           <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Reglas manuales</label>
@@ -274,7 +303,7 @@ const SiteClusteringPage: React.FC = () => {
             className="w-full min-h-32 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-sm"
             value={manualClusterRules}
             onChange={(e) => setManualClusterRules(e.target.value)}
-            placeholder="Una regla por línea. Ej: /blog/* => cluster: contenido"
+            placeholder="Una regla por línea. Ej: /blog/* => Blog > Guías > Técnica"
           />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
