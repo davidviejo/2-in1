@@ -304,11 +304,12 @@ export const buildAutoClustersFromChecklist = (pages: Array<{ url: string }>) =>
   return Array.from(groups.entries())
     .filter(([, children]) => children.size > 1)
     .map(([parentPath, children]) => {
-      const parentDepth = parentPath.split('/').filter(Boolean).length;
+      const childDepths = Array.from(children).map((childPath) => childPath.split('/').filter(Boolean).length);
+      const clusterLevel = Math.max(...childDepths, 1);
       return {
         id: `auto-${parentPath}`,
         name: parentPath,
-        level: parentDepth > 0 ? parentDepth : 1,
+        level: clusterLevel,
         urls: Array.from(children).sort((a, b) => a.localeCompare(b)),
       };
     })
