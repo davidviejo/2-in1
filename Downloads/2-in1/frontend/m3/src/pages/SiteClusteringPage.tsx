@@ -168,11 +168,12 @@ const matchesManualPattern = (url: string, pattern: string): boolean => {
   return pathname.toLowerCase().includes(normalizedPattern) || url.toLowerCase().includes(normalizedPattern);
 };
 
-const resolveClusterName = (
+export const resolveClusterName = (
   url: string,
   level: number,
   manualClusters: Array<{ name?: string; urls?: string[]; level?: number }>,
 ): string => {
+  const hasManualRules = manualClusters.some((cluster) => Array.isArray(cluster?.urls) && cluster.urls.length > 0);
   for (const cluster of manualClusters) {
     if (!cluster?.name || !Array.isArray(cluster.urls)) continue;
     if (typeof cluster.level === 'number' && cluster.level > 0 && cluster.level !== level) continue;
@@ -180,6 +181,7 @@ const resolveClusterName = (
     if (hasMatch) return cluster.name;
   }
 
+  if (hasManualRules) return UNASSIGNED_CLUSTER;
   return toPathClusterByLevel(url, level);
 };
 

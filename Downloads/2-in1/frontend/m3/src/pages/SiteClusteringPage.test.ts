@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildAutoClustersFromChecklist, getPathname, isLikelyPageKey, parseManualClusterRules } from './SiteClusteringPage';
+import { buildAutoClustersFromChecklist, getPathname, isLikelyPageKey, parseManualClusterRules, resolveClusterName } from './SiteClusteringPage';
 
 describe('SiteClusteringPage helpers', () => {
   it('accepts strong page keys and rejects search queries with slash', () => {
@@ -38,5 +38,10 @@ describe('SiteClusteringPage helpers', () => {
     expect(getPathname('https://www.diegocasas.es/rinoplastia-en-madrid/')).toBe('/rinoplastia-en-madrid/');
     expect(getPathname('/rinoplastia-en-madrid/')).toBe('/rinoplastia-en-madrid/');
     expect(getPathname('rinoplastia madrid')).toBe('');
+  });
+
+  it('sends non-matching URLs to "Sin cluster" when manual rules are active', () => {
+    const manualRules = parseManualClusterRules('Geolocal Madrid|2|/rinoplastia-en-madrid,/rinoplastia-en-madrid/*');
+    expect(resolveClusterName('/url-sin-regla', 2, manualRules)).toBe('Sin cluster');
   });
 });
