@@ -264,11 +264,16 @@ const buildAutoClustersFromChecklist = (pages: Array<{ url: string }>) => {
 
   return Array.from(groups.entries())
     .filter(([, children]) => children.size > 1)
-    .map(([parentPath]) => ({
+    .map(([parentPath]) => {
+      const parentDepth = parentPath.split('/').filter(Boolean).length;
+      const escapedParentPath = escapeRegExp(parentPath);
+      return {
       id: `auto-${parentPath}`,
       name: parentPath,
-      urls: [`${parentPath}/`],
-    }))
+      level: parentDepth > 0 ? parentDepth : 1,
+      urls: [`/^${escapedParentPath}(?:\\/.*)?$/i`],
+      };
+    })
     .sort((a, b) => a.name.localeCompare(b.name));
 };
 
@@ -338,8 +343,12 @@ const SiteClusteringPage: React.FC = () => {
       return;
     }
 
-    const existingByName = new Set((currentClient.seoClusters || []).map((cluster) => cluster.name.toLowerCase()));
-    const uniqueClusters = generatedClusters.filter((cluster) => !existingByName.has(cluster.name.toLowerCase()));
+    const existingByNameAndLevel = new Set(
+      (currentClient.seoClusters || []).map((cluster) => `${cluster.name.toLowerCase()}::${cluster.level || 0}`),
+    );
+    const uniqueClusters = generatedClusters.filter(
+      (cluster) => !existingByNameAndLevel.has(`${cluster.name.toLowerCase()}::${cluster.level || 0}`),
+    );
 
     if (uniqueClusters.length === 0) {
       setAutoClusterStatus('Los clusters anidados detectados ya existen en la configuración actual.');
