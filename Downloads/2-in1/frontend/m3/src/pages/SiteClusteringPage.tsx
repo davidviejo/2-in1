@@ -37,7 +37,7 @@ const getDefaultDates = () => {
   };
 };
 
-const getPathname = (url: string): string => {
+export const getPathname = (url: string): string => {
   const trimmedUrl = (url || '').trim();
   if (!trimmedUrl) return '';
 
@@ -62,6 +62,23 @@ const toPathClusterByLevel = (url: string, level: number): string => {
   const segments = path.split('/').filter(Boolean);
   if (segments.length === 0) return '/';
   return `/${segments.slice(0, level).join('/')}`;
+};
+
+export const isLikelyPageKey = (value: string): boolean => {
+  const trimmed = (value || '').trim();
+  if (!trimmed) return false;
+  if (/\s/.test(trimmed)) return false;
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const parsed = new URL(trimmed);
+      return parsed.pathname.startsWith('/');
+    } catch {
+      return false;
+    }
+  }
+  if (trimmed.startsWith('/')) return true;
+  if (/^[a-z][a-z\d+\-.]*:\/\//i.test(trimmed)) return false;
+  return false;
 };
 
 const parseRegexPattern = (rawPattern: string): RegExp | null => {
@@ -93,7 +110,7 @@ type ManualClusterRule = {
   level?: number;
 };
 
-const parseManualClusterRules = (rulesText: string): ManualClusterRule[] =>
+export const parseManualClusterRules = (rulesText: string): ManualClusterRule[] =>
   rulesText
     .replace(/\\n/g, '\n')
     .replace(/\\r/g, '\r')
@@ -165,7 +182,7 @@ const resolveClusterName = (
 };
 
 const buildRowsByLevel = (
-  gscData: Array<{ keys?: string[]; clicks?: number; impressions?: number; position?: number }>,
+  gscData: Array<{ keys?: string[]; page?: string; url?: string; query?: string; clicks?: number; impressions?: number; position?: number }>,
   level: number,
   manualClusters: Array<{ name?: string; urls?: string[]; level?: number }>,
 ): ClusterRow[] => {
@@ -174,11 +191,14 @@ const buildRowsByLevel = (
   for (const row of gscData) {
     const keyA = row.keys?.[0] || '';
     const keyB = row.keys?.[1] || '';
-    const keyALooksLikePage = keyA.includes('/') || /^https?:\/\//i.test(keyA);
-    const keyBLooksLikePage = keyB.includes('/') || /^https?:\/\//i.test(keyB);
+    const keyALooksLikePage = isLikelyPageKey(keyA);
+    const keyBLooksLikePage = isLikelyPageKey(keyB);
 
-    const page = keyBLooksLikePage ? keyB : keyALooksLikePage ? keyA : '';
-    const query = keyBLooksLikePage ? keyA : keyB;
+    const pageFromKeys = keyBLooksLikePage ? keyB : keyALooksLikePage ? keyA : '';
+    const pageField = isLikelyPageKey(row.page || '') ? row.page || '' : '';
+    const urlField = isLikelyPageKey(row.url || '') ? row.url || '' : '';
+    const page = (pageField || urlField || pageFromKeys || '').trim();
+    const query = (row.query || (keyBLooksLikePage ? keyA : keyB) || '').trim();
     const cluster = resolveClusterName(page, level, manualClusters);
     const existing = bucket.get(cluster) || {
       urls: new Set<string>(),
@@ -225,14 +245,17 @@ const getWeekStart = (dateValue: string): string => {
 };
 
 const buildClusterTimeline = (
-  pageDateData: Array<{ keys?: string[]; clicks?: number; impressions?: number }>,
+  pageDateData: Array<{ keys?: string[]; page?: string; url?: string; date?: string; clicks?: number; impressions?: number }>,
   level: number,
   manualClusters: Array<{ name?: string; urls?: string[] }>,
 ): ClusterTimePoint[] => {
   const bucket = new Map<string, { clicks: number; impressions: number }>();
   for (const row of pageDateData) {
-    const page = row.keys?.[0] || '';
-    const rawDate = row.keys?.[1] || '';
+    const pageFromKeys = isLikelyPageKey(row.keys?.[0] || '') ? row.keys?.[0] || '' : '';
+    const pageField = isLikelyPageKey(row.page || '') ? row.page || '' : '';
+    const urlField = isLikelyPageKey(row.url || '') ? row.url || '' : '';
+    const page = (pageField || urlField || pageFromKeys || '').trim();
+    const rawDate = (row.date || row.keys?.[1] || '').trim();
     if (!page || !rawDate) continue;
 
     const week = getWeekStart(rawDate);
@@ -259,7 +282,7 @@ const buildClusterTimeline = (
 
 
 
-const buildAutoClustersFromChecklist = (pages: Array<{ url: string }>) => {
+export const buildAutoClustersFromChecklist = (pages: Array<{ url: string }>) => {
   const groups = new Map<string, Set<string>>();
 
   for (const page of pages) {
@@ -278,12 +301,11 @@ const buildAutoClustersFromChecklist = (pages: Array<{ url: string }>) => {
     .filter(([, children]) => children.size > 1)
     .map(([parentPath]) => {
       const parentDepth = parentPath.split('/').filter(Boolean).length;
-      const escapedParentPath = escapeRegExp(parentPath);
       return {
-      id: `auto-${parentPath}`,
-      name: parentPath,
-      level: parentDepth > 0 ? parentDepth : 1,
-      urls: [`/^${escapedParentPath}(?:\\/.*)?$/i`],
+        id: `auto-${parentPath}`,
+        name: parentPath,
+        level: parentDepth > 0 ? parentDepth : 1,
+        urls: [parentPath, `${parentPath}/*`],
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
