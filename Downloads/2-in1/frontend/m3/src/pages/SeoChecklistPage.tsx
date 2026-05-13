@@ -5,7 +5,7 @@ import { SeoUrlList } from '../components/seo-checklist/SeoUrlList';
 import { SeoChecklistDetail } from '../components/seo-checklist/SeoChecklistDetail';
 import { ImportUrlsModal } from '../components/seo-checklist/ImportUrlsModal';
 import { BatchJobMonitor } from '../components/seo-checklist/BatchJobMonitor';
-import { Plus, ListChecks, Sparkles, Table, KeyRound } from 'lucide-react';
+import { Plus, ListChecks, Sparkles, Table, KeyRound, Network, Filter } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import {
@@ -20,6 +20,8 @@ import { processAnalysisResult } from '../utils/seoUtils';
 import { buildSeoUrlCanonicalKey } from '../utils/seoUrlNormalizer';
 import { AutoClusterizationPanel } from '../components/seo-checklist/AutoClusterizationPanel';
 import { AutoAssignKeywordsPanel } from '../components/seo-checklist/AutoAssignKeywordsPanel';
+import { KwClusterizationPanel } from '../components/seo-checklist/KwClusterizationPanel';
+import { WebBreakdownPanel } from '../components/seo-checklist/WebBreakdownPanel';
 
 const SeoChecklistPage: React.FC = () => {
   const { currentClientId } = useProject();
@@ -71,7 +73,7 @@ const SeoChecklistPage: React.FC = () => {
   } = useSeoChecklist();
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [activeView, setActiveView] = useState<'official' | 'auto_cluster' | 'auto_kw'>('official');
+  const [activeView, setActiveView] = useState<'official' | 'auto_cluster' | 'auto_kw' | 'kw_cluster' | 'web_breakdown'>('official');
   const [allowKwAutoSelectInBasic, setAllowKwAutoSelectInBasic] = useState(true);
 
 
@@ -247,6 +249,20 @@ const SeoChecklistPage: React.FC = () => {
                 Auto-clusterización
               </Button>
               <Button
+                variant={activeView === 'kw_cluster' ? 'primary' : 'secondary'}
+                onClick={() => setActiveView('kw_cluster')}
+              >
+                <Network size={16} />
+                Clusterización kws
+              </Button>
+              <Button
+                variant={activeView === 'web_breakdown' ? 'primary' : 'secondary'}
+                onClick={() => setActiveView('web_breakdown')}
+              >
+                <Filter size={16} />
+                Desglose Web
+              </Button>
+              <Button
                 variant={activeView === 'auto_kw' ? 'primary' : 'secondary'}
                 onClick={() => setActiveView('auto_kw')}
               >
@@ -270,6 +286,10 @@ const SeoChecklistPage: React.FC = () => {
             />
           ) : activeView === 'auto_cluster' ? (
             <AutoClusterizationPanel pages={pages} onBulkUpdate={bulkUpdatePages} />
+          ) : activeView === 'kw_cluster' ? (
+            <KwClusterizationPanel pages={pages} onBulkUpdate={bulkUpdatePages} />
+          ) : activeView === 'web_breakdown' ? (
+            <WebBreakdownPanel pages={pages} onBulkUpdate={bulkUpdatePages} />
           ) : (
             <AutoAssignKeywordsPanel pages={pages} onBulkUpdate={bulkUpdatePages} onAddPages={addPages} />
           )}
