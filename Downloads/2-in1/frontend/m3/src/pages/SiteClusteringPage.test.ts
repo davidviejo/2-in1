@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildAutoClustersFromChecklist, buildRowsByLevel, getPathname, isLikelyPageKey, parseManualClusterRules, resolveClusterName } from './SiteClusteringPage';
+import { buildAutoClustersFromChecklist, buildRowsByLevel, getMaxDepthFromRows, getPathname, isLikelyPageKey, parseManualClusterRules, resolveClusterName } from './SiteClusteringPage';
 
 describe('SiteClusteringPage helpers', () => {
   it('accepts strong page keys and rejects search queries with slash', () => {
@@ -61,6 +61,16 @@ describe('SiteClusteringPage helpers', () => {
       impressions: 230,
       topQuery: 'best service',
     });
+  });
+
+  it('detects deep nested pages when calculating max depth', () => {
+    const maxDepth = getMaxDepthFromRows([
+      { query: 'q1', page: '/a/b/c' },
+      { keys: ['query', 'https://example.com/a/b'] },
+    ]);
+
+    expect(maxDepth).toBeGreaterThan(1);
+    expect(maxDepth).toBe(3);
   });
 
   it('prefers explicit query/page fields over keys for query+page aggregations', () => {
