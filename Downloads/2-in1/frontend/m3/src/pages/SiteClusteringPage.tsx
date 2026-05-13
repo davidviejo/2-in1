@@ -67,6 +67,27 @@ const parseRegexPattern = (rawPattern: string): RegExp | null => {
   }
 };
 
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const parseManualClusterRules = (rulesText: string): Array<{ name: string; urls: string[] }> =>
+  rulesText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [left, right] = line.split('=>').map((part) => part.trim());
+      if (!left || !right) return null;
+
+      const clusterName = right.replace(/^cluster\s*:\s*/i, '').trim();
+      if (!clusterName) return null;
+
+      return {
+        name: clusterName,
+        urls: [left],
+      };
+    })
+    .filter((item): item is { name: string; urls: string[] } => Boolean(item));
+
 const matchesManualPattern = (url: string, pattern: string): boolean => {
   const trimmedPattern = pattern.trim();
   if (!trimmedPattern) return false;
@@ -76,7 +97,15 @@ const matchesManualPattern = (url: string, pattern: string): boolean => {
     return parsedRegex.test(url);
   }
 
-  return url.toLowerCase().includes(trimmedPattern.toLowerCase());
+  const pathname = getPathname(url) || url;
+  const normalizedPattern = trimmedPattern.toLowerCase();
+
+  if (normalizedPattern.includes('*')) {
+    const wildcardRegex = new RegExp(`^${escapeRegExp(normalizedPattern).replace(/\\\*/g, '.*')}$`, 'i');
+    return wildcardRegex.test(pathname.toLowerCase()) || wildcardRegex.test(url.toLowerCase());
+  }
+
+  return pathname.toLowerCase().includes(normalizedPattern) || url.toLowerCase().includes(normalizedPattern);
 };
 
 const resolveClusterName = (
@@ -101,8 +130,13 @@ const buildRowsByLevel = (
   const bucket = new Map<string, { urls: Set<string>; clicks: number; impressions: number; posWeighted: number; topQuery: string; topClicks: number }>();
 
   for (const row of gscData) {
-    const page = row.keys?.[0] || '';
-    const query = row.keys?.[1] || '';
+    const keyA = row.keys?.[0] || '';
+    const keyB = row.keys?.[1] || '';
+    const keyALooksLikePage = keyA.includes('/') || /^https?:\/\//i.test(keyA);
+    const keyBLooksLikePage = keyB.includes('/') || /^https?:\/\//i.test(keyB);
+
+    const page = keyBLooksLikePage ? keyB : keyALooksLikePage ? keyA : '';
+    const query = keyBLooksLikePage ? keyA : keyB;
     const cluster = resolveClusterName(page, level, manualClusters);
     const existing = bucket.get(cluster) || {
       urls: new Set<string>(),
@@ -177,15 +211,20 @@ const SiteClusteringPage: React.FC = () => {
     return Math.min(Math.max(depth, 1), 6);
   }, [gscData]);
 
+  const mergedManualClusters = useMemo(() => ([
+    ...(currentClient?.seoClusters || []),
+    ...parseManualClusterRules(manualClusterRules),
+  ]), [currentClient?.seoClusters, manualClusterRules]);
+
   const levelData = useMemo<LevelData[]>(() => {
     if (!hasStartedAnalysis) {
       return [];
     }
     return Array.from({ length: maxDepth }, (_, i) => ({
       level: i + 1,
-      rows: buildRowsByLevel(gscData, i + 1, currentClient?.seoClusters || []),
+      rows: buildRowsByLevel(gscData, i + 1, mergedManualClusters),
     }));
-  }, [currentClient?.seoClusters, gscData, hasStartedAnalysis, maxDepth]);
+  }, [gscData, hasStartedAnalysis, maxDepth, mergedManualClusters]);
 
   const selectedLevelRows = levelData.find((item) => item.level === selectedLevel)?.rows || [];
   const selectedClustersForChart = selectedLevelRows.slice(0, 10);
