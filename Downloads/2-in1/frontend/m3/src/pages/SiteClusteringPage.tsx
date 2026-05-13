@@ -3,7 +3,6 @@ import { Network, RefreshCw, ShieldCheck } from 'lucide-react';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useGSCAuth } from '@/hooks/useGSCAuth';
 import { useGSCData } from '@/hooks/useGSCData';
-import { useProject } from '@/context/ProjectContext';
 
 type ClusterRow = {
   cluster: string;
@@ -69,24 +68,31 @@ const parseRegexPattern = (rawPattern: string): RegExp | null => {
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-const parseManualClusterRules = (rulesText: string): Array<{ name: string; urls: string[] }> =>
+type ManualClusterRule = { name: string; level: number; patterns: string[] };
+
+const parseManualClusterRules = (rulesText: string): ManualClusterRule[] =>
   rulesText
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      const [left, right] = line.split('=>').map((part) => part.trim());
-      if (!left || !right) return null;
+      const parts = line.split('|').map((part) => part.trim());
+      if (parts.length < 3) return null;
 
-      const clusterName = right.replace(/^cluster\s*:\s*/i, '').trim();
-      if (!clusterName) return null;
+      const [name, levelRaw, patternsRaw] = parts;
+      const level = Number(levelRaw);
+      if (!name || !Number.isFinite(level) || level < 1) return null;
 
-      return {
-        name: clusterName,
-        urls: [left],
-      };
+      const patterns = patternsRaw
+        .split(',')
+        .map((pattern) => pattern.trim())
+        .filter(Boolean);
+
+      if (patterns.length === 0) return null;
+
+      return { name, level: Math.floor(level), patterns };
     })
-    .filter((item): item is { name: string; urls: string[] } => Boolean(item));
+    .filter((item): item is ManualClusterRule => Boolean(item));
 
 const matchesManualPattern = (url: string, pattern: string): boolean => {
   const trimmedPattern = pattern.trim();
@@ -111,11 +117,11 @@ const matchesManualPattern = (url: string, pattern: string): boolean => {
 const resolveClusterName = (
   url: string,
   level: number,
-  manualClusters: Array<{ name?: string; urls?: string[] }>,
+  manualClusters: ManualClusterRule[],
 ): string => {
   for (const cluster of manualClusters) {
-    if (!cluster?.name || !Array.isArray(cluster.urls)) continue;
-    const hasMatch = cluster.urls.some((pattern) => matchesManualPattern(url, pattern));
+    if (cluster.level !== level) continue;
+    const hasMatch = cluster.patterns.some((pattern) => matchesManualPattern(url, pattern));
     if (hasMatch) return cluster.name;
   }
 
@@ -125,7 +131,7 @@ const resolveClusterName = (
 const buildRowsByLevel = (
   gscData: Array<{ keys?: string[]; clicks?: number; impressions?: number; position?: number }>,
   level: number,
-  manualClusters: Array<{ name?: string; urls?: string[] }>,
+  manualClusters: ManualClusterRule[],
 ): ClusterRow[] => {
   const bucket = new Map<string, { urls: Set<string>; clicks: number; impressions: number; posWeighted: number; topQuery: string; topClicks: number }>();
 
@@ -186,7 +192,6 @@ const SiteClusteringPage: React.FC = () => {
   const [clusterDepth, setClusterDepth] = useState(2);
 
   const { gscAccessToken, googleUser, login, handleLogoutGsc } = useGSCAuth();
-  const { currentClient } = useProject();
   const { gscSites, selectedSite, setSelectedSite, gscData, isLoadingGsc } = useGSCData(gscAccessToken, startDate, endDate, 'previous_period', {
     autoRun: false,
     runKey,
@@ -211,10 +216,7 @@ const SiteClusteringPage: React.FC = () => {
     return Math.min(Math.max(depth, 1), 6);
   }, [gscData]);
 
-  const mergedManualClusters = useMemo(() => ([
-    ...(currentClient?.seoClusters || []),
-    ...parseManualClusterRules(manualClusterRules),
-  ]), [currentClient?.seoClusters, manualClusterRules]);
+  const parsedManualClusterRules = useMemo(() => parseManualClusterRules(manualClusterRules), [manualClusterRules]);
 
   const levelData = useMemo<LevelData[]>(() => {
     if (!hasStartedAnalysis) {
@@ -222,9 +224,9 @@ const SiteClusteringPage: React.FC = () => {
     }
     return Array.from({ length: maxDepth }, (_, i) => ({
       level: i + 1,
-      rows: buildRowsByLevel(gscData, i + 1, mergedManualClusters),
+      rows: buildRowsByLevel(gscData, i + 1, parsedManualClusterRules),
     }));
-  }, [gscData, hasStartedAnalysis, maxDepth, mergedManualClusters]);
+  }, [gscData, hasStartedAnalysis, maxDepth, parsedManualClusterRules]);
 
   const selectedLevelRows = levelData.find((item) => item.level === selectedLevel)?.rows || [];
   const selectedClustersForChart = selectedLevelRows.slice(0, 10);
@@ -313,7 +315,7 @@ const SiteClusteringPage: React.FC = () => {
             className="w-full min-h-32 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-sm"
             value={manualClusterRules}
             onChange={(e) => setManualClusterRules(e.target.value)}
-            placeholder="Una regla por línea. Ej: /blog/* => cluster: contenido"
+            placeholder="Una regla por línea. Formato: nombre|nivel|patron1,patron2 (ej: Blog|1|/blog/*,blog)"
           />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
