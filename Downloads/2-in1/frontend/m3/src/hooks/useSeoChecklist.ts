@@ -301,9 +301,10 @@ export const useSeoChecklist = () => {
             ].map((p) => {
               const update = updates.find((u) => u.id === p.id);
               if (!update) return p;
+              const currentChecklist = normalizeChecklist(p.checklist);
               const mergedChecklist = update.changes.checklist
-                ? mergeChecklistWithBusinessRules(p.checklist, update.changes.checklist)
-                : p.checklist;
+                ? mergeChecklistWithBusinessRules(currentChecklist, update.changes.checklist)
+                : currentChecklist;
               return { ...p, ...update.changes, checklist: mergedChecklist };
             }),
           ),
