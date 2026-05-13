@@ -86,10 +86,13 @@ const normalizeChecklist = (checklist?: Partial<Record<ChecklistKey, ChecklistIt
 
 const normalizeSeoPage = (page: SeoPage): SeoPage => ({
   ...page,
-  checklist: normalizeChecklist(page.checklist),
+  checklist: normalizeChecklist(page?.checklist),
 });
 
-const normalizeSeoPages = (pages: SeoPage[]) => pages.map(normalizeSeoPage);
+const normalizeSeoPages = (pages: SeoPage[]) =>
+  (pages || [])
+    .filter((page): page is SeoPage => Boolean(page && typeof page === 'object'))
+    .map(normalizeSeoPage);
 
 const LEGACY_SEO_CHECKLIST_STORAGE_KEY = 'mediaflow_seo_checklist';
 
