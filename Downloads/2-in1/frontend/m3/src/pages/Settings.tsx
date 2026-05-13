@@ -170,9 +170,9 @@ const Settings: React.FC = () => {
               value={brandedKeywordsText}
               onChange={(e) => setBrandedKeywordsText(e.target.value)}
               className="form-textarea"
-              placeholder={"marca
+              placeholder={`marca
 nombre producto
-marca + servicio"}
+marca + servicio`}
             />
           </div>
           <div className="space-y-1">
@@ -181,8 +181,8 @@ marca + servicio"}
               value={clusterDraft}
               onChange={(e) => setClusterDraft(e.target.value)}
               className="form-textarea"
-              placeholder={"Blog SEO: /blog/seo, /blog/tutoriales
-Servicios Locales: /servicios/madrid, /servicios/barcelona"}
+              placeholder={`Blog SEO: /blog/seo, /blog/tutoriales
+Servicios Locales: /servicios/madrid, /servicios/barcelona`}
             />
           </div>
           <div className="space-y-1">
