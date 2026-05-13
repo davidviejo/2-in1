@@ -21,8 +21,6 @@ const AIRoadmap = lazy(() => import('./pages/AIRoadmap'));
 const SeoChecklistPage = lazy(() => import('./pages/SeoChecklistPage'));
 const IAVisibility = lazy(() => import('./pages/IAVisibility'));
 const GscImpactPage = lazy(() => import('./pages/GscImpactPage'));
-const SiteClusteringPage = lazy(() => import('./pages/SiteClusteringPage'));
-const UnifiedClusterWorkflowPage = lazy(() => import('./pages/UnifiedClusterWorkflowPage'));
 const Settings = lazy(() => import('./pages/Settings'));
 const AdminIdeasPage = lazy(() => import('./pages/admin/AdminIdeasPage'));
 const TrendsMediaPage = lazy(() => import('./pages/TrendsMediaPage'));
@@ -195,9 +193,9 @@ const AppRoutes: React.FC = () => {
         { path: 'ai-roadmap', element: <AIRoadmap /> },
         { path: 'ia-visibility', element: <IAVisibility /> },
         { path: 'gsc-impact', element: <GscImpactPage /> },
-        { path: 'clustering-site', element: <SiteClusteringPage /> },
-        { path: 'cluster-workflow', element: <UnifiedClusterWorkflowPage /> },
         { path: 'gsc-impact/portfolio', element: <Navigate to='/app/gsc-impact?view=global' replace /> },
+        { path: 'cluster-workflow', element: <Navigate to='/app/checklist' replace /> },
+        { path: 'clustering-site', element: <Navigate to='/app/checklist' replace /> },
         { path: 'gsc-impact/portolio', element: <Navigate to='/app/gsc-impact?view=global' replace /> },
         { path: 'settings', element: <Settings /> },
         { path: 'trends-media', element: <TrendsMediaPage /> },
