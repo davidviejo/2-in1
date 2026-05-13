@@ -145,6 +145,7 @@ const Layout: React.FC<LayoutProps> = ({
   const [isEmergencyLoading, setIsEmergencyLoading] = useState(false);
   const [showEmergencyConfirm, setShowEmergencyConfirm] = useState(false);
   const [isNotesOpen, setIsNotesOpen] = useState(false);
+  const [isConfigMenuOpen, setIsConfigMenuOpen] = useState(false);
   const [noteContext, setNoteContext] = useState<NoteContextRequest | null>(null);
   const activeTab = useMemo<TabType>(() => {
     const path = location.pathname;
@@ -196,6 +197,10 @@ const Layout: React.FC<LayoutProps> = ({
       localStorage.setItem('mediaflow_theme', 'light');
     }
   }, [darkMode]);
+
+  useEffect(() => {
+    setIsConfigMenuOpen(false);
+  }, [location.pathname]);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -435,35 +440,51 @@ const Layout: React.FC<LayoutProps> = ({
 
           {/* Tabs */}
           <nav className="hidden lg:flex items-center space-x-1">
-            {(['analitica', 'intelligence', 'estrategia', 'acciones', 'ajustes', 'backend', 'admin'] as TabType[]).map(
-              (tab) => {
-                let toPath = '/app/';
-                if (tab === 'estrategia') toPath = '/app/client-roadmap';
-                if (tab === 'intelligence') toPath = '/app/';
-                if (tab === 'acciones') toPath = '/app/kanban';
-                if (tab === 'ajustes') toPath = '/app/settings';
-                if (tab === 'admin') toPath = '/app/admin/ideas';
-                if (tab === 'backend') toPath = '/app/tools-hub';
+            {(['intelligence', 'analitica', 'estrategia', 'acciones'] as TabType[]).map((tab) => {
+              let toPath = '/app/';
+              if (tab === 'estrategia') toPath = '/app/client-roadmap';
+              if (tab === 'acciones') toPath = '/app/kanban';
 
-                return (
-                  <NavLink
-                    key={tab}
-                    to={toPath}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      handleTabChange(tab);
-                    }}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors capitalize ${
-                      activeTab === tab
-                        ? 'bg-danger/10 text-primary dark:bg-primary/30 dark:text-white ring-1 ring-danger/30'
-                        : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'
-                    }`}
-                  >
-                    {tab === 'backend' ? 'Tools Hub' : tab === 'analitica' ? 'Analítica' : tab === 'intelligence' ? 'Intelligence' : tab}
-                  </NavLink>
-                );
-              },
-            )}
+              return (
+                <NavLink
+                  key={tab}
+                  to={toPath}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleTabChange(tab);
+                  }}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors capitalize ${
+                    activeTab === tab
+                      ? 'bg-danger/10 text-primary dark:bg-primary/30 dark:text-white ring-1 ring-danger/30'
+                      : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'
+                  }`}
+                >
+                  {tab === 'analitica' ? 'Analítica' : tab === 'intelligence' ? 'Intelligence' : tab}
+                </NavLink>
+              );
+            })}
+
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsConfigMenuOpen((prev) => !prev)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  ['ajustes', 'backend', 'admin'].includes(activeTab)
+                    ? 'bg-danger/10 text-primary dark:bg-primary/30 dark:text-white ring-1 ring-danger/30'
+                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                Configuración
+              </button>
+
+              {isConfigMenuOpen && (
+                <div className="absolute left-0 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                  <NavItem to="/app/settings" icon={<Shield size={18} />} label="Ajustes" onClick={() => setIsConfigMenuOpen(false)} />
+                  <NavItem to="/app/tools-hub" icon={<Tool size={18} />} label="Tools Hub" onClick={() => setIsConfigMenuOpen(false)} />
+                  <NavItem to="/app/admin/ideas" icon={<Lightbulb size={18} />} label="Admin" onClick={() => setIsConfigMenuOpen(false)} />
+                </div>
+              )}
+            </div>
           </nav>
         </div>
 
@@ -525,15 +546,12 @@ const Layout: React.FC<LayoutProps> = ({
 
             {/* Mobile Tabs */}
             <div className="grid grid-cols-2 gap-2 mb-4">
-              {(['analitica', 'intelligence', 'estrategia', 'acciones', 'ajustes', 'backend', 'admin'] as TabType[]).map(
+              {(['intelligence', 'analitica', 'estrategia', 'acciones'] as TabType[]).map(
                 (tab) => {
                   let toPath = '/app/';
                   if (tab === 'estrategia') toPath = '/app/client-roadmap';
                   if (tab === 'intelligence') toPath = '/app/';
                   if (tab === 'acciones') toPath = '/app/kanban';
-                  if (tab === 'ajustes') toPath = '/app/settings';
-                  if (tab === 'admin') toPath = '/app/admin/ideas';
-                  if (tab === 'backend') toPath = '/app/tools-hub';
 
                   return (
                     <NavLink
@@ -550,11 +568,20 @@ const Layout: React.FC<LayoutProps> = ({
                           : 'text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50'
                       }`}
                     >
-                      {tab === 'backend' ? 'Tools' : tab === 'analitica' ? 'Analítica' : tab === 'intelligence' ? 'Intelligence' : tab}
+                      {tab === 'analitica' ? 'Analítica' : tab === 'intelligence' ? 'Intelligence' : tab}
                     </NavLink>
                   );
                 },
               )}
+            </div>
+
+            <div className="mb-4 rounded-lg border border-slate-200 dark:border-slate-700 p-2">
+              <p className="px-2 pb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">Configuración</p>
+              <div className="space-y-1">
+                <NavItem to="/app/settings" icon={<Shield size={18} />} label="Ajustes" onClick={() => setIsMobileMenuOpen(false)} />
+                <NavItem to="/app/tools-hub" icon={<Tool size={18} />} label="Tools Hub" onClick={() => setIsMobileMenuOpen(false)} />
+                <NavItem to="/app/admin/ideas" icon={<Lightbulb size={18} />} label="Admin" onClick={() => setIsMobileMenuOpen(false)} />
+              </div>
             </div>
           </div>
 
@@ -683,6 +710,15 @@ const Layout: React.FC<LayoutProps> = ({
                   </span>{' '}
                   <span>Cerrar Modales</span>
                 </div>
+              </div>
+            </div>
+
+            <div className="mb-4 rounded-lg border border-slate-200 dark:border-slate-700 p-2">
+              <p className="px-2 pb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">Configuración</p>
+              <div className="space-y-1">
+                <NavItem to="/app/settings" icon={<Shield size={18} />} label="Ajustes" onClick={() => setIsMobileMenuOpen(false)} />
+                <NavItem to="/app/tools-hub" icon={<Tool size={18} />} label="Tools Hub" onClick={() => setIsMobileMenuOpen(false)} />
+                <NavItem to="/app/admin/ideas" icon={<Lightbulb size={18} />} label="Admin" onClick={() => setIsMobileMenuOpen(false)} />
               </div>
             </div>
           </div>
