@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildAutoClustersFromChecklist, getPathname, isLikelyPageKey, parseManualClusterRules, resolveClusterName } from './SiteClusteringPage';
+import { buildAutoClustersFromChecklist, buildRowsByLevel, getPathname, isLikelyPageKey, parseManualClusterRules, resolveClusterName } from './SiteClusteringPage';
 
 describe('SiteClusteringPage helpers', () => {
   it('accepts strong page keys and rejects search queries with slash', () => {
@@ -43,5 +43,45 @@ describe('SiteClusteringPage helpers', () => {
   it('sends non-matching URLs to "Sin cluster" when manual rules are active', () => {
     const manualRules = parseManualClusterRules('Geolocal Madrid|2|/rinoplastia-en-madrid,/rinoplastia-en-madrid/*');
     expect(resolveClusterName('/url-sin-regla', 2, manualRules)).toBe('Sin cluster');
+  });
+
+
+  it('builds cluster aggregation from query+page rows and derives top query correctly', () => {
+    const rows = buildRowsByLevel([
+      { keys: ['best service', 'https://example.com/servicios/a'], clicks: 40, impressions: 100, position: 2 },
+      { keys: ['cheap service', 'https://example.com/servicios/a'], clicks: 15, impressions: 50, position: 5 },
+      { keys: ['seo audit', 'https://example.com/servicios/b'], clicks: 30, impressions: 80, position: 4 },
+    ], 1, []);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      cluster: '/servicios',
+      urls: 2,
+      clicks: 85,
+      impressions: 230,
+      topQuery: 'best service',
+    });
+  });
+
+  it('prefers explicit query/page fields over keys for query+page aggregations', () => {
+    const rows = buildRowsByLevel([
+      {
+        keys: ['ignored query', '/wrong-page'],
+        query: 'real query',
+        page: '/real-page',
+        clicks: 12,
+        impressions: 24,
+        position: 3,
+      },
+    ], 1, []);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      cluster: '/real-page',
+      urls: 1,
+      clicks: 12,
+      impressions: 24,
+      topQuery: 'real query',
+    });
   });
 });
