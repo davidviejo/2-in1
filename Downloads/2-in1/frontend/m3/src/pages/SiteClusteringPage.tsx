@@ -185,6 +185,34 @@ export const resolveClusterName = (
   return toPathClusterByLevel(url, level);
 };
 
+
+
+const extractPageFromRow = (row: { keys?: string[]; page?: string; url?: string }): string => {
+  const keyA = row.keys?.[0] || '';
+  const keyB = row.keys?.[1] || '';
+  const keyALooksLikePage = isLikelyPageKey(keyA);
+  const keyBLooksLikePage = isLikelyPageKey(keyB);
+
+  const pageFromKeys = keyBLooksLikePage ? keyB : keyALooksLikePage ? keyA : '';
+  const pageField = isLikelyPageKey(row.page || '') ? row.page || '' : '';
+  const urlField = isLikelyPageKey(row.url || '') ? row.url || '' : '';
+
+  return (pageField || urlField || pageFromKeys || '').trim();
+};
+
+export const getMaxDepthFromRows = (rows: Array<{ keys?: string[]; page?: string; url?: string }>): number => {
+  let depth = 1;
+
+  for (const row of rows) {
+    const page = extractPageFromRow(row);
+    if (!page) continue;
+
+    const segments = getPathname(page).split('/').filter(Boolean).length;
+    depth = Math.max(depth, segments || 1);
+  }
+
+  return Math.min(Math.max(depth, 1), 6);
+};
 export const buildRowsByLevel = (
   gscData: Array<{ keys?: string[]; page?: string; url?: string; query?: string; clicks?: number; impressions?: number; position?: number }>,
   level: number,
@@ -195,13 +223,8 @@ export const buildRowsByLevel = (
   for (const row of gscData) {
     const keyA = row.keys?.[0] || '';
     const keyB = row.keys?.[1] || '';
-    const keyALooksLikePage = isLikelyPageKey(keyA);
     const keyBLooksLikePage = isLikelyPageKey(keyB);
-
-    const pageFromKeys = keyBLooksLikePage ? keyB : keyALooksLikePage ? keyA : '';
-    const pageField = isLikelyPageKey(row.page || '') ? row.page || '' : '';
-    const urlField = isLikelyPageKey(row.url || '') ? row.url || '' : '';
-    const page = (pageField || urlField || pageFromKeys || '').trim();
+    const page = extractPageFromRow(row);
     const query = (row.query || (keyBLooksLikePage ? keyA : keyB) || '').trim();
     const cluster = resolveClusterName(page, level, manualClusters);
     const existing = bucket.get(cluster) || {
@@ -342,19 +365,7 @@ const SiteClusteringPage: React.FC = () => {
     setRunKey((prev) => prev + 1);
   };
 
-  const maxDepth = useMemo(() => {
-    let depth = 1;
-    for (const row of gscData) {
-      const page = row.keys?.[0] || '';
-      try {
-        const segments = new URL(page).pathname.split('/').filter(Boolean).length;
-        depth = Math.max(depth, segments || 1);
-      } catch {
-        depth = Math.max(depth, 1);
-      }
-    }
-    return Math.min(Math.max(depth, 1), 6);
-  }, [gscData]);
+  const maxDepth = useMemo(() => getMaxDepthFromRows(queryPageData), [queryPageData]);
 
   const mergedManualClusters = useMemo(() => ([
     ...(currentClient?.seoClusters || []),
