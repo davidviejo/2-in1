@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useSeoChecklist } from '@/hooks/useSeoChecklist';
-import { Upload, Layers3, Regex, Link2, Table2 } from 'lucide-react';
+import { Upload, Layers3, Regex, Link2, Table2, Info, CheckCircle2 } from 'lucide-react';
 
 type UploadedKeyword = {
   page: string;
@@ -27,6 +27,34 @@ const parseSheetLikeText = (content: string): UploadedKeyword[] => {
     };
   });
 };
+
+const workflowSteps = [
+  {
+    title: '1) Resumen de auditoría',
+    description: 'Mide avance real del proyecto por URL: completadas, en progreso y pendientes.',
+    output: 'Te ayuda a priorizar qué páginas entran primero al cluster de keywords.',
+  },
+  {
+    title: '2) Agrupación y clusterización de URLs',
+    description: 'Reúne URL, keyword principal y cluster actual para detectar canibalización o huecos.',
+    output: 'Obtienes un mapa rápido de contenido por intención de búsqueda.',
+  },
+  {
+    title: '3) Reglas Regex por niveles',
+    description: 'Define jerarquías automáticas (nivel 1/2/3/4) según patrones de URL.',
+    output: 'Estandariza estructura sin editar cada fila manualmente.',
+  },
+  {
+    title: '4) Cluster de KWs adicionales',
+    description: 'Consolida principal, secundarias y hasta 10 oportunidades por página.',
+    output: 'Prepara una base lista para agrupar por semántica con DataForSEO.',
+  },
+  {
+    title: '5) Subida de Sheet final',
+    description: 'Importa asignaciones desde CSV para cerrar o corregir el mapeo.',
+    output: 'Deja el flujo documentado y reutilizable sin salir de esta pantalla.',
+  },
+];
 
 const UnifiedClusterWorkflowPage: React.FC = () => {
   const { pages } = useSeoChecklist();
@@ -59,9 +87,23 @@ const UnifiedClusterWorkflowPage: React.FC = () => {
 
   return (
     <div className="space-y-6 p-4 md:p-6">
-      <section className="card p-5">
-        <h1 className="text-2xl font-semibold">Flujo único: Auditoría + Agrupación + Clusterización</h1>
-        <p className="text-sm text-slate-500 mt-2">Una sola pestaña para ejecutar todo el proceso sin salir de esta vista.</p>
+      <section className="card p-5 space-y-4">
+        <div>
+          <h1 className="text-2xl font-semibold">Flujo único: Auditoría + Agrupación + Clusterización</h1>
+          <p className="text-sm text-slate-500 mt-2">Esta página concentra todo el proceso de Cluster/KW para trabajar de punta a punta sin navegar a otros módulos.</p>
+        </div>
+        <div className="rounded-xl border p-4 bg-slate-50/70">
+          <div className="flex items-center gap-2 text-sm font-medium mb-2"><Info size={16} /> ¿Qué hace cada bloque?</div>
+          <ul className="space-y-2 text-sm text-slate-600">
+            {workflowSteps.map((step) => (
+              <li key={step.title} className="rounded-lg bg-white border p-3">
+                <p className="font-medium text-slate-800">{step.title}</p>
+                <p>{step.description}</p>
+                <p className="mt-1 text-xs text-slate-500"><span className="font-medium">Resultado:</span> {step.output}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
       </section>
 
       <section className="card p-5">
@@ -91,6 +133,7 @@ const UnifiedClusterWorkflowPage: React.FC = () => {
 
       <section className="card p-5">
         <h2 className="text-lg font-semibold mb-3 flex items-center gap-2"><Regex size={18} />3) Reglas Regex por niveles (1,2,3,4...)</h2>
+        <p className="text-sm text-slate-500 mb-3">Escribe una regla por línea con formato <code>regex =&gt; Nivel</code> para clasificar URLs automáticamente.</p>
         <textarea value={regexRules} onChange={(e) => setRegexRules(e.target.value)} rows={6} className="w-full rounded-xl border p-3 font-mono text-sm" />
       </section>
 
@@ -114,6 +157,9 @@ const UnifiedClusterWorkflowPage: React.FC = () => {
         <p className="text-sm text-slate-500 mb-3">Formato CSV: page,primary,secondary,others (others separado por |).</p>
         <input type="file" accept=".csv,text/csv" onChange={handleUpload} className="mb-4" />
         <div className="rounded-xl border p-3 text-sm flex items-center gap-2"><Table2 size={16} /> Registros cargados: <strong>{uploadedKeywords.length}</strong></div>
+        {uploadedKeywords.length > 0 && (
+          <p className="text-xs text-slate-500 mt-2 flex items-center gap-1"><CheckCircle2 size={14} /> Sheet cargada correctamente y lista para validación final.</p>
+        )}
       </section>
     </div>
   );
