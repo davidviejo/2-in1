@@ -20,6 +20,13 @@ type LevelData = {
   rows: ClusterRow[];
 };
 
+type ClusterTimePoint = {
+  week: string;
+  cluster: string;
+  clicks: number;
+  impressions: number;
+};
+
 const getDefaultDates = () => {
   const end = new Date();
   const start = new Date();
@@ -174,6 +181,48 @@ const buildRowsByLevel = (
     .sort((a, b) => b.clicks - a.clicks);
 };
 
+const getWeekStart = (dateValue: string): string => {
+  const date = new Date(`${dateValue}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return dateValue;
+  const day = date.getUTCDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  date.setUTCDate(date.getUTCDate() + diff);
+  return date.toISOString().split('T')[0];
+};
+
+const buildClusterTimeline = (
+  pageDateData: Array<{ keys?: string[]; clicks?: number; impressions?: number }>,
+  level: number,
+  manualClusters: Array<{ name?: string; urls?: string[] }>,
+): ClusterTimePoint[] => {
+  const bucket = new Map<string, { clicks: number; impressions: number }>();
+  for (const row of pageDateData) {
+    const page = row.keys?.[0] || '';
+    const rawDate = row.keys?.[1] || '';
+    if (!page || !rawDate) continue;
+
+    const week = getWeekStart(rawDate);
+    const cluster = resolveClusterName(page, level, manualClusters);
+    const key = `${week}::${cluster}`;
+    const current = bucket.get(key) || { clicks: 0, impressions: 0 };
+    current.clicks += row.clicks || 0;
+    current.impressions += row.impressions || 0;
+    bucket.set(key, current);
+  }
+
+  return Array.from(bucket.entries())
+    .map(([key, value]) => {
+      const [week, cluster] = key.split('::');
+      return {
+        week,
+        cluster,
+        clicks: Math.round(value.clicks),
+        impressions: Math.round(value.impressions),
+      };
+    })
+    .sort((a, b) => a.week.localeCompare(b.week));
+};
+
 
 
 const buildAutoClustersFromChecklist = (pages: Array<{ url: string }>) => {
@@ -217,7 +266,7 @@ const SiteClusteringPage: React.FC = () => {
   const { gscAccessToken, googleUser, login, handleLogoutGsc } = useGSCAuth();
   const { currentClient, updateCurrentClientProfile } = useProject();
   const { pages: checklistPages } = useSeoChecklist();
-  const { gscSites, selectedSite, setSelectedSite, gscData, isLoadingGsc } = useGSCData(gscAccessToken, startDate, endDate, 'previous_period', {
+  const { gscSites, selectedSite, setSelectedSite, gscData, pageDateData, isLoadingGsc } = useGSCData(gscAccessToken, startDate, endDate, 'previous_period', {
     autoRun: false,
     runKey,
   });
@@ -291,7 +340,26 @@ const SiteClusteringPage: React.FC = () => {
   };
 
   const selectedLevelRows = levelData.find((item) => item.level === selectedLevel)?.rows || [];
-  const selectedClustersForChart = selectedLevelRows.slice(0, 10);
+  const [selectedChartClusters, setSelectedChartClusters] = useState<string[]>([]);
+  const clusterTimeline = useMemo(
+    () => buildClusterTimeline(pageDateData, selectedLevel, mergedManualClusters),
+    [pageDateData, selectedLevel, mergedManualClusters],
+  );
+  const clusterOptions = useMemo(
+    () => selectedLevelRows.slice(0, 15).map((row) => row.cluster),
+    [selectedLevelRows],
+  );
+  const activeClusters = selectedChartClusters.length > 0 ? selectedChartClusters : clusterOptions.slice(0, 5);
+  const timelineChartData = useMemo(() => {
+    const pointsByWeek = new Map<string, Record<string, string | number>>();
+    for (const point of clusterTimeline) {
+      if (!activeClusters.includes(point.cluster)) continue;
+      const weekPoint = pointsByWeek.get(point.week) || { week: point.week };
+      weekPoint[point.cluster] = point.clicks;
+      pointsByWeek.set(point.week, weekPoint);
+    }
+    return Array.from(pointsByWeek.values()).sort((a, b) => String(a.week).localeCompare(String(b.week)));
+  }, [clusterTimeline, activeClusters]);
 
   return (
     <div className="max-w-6xl mx-auto animate-fade-in pb-20 space-y-6">
@@ -430,16 +498,42 @@ const SiteClusteringPage: React.FC = () => {
           <h2 className="font-semibold text-slate-900 dark:text-white">Comparativa gráfica (nivel {selectedLevel})</h2>
           {isLoadingGsc && <span className="text-xs text-slate-500 inline-flex items-center gap-1"><RefreshCw size={12} className="animate-spin" /> Cargando…</span>}
         </div>
+        <div className="mb-4">
+          <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Clusters visibles en gráfica temporal (semanal)</label>
+          <select
+            multiple
+            value={selectedChartClusters}
+            onChange={(event) => {
+              const values = Array.from(event.target.selectedOptions).map((opt) => opt.value);
+              setSelectedChartClusters(values);
+            }}
+            className="w-full min-h-28 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-sm"
+          >
+            {clusterOptions.map((cluster) => (
+              <option key={cluster} value={cluster}>{cluster}</option>
+            ))}
+          </select>
+          <p className="text-xs text-slate-500 mt-2">Si no seleccionas ninguno, se muestran automáticamente los 5 clusters con más clics.</p>
+        </div>
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={selectedClustersForChart}>
+            <LineChart data={timelineChartData}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="cluster" hide />
+              <XAxis dataKey="week" />
               <YAxis />
               <Tooltip />
               <Legend />
-              <Line type="monotone" dataKey="clicks" name="Clics" stroke="#334155" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="impressions" name="Impresiones" stroke="#64748b" strokeWidth={2} dot={false} />
+              {activeClusters.map((cluster, index) => (
+                <Line
+                  key={cluster}
+                  type="monotone"
+                  dataKey={cluster}
+                  name={cluster}
+                  stroke={['#334155', '#64748b', '#0f766e', '#7c3aed', '#b45309', '#be123c'][index % 6]}
+                  strokeWidth={2}
+                  dot
+                />
+              ))}
             </LineChart>
           </ResponsiveContainer>
         </div>
