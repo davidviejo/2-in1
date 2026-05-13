@@ -242,18 +242,18 @@ const SeoChecklistPage: React.FC = () => {
                 Análisis SEO y Clusters
               </Button>
               <Button
+                variant={activeView === 'auto_kw' ? 'primary' : 'secondary'}
+                onClick={() => setActiveView('auto_kw')}
+              >
+                <KeyRound size={16} />
+                Autoasignar KWs
+              </Button>
+              <Button
                 variant={activeView === 'auto_cluster' ? 'primary' : 'secondary'}
                 onClick={() => setActiveView('auto_cluster')}
               >
                 <Sparkles size={16} />
                 Auto-clusterización
-              </Button>
-              <Button
-                variant={activeView === 'kw_cluster' ? 'primary' : 'secondary'}
-                onClick={() => setActiveView('kw_cluster')}
-              >
-                <Network size={16} />
-                Clusterización kws
               </Button>
               <Button
                 variant={activeView === 'web_breakdown' ? 'primary' : 'secondary'}
@@ -263,11 +263,11 @@ const SeoChecklistPage: React.FC = () => {
                 Desglose Web
               </Button>
               <Button
-                variant={activeView === 'auto_kw' ? 'primary' : 'secondary'}
-                onClick={() => setActiveView('auto_kw')}
+                variant={activeView === 'kw_cluster' ? 'primary' : 'secondary'}
+                onClick={() => setActiveView('kw_cluster')}
               >
-                <KeyRound size={16} />
-                Autoasignar KWs
+                <Network size={16} />
+                Clusterización kws
               </Button>
             </div>
           </Card>
