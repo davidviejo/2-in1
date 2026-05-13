@@ -131,7 +131,7 @@ const SeoChecklistPage: React.FC = () => {
       // For batch, fetching GSC queries for 5000 URLs client-side is bad.
       // We assume the backend can handle it or we skip it for now.
       // Or if we already have them in autoData, pass them.
-      gscQueries: p.checklist.OPORTUNIDADES?.autoData?.gscQueries || [],
+      gscQueries: p.checklist?.OPORTUNIDADES?.autoData?.gscQueries || [],
       analyzeCompetitors: shouldAnalyzeCompetitors,
       competitorUrls: (p.competitors || [])
         .map((url) => (typeof url === 'string' ? url.trim() : ''))

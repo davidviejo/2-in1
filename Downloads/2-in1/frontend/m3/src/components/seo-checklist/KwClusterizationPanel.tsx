@@ -149,6 +149,7 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
   const [selectionConfirmed, setSelectionConfirmed] = useState(false);
   const [urlFilter, setUrlFilter] = useState('');
   const [keywordFilter, setKeywordFilter] = useState('');
+  const [gscDateRangeDays, setGscDateRangeDays] = useState<number>(56);
   const [gscLoadProgress, setGscLoadProgress] = useState({
     active: false,
     processed: 0,
@@ -227,13 +228,14 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
 
     setLoading(true);
     try {
+      const safeRangeDays = Number.isFinite(gscDateRangeDays) ? Math.min(Math.max(Math.trunc(gscDateRangeDays), 1), 365) : 56;
       const endDate = new Date().toISOString().slice(0, 10);
-      const startDate = new Date(Date.now() - 56 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const startDate = new Date(Date.now() - safeRangeDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       let updated = 0;
       const updates = [] as Array<Partial<SeoPage> & { id: string }>;
       const rowsByUrl = new Map<string, Array<{ query: string; clicks: number; impressions: number; ctr: number; position: number }>>();
 
-      setStatus('Cargando bloque único de queries GSC (query+page) para reducir peticiones por URL...');
+      setStatus(`Cargando bloque único de queries GSC (query+page) para reducir peticiones por URL. Tramo: últimos ${safeRangeDays} días.`);
       const bulkResponse = await querySearchAnalyticsPaged(token, {
         siteUrl,
         startDate,
@@ -333,6 +335,14 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
     }
   };
 
+  const handleGscDateRangeDaysChange = (value: string) => {
+    const parsed = Number(value);
+    if (Number.isNaN(parsed)) {
+      setGscDateRangeDays(56);
+      return;
+    }
+    setGscDateRangeDays(Math.min(Math.max(Math.trunc(parsed), 1), 365));
+  };
 
   const handleQuickSelectKeywords = (mode: 'top3' | 'top4to10' | 'top10plus' | 'all') => {
     if (selectedPages.length === 0) {
@@ -513,6 +523,17 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
         </div>
         <div className="md:col-span-2">
           <label className="text-xs flex items-center gap-2"><input type="checkbox" checked={useDataforseoForClusterization} onChange={(e) => setUseDataforseoForClusterization(e.target.checked)} />Usar DataForSEO para clusterización KWs</label>
+        </div>
+        <div>
+          <label className="text-xs">Tramo recopilación GSC (días)</label>
+          <input
+            type="number"
+            min={1}
+            max={365}
+            className="form-control"
+            value={gscDateRangeDays}
+            onChange={(e) => handleGscDateRangeDaysChange(e.target.value)}
+          />
         </div>
         <div className="md:col-span-2">
           <label className="text-xs">Archivo de keywords (formato backend: id + kw padre + children)</label>
