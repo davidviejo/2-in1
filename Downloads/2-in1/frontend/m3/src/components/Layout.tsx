@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -146,6 +146,8 @@ const Layout: React.FC<LayoutProps> = ({
   const [showEmergencyConfirm, setShowEmergencyConfirm] = useState(false);
   const [isNotesOpen, setIsNotesOpen] = useState(false);
   const [noteContext, setNoteContext] = useState<NoteContextRequest | null>(null);
+  const [isConfigMenuOpen, setIsConfigMenuOpen] = useState(false);
+  const configMenuRef = useRef<HTMLDivElement | null>(null);
   const activeTab = useMemo<TabType>(() => {
     const path = location.pathname;
     if (
@@ -241,6 +243,17 @@ const Layout: React.FC<LayoutProps> = ({
         break;
     }
   };
+
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (configMenuRef.current && !configMenuRef.current.contains(event.target as Node)) {
+        setIsConfigMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleEmergencyIndex = () => {
     setShowEmergencyConfirm(true);
@@ -446,35 +459,50 @@ const Layout: React.FC<LayoutProps> = ({
 
           {/* Tabs */}
           <nav className="hidden lg:flex items-center space-x-1">
-            {(['analitica', 'intelligence', 'estrategia', 'acciones', 'ajustes', 'backend', 'admin'] as TabType[]).map(
-              (tab) => {
-                let toPath = '/app/';
-                if (tab === 'estrategia') toPath = '/app/client-roadmap';
-                if (tab === 'intelligence') toPath = '/app/command-center';
-                if (tab === 'acciones') toPath = '/app/kanban';
-                if (tab === 'ajustes') toPath = '/app/settings';
-                if (tab === 'admin') toPath = '/app/admin/ideas';
-                if (tab === 'backend') toPath = '/app/tools-hub';
+            {(['analitica', 'intelligence', 'estrategia', 'acciones'] as TabType[]).map((tab) => {
+              let toPath = '/app/';
+              if (tab === 'estrategia') toPath = '/app/client-roadmap';
+              if (tab === 'intelligence') toPath = '/app/command-center';
+              if (tab === 'acciones') toPath = '/app/kanban';
 
-                return (
-                  <NavLink
-                    key={tab}
-                    to={toPath}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      handleTabChange(tab);
-                    }}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors capitalize ${
-                      activeTab === tab
-                        ? 'bg-danger/10 text-primary dark:bg-primary/30 dark:text-white ring-1 ring-danger/30'
-                        : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'
-                    }`}
-                  >
-                    {tab === 'backend' ? 'Tools Hub' : tab === 'analitica' ? 'Analítica' : tab === 'intelligence' ? 'Intelligence' : tab}
-                  </NavLink>
-                );
-              },
-            )}
+              return (
+                <NavLink
+                  key={tab}
+                  to={toPath}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleTabChange(tab);
+                  }}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors capitalize ${
+                    activeTab === tab
+                      ? 'bg-danger/10 text-primary dark:bg-primary/30 dark:text-white ring-1 ring-danger/30'
+                      : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'
+                  }`}
+                >
+                  {tab === 'analitica' ? 'Analítica' : tab === 'intelligence' ? 'Intelligence' : tab}
+                </NavLink>
+              );
+            })}
+            <div className="relative" ref={configMenuRef}>
+              <button
+                type="button"
+                onClick={() => setIsConfigMenuOpen((prev) => !prev)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  ['ajustes', 'backend', 'admin'].includes(activeTab)
+                    ? 'bg-danger/10 text-primary dark:bg-primary/30 dark:text-white ring-1 ring-danger/30'
+                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                Configuración
+              </button>
+              {isConfigMenuOpen && (
+                <div className="absolute left-0 mt-2 w-48 rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900 z-50">
+                  <button type="button" onClick={() => { handleTabChange('ajustes'); setIsConfigMenuOpen(false); }} className="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-slate-100 dark:hover:bg-slate-800">Ajustes</button>
+                  <button type="button" onClick={() => { handleTabChange('backend'); setIsConfigMenuOpen(false); }} className="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-slate-100 dark:hover:bg-slate-800">Tools Hub</button>
+                  <button type="button" onClick={() => { handleTabChange('admin'); setIsConfigMenuOpen(false); }} className="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-slate-100 dark:hover:bg-slate-800">Admin</button>
+                </div>
+              )}
+            </div>
           </nav>
         </div>
 
