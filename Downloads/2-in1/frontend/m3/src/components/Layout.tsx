@@ -228,7 +228,7 @@ const Layout: React.FC<LayoutProps> = ({
         navigate('/app/client-roadmap');
         break;
       case 'intelligence':
-        navigate('/app/command-center');
+        navigate('/app/');
         break;
       case 'acciones':
         navigate('/app/kanban');
@@ -318,12 +318,13 @@ const Layout: React.FC<LayoutProps> = ({
       case 'intelligence':
         return (
           <>
-            <NavItem to="/app/command-center" icon={<Cpu size={20} />} label="Command Center" onClick={() => setIsMobileMenuOpen(false)} />
-            <NavItem to="/app/opportunities" icon={<Sparkles size={20} />} label="Opportunities" onClick={() => setIsMobileMenuOpen(false)} />
-            <NavItem to="/app/content-gap" icon={<BookOpen size={20} />} label="Content Gap" onClick={() => setIsMobileMenuOpen(false)} />
-            <NavItem to="/app/cannibalization" icon={<Layers size={20} />} label="Cannibalization" onClick={() => setIsMobileMenuOpen(false)} />
-            <NavItem to="/app/internal-linking" icon={<Activity size={20} />} label="Internal Linking" onClick={() => setIsMobileMenuOpen(false)} />
-            <NavItem to="/app/serp-ai-monitor" icon={<Globe size={20} />} label="SERP & AI Visibility" onClick={() => setIsMobileMenuOpen(false)} />
+            <NavItem
+              to="/app/"
+              icon={<LayoutDashboard size={20} />}
+              label="Panel de Control"
+              subLabel="Vista principal de analítica"
+              onClick={() => setIsMobileMenuOpen(false)}
+            />
           </>
         );
       case 'estrategia':
@@ -450,7 +451,7 @@ const Layout: React.FC<LayoutProps> = ({
               (tab) => {
                 let toPath = '/app/';
                 if (tab === 'estrategia') toPath = '/app/client-roadmap';
-                if (tab === 'intelligence') toPath = '/app/command-center';
+                if (tab === 'intelligence') toPath = '/app/';
                 if (tab === 'acciones') toPath = '/app/kanban';
                 if (tab === 'ajustes') toPath = '/app/settings';
                 if (tab === 'admin') toPath = '/app/admin/ideas';
@@ -540,7 +541,7 @@ const Layout: React.FC<LayoutProps> = ({
                 (tab) => {
                   let toPath = '/app/';
                   if (tab === 'estrategia') toPath = '/app/client-roadmap';
-                  if (tab === 'intelligence') toPath = '/app/command-center';
+                  if (tab === 'intelligence') toPath = '/app/';
                   if (tab === 'acciones') toPath = '/app/kanban';
                   if (tab === 'ajustes') toPath = '/app/settings';
                   if (tab === 'admin') toPath = '/app/admin/ideas';
