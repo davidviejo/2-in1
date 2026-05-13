@@ -159,6 +159,13 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
     currentAttempt: '',
     logs: [] as string[],
   });
+  const [clusterProgress, setClusterProgress] = useState({
+    active: false,
+    attempt: 0,
+    phase: 'idle',
+    message: 'Aún no se ha iniciado la clusterización.',
+    logs: [] as string[],
+  });
 
   const selectedPages = useMemo(() => pages.filter((p) => selectedPageIds.has(p.id)), [pages, selectedPageIds]);
   const gscKwCandidates = useMemo(() => selectedPages.flatMap(getTopGscKeywords), [selectedPages]);
@@ -412,6 +419,19 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
       const keywordClusterMap = new Map<string, string>();
 
       if (useDataforseoForClusterization) {
+        const backendBaseUrl = getClusterizationBackendBaseUrl();
+        if (!backendBaseUrl) {
+          throw new Error('Configura VITE_PYTHON_ENGINE_URL o VITE_API_URL para ejecutar la clusterización backend.');
+        }
+
+        setClusterProgress({
+          active: true,
+          attempt: 0,
+          phase: 'starting',
+          message: 'Preparando envío de keywords al backend...',
+          logs: [`[${new Date().toLocaleTimeString()}] Iniciando clusterización de ${selectedKeywords.length} keywords.`],
+        });
+
         const formData = new FormData();
         formData.append('keywords', selectedKeywords.map((kw) => kw.keyword).join('\n'));
         formData.append('mode', 'dataforseo');
@@ -420,17 +440,33 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
         if (dataforseoLogin) formData.append('dataforseo_login', dataforseoLogin);
         if (dataforseoPassword) formData.append('dataforseo_password', dataforseoPassword);
 
-        const backendBaseUrl = getClusterizationBackendBaseUrl();
         const startResponse = await fetch(`${backendBaseUrl}/seo/run`, { method: 'POST', body: formData });
         const startPayload = await startResponse.json();
         if (!startResponse.ok || startPayload?.status !== 'ok') {
           throw new Error(startPayload?.message || 'No se pudo iniciar la clusterización backend');
         }
+        setClusterProgress((prev) => ({
+          ...prev,
+          phase: 'running',
+          message: 'Backend iniciado. Consultando progreso y análisis SERP...',
+          logs: [...prev.logs, `[${new Date().toLocaleTimeString()}] Job backend iniciado correctamente.`],
+        }));
 
         let statusPayload: { active?: boolean; results?: BackendClusterResult[]; error?: string } = {};
         for (let attempt = 0; attempt < 90; attempt += 1) {
           const statusResponse = await fetch(`${backendBaseUrl}/seo/status`);
           statusPayload = await statusResponse.json();
+          setClusterProgress((prev) => ({
+            ...prev,
+            attempt: attempt + 1,
+            message: statusPayload.active
+              ? `Analizando SERPs y clusterizando... sondeo ${attempt + 1}/90`
+              : 'Backend finalizó el procesamiento. Aplicando resultados...',
+            logs: [
+              ...prev.logs.slice(-14),
+              `[${new Date().toLocaleTimeString()}] Sondeo ${attempt + 1}: ${statusPayload.active ? 'en curso' : 'finalizado'}.`,
+            ],
+          }));
           if (!statusPayload.active) break;
           await sleep(2000);
         }
@@ -474,9 +510,24 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
       onBulkUpdate(updates);
       const matched = selectedKeywords.filter((kw) => keywordClusterMap.has(kw.keyword.toLowerCase())).length;
       setStatus(`Clusterización KWs completada con ${useDataforseoForClusterization ? 'backend' : 'mapeo local'}. ${matched}/${selectedKeywords.length} keywords mapeadas.`);
+      setClusterProgress((prev) => ({
+        ...prev,
+        active: false,
+        phase: 'completed',
+        message: `Proceso completado. ${matched}/${selectedKeywords.length} keywords mapeadas.`,
+        logs: [...prev.logs, `[${new Date().toLocaleTimeString()}] Clusterización finalizada.`].slice(-15),
+      }));
     } catch (e) {
       console.error(e);
-      setStatus('Error al clusterizar keywords.');
+      const message = e instanceof Error ? e.message : 'Error al clusterizar keywords.';
+      setStatus(message);
+      setClusterProgress((prev) => ({
+        ...prev,
+        active: false,
+        phase: 'error',
+        message,
+        logs: [...prev.logs, `[${new Date().toLocaleTimeString()}] Error: ${message}`].slice(-15),
+      }));
     } finally {
       setLoading(false);
     }
@@ -495,6 +546,16 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
         </p>
         <div className="max-h-28 overflow-auto rounded border bg-slate-50 p-2 text-xs text-slate-700 space-y-1">
           {gscLoadProgress.logs.length === 0 ? <p>Sin actividad todavía.</p> : gscLoadProgress.logs.map((line, idx) => <p key={`${line}-${idx}`}>{line}</p>)}
+        </div>
+      </div>
+      <div className="rounded border p-3 space-y-2">
+        <h3 className="font-semibold">Progreso clusterización KWs (backend)</h3>
+        <p className="text-xs text-slate-700">
+          Estado: {clusterProgress.active ? 'en curso' : 'inactivo'} · fase: {clusterProgress.phase} · sondeo: {clusterProgress.attempt}/90
+        </p>
+        <p className="text-xs text-slate-700">{clusterProgress.message}</p>
+        <div className="max-h-28 overflow-auto rounded border bg-slate-50 p-2 text-xs text-slate-700 space-y-1">
+          {clusterProgress.logs.length === 0 ? <p>Sin actividad todavía.</p> : clusterProgress.logs.map((line, idx) => <p key={`${line}-${idx}`}>{line}</p>)}
         </div>
       </div>
       <div className="rounded border p-3 grid gap-3 md:grid-cols-2">
