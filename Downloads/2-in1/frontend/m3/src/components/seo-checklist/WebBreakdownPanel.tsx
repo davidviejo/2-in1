@@ -7,8 +7,26 @@ type Props = { pages: SeoPage[]; onBulkUpdate: (updates: Array<Partial<SeoPage> 
 export const WebBreakdownPanel: React.FC<Props> = ({ pages, onBulkUpdate }) => {
   const [selectedCluster, setSelectedCluster] = useState('all');
   const [regex, setRegex] = useState('');
+
+  const getTopLevelCluster = (page: SeoPage) => {
+    const manualCluster = (page.cluster || '').trim();
+    if (manualCluster) {
+      return manualCluster
+        .split('/')
+        .map((part) => part.trim())
+        .filter(Boolean)[0] || manualCluster;
+    }
+
+    try {
+      const pathTokens = new URL(page.url).pathname.split('/').filter(Boolean);
+      return pathTokens[0] || 'home';
+    } catch {
+      return 'home';
+    }
+  };
+
   const clusters = useMemo(() => {
-    const map = new Map<string, { cluster: string; urls: number; clicks: number; depth: number; withoutCluster: number }>();
+    const map = new Map<string, { cluster: string; urls: number; clicks: number; depth: number; withoutCluster: number; fullUrls: string[] }>();
     pages.forEach((page) => {
       const pathTokens = (() => {
         try {
@@ -17,9 +35,7 @@ export const WebBreakdownPanel: React.FC<Props> = ({ pages, onBulkUpdate }) => {
           return [];
         }
       })();
-      const level1 = pathTokens[0] || 'home';
-      const baseCluster = level1;
-      const cluster = (page.cluster || '').trim() || baseCluster;
+      const cluster = getTopLevelCluster(page);
       const curr = map.get(cluster) || { cluster, urls: 0, clicks: 0, depth: pathTokens.length, withoutCluster: 0, fullUrls: [] as string[] };
       curr.urls += 1;
       curr.clicks += Number(page.gscMetrics?.clicks || 0);
@@ -33,17 +49,7 @@ export const WebBreakdownPanel: React.FC<Props> = ({ pages, onBulkUpdate }) => {
 
   const filteredPages = useMemo(() => {
     if (selectedCluster === 'all') return pages;
-    return pages.filter((page) => {
-      const pathTokens = (() => {
-        try {
-          return new URL(page.url).pathname.split('/').filter(Boolean);
-        } catch {
-          return [];
-        }
-      })();
-      const derivedCluster = pathTokens[0] || 'home';
-      return ((page.cluster || '').trim() || derivedCluster) === selectedCluster;
-    });
+    return pages.filter((page) => getTopLevelCluster(page) === selectedCluster);
   }, [pages, selectedCluster]);
 
   const applyRegexCluster = () => {
