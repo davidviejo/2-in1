@@ -155,7 +155,8 @@ const Layout: React.FC<LayoutProps> = ({
       path === '/app/' ||
       path.startsWith('/app/checklist') ||
       path.startsWith('/app/trends-media') ||
-      path.startsWith('/app/gsc-impact')
+      path.startsWith('/app/gsc-impact') ||
+      path.startsWith('/app/cluster-workflow')
     ) {
       return 'analitica';
     }
@@ -280,6 +281,13 @@ const Layout: React.FC<LayoutProps> = ({
               icon={<ListChecks size={20} />}
               label="Agrupación y Clusterización"
               subLabel="Análisis SEO y Clusters"
+              onClick={() => setIsMobileMenuOpen(false)}
+            />
+            <NavItem
+              to="/app/cluster-workflow"
+              icon={<Layers size={20} />}
+              label="Flujo único Cluster/KW"
+              subLabel="Auditoría + reglas + sheet"
               onClick={() => setIsMobileMenuOpen(false)}
             />
             <NavItem
