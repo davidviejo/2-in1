@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useSeoChecklist } from '@/hooks/useSeoChecklist';
 import { Network, RefreshCw, ShieldCheck } from 'lucide-react';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useGSCAuth } from '@/hooks/useGSCAuth';
@@ -139,6 +140,33 @@ const buildRowsByLevel = (
     .sort((a, b) => b.clicks - a.clicks);
 };
 
+
+
+const buildAutoClustersFromChecklist = (pages: Array<{ url: string }>) => {
+  const groups = new Map<string, Set<string>>();
+
+  for (const page of pages) {
+    const path = getPathname(page.url).replace(/\/+$/, '');
+    const segments = path.split('/').filter(Boolean);
+    if (segments.length < 2) continue;
+
+    const parentPath = `/${segments.slice(0, -1).join('/')}`;
+    const leafPath = `/${segments.join('/')}`;
+
+    if (!groups.has(parentPath)) groups.set(parentPath, new Set());
+    groups.get(parentPath)?.add(leafPath);
+  }
+
+  return Array.from(groups.entries())
+    .filter(([, children]) => children.size > 1)
+    .map(([parentPath]) => ({
+      id: `auto-${parentPath}`,
+      name: parentPath,
+      urls: [`${parentPath}/`],
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+};
+
 const SiteClusteringPage: React.FC = () => {
   const { startDate: defaultStartDate, endDate: defaultEndDate } = getDefaultDates();
   const [startDate, setStartDate] = useState(defaultStartDate);
@@ -150,9 +178,11 @@ const SiteClusteringPage: React.FC = () => {
   const [clusterRulesFileName, setClusterRulesFileName] = useState('');
   const [minimumClicks, setMinimumClicks] = useState(10);
   const [clusterDepth, setClusterDepth] = useState(2);
+  const [autoClusterStatus, setAutoClusterStatus] = useState('');
 
   const { gscAccessToken, googleUser, login, handleLogoutGsc } = useGSCAuth();
-  const { currentClient } = useProject();
+  const { currentClient, updateCurrentClientProfile } = useProject();
+  const { pages: checklistPages } = useSeoChecklist();
   const { gscSites, selectedSite, setSelectedSite, gscData, isLoadingGsc } = useGSCData(gscAccessToken, startDate, endDate, 'previous_period', {
     autoRun: false,
     runKey,
@@ -186,6 +216,40 @@ const SiteClusteringPage: React.FC = () => {
       rows: buildRowsByLevel(gscData, i + 1, currentClient?.seoClusters || []),
     }));
   }, [currentClient?.seoClusters, gscData, hasStartedAnalysis, maxDepth]);
+
+
+
+  const handleAutoGenerateNestedClusters = () => {
+    if (!currentClient) return;
+
+    const generatedClusters = buildAutoClustersFromChecklist(checklistPages);
+    if (generatedClusters.length === 0) {
+      setAutoClusterStatus('No se detectaron rutas anidadas con múltiples URLs hijas en el checklist.');
+      return;
+    }
+
+    const existingByName = new Set((currentClient.seoClusters || []).map((cluster) => cluster.name.toLowerCase()));
+    const uniqueClusters = generatedClusters.filter((cluster) => !existingByName.has(cluster.name.toLowerCase()));
+
+    if (uniqueClusters.length === 0) {
+      setAutoClusterStatus('Los clusters anidados detectados ya existen en la configuración actual.');
+      return;
+    }
+
+    updateCurrentClientProfile({
+      projectType: currentClient.projectType,
+      sector: currentClient.sector,
+      geoScope: currentClient.geoScope,
+      brandTerms: currentClient.brandTerms || [],
+      analysisProjectTypes: currentClient.analysisProjectTypes || [],
+      brandedKeywords: currentClient.brandedKeywords || [],
+      websiteDomain: currentClient.websiteDomain,
+      nestedClusterRules: currentClient.nestedClusterRules || [],
+      seoClusters: [...(currentClient.seoClusters || []), ...uniqueClusters],
+    });
+
+    setAutoClusterStatus(`Se añadieron ${uniqueClusters.length} clúster(es) automáticos desde URLs anidadas del checklist.`);
+  };
 
   const selectedLevelRows = levelData.find((item) => item.level === selectedLevel)?.rows || [];
   const selectedClustersForChart = selectedLevelRows.slice(0, 10);
@@ -267,6 +331,16 @@ const SiteClusteringPage: React.FC = () => {
         <div>
           <h2 className="font-semibold text-slate-900 dark:text-white">Ajustes de clúster manual</h2>
           <p className="text-xs text-slate-500 mt-1">Configura reglas manuales e importa un archivo para ajustar el clustering sin depender de otras páginas.</p>
+          <p className="text-xs text-slate-500 mt-1">También puedes autogenerar clusters cuando una ruta padre tiene un nivel inferior con varias páginas en el checklist SEO.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={handleAutoGenerateNestedClusters}
+            className="px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-semibold"
+          >
+            Auto-generar clusters desde checklist
+          </button>
+          {autoClusterStatus && <span className="text-xs text-slate-500">{autoClusterStatus}</span>}
         </div>
         <div>
           <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Reglas manuales</label>
