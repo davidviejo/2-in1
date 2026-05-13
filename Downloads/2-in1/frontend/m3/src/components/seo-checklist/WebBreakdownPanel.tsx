@@ -101,8 +101,26 @@ export const WebBreakdownPanel: React.FC<Props> = ({ pages, onBulkUpdate }) => {
   };
 
   const exportCurrent = () => {
-    const headers = ['url', 'cluster', 'clicks', 'impressions'];
-    const rows = filteredPages.map((page) => [page.url, page.cluster || '', page.gscMetrics?.clicks || 0, page.gscMetrics?.impressions || 0]);
+    const headers = [
+      ...Array.from({ length: maxLevel }).map((_, idx) => `nivel_${idx + 1}`),
+      'ruta_cluster',
+      'urls_en_cluster',
+      'clicks_cluster',
+      'profundidad_cluster',
+      'sin_cluster_manual',
+      'urls_completas_asignadas',
+    ];
+    const rows = clusters
+      .filter((cluster) => selectedCluster === 'all' || cluster.levelPath[0] === selectedCluster)
+      .map((cluster) => [
+        ...Array.from({ length: maxLevel }).map((_, idx) => cluster.levelPath[idx] || ''),
+        cluster.key,
+        cluster.urls,
+        cluster.clicks,
+        cluster.depth,
+        cluster.withoutCluster,
+        cluster.fullUrls.join(' | '),
+      ]);
     const csv = [headers, ...rows].map((r) => r.map((c) => `"${String(c).replaceAll('"', '""')}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -140,13 +158,13 @@ export const WebBreakdownPanel: React.FC<Props> = ({ pages, onBulkUpdate }) => {
         <Button onClick={applyRegexCluster}>Aplicar regex</Button>
         <Button variant="secondary" onClick={exportCurrent}>Exportar</Button>
       </div>
-      <div className="overflow-auto rounded border">
-        <table className="w-full text-xs">
+      <div className="overflow-x-auto overflow-y-auto rounded border max-h-[68vh]">
+        <table className="min-w-max text-xs leading-tight">
           <thead><tr>{Array.from({ length: maxLevel }).map((_, idx) => <th key={`level-${idx + 1}`} className="px-2 py-2 text-left">Nivel {idx + 1}</th>)}<th className="px-2 py-2 text-left">URLs</th><th className="px-2 py-2 text-left">Clics</th><th className="px-2 py-2 text-left">Niveles</th><th className="px-2 py-2 text-left">Sin cluster manual</th><th className="px-2 py-2 text-left">URLs completas asignadas</th></tr></thead>
           <tbody>
             {clusters
               .filter((c) => selectedCluster === 'all' || c.levelPath[0] === selectedCluster)
-              .map((c) => <tr key={c.key}>{Array.from({ length: maxLevel }).map((_, idx) => <td key={`${c.key}-${idx}`} className="px-2 py-1">{c.levelPath[idx] || ''}</td>)}<td className="px-2 py-1">{c.urls}</td><td className="px-2 py-1">{c.clicks}</td><td className="px-2 py-1">{c.depth}</td><td className="px-2 py-1">{c.withoutCluster}</td><td className="px-2 py-1 max-w-xl break-all">{c.fullUrls.join(' | ')}</td></tr>)}
+              .map((c) => <tr key={c.key}>{Array.from({ length: maxLevel }).map((_, idx) => <td key={`${c.key}-${idx}`} className="px-2 py-0.5 align-top">{c.levelPath[idx] || ''}</td>)}<td className="px-2 py-0.5 align-top">{c.urls}</td><td className="px-2 py-0.5 align-top">{c.clicks}</td><td className="px-2 py-0.5 align-top">{c.depth}</td><td className="px-2 py-0.5 align-top">{c.withoutCluster}</td><td className="px-2 py-0.5 align-top min-w-[24rem] max-w-[34rem]"><div className="max-h-24 overflow-y-auto whitespace-nowrap">{c.fullUrls.join(' | ')}</div></td></tr>)}
           </tbody>
         </table>
       </div>
