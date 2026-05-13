@@ -19,7 +19,6 @@ const ClientRoadmap = lazy(() => import('./pages/ClientRoadmap'));
 const KanbanBoard = lazy(() => import('./pages/KanbanBoard'));
 const AIRoadmap = lazy(() => import('./pages/AIRoadmap'));
 const SeoChecklistPage = lazy(() => import('./pages/SeoChecklistPage'));
-const IAVisibility = lazy(() => import('./pages/IAVisibility'));
 const GscImpactPage = lazy(() => import('./pages/GscImpactPage'));
 const SiteClusteringPage = lazy(() => import('./pages/SiteClusteringPage'));
 const UnifiedClusterWorkflowPage = lazy(() => import('./pages/UnifiedClusterWorkflowPage'));
@@ -193,7 +192,7 @@ const AppRoutes: React.FC = () => {
         { path: 'gantt', element: <GanttBoard /> },
         { path: 'checklist', element: <SeoChecklistPage /> },
         { path: 'ai-roadmap', element: <AIRoadmap /> },
-        { path: 'ia-visibility', element: <IAVisibility /> },
+        { path: 'ia-visibility', element: <Navigate to='/app/ai-roadmap' replace /> },
         { path: 'gsc-impact', element: <GscImpactPage /> },
         { path: 'clustering-site', element: <SiteClusteringPage /> },
         { path: 'cluster-workflow', element: <UnifiedClusterWorkflowPage /> },

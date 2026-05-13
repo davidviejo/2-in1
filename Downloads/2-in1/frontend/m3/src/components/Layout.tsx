@@ -30,7 +30,6 @@ import {
   ListChecks,
   Wrench as Tool,
   Lightbulb,
-  Eye,
 } from 'lucide-react';
 import { ModuleData, Client, NewClientInput, Note } from '../types';
 import ClientSwitcher from './ClientSwitcher';
@@ -328,13 +327,6 @@ const Layout: React.FC<LayoutProps> = ({
               icon={<Sparkles size={20} />}
               label={t('nav.ai_roadmap')}
               subLabel={t('nav.ai_roadmap_sub')}
-              onClick={() => setIsMobileMenuOpen(false)}
-            />
-            <NavItem
-              to="/app/ia-visibility"
-              icon={<Eye size={20} />}
-              label={t('nav.ia_visibility')}
-              subLabel={t('nav.ia_visibility_sub')}
               onClick={() => setIsMobileMenuOpen(false)}
             />
             <div className="my-4 border-t border-slate-100 dark:border-slate-800"></div>
