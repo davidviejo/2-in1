@@ -25,17 +25,6 @@ const AdminIdeasPage = lazy(() => import('./pages/admin/AdminIdeasPage'));
 const TrendsMediaPage = lazy(() => import('./pages/TrendsMediaPage'));
 const ToolsHub = lazy(() => import('./pages/ToolsHub'));
 const GanttBoard = lazy(() => import('./pages/GanttBoard'));
-const CommandCenterPage = lazy(() => import('./pages/intelligence/CommandCenterPage'));
-const OpportunitiesPage = lazy(() => import('./pages/intelligence/OpportunitiesPage'));
-const IndexationMonitorPage = lazy(() => import('./pages/intelligence/IndexationMonitorPage'));
-const CrawlMonitorPage = lazy(() => import('./pages/intelligence/CrawlMonitorPage'));
-const ContentGapPage = lazy(() => import('./pages/intelligence/ContentGapPage'));
-const CannibalizationPage = lazy(() => import('./pages/intelligence/CannibalizationPage'));
-const InternalLinkingPage = lazy(() => import('./pages/intelligence/InternalLinkingPage'));
-const SerpAiMonitorPage = lazy(() => import('./pages/intelligence/SerpAiMonitorPage'));
-const ForecastPage = lazy(() => import('./pages/intelligence/ForecastPage'));
-const ContentBriefsPage = lazy(() => import('./pages/intelligence/ContentBriefsPage'));
-const ImpactLedgerPage = lazy(() => import('./pages/intelligence/ImpactLedgerPage'));
 
 const LandingPage = lazy(() => import('./pages/portal/LandingPage'));
 const ClientsLogin = lazy(() => import('./pages/portal/ClientsLogin'));
@@ -200,17 +189,7 @@ const AppRoutes: React.FC = () => {
         { path: 'kanban', element: <KanbanBoard /> },
         { path: 'gantt', element: <GanttBoard /> },
         { path: 'checklist', element: <SeoChecklistPage /> },
-        { path: 'command-center', element: <CommandCenterPage /> },
-        { path: 'opportunities', element: <OpportunitiesPage /> },
-        { path: 'indexation', element: <IndexationMonitorPage /> },
-        { path: 'crawl-monitor', element: <CrawlMonitorPage /> },
-        { path: 'content-gap', element: <ContentGapPage /> },
-        { path: 'cannibalization', element: <CannibalizationPage /> },
-        { path: 'internal-linking', element: <InternalLinkingPage /> },
-        { path: 'serp-ai-monitor', element: <SerpAiMonitorPage /> },
         { path: 'ai-roadmap', element: <AIRoadmap /> },
-        { path: 'forecast', element: <ForecastPage /> },
-        { path: 'content-briefs', element: <ContentBriefsPage /> },
         { path: 'ia-visibility', element: <Navigate to='/app/ai-roadmap' replace /> },
         { path: 'gsc-impact', element: <GscImpactPage /> },
         { path: 'gsc-impact/portfolio', element: <Navigate to='/app/gsc-impact?view=global' replace /> },
@@ -237,7 +216,6 @@ const AppRoutes: React.FC = () => {
             />
           ),
         },
-        { path: 'impact-ledger', element: <ImpactLedgerPage /> },
         { path: '*', element: <Navigate to='/app' replace /> },
       ],
     },
