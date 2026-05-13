@@ -7,6 +7,7 @@ type Props = { pages: SeoPage[]; onBulkUpdate: (updates: Array<Partial<SeoPage> 
 export const WebBreakdownPanel: React.FC<Props> = ({ pages, onBulkUpdate }) => {
   const [selectedCluster, setSelectedCluster] = useState('all');
   const [regex, setRegex] = useState('');
+  const [sortBy, setSortBy] = useState<'urls' | 'clicks' | 'depth'>('urls');
 
   const getTopLevelCluster = (page: SeoPage) => {
     const manualCluster = (page.cluster || '').trim();
@@ -26,7 +27,17 @@ export const WebBreakdownPanel: React.FC<Props> = ({ pages, onBulkUpdate }) => {
   };
 
   const clusters = useMemo(() => {
-    const map = new Map<string, { cluster: string; urls: number; clicks: number; depth: number; withoutCluster: number; fullUrls: string[] }>();
+    type ClusterRow = {
+      key: string;
+      levelPath: string[];
+      urls: number;
+      clicks: number;
+      depth: number;
+      withoutCluster: number;
+      fullUrls: string[];
+    };
+
+    const map = new Map<string, ClusterRow>();
     pages.forEach((page) => {
       const pathTokens = (() => {
         try {
@@ -35,17 +46,40 @@ export const WebBreakdownPanel: React.FC<Props> = ({ pages, onBulkUpdate }) => {
           return [];
         }
       })();
-      const cluster = getTopLevelCluster(page);
-      const curr = map.get(cluster) || { cluster, urls: 0, clicks: 0, depth: pathTokens.length, withoutCluster: 0, fullUrls: [] as string[] };
-      curr.urls += 1;
-      curr.clicks += Number(page.gscMetrics?.clicks || 0);
-      curr.depth = Math.max(curr.depth, pathTokens.length);
-      if (!(page.cluster || '').trim() && pathTokens.length <= 1) curr.withoutCluster += 1;
-      curr.fullUrls.push(page.url);
-      map.set(cluster, curr);
+
+      const levelOne = getTopLevelCluster(page);
+      const hierarchyLevels = [levelOne, ...pathTokens.slice(1)];
+
+      hierarchyLevels.forEach((_, levelIndex) => {
+        const levelPath = hierarchyLevels.slice(0, levelIndex + 1);
+        const key = levelPath.join(' > ');
+        const curr = map.get(key) || {
+          key,
+          levelPath,
+          urls: 0,
+          clicks: 0,
+          depth: levelPath.length,
+          withoutCluster: 0,
+          fullUrls: [] as string[],
+        };
+
+        curr.urls += 1;
+        curr.clicks += Number(page.gscMetrics?.clicks || 0);
+        curr.depth = Math.max(curr.depth, levelPath.length);
+        if (!(page.cluster || '').trim() && levelPath.length === 1 && pathTokens.length <= 1) curr.withoutCluster += 1;
+        curr.fullUrls.push(page.url);
+        map.set(key, curr);
+      });
     });
-    return [...map.values()].sort((a, b) => b.clicks - a.clicks);
-  }, [pages]);
+
+    return [...map.values()].sort((a, b) => {
+      if (sortBy === 'clicks') return b.clicks - a.clicks;
+      if (sortBy === 'depth') return b.depth - a.depth || b.urls - a.urls;
+      return b.urls - a.urls || b.clicks - a.clicks;
+    });
+  }, [pages, sortBy]);
+
+  const maxLevel = useMemo(() => clusters.reduce((acc, row) => Math.max(acc, row.levelPath.length), 1), [clusters]);
 
   const filteredPages = useMemo(() => {
     if (selectedCluster === 'all') return pages;
@@ -86,7 +120,17 @@ export const WebBreakdownPanel: React.FC<Props> = ({ pages, onBulkUpdate }) => {
           <label className="text-xs">Cluster superior</label>
           <select className="form-control" value={selectedCluster} onChange={(e) => setSelectedCluster(e.target.value)}>
             <option value="all">Todos</option>
-            {clusters.map((cluster) => <option key={cluster.cluster} value={cluster.cluster}>{cluster.cluster} ({cluster.clicks} clics)</option>)}
+            {clusters
+              .filter((cluster) => cluster.levelPath.length === 1)
+              .map((cluster) => <option key={cluster.key} value={cluster.levelPath[0]}>{cluster.levelPath[0]} ({cluster.clicks} clics)</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs">Ordenar tabla</label>
+          <select className="form-control" value={sortBy} onChange={(e) => setSortBy(e.target.value as 'urls' | 'clicks' | 'depth')}>
+            <option value="urls">Por cantidad de URLs</option>
+            <option value="clicks">Por clics</option>
+            <option value="depth">Por profundidad</option>
           </select>
         </div>
         <div className="flex-1">
@@ -98,9 +142,11 @@ export const WebBreakdownPanel: React.FC<Props> = ({ pages, onBulkUpdate }) => {
       </div>
       <div className="overflow-auto rounded border">
         <table className="w-full text-xs">
-          <thead><tr><th className="px-2 py-2 text-left">Cluster</th><th className="px-2 py-2 text-left">URLs</th><th className="px-2 py-2 text-left">Clics</th><th className="px-2 py-2 text-left">Niveles</th><th className="px-2 py-2 text-left">Sin cluster manual</th><th className="px-2 py-2 text-left">URLs completas asignadas</th></tr></thead>
+          <thead><tr>{Array.from({ length: maxLevel }).map((_, idx) => <th key={`level-${idx + 1}`} className="px-2 py-2 text-left">Nivel {idx + 1}</th>)}<th className="px-2 py-2 text-left">URLs</th><th className="px-2 py-2 text-left">Clics</th><th className="px-2 py-2 text-left">Niveles</th><th className="px-2 py-2 text-left">Sin cluster manual</th><th className="px-2 py-2 text-left">URLs completas asignadas</th></tr></thead>
           <tbody>
-            {clusters.map((c) => <tr key={c.cluster}><td className="px-2 py-1">{c.cluster}</td><td className="px-2 py-1">{c.urls}</td><td className="px-2 py-1">{c.clicks}</td><td className="px-2 py-1">{c.depth}</td><td className="px-2 py-1">{c.withoutCluster}</td><td className="px-2 py-1 max-w-xl break-all">{c.fullUrls.join(' | ')}</td></tr>)}
+            {clusters
+              .filter((c) => selectedCluster === 'all' || c.levelPath[0] === selectedCluster)
+              .map((c) => <tr key={c.key}>{Array.from({ length: maxLevel }).map((_, idx) => <td key={`${c.key}-${idx}`} className="px-2 py-1">{c.levelPath[idx] || ''}</td>)}<td className="px-2 py-1">{c.urls}</td><td className="px-2 py-1">{c.clicks}</td><td className="px-2 py-1">{c.depth}</td><td className="px-2 py-1">{c.withoutCluster}</td><td className="px-2 py-1 max-w-xl break-all">{c.fullUrls.join(' | ')}</td></tr>)}
           </tbody>
         </table>
       </div>
