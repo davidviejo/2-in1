@@ -34,6 +34,30 @@ describe('SiteClusteringPage helpers', () => {
     expect((madrid?.urls || []).join(',')).not.toContain('/^');
   });
 
+  it('prioritizes level-1 cluster when only one level-2 branch exists', () => {
+    const clusters = buildAutoClustersFromChecklist([
+      { url: '/rinoplastia-en-madrid/precio/a' },
+      { url: '/rinoplastia-en-madrid/precio/b' },
+      { url: '/rinoplastia-en-madrid/precio/c' },
+    ]);
+
+    expect(clusters.find((item) => item.name === '/rinoplastia-en-madrid')).toBeTruthy();
+    expect(clusters.find((item) => item.name === '/rinoplastia-en-madrid/precio')).toBeFalsy();
+  });
+
+  it('keeps nested clusters when parent has multiple branches', () => {
+    const clusters = buildAutoClustersFromChecklist([
+      { url: '/servicios/carillas/composite' },
+      { url: '/servicios/carillas/disilicato' },
+      { url: '/servicios/implantes/unitario' },
+      { url: '/servicios/implantes/carga-inmediata' },
+    ]);
+
+    expect(clusters.find((item) => item.name === '/servicios')).toBeTruthy();
+    expect(clusters.find((item) => item.name === '/servicios/carillas')).toBeTruthy();
+    expect(clusters.find((item) => item.name === '/servicios/implantes')).toBeTruthy();
+  });
+
   it('getPathname supports absolute and relative URLs only', () => {
     expect(getPathname('https://www.diegocasas.es/rinoplastia-en-madrid/')).toBe('/rinoplastia-en-madrid/');
     expect(getPathname('/rinoplastia-en-madrid/')).toBe('/rinoplastia-en-madrid/');

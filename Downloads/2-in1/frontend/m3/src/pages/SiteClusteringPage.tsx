@@ -310,22 +310,38 @@ const buildClusterTimeline = (
 
 
 export const buildAutoClustersFromChecklist = (pages: Array<{ url: string }>) => {
-  const groups = new Map<string, Set<string>>();
+  const descendantsByPrefix = new Map<string, Set<string>>();
+  const directChildrenByPrefix = new Map<string, Set<string>>();
 
   for (const page of pages) {
     const path = getPathname(page.url).replace(/\/+$/, '');
     const segments = path.split('/').filter(Boolean);
     if (segments.length < 2) continue;
 
-    const parentPath = `/${segments.slice(0, -1).join('/')}`;
     const leafPath = `/${segments.join('/')}`;
+    for (let depth = 1; depth < segments.length; depth += 1) {
+      const prefix = `/${segments.slice(0, depth).join('/')}`;
+      const nextSegment = segments[depth];
 
-    if (!groups.has(parentPath)) groups.set(parentPath, new Set());
-    groups.get(parentPath)?.add(leafPath);
+      if (!descendantsByPrefix.has(prefix)) descendantsByPrefix.set(prefix, new Set());
+      descendantsByPrefix.get(prefix)?.add(leafPath);
+
+      if (!directChildrenByPrefix.has(prefix)) directChildrenByPrefix.set(prefix, new Set());
+      if (nextSegment) directChildrenByPrefix.get(prefix)?.add(nextSegment);
+    }
   }
 
-  return Array.from(groups.entries())
-    .filter(([, children]) => children.size > 1)
+  return Array.from(descendantsByPrefix.entries())
+    .filter(([prefix, children]) => {
+      if (children.size < 2) return false;
+
+      const depth = prefix.split('/').filter(Boolean).length;
+      if (depth <= 1) return true;
+
+      const parentPrefix = `/${prefix.split('/').filter(Boolean).slice(0, -1).join('/')}`;
+      const parentDirectChildren = directChildrenByPrefix.get(parentPrefix);
+      return (parentDirectChildren?.size || 0) > 1;
+    })
     .map(([parentPath, children]) => {
       const childDepths = Array.from(children).map((childPath) => childPath.split('/').filter(Boolean).length);
       const clusterLevel = Math.max(...childDepths, 1);
