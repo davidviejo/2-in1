@@ -30,7 +30,7 @@ describe('SiteClusteringPage helpers', () => {
     ]);
 
     const madrid = clusters.find((item) => item.name === '/rinoplastia-en-madrid');
-    expect(madrid?.urls).toEqual(['/rinoplastia-en-madrid', '/rinoplastia-en-madrid/*']);
+    expect(madrid?.urls).toEqual(['/rinoplastia-en-madrid/a', '/rinoplastia-en-madrid/b']);
     expect((madrid?.urls || []).join(',')).not.toContain('/^');
   });
 

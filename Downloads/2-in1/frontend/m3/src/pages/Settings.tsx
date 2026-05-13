@@ -32,7 +32,11 @@ const Settings: React.FC = () => {
   const [projectNotes, setProjectNotes] = useState(currentClient?.notes?.[0]?.content || '');
   const [websiteDomain, setWebsiteDomain] = useState(currentClient?.websiteDomain || '');
   const [brandedKeywordsText, setBrandedKeywordsText] = useState((currentClient?.brandedKeywords || []).join('\n'));
-  const [clusterDraft, setClusterDraft] = useState((currentClient?.seoClusters || []).map((cluster) => `${cluster.name}: ${cluster.urls.join(', ')}`).join('\n'));
+  const [clusterDraft, setClusterDraft] = useState(
+    (currentClient?.seoClusters || [])
+      .map((cluster) => `${cluster.name}|${cluster.level || 1}|${cluster.urls.join(',')}`)
+      .join('\n'),
+  );
   const [nestedClusterRulesText, setNestedClusterRulesText] = useState(
     (currentClient?.nestedClusterRules || [])
       .map((rule) => `${rule.parentCluster} => ${rule.targetLabel} | ${rule.useRegex ? 'regex' : 'contains'} | ${rule.pattern}`)
@@ -48,12 +52,13 @@ const Settings: React.FC = () => {
         .map((line) => line.trim())
         .filter(Boolean)
         .map((line, index) => {
-          const [namePart, ...rest] = line.split(':');
-          const urlsText = rest.join(':');
+          const [namePart = '', levelPart = '', patternsPart = ''] = line.split('|').map((part) => part.trim());
+          const parsedLevel = Number(levelPart);
           return {
             id: `${namePart.trim().toLowerCase().replace(/\s+/g, '-') || 'cluster'}-${index}`,
             name: namePart.trim() || `Cluster ${index + 1}`,
-            urls: urlsText
+            level: Number.isFinite(parsedLevel) && parsedLevel > 0 ? Math.floor(parsedLevel) : 1,
+            urls: patternsPart
               .split(',')
               .map((url) => url.trim())
               .filter(Boolean),
@@ -146,7 +151,11 @@ const Settings: React.FC = () => {
                 switchClient(nextClientId);
                 const nextClient = clients.find((client) => client.id === nextClientId);
                 setBrandedKeywordsText((nextClient?.brandedKeywords || []).join('\n'));
-                setClusterDraft((nextClient?.seoClusters || []).map((cluster) => `${cluster.name}: ${cluster.urls.join(', ')}`).join('\n'));
+                setClusterDraft(
+                  (nextClient?.seoClusters || [])
+                    .map((cluster) => `${cluster.name}|${cluster.level || 1}|${cluster.urls.join(',')}`)
+                    .join('\n'),
+                );
                 setWebsiteDomain(nextClient?.websiteDomain || '');
                 setNestedClusterRulesText(
                   (nextClient?.nestedClusterRules || [])
@@ -176,13 +185,13 @@ marca + servicio`}
             />
           </div>
           <div className="space-y-1">
-            <label className="text-xs text-muted">Clusters manuales (formato: Cluster: url1, url2)</label>
+            <label className="text-xs text-muted">Clusters manuales (formato: Cluster|Nivel|/path1,/path2)</label>
             <textarea
               value={clusterDraft}
               onChange={(e) => setClusterDraft(e.target.value)}
               className="form-textarea"
-              placeholder={`Blog SEO: /blog/seo, /blog/tutoriales
-Servicios Locales: /servicios/madrid, /servicios/barcelona`}
+              placeholder={`Blog SEO|1|/blog/*,/articulos/*
+Servicios Locales|2|/servicios/madrid,/servicios/barcelona`}
             />
           </div>
           <div className="space-y-1">

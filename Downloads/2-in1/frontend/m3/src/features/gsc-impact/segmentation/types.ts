@@ -1,6 +1,7 @@
 export interface ProjectCustomCluster {
   name: string;
   paths: string[];
+  level?: number;
 }
 
 export interface ProjectTemplateRule {
