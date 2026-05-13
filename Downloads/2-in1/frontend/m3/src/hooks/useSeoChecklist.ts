@@ -207,47 +207,39 @@ export const useSeoChecklist = () => {
     : LEGACY_SEO_CHECKLIST_STORAGE_KEY;
   const [pages, setPages] = useState<SeoPage[]>([]);
 
-  useEffect(() => {
+  const refreshPages = useCallback(async () => {
     const hasScopedKey = Boolean(currentClientId);
-    let cancelled = false;
+    try {
+      let loadedPages = await loadSeoChecklistPages(storageKey);
 
-    const loadPages = async () => {
-      try {
-        let loadedPages = await loadSeoChecklistPages(storageKey);
-
-        if (!loadedPages && hasScopedKey) {
-          const legacyPages = await loadSeoChecklistPages(LEGACY_SEO_CHECKLIST_STORAGE_KEY);
-          if (legacyPages?.length) {
-            loadedPages = legacyPages;
-            persistSeoPages(storageKey, legacyPages);
-          }
+      if (!loadedPages && hasScopedKey) {
+        const legacyPages = await loadSeoChecklistPages(LEGACY_SEO_CHECKLIST_STORAGE_KEY);
+        if (legacyPages?.length) {
+          loadedPages = legacyPages;
+          persistSeoPages(storageKey, legacyPages);
         }
-
-        if (!loadedPages) {
-          if (!cancelled) setPages([]);
-          return;
-        }
-
-        const normalized = normalizeSeoPages(loadedPages);
-        if (JSON.stringify(loadedPages) !== JSON.stringify(normalized)) {
-          persistSeoPages(storageKey, normalized);
-        }
-
-        if (!cancelled) {
-          setPages(normalized);
-        }
-      } catch (e) {
-        console.error('Failed to parse SEO Checklist data', e);
-        if (!cancelled) setPages([]);
       }
-    };
 
-    void loadPages();
+      if (!loadedPages) {
+        setPages([]);
+        return;
+      }
 
-    return () => {
-      cancelled = true;
-    };
+      const normalized = normalizeSeoPages(loadedPages);
+      if (JSON.stringify(loadedPages) !== JSON.stringify(normalized)) {
+        persistSeoPages(storageKey, normalized);
+      }
+
+      setPages(normalized);
+    } catch (e) {
+      console.error('Failed to parse SEO Checklist data', e);
+      setPages([]);
+    }
   }, [currentClientId, storageKey]);
+
+  useEffect(() => {
+    void refreshPages();
+  }, [refreshPages]);
 
   const addPages = useCallback(
     (newPages: SeoPage[]) => {
@@ -375,5 +367,6 @@ export const useSeoChecklist = () => {
     updateChecklistItem,
     deletePage,
     bulkDeletePages,
+    refreshPages,
   };
 };
