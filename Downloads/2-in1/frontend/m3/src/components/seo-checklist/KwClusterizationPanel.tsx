@@ -76,6 +76,13 @@ const normalizeUrlCandidate = (value: string) => {
   }
 };
 
+const buildUrlVariants = (value: string) => {
+  const normalized = normalizeUrlCandidate(value);
+  if (!normalized) return [];
+  if (normalized.endsWith('/')) return [normalized, normalized.slice(0, -1)].filter(Boolean);
+  return [normalized, `${normalized}/`];
+};
+
 const getClusterizationBackendBaseUrl = () => {
   const configured = String(import.meta.env.VITE_PYTHON_ENGINE_URL || import.meta.env.VITE_API_URL || '').trim();
   if (!configured) return '';
@@ -208,6 +215,45 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
       const startDate = new Date(Date.now() - 56 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       let updated = 0;
       const updates = [] as Array<Partial<SeoPage> & { id: string }>;
+      const rowsByUrl = new Map<string, Array<{ query: string; clicks: number; impressions: number; ctr: number; position: number }>>();
+
+      setStatus('Cargando bloque único de queries GSC (query+page) para reducir peticiones por URL...');
+      const bulkResponse = await querySearchAnalyticsPaged(token, {
+        siteUrl,
+        startDate,
+        endDate,
+        dimensions: ['query', 'page'],
+        allowHighCardinality: true,
+        rowLimit: 25000,
+        maxRows: 25000,
+      });
+
+      const selectedUrlVariants = new Map<string, string>();
+      selectedPages.forEach((page) => {
+        buildUrlVariants(page.url).forEach((variant) => {
+          selectedUrlVariants.set(variant, page.url);
+        });
+      });
+
+      (bulkResponse.rows || []).forEach((row: any) => {
+        const query = String(row.keys?.[0] || row.query || '').trim();
+        const pageUrl = String(row.keys?.[1] || row.page || '').trim();
+        if (!query || !pageUrl) return;
+
+        const normalizedPageUrl = normalizeUrlCandidate(pageUrl);
+        const canonicalUrl = selectedUrlVariants.get(normalizedPageUrl);
+        if (!canonicalUrl) return;
+
+        const list = rowsByUrl.get(canonicalUrl) || [];
+        list.push({
+          query,
+          clicks: Number(row.clicks || 0),
+          impressions: Number(row.impressions || 0),
+          ctr: Number(row.ctr || 0),
+          position: Number(row.position || 0),
+        });
+        rowsByUrl.set(canonicalUrl, list);
+      });
 
       setGscLoadProgress({
         active: true,
@@ -220,61 +266,18 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
       });
 
       for (const [index, page] of selectedPages.entries()) {
-        const normalizedPageUrl = normalizeUrlCandidate(page.url);
-        const withSlash = normalizedPageUrl.endsWith('/') ? normalizedPageUrl : `${normalizedPageUrl}/`;
-        const withoutSlash = normalizedPageUrl.endsWith('/') ? normalizedPageUrl.slice(0, -1) : normalizedPageUrl;
-        const attempts = [withSlash, withoutSlash].filter((value, idx, arr) => value && arr.indexOf(value) === idx);
-
-        let rows: Array<{ query: string; clicks: number; impressions: number; ctr: number; position: number }> = [];
-        let matchedExpression = '';
-
-        for (const expression of attempts) {
-          setGscLoadProgress((prev) => ({
-            ...prev,
-            currentUrl: page.url,
-            currentAttempt: expression,
-            logs: [...prev.logs, `🔎 ${page.url} → buscando con ${expression}`].slice(-30),
-          }));
-
-          const response = await querySearchAnalyticsPaged(token, {
-            siteUrl,
-            startDate,
-            endDate,
-            dimensions: ['query', 'page'],
-            allowHighCardinality: true,
-            rowLimit: 1000,
-            maxRows: 2000,
-            dimensionFilterGroups: [{
-              groupType: 'and',
-              filters: [{ dimension: 'page', operator: 'equals', expression }],
-            }],
-          });
-
-          rows = (response.rows || [])
-          .map((row: any) => ({
-            query: String(row.keys?.[0] || row.query || '').trim(),
-            clicks: Number(row.clicks || 0),
-            impressions: Number(row.impressions || 0),
-            ctr: Number(row.ctr || 0),
-            position: Number(row.position || 0),
-          }))
+        const rows = (rowsByUrl.get(page.url) || [])
           .filter((row) => row.query)
           .sort((a, b) => b.clicks - a.clicks || b.impressions - a.impressions)
           .slice(0, 50);
-
-          if (rows.length > 0) {
-            matchedExpression = expression;
-            break;
-          }
-        }
 
         if (rows.length === 0) {
           setGscLoadProgress((prev) => ({
             ...prev,
             processed: index + 1,
             currentUrl: page.url,
-            currentAttempt: 'sin match',
-            logs: [...prev.logs, `⚠️ ${page.url} sin resultados con/sin "/"`].slice(-30),
+            currentAttempt: 'sin datos en bloque',
+            logs: [...prev.logs, `⚠️ ${page.url} sin resultados en carga unificada`].slice(-30),
           }));
           continue;
         }
@@ -298,8 +301,8 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
           processed: index + 1,
           updated,
           currentUrl: page.url,
-          currentAttempt: matchedExpression,
-          logs: [...prev.logs, `✅ ${page.url} cargada con ${matchedExpression} (${rows.length} kws)`].slice(-30),
+          currentAttempt: 'bloque único',
+          logs: [...prev.logs, `✅ ${page.url} cargada desde bloque único (${rows.length} kws)`].slice(-30),
         }));
       }
 
