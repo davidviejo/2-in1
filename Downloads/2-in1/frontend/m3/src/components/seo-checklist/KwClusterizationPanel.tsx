@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { SeoPage } from '@/types/seoChecklist';
 import { Button } from '@/components/ui/Button';
-import { openaiApi } from '@/services/openaiApi';
+import { buildDefaultAnalysisConfig, runPageAnalysis } from '@/utils/seoUtils';
+import { getStoredSeoChecklistSettings } from '@/services/seoChecklistStorage';
 
 type Props = { pages: SeoPage[]; onBulkUpdate: (updates: Array<Partial<SeoPage> & { id: string }>) => void };
 
@@ -26,6 +27,7 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
   const [selectedKeywordIds, setSelectedKeywordIds] = useState<Set<string>>(new Set());
   const [status, setStatus] = useState('Selecciona URLs y keywords para clusterizar automáticamente.');
   const [loading, setLoading] = useState(false);
+  const [syncingDataforseo, setSyncingDataforseo] = useState(false);
 
   const selectedPages = useMemo(() => pages.filter((p) => selectedPageIds.has(p.id)), [pages, selectedPageIds]);
   const kwCandidates = useMemo(() => selectedPages.flatMap(normalizeKeywordRows), [selectedPages]);
@@ -49,25 +51,72 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
     }
     setLoading(true);
     try {
-      const payload = selected.map((kw) => ({ id: kw.id, url: kw.url, title: kw.keyword, h1: kw.keyword }));
-      const response = await openaiApi.clusterize(payload);
-      const clusterByKeyword = new Map<string, string>();
-      (response.clusters || []).forEach((item) => {
-        clusterByKeyword.set(item.id, item.cluster || 'Sin cluster');
+      const keywordClusterMap = new Map<string, string>();
+      selectedPages.forEach((page) => {
+        const clusters = page.checklist?.OPORTUNIDADES?.autoData?.clusters;
+        if (!Array.isArray(clusters)) return;
+        clusters.forEach((cluster: any) => {
+          const clusterName = String(cluster.kwObjetivo || cluster.clusterId || '').trim();
+          if (!clusterName) return;
+          const strategyKeywords = [cluster.kwObjetivo, ...(cluster.variations || [])]
+            .map((value: any) => String(value || '').trim().toLowerCase())
+            .filter(Boolean);
+          strategyKeywords.forEach((keyword: string) => {
+            if (!keywordClusterMap.has(keyword)) keywordClusterMap.set(keyword, clusterName);
+          });
+        });
       });
 
       const updates = selectedPages.map((page) => {
         const selectedForPage = selected.filter((kw) => kw.url === page.url);
-        const cluster = selectedForPage.map((kw) => clusterByKeyword.get(kw.id)).find(Boolean) || page.cluster || '';
+        const cluster = selectedForPage
+          .map((kw) => keywordClusterMap.get(kw.keyword.toLowerCase()))
+          .find(Boolean) || page.cluster || '';
         return { id: page.id, cluster };
       });
       onBulkUpdate(updates);
-      setStatus(`Clusterización KWs completada. ${selected.length} keywords procesadas.`);
+      const matched = selected.filter((kw) => keywordClusterMap.has(kw.keyword.toLowerCase())).length;
+      setStatus(`Clusterización KWs (DataForSEO/Estrategia) completada. ${matched}/${selected.length} keywords mapeadas.`);
     } catch (e) {
       console.error(e);
       setStatus('Error al clusterizar keywords.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const syncClustersFromDataforseo = async () => {
+    if (selectedPages.length === 0) {
+      setStatus('Selecciona al menos 1 URL para ejecutar clusterización con DataForSEO.');
+      return;
+    }
+
+    setSyncingDataforseo(true);
+    setStatus('Ejecutando Cluster & Análisis SERP (DataForSEO) en backend...');
+    try {
+      const projectSettings = getStoredSeoChecklistSettings();
+      const analysisConfig = buildDefaultAnalysisConfig(projectSettings);
+      analysisConfig.mode = 'advanced';
+      analysisConfig.serp = {
+        ...(analysisConfig.serp || {}),
+        provider: 'dataforseo',
+        confirmed: true,
+        useDataforseoForClusterization: true,
+      };
+
+      const updates = await Promise.all(
+        selectedPages.map(async (page) => {
+          const update = await runPageAnalysis(page, analysisConfig, projectSettings);
+          return { id: page.id, ...update };
+        }),
+      );
+      onBulkUpdate(updates);
+      setStatus(`DataForSEO completado. ${updates.length} URL(s) actualizadas con resultado backend.`);
+    } catch (error) {
+      console.error(error);
+      setStatus('Error ejecutando DataForSEO desde backend. Revisa credenciales y provider.');
+    } finally {
+      setSyncingDataforseo(false);
     }
   };
 
@@ -106,7 +155,12 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
           </div>
         </div>
       </div>
-      <Button onClick={runClusterization} disabled={loading}>{loading ? 'Procesando...' : 'Ejecutar clusterización KWs'}</Button>
+      <div className="flex flex-wrap gap-2">
+        <Button onClick={runClusterization} disabled={loading || syncingDataforseo}>{loading ? 'Procesando...' : 'Aplicar clusterización KWs'}</Button>
+        <Button variant="secondary" onClick={syncClustersFromDataforseo} disabled={syncingDataforseo || loading}>
+          {syncingDataforseo ? 'Ejecutando DataForSEO...' : 'Ejecutar DataForSEO (backend)'}
+        </Button>
+      </div>
       <div className="rounded border p-3">
         <h3 className="font-semibold mb-2">Desglose rápido (keywords seleccionadas)</h3>
         {[...groupedResult.entries()].slice(0, 100).map(([keyword, items]) => (

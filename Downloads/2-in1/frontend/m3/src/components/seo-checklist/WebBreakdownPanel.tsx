@@ -8,12 +8,24 @@ export const WebBreakdownPanel: React.FC<Props> = ({ pages, onBulkUpdate }) => {
   const [selectedCluster, setSelectedCluster] = useState('all');
   const [regex, setRegex] = useState('');
   const clusters = useMemo(() => {
-    const map = new Map<string, { cluster: string; urls: number; clicks: number }>();
+    const map = new Map<string, { cluster: string; urls: number; clicks: number; depth: number; withoutCluster: number }>();
     pages.forEach((page) => {
-      const cluster = (page.cluster || 'Sin cluster').trim();
-      const curr = map.get(cluster) || { cluster, urls: 0, clicks: 0 };
+      const pathTokens = (() => {
+        try {
+          return new URL(page.url).pathname.split('/').filter(Boolean);
+        } catch {
+          return [];
+        }
+      })();
+      const level1 = pathTokens[0] || 'sin-nivel';
+      const level2 = pathTokens[1] || 'sin-subnivel';
+      const baseCluster = `${level1} / ${level2}`;
+      const cluster = (page.cluster || '').trim() || baseCluster;
+      const curr = map.get(cluster) || { cluster, urls: 0, clicks: 0, depth: pathTokens.length, withoutCluster: 0 };
       curr.urls += 1;
       curr.clicks += Number(page.gscMetrics?.clicks || 0);
+      curr.depth = Math.max(curr.depth, pathTokens.length);
+      if (!(page.cluster || '').trim() && pathTokens.length <= 1) curr.withoutCluster += 1;
       map.set(cluster, curr);
     });
     return [...map.values()].sort((a, b) => b.clicks - a.clicks);
@@ -70,9 +82,9 @@ export const WebBreakdownPanel: React.FC<Props> = ({ pages, onBulkUpdate }) => {
       </div>
       <div className="overflow-auto rounded border">
         <table className="w-full text-xs">
-          <thead><tr><th className="px-2 py-2 text-left">Cluster</th><th className="px-2 py-2 text-left">URLs</th><th className="px-2 py-2 text-left">Clics</th></tr></thead>
+          <thead><tr><th className="px-2 py-2 text-left">Cluster</th><th className="px-2 py-2 text-left">URLs</th><th className="px-2 py-2 text-left">Clics</th><th className="px-2 py-2 text-left">Niveles</th><th className="px-2 py-2 text-left">Sin cluster manual</th></tr></thead>
           <tbody>
-            {clusters.map((c) => <tr key={c.cluster}><td className="px-2 py-1">{c.cluster}</td><td className="px-2 py-1">{c.urls}</td><td className="px-2 py-1">{c.clicks}</td></tr>)}
+            {clusters.map((c) => <tr key={c.cluster}><td className="px-2 py-1">{c.cluster}</td><td className="px-2 py-1">{c.urls}</td><td className="px-2 py-1">{c.clicks}</td><td className="px-2 py-1">{c.depth}</td><td className="px-2 py-1">{c.withoutCluster}</td></tr>)}
           </tbody>
         </table>
       </div>
