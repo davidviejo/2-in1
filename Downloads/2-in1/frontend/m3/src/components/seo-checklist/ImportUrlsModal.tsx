@@ -171,8 +171,13 @@ const METADATA_HEADER_ALIASES: Record<string, keyof ParsedImportHeaders['metadat
 
 const CHECKLIST_LABEL_ALIASES: Record<string, ChecklistKey> = CHECKLIST_POINTS.reduce(
   (acc, point) => {
-    const normalizedLabel = normalizeHeader(point.label.replace(/^\d+\.\s*/, ''));
+    const normalizedLabel = normalizeHeader(point.label);
+    const normalizedLabelWithoutOrder = normalizeHeader(point.label.replace(/^\d+\.\s*/, ''));
     acc[normalizedLabel] = point.key;
+    acc[normalizedLabelWithoutOrder] = point.key;
+    if (normalizedLabelWithoutOrder === 'llamada a la accion') {
+      acc['llamada a la acción'] = point.key;
+    }
     return acc;
   },
   {} as Record<string, ChecklistKey>,
