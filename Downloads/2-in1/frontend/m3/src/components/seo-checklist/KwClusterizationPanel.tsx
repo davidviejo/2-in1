@@ -62,8 +62,24 @@ const getTopGscKeywords = (page: SeoPage): KwCandidate[] => {
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 
+const sanitizeRawUrl = (value: string) => value.trim().replace(/[|\s]+$/g, '');
+
+const normalizeUrlMatchKey = (value: string) => {
+  const cleaned = sanitizeRawUrl(value);
+  if (!cleaned) return '';
+  const withProtocol = /^https?:\/\//i.test(cleaned) ? cleaned : `https://${cleaned}`;
+  try {
+    const parsed = new URL(withProtocol);
+    const host = parsed.host.toLowerCase();
+    const pathname = (parsed.pathname || '/').replace(/\/+$/, '') || '/';
+    return `${host}${pathname.toLowerCase()}`;
+  } catch {
+    return cleaned.replace(/\/+$/, '').toLowerCase();
+  }
+};
+
 const normalizeUrlCandidate = (value: string) => {
-  const trimmed = value.trim();
+  const trimmed = sanitizeRawUrl(value);
   if (!trimmed) return '';
   try {
     const parsed = new URL(trimmed);
@@ -221,8 +237,8 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
     };
   }, [selectedKeywords, useDataforseoForClusterization]);
 
-  const loadFreshGscKeywords = async () => {
-    if (selectedPages.length === 0) {
+  const loadFreshGscKeywordsForPages = async (targetPages: SeoPage[], modeLabel: 'seleccionadas' | 'todas') => {
+    if (targetPages.length === 0) {
       setStatus('Selecciona al menos 1 URL para cargar keywords desde GSC.');
       return;
     }
@@ -254,9 +270,10 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
       });
 
       const selectedUrlVariants = new Map<string, string>();
-      selectedPages.forEach((page) => {
+      targetPages.forEach((page) => {
         buildUrlVariants(page.url).forEach((variant) => {
-          selectedUrlVariants.set(variant, page.url);
+          const variantKey = normalizeUrlMatchKey(variant);
+          if (variantKey) selectedUrlVariants.set(variantKey, page.url);
         });
       });
 
@@ -265,8 +282,8 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
         const pageUrl = String(row.keys?.[1] || row.page || '').trim();
         if (!query || !pageUrl) return;
 
-        const normalizedPageUrl = normalizeUrlCandidate(pageUrl);
-        const canonicalUrl = selectedUrlVariants.get(normalizedPageUrl);
+        const normalizedPageUrlKey = normalizeUrlMatchKey(pageUrl);
+        const canonicalUrl = selectedUrlVariants.get(normalizedPageUrlKey);
         if (!canonicalUrl) return;
 
         const list = rowsByUrl.get(canonicalUrl) || [];
@@ -283,17 +300,26 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
       setGscLoadProgress({
         active: true,
         processed: 0,
-        total: selectedPages.length,
+        total: targetPages.length,
         updated: 0,
         currentUrl: '',
         currentAttempt: '',
         logs: [],
       });
 
-      for (const [index, page] of selectedPages.entries()) {
-        const rows = (rowsByUrl.get(page.url) || [])
-          .filter((row) => row.query)
-          .sort((a, b) => b.clicks - a.clicks || b.impressions - a.impressions)
+      for (const [index, page] of targetPages.entries()) {
+        const dedupByKeyword = new Map<string, { query: string; clicks: number; impressions: number; ctr: number; position: number }>();
+        (rowsByUrl.get(page.url) || []).forEach((row) => {
+          if (!row.query) return;
+          const key = row.query.toLowerCase();
+          const current = dedupByKeyword.get(key);
+          if (!current || row.impressions > current.impressions || (row.impressions === current.impressions && row.clicks > current.clicks)) {
+            dedupByKeyword.set(key, row);
+          }
+        });
+
+        const rows = [...dedupByKeyword.values()]
+          .sort((a, b) => b.impressions - a.impressions || b.clicks - a.clicks)
           .slice(0, 50);
 
         if (rows.length === 0) {
@@ -332,7 +358,7 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
       }
 
       if (updates.length > 0) onBulkUpdate(updates);
-      setStatus(`Keywords GSC refrescadas para ${updated}/${selectedPages.length} URLs seleccionadas (hasta 50 por URL).`);
+      setStatus(`Keywords GSC refrescadas para ${updated}/${targetPages.length} URLs ${modeLabel} (hasta 50 por URL, sin duplicados por URL y priorizadas por impresiones).`);
     } catch (error) {
       console.error(error);
       setStatus('Error cargando keywords GSC por URL.');
@@ -340,6 +366,15 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
       setGscLoadProgress((prev) => ({ ...prev, active: false, currentAttempt: '' }));
       setLoading(false);
     }
+  };
+
+
+  const loadFreshGscKeywords = async () => loadFreshGscKeywordsForPages(selectedPages, 'seleccionadas');
+
+  const loadFreshGscKeywordsForAllUrls = async () => {
+    setSelectedPageIds(new Set(pages.map((page) => page.id)));
+    setSelectionConfirmed(false);
+    await loadFreshGscKeywordsForPages(pages, 'todas');
   };
 
   const handleGscDateRangeDaysChange = (value: string) => {
@@ -484,7 +519,7 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
           });
         });
       } else {
-        selectedPages.forEach((page) => {
+        targetPages.forEach((page) => {
           const clusters = page.checklist?.OPORTUNIDADES?.autoData?.clusters;
           if (!Array.isArray(clusters)) return;
           clusters.forEach((cluster: any) => {
@@ -659,6 +694,7 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
 
       <div className="flex gap-2">
         <Button onClick={loadFreshGscKeywords} disabled={loading || selectedPages.length === 0}>Cargar keywords GSC por URL</Button>
+        <Button onClick={loadFreshGscKeywordsForAllUrls} disabled={loading || pages.length === 0}>Cargar rendimiento (todas las URLs + KWs)</Button>
         <Button onClick={handleConfirmSelection}>OK</Button>
         <Button onClick={runClusterization} disabled={loading || !selectionConfirmed}>{loading ? 'Procesando...' : 'Iniciar clusterización KWs'}</Button>
       </div>
