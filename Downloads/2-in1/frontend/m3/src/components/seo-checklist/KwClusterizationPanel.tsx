@@ -245,6 +245,36 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
     });
   }, [kwCandidates, keywordFilter, urlFilter]);
 
+  const applyBulkPageSelection = (ids: string[], checked: boolean) => {
+    if (ids.length === 0) {
+      setStatus('No hay URLs que coincidan con el filtro actual.');
+      return;
+    }
+    const next = new Set(selectedPageIds);
+    ids.forEach((id) => {
+      if (checked) next.add(id);
+      else next.delete(id);
+    });
+    setSelectedPageIds(next);
+    setSelectionConfirmed(false);
+    setStatus(`${checked ? 'Seleccionadas' : 'Deseleccionadas'} ${ids.length} URLs del bloque filtrado.`);
+  };
+
+  const applyBulkKeywordSelection = (ids: string[], checked: boolean, context: string) => {
+    if (ids.length === 0) {
+      setStatus(`No hay keywords para ${checked ? 'seleccionar' : 'deseleccionar'} en ${context}.`);
+      return;
+    }
+    const next = new Set(selectedKeywordIds);
+    ids.forEach((id) => {
+      if (checked) next.add(id);
+      else next.delete(id);
+    });
+    setSelectedKeywordIds(next);
+    setSelectionConfirmed(false);
+    setStatus(`${checked ? 'Seleccionadas' : 'Deseleccionadas'} ${ids.length} keywords (${context}).`);
+  };
+
   const groupedResult = useMemo(() => {
     const map = new Map<string, KwCandidate[]>();
     kwCandidates.filter((kw) => selectedKeywordIds.has(kw.id)).forEach((kw) => {
@@ -728,6 +758,10 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
         <div className="rounded border p-3">
           <h3 className="font-semibold mb-2">URLs disponibles</h3>
           <input className="form-control mb-2" placeholder="Filtrar URLs" value={urlFilter} onChange={(e) => setUrlFilter(e.target.value)} />
+          <div className="mb-2 flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={() => applyBulkPageSelection(filteredPages.map((page) => page.id), true)}>Seleccionar filtradas</Button>
+            <Button variant="secondary" onClick={() => applyBulkPageSelection(filteredPages.map((page) => page.id), false)}>Deseleccionar filtradas</Button>
+          </div>
           <div className="max-h-72 overflow-auto">
             <div className="min-w-[780px]">
               <div className="grid grid-cols-[24px_1.8fr_0.9fr_0.9fr_0.7fr_0.9fr_1fr] gap-2 border-b bg-slate-50 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
@@ -768,6 +802,32 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
         <div className="rounded border p-3">
           <h3 className="font-semibold mb-2">Keywords disponibles (GSC + archivo)</h3>
           <input className="form-control mb-2" placeholder="Filtrar keywords" value={keywordFilter} onChange={(e) => setKeywordFilter(e.target.value)} />
+          <div className="mb-2 flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => applyBulkKeywordSelection(filteredKwCandidates.map((kw) => kw.id), true, 'filtro actual')}
+            >
+              Seleccionar filtradas
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => applyBulkKeywordSelection(filteredKwCandidates.map((kw) => kw.id), false, 'filtro actual')}
+            >
+              Deseleccionar filtradas
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => applyBulkKeywordSelection(
+                kwCandidates
+                  .filter((kw) => selectedPages.some((page) => page.url === kw.url))
+                  .map((kw) => kw.id),
+                true,
+                'URLs seleccionadas',
+              )}
+            >
+              Seleccionar por URLs marcadas
+            </Button>
+          </div>
           <div className="max-h-72 overflow-auto space-y-1">
             {filteredKwCandidates.map((kw) => (
               <label key={kw.id} className="flex gap-2 text-xs">
