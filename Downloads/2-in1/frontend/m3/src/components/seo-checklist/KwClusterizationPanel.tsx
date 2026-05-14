@@ -203,6 +203,14 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
     localStorage.setItem('mediaflow_gsc_selected_site', selectedGscProperty);
   }, [selectedGscProperty]);
 
+  useEffect(() => {
+    if (gscProperties.length === 0) return;
+    const currentExists = gscProperties.some((property) => property.siteUrl === selectedGscProperty);
+    if (!currentExists) {
+      setSelectedGscProperty(gscProperties[0].siteUrl || '');
+    }
+  }, [gscProperties, selectedGscProperty]);
+
   const selectedPages = useMemo(() => pages.filter((p) => selectedPageIds.has(p.id)), [pages, selectedPageIds]);
   const gscKwCandidates = useMemo(() => selectedPages.flatMap(getTopGscKeywords), [selectedPages]);
   const fileKwCandidates = useMemo(() => {
@@ -539,7 +547,7 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
           });
         });
       } else {
-        targetPages.forEach((page) => {
+        selectedPages.forEach((page) => {
           const clusters = page.checklist?.OPORTUNIDADES?.autoData?.clusters;
           if (!Array.isArray(clusters)) return;
           clusters.forEach((cluster: any) => {
@@ -729,8 +737,8 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
       </div>
 
       <div className="flex gap-2">
-        <Button onClick={loadFreshGscKeywords} disabled={loading || selectedPages.length === 0}>Subir datos GSC (solo Clusterización KWs)</Button>
-        <Button onClick={loadFreshGscKeywordsForAllUrls} disabled={loading || pages.length === 0}>Cargar rendimiento (todas las URLs + KWs)</Button>
+        <Button onClick={loadFreshGscKeywordsForAllUrls} disabled={loading || pages.length === 0}>Cargar datos de URLs (recomendado)</Button>
+        <Button onClick={loadFreshGscKeywords} disabled={loading || selectedPages.length === 0}>Subir datos GSC (solo URLs seleccionadas)</Button>
         <Button onClick={handleConfirmSelection}>OK</Button>
         <Button onClick={runClusterization} disabled={loading || !selectionConfirmed}>{loading ? 'Procesando...' : 'Iniciar clusterización KWs'}</Button>
       </div>
