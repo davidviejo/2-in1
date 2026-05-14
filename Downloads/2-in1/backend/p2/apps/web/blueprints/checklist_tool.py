@@ -17,7 +17,7 @@ Verifica imágenes, estructura de encabezados (H1-H3), enlaces internos, snippet
 import os
 from urllib.parse import urljoin, urlparse
 
-from flask import Blueprint, redirect, render_template, request
+from flask import Blueprint, redirect
 import requests
 from bs4 import BeautifulSoup
 import re
@@ -195,18 +195,8 @@ def check_url_compliance(url):
 
 @checklist_bp.route('/', strict_slashes=False)
 def index():
-    """
-    Pantalla legacy del checklist con enlace explícito al SPA canónico.
-
-    Soporta `?redirect=1` para mantener comportamiento de puente cuando
-    se necesite navegación automática.
-    """
-    should_redirect = request.args.get('redirect', '').lower() in {'1', 'true', 'yes'}
-    spa_url = resolve_checklist_spa_url()
-    if should_redirect:
-        return redirect(spa_url, code=302)
-
-    return render_template('checklist/dashboard.html', spa_url=spa_url)
+    """Endpoint legacy retirado: redirige siempre al checklist canónico (SPA)."""
+    return redirect(resolve_checklist_spa_url(), code=302)
 
 
 @checklist_bp.route('/spa')
