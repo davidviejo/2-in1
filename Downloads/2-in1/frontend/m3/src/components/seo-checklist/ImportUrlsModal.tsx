@@ -205,6 +205,20 @@ const parseImportHeaders = (parts: string[]): ParsedImportHeaders => {
   return { checklistColumnsByIndex, metadataColumnsByField };
 };
 
+const getMappedColumnIndex = (
+  parsedHeaders: ParsedImportHeaders | null,
+  field: keyof ParsedImportHeaders['metadataColumnsByField'],
+  fallbackIndex: number,
+): number => {
+  if (!parsedHeaders) return fallbackIndex;
+  return parsedHeaders.metadataColumnsByField.get(field) ?? -1;
+};
+
+const readColumnValue = (parts: string[], index: number, fallback = ''): string => {
+  if (index < 0) return fallback;
+  return parts[index] || fallback;
+};
+
 const buildSeenUrls = (pages: SeoPage[]): Set<string> => {
   const seen = new Set<string>();
   for (const page of pages) {
@@ -321,12 +335,12 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
             }
             seenImportedUrls.add(normalizedUrlKey);
 
-            const kwPrincipalIndex = parsedHeaders?.metadataColumnsByField.get('kwPrincipal') ?? (1 + metadataOffset);
-            const pageTypeIndex = parsedHeaders?.metadataColumnsByField.get('pageType') ?? (2 + metadataOffset);
-            const geoTargetIndex = parsedHeaders?.metadataColumnsByField.get('geoTarget') ?? (3 + metadataOffset);
-            const clusterIndex = parsedHeaders?.metadataColumnsByField.get('cluster') ?? (4 + metadataOffset);
+            const kwPrincipalIndex = getMappedColumnIndex(parsedHeaders, 'kwPrincipal', 1 + metadataOffset);
+            const pageTypeIndex = getMappedColumnIndex(parsedHeaders, 'pageType', 2 + metadataOffset);
+            const geoTargetIndex = getMappedColumnIndex(parsedHeaders, 'geoTarget', 3 + metadataOffset);
+            const clusterIndex = getMappedColumnIndex(parsedHeaders, 'cluster', 4 + metadataOffset);
 
-            const kwPrincipal = parts[kwPrincipalIndex] || '';
+            const kwPrincipal = readColumnValue(parts, kwPrincipalIndex);
             const isBrandKeyword = kwPrincipal ? isBrandTermMatch(kwPrincipal, brandTerms) : false;
 
             const checklist = createEmptyChecklist();
@@ -346,9 +360,9 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
               url: normalizedUrl,
               kwPrincipal: isBrandKeyword ? '' : kwPrincipal,
               isBrandKeyword,
-              pageType: parts[pageTypeIndex] || 'Article',
-              geoTarget: parts[geoTargetIndex] || '',
-              cluster: parts[clusterIndex] || '',
+              pageType: readColumnValue(parts, pageTypeIndex, 'Article'),
+              geoTarget: readColumnValue(parts, geoTargetIndex),
+              cluster: readColumnValue(parts, clusterIndex),
               checklist,
             });
           } catch (error) {
