@@ -161,11 +161,6 @@ const Layout: React.FC<LayoutProps> = ({
       return 'analitica';
     }
     if (
-      path.startsWith('/app')
-    ) {
-      return 'intelligence';
-    }
-    if (
       path.startsWith('/app/client-roadmap') ||
       path.startsWith('/app/ai-roadmap') ||
       path.startsWith('/app/ia-visibility') ||
@@ -176,7 +171,11 @@ const Layout: React.FC<LayoutProps> = ({
     if (path.startsWith('/app/settings')) {
       return 'ajustes';
     }
-    if (path.startsWith('/app/kanban') || path.startsWith('/app/gantt') || path.startsWith('/app/completed-tasks')) {
+    if (
+      path.startsWith('/app/kanban') ||
+      path.startsWith('/app/gantt') ||
+      path.startsWith('/app/completed-tasks')
+    ) {
       return 'acciones';
     }
     if (path.startsWith('/app/admin')) {
@@ -184,6 +183,9 @@ const Layout: React.FC<LayoutProps> = ({
     }
     if (path.startsWith('/app/tools-hub')) {
       return 'backend';
+    }
+    if (path.startsWith('/app')) {
+      return 'intelligence';
     }
     return 'analitica';
   }, [location.pathname]);
