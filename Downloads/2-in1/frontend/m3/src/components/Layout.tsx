@@ -284,13 +284,6 @@ const Layout: React.FC<LayoutProps> = ({
         return (
           <>
             <NavItem
-              to="/app/"
-              icon={<LayoutDashboard size={20} />}
-              label={t('nav.dashboard')}
-              subLabel={t('nav.dashboard_sub')}
-              onClick={() => setIsMobileMenuOpen(false)}
-            />
-            <NavItem
               to="/app/checklist"
               icon={<ListChecks size={20} />}
               label="Agrupación y Clusterización"
