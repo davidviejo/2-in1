@@ -4,7 +4,7 @@ import { SeoPage } from '@/types/seoChecklist';
 import { Button } from '@/components/ui/Button';
 import { listSites, querySearchAnalyticsPaged } from '@/services/googleSearchConsole';
 
-type Props = { pages: SeoPage[]; onBulkUpdate: (updates: Array<Partial<SeoPage> & { id: string }>) => void };
+type Props = { pages: SeoPage[]; onBulkUpdate: (updates: { id: string; changes: Partial<SeoPage> }[]) => void };
 
 type KwCandidate = { id: string; keyword: string; url: string; clicks: number; impressions: number; source: 'gsc' | 'file' };
 
@@ -283,7 +283,7 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
       const endDate = new Date().toISOString().slice(0, 10);
       const startDate = new Date(Date.now() - safeRangeDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       let updated = 0;
-      const updates = [] as Array<Partial<SeoPage> & { id: string }>;
+      const updates = [] as { id: string; changes: Partial<SeoPage> }[];
       const rowsByUrl = new Map<string, Array<{ query: string; clicks: number; impressions: number; ctr: number; position: number }>>();
 
       setStatus(`Cargando bloque único de queries GSC (query+page) para reducir peticiones por URL. Tramo: últimos ${safeRangeDays} días.`);
@@ -363,13 +363,15 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
 
         updates.push({
           id: page.id,
-          checklist: {
-            ...page.checklist,
-            OPORTUNIDADES: {
-              ...page.checklist.OPORTUNIDADES,
-              autoData: {
-                ...(page.checklist.OPORTUNIDADES?.autoData || {}),
-                gscQueries: rows,
+          changes: {
+            checklist: {
+              ...page.checklist,
+              OPORTUNIDADES: {
+                ...page.checklist.OPORTUNIDADES,
+                autoData: {
+                  ...(page.checklist.OPORTUNIDADES?.autoData || {}),
+                  gscQueries: rows,
+                },
               },
             },
           },
@@ -568,7 +570,7 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
         const cluster = selectedForPage
           .map((kw) => keywordClusterMap.get(kw.keyword.toLowerCase()))
           .find(Boolean) || page.cluster || '';
-        return { id: page.id, cluster };
+        return { id: page.id, changes: { cluster } };
       });
       onBulkUpdate(updates);
       const matched = selectedKeywords.filter((kw) => keywordClusterMap.has(kw.keyword.toLowerCase())).length;
