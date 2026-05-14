@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { CHECKLIST_STATUS_LABELS, SeoPage } from '@/types/seoChecklist';
+import { CHECKLIST_STATUS_LABELS, ChecklistStatus, SeoPage } from '@/types/seoChecklist';
 import { Button } from '@/components/ui/Button';
 import { listSites, querySearchAnalyticsPaged } from '@/services/googleSearchConsole';
 import { resolveEngineUrl } from '@/services/apiUrlHelper';
@@ -96,6 +96,14 @@ const buildUrlVariants = (value: string) => {
   if (!normalized) return [];
   if (normalized.endsWith('/')) return [normalized, normalized.slice(0, -1)].filter(Boolean);
   return [normalized, `${normalized}/`];
+};
+
+const resolvePoint12Status = (page: SeoPage): ChecklistStatus => {
+  const oportunidades = page.checklist?.OPORTUNIDADES;
+  if (!oportunidades) return 'NA';
+  if (oportunidades.status_manual && oportunidades.status_manual !== 'NA') return oportunidades.status_manual;
+  if (oportunidades.suggested_status) return oportunidades.suggested_status;
+  return oportunidades.status_manual || 'NA';
 };
 
 
@@ -712,7 +720,7 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
                 {filteredPages.map((page) => {
                   const metrics = page.gscMetrics;
                   const position = typeof metrics?.position === 'number' ? metrics.position.toFixed(1) : '-';
-                  const point12Status = page.checklist?.OPORTUNIDADES?.status_manual || 'NA';
+                  const point12Status = resolvePoint12Status(page);
                   return (
                     <label key={page.id} className="grid grid-cols-[24px_1.8fr_0.9fr_0.9fr_0.7fr_0.9fr_1fr] items-start gap-2 px-2 py-1 text-xs text-slate-700">
                       <input type="checkbox" checked={selectedPageIds.has(page.id)} onChange={(e) => {
