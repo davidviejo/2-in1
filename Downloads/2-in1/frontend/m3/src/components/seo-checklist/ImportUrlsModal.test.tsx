@@ -366,6 +366,7 @@ it('importa URLs aunque randomUUID no esté disponible', async () => {
     });
 
     const importedPage = onImport.mock.calls[0][0][0];
+    expect(importedPage.pageType).toBe('Article');
     expect(importedPage.checklist.CLUSTER.status_manual).toBe('SI');
     expect(importedPage.checklist.GEOLOCALIZACION.status_manual).toBe('PARCIAL');
     expect(importedPage.checklist.DATOS_ESTRUCTURADOS.status_manual).toBe('NO');
