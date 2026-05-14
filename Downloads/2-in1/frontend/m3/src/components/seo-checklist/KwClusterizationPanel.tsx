@@ -705,18 +705,38 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
         <div className="rounded border p-3">
           <h3 className="font-semibold mb-2">URLs disponibles</h3>
           <input className="form-control mb-2" placeholder="Filtrar URLs" value={urlFilter} onChange={(e) => setUrlFilter(e.target.value)} />
-          <div className="max-h-72 overflow-auto space-y-1">
-            {filteredPages.map((page) => (
-              <label key={page.id} className="flex gap-2 text-xs">
-                <input type="checkbox" checked={selectedPageIds.has(page.id)} onChange={(e) => {
-                  const next = new Set(selectedPageIds);
-                  e.target.checked ? next.add(page.id) : next.delete(page.id);
-                  setSelectedPageIds(next);
-                  setSelectionConfirmed(false);
-                }} />
-                <span>{page.url}</span>
-              </label>
-            ))}
+          <div className="max-h-72 overflow-auto">
+            <div className="min-w-[680px]">
+              <div className="grid grid-cols-[24px_1.8fr_0.9fr_0.7fr_0.9fr_1fr] gap-2 border-b bg-slate-50 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                <span />
+                <span>URL</span>
+                <span>Tipo</span>
+                <span className="text-right">Clics</span>
+                <span className="text-right">Impresiones</span>
+                <span className="text-right">Posición media</span>
+              </div>
+              <div className="divide-y">
+                {filteredPages.map((page) => {
+                  const metrics = page.gscMetrics;
+                  const position = typeof metrics?.position === 'number' ? metrics.position.toFixed(1) : '-';
+                  return (
+                    <label key={page.id} className="grid grid-cols-[24px_1.8fr_0.9fr_0.7fr_0.9fr_1fr] items-start gap-2 px-2 py-1 text-xs text-slate-700">
+                      <input type="checkbox" checked={selectedPageIds.has(page.id)} onChange={(e) => {
+                        const next = new Set(selectedPageIds);
+                        e.target.checked ? next.add(page.id) : next.delete(page.id);
+                        setSelectedPageIds(next);
+                        setSelectionConfirmed(false);
+                      }} />
+                      <span className="break-all">{page.url}</span>
+                      <span>{page.pageType || '-'}</span>
+                      <span className="text-right">{metrics?.clicks ?? 0}</span>
+                      <span className="text-right">{metrics?.impressions ?? 0}</span>
+                      <span className="text-right">{position}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
         <div className="rounded border p-3">
