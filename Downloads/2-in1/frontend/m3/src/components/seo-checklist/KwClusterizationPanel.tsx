@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { SeoPage } from '@/types/seoChecklist';
+import { CHECKLIST_STATUS_LABELS, SeoPage } from '@/types/seoChecklist';
 import { Button } from '@/components/ui/Button';
 import { listSites, querySearchAnalyticsPaged } from '@/services/googleSearchConsole';
 import { resolveEngineUrl } from '@/services/apiUrlHelper';
@@ -698,11 +698,12 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
           <h3 className="font-semibold mb-2">URLs disponibles</h3>
           <input className="form-control mb-2" placeholder="Filtrar URLs" value={urlFilter} onChange={(e) => setUrlFilter(e.target.value)} />
           <div className="max-h-72 overflow-auto">
-            <div className="min-w-[680px]">
-              <div className="grid grid-cols-[24px_1.8fr_0.9fr_0.7fr_0.9fr_1fr] gap-2 border-b bg-slate-50 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+            <div className="min-w-[780px]">
+              <div className="grid grid-cols-[24px_1.8fr_0.9fr_0.9fr_0.7fr_0.9fr_1fr] gap-2 border-b bg-slate-50 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
                 <span />
                 <span>URL</span>
                 <span>Tipo</span>
+                <span>Punto 12</span>
                 <span className="text-right">Clics</span>
                 <span className="text-right">Impresiones</span>
                 <span className="text-right">Posición media</span>
@@ -711,8 +712,9 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
                 {filteredPages.map((page) => {
                   const metrics = page.gscMetrics;
                   const position = typeof metrics?.position === 'number' ? metrics.position.toFixed(1) : '-';
+                  const point12Status = page.checklist?.OPORTUNIDADES?.status_manual || 'NA';
                   return (
-                    <label key={page.id} className="grid grid-cols-[24px_1.8fr_0.9fr_0.7fr_0.9fr_1fr] items-start gap-2 px-2 py-1 text-xs text-slate-700">
+                    <label key={page.id} className="grid grid-cols-[24px_1.8fr_0.9fr_0.9fr_0.7fr_0.9fr_1fr] items-start gap-2 px-2 py-1 text-xs text-slate-700">
                       <input type="checkbox" checked={selectedPageIds.has(page.id)} onChange={(e) => {
                         const next = new Set(selectedPageIds);
                         e.target.checked ? next.add(page.id) : next.delete(page.id);
@@ -721,6 +723,7 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
                       }} />
                       <span className="break-all">{page.url}</span>
                       <span>{page.pageType || '-'}</span>
+                      <span>{CHECKLIST_STATUS_LABELS[point12Status] || CHECKLIST_STATUS_LABELS.NA}</span>
                       <span className="text-right">{metrics?.clicks ?? 0}</span>
                       <span className="text-right">{metrics?.impressions ?? 0}</span>
                       <span className="text-right">{position}</span>
