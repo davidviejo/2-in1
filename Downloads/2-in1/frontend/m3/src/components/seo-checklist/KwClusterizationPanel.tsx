@@ -1,8 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { SeoPage } from '@/types/seoChecklist';
 import { Button } from '@/components/ui/Button';
-import { querySearchAnalyticsPaged } from '@/services/googleSearchConsole';
+import { listSites, querySearchAnalyticsPaged } from '@/services/googleSearchConsole';
 
 type Props = { pages: SeoPage[]; onBulkUpdate: (updates: Array<Partial<SeoPage> & { id: string }>) => void };
 
@@ -166,6 +166,9 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
   const [urlFilter, setUrlFilter] = useState('');
   const [keywordFilter, setKeywordFilter] = useState('');
   const [gscDateRangeDays, setGscDateRangeDays] = useState<number>(56);
+
+  const [gscProperties, setGscProperties] = useState<Array<{ siteUrl: string; permissionLevel?: string }>>([]);
+  const [selectedGscProperty, setSelectedGscProperty] = useState(() => (localStorage.getItem('mediaflow_gsc_selected_site') || '').trim());
   const [gscLoadProgress, setGscLoadProgress] = useState({
     active: false,
     processed: 0,
@@ -182,6 +185,23 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
     message: 'Aún no se ha iniciado la clusterización.',
     logs: [] as string[],
   });
+
+  useEffect(() => {
+    const token = localStorage.getItem('mediaflow_gsc_token');
+    if (!token) return;
+
+    listSites(token)
+      .then((sites) => setGscProperties(sites as Array<{ siteUrl: string; permissionLevel?: string }>))
+      .catch((error) => {
+        console.error(error);
+        setStatus('No se pudieron cargar propiedades GSC para clusterización KWs.');
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!selectedGscProperty) return;
+    localStorage.setItem('mediaflow_gsc_selected_site', selectedGscProperty);
+  }, [selectedGscProperty]);
 
   const selectedPages = useMemo(() => pages.filter((p) => selectedPageIds.has(p.id)), [pages, selectedPageIds]);
   const gscKwCandidates = useMemo(() => selectedPages.flatMap(getTopGscKeywords), [selectedPages]);
@@ -243,7 +263,7 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
       return;
     }
     const token = localStorage.getItem('mediaflow_gsc_token');
-    const siteUrl = (localStorage.getItem('mediaflow_gsc_selected_site') || '').trim();
+    const siteUrl = selectedGscProperty;
     if (!token || !siteUrl) {
       setStatus('Falta token o propiedad GSC activa. Conecta GSC en Dashboard y selecciona la propiedad.');
       return;
@@ -621,6 +641,22 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
           <label className="text-xs flex items-center gap-2"><input type="checkbox" checked={useDataforseoForClusterization} onChange={(e) => setUseDataforseoForClusterization(e.target.checked)} />Usar DataForSEO para clusterización KWs</label>
         </div>
         <div>
+          <label className="text-xs">Propiedad GSC (solo Clusterización KWs)</label>
+          <select
+            className="form-control"
+            value={selectedGscProperty}
+            onChange={(e) => setSelectedGscProperty(e.target.value)}
+          >
+            <option value="">Selecciona una propiedad</option>
+            {gscProperties.map((property) => (
+              <option key={property.siteUrl} value={property.siteUrl}>
+                {property.siteUrl}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
           <label className="text-xs">Tramo recopilación GSC (días)</label>
           <input
             type="number"
@@ -693,7 +729,7 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
       </div>
 
       <div className="flex gap-2">
-        <Button onClick={loadFreshGscKeywords} disabled={loading || selectedPages.length === 0}>Cargar keywords GSC por URL</Button>
+        <Button onClick={loadFreshGscKeywords} disabled={loading || selectedPages.length === 0}>Subir datos GSC (solo Clusterización KWs)</Button>
         <Button onClick={loadFreshGscKeywordsForAllUrls} disabled={loading || pages.length === 0}>Cargar rendimiento (todas las URLs + KWs)</Button>
         <Button onClick={handleConfirmSelection}>OK</Button>
         <Button onClick={runClusterization} disabled={loading || !selectionConfirmed}>{loading ? 'Procesando...' : 'Iniciar clusterización KWs'}</Button>
