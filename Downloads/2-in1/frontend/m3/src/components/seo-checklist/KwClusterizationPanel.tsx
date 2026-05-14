@@ -4,7 +4,7 @@ import { SeoPage } from '@/types/seoChecklist';
 import { Button } from '@/components/ui/Button';
 import { listSites, querySearchAnalyticsPaged } from '@/services/googleSearchConsole';
 
-type Props = { pages: SeoPage[]; onBulkUpdate: (updates: Array<Partial<SeoPage> & { id: string }>) => void };
+type Props = { pages: SeoPage[]; onBulkUpdate: (updates: { id: string; changes: Partial<SeoPage> }[]) => void };
 
 type KwCandidate = { id: string; keyword: string; url: string; clicks: number; impressions: number; source: 'gsc' | 'file' };
 
@@ -203,6 +203,14 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
     localStorage.setItem('mediaflow_gsc_selected_site', selectedGscProperty);
   }, [selectedGscProperty]);
 
+  useEffect(() => {
+    if (gscProperties.length === 0) return;
+    const currentExists = gscProperties.some((property) => property.siteUrl === selectedGscProperty);
+    if (!currentExists) {
+      setSelectedGscProperty(gscProperties[0].siteUrl || '');
+    }
+  }, [gscProperties, selectedGscProperty]);
+
   const selectedPages = useMemo(() => pages.filter((p) => selectedPageIds.has(p.id)), [pages, selectedPageIds]);
   const gscKwCandidates = useMemo(() => selectedPages.flatMap(getTopGscKeywords), [selectedPages]);
   const fileKwCandidates = useMemo(() => {
@@ -275,7 +283,7 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
       const endDate = new Date().toISOString().slice(0, 10);
       const startDate = new Date(Date.now() - safeRangeDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       let updated = 0;
-      const updates = [] as Array<Partial<SeoPage> & { id: string }>;
+      const updates = [] as { id: string; changes: Partial<SeoPage> }[];
       const rowsByUrl = new Map<string, Array<{ query: string; clicks: number; impressions: number; ctr: number; position: number }>>();
 
       setStatus(`Cargando bloque único de queries GSC (query+page) para reducir peticiones por URL. Tramo: últimos ${safeRangeDays} días.`);
@@ -355,13 +363,15 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
 
         updates.push({
           id: page.id,
-          checklist: {
-            ...page.checklist,
-            OPORTUNIDADES: {
-              ...page.checklist.OPORTUNIDADES,
-              autoData: {
-                ...(page.checklist.OPORTUNIDADES?.autoData || {}),
-                gscQueries: rows,
+          changes: {
+            checklist: {
+              ...page.checklist,
+              OPORTUNIDADES: {
+                ...page.checklist.OPORTUNIDADES,
+                autoData: {
+                  ...(page.checklist.OPORTUNIDADES?.autoData || {}),
+                  gscQueries: rows,
+                },
               },
             },
           },
@@ -539,7 +549,7 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
           });
         });
       } else {
-        targetPages.forEach((page) => {
+        selectedPages.forEach((page) => {
           const clusters = page.checklist?.OPORTUNIDADES?.autoData?.clusters;
           if (!Array.isArray(clusters)) return;
           clusters.forEach((cluster: any) => {
@@ -560,7 +570,7 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
         const cluster = selectedForPage
           .map((kw) => keywordClusterMap.get(kw.keyword.toLowerCase()))
           .find(Boolean) || page.cluster || '';
-        return { id: page.id, cluster };
+        return { id: page.id, changes: { cluster } };
       });
       onBulkUpdate(updates);
       const matched = selectedKeywords.filter((kw) => keywordClusterMap.has(kw.keyword.toLowerCase())).length;
@@ -729,8 +739,8 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
       </div>
 
       <div className="flex gap-2">
-        <Button onClick={loadFreshGscKeywords} disabled={loading || selectedPages.length === 0}>Subir datos GSC (solo Clusterización KWs)</Button>
-        <Button onClick={loadFreshGscKeywordsForAllUrls} disabled={loading || pages.length === 0}>Cargar rendimiento (todas las URLs + KWs)</Button>
+        <Button onClick={loadFreshGscKeywordsForAllUrls} disabled={loading || pages.length === 0}>Cargar datos de URLs (recomendado)</Button>
+        <Button onClick={loadFreshGscKeywords} disabled={loading || selectedPages.length === 0}>Subir datos GSC (solo URLs seleccionadas)</Button>
         <Button onClick={handleConfirmSelection}>OK</Button>
         <Button onClick={runClusterization} disabled={loading || !selectionConfirmed}>{loading ? 'Procesando...' : 'Iniciar clusterización KWs'}</Button>
       </div>
