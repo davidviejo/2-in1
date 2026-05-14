@@ -157,6 +157,7 @@ const METADATA_HEADER_ALIASES: Record<string, keyof ParsedImportHeaders['metadat
   'kw principal': 'kwPrincipal',
   keyword: 'kwPrincipal',
   'palabra clave': 'kwPrincipal',
+  'tipo': 'pageType',
   'tipo pagina': 'pageType',
   'tipo de pagina': 'pageType',
   'page type': 'pageType',
