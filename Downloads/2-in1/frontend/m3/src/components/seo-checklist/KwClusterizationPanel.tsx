@@ -169,6 +169,7 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
   const [urlFilter, setUrlFilter] = useState('');
   const [keywordFilter, setKeywordFilter] = useState('');
   const [gscDateRangeDays, setGscDateRangeDays] = useState<number>(56);
+  const [copyFeedback, setCopyFeedback] = useState('');
 
   const [gscProperties, setGscProperties] = useState<Array<{ siteUrl: string; permissionLevel?: string }>>([]);
   const [selectedGscProperty, setSelectedGscProperty] = useState(() => (localStorage.getItem('mediaflow_gsc_selected_site') || '').trim());
@@ -267,6 +268,28 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
       provider: useDataforseoForClusterization ? 'DataForSEO' : 'Desactivado',
     };
   }, [selectedKeywords, useDataforseoForClusterization]);
+
+  const selectedUrlsForExport = useMemo(() => selectedPages.map((page) => page.url).filter(Boolean), [selectedPages]);
+  const selectedKeywordsForExport = useMemo(
+    () => selectedKeywords.map((kw) => kw.keyword.trim()).filter(Boolean),
+    [selectedKeywords],
+  );
+
+  const copySelectionBlock = async (kind: 'urls' | 'keywords') => {
+    const lines = kind === 'urls' ? selectedUrlsForExport : selectedKeywordsForExport;
+    if (lines.length === 0) {
+      setStatus(`No hay ${kind === 'urls' ? 'URLs' : 'keywords'} seleccionadas para copiar.`);
+      return;
+    }
+    const payload = lines.join('\n');
+    try {
+      await navigator.clipboard.writeText(payload);
+      setCopyFeedback(`${kind === 'urls' ? 'URLs' : 'Keywords'} copiadas (${lines.length}).`);
+    } catch (error) {
+      console.error(error);
+      setStatus('No se pudo copiar al portapapeles. Revisa permisos del navegador.');
+    }
+  };
 
   const loadFreshGscKeywordsForPages = async (targetPages: SeoPage[], modeLabel: 'seleccionadas' | 'todas') => {
     if (targetPages.length === 0) {
@@ -789,6 +812,27 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
 
       <div className="rounded border p-3">
         <h3 className="font-semibold mb-2">Desglose rápido (keywords seleccionadas)</h3>
+        <div className="mb-3 grid gap-3 md:grid-cols-2">
+          <div className="rounded border border-slate-200 p-2">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold text-slate-700">URLs seleccionadas ({selectedUrlsForExport.length})</p>
+              <Button variant="secondary" onClick={() => copySelectionBlock('urls')} disabled={selectedUrlsForExport.length === 0}>Copiar URLs</Button>
+            </div>
+            <div className="max-h-28 overflow-auto rounded bg-slate-50 p-2 text-[11px] text-slate-700">
+              {selectedUrlsForExport.length === 0 ? <p>Sin URLs seleccionadas.</p> : selectedUrlsForExport.map((url) => <p key={url} className="break-all">{url}</p>)}
+            </div>
+          </div>
+          <div className="rounded border border-slate-200 p-2">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold text-slate-700">KWs seleccionadas ({selectedKeywordsForExport.length})</p>
+              <Button variant="secondary" onClick={() => copySelectionBlock('keywords')} disabled={selectedKeywordsForExport.length === 0}>Copiar KWs</Button>
+            </div>
+            <div className="max-h-28 overflow-auto rounded bg-slate-50 p-2 text-[11px] text-slate-700">
+              {selectedKeywordsForExport.length === 0 ? <p>Sin KWs seleccionadas.</p> : selectedKeywordsForExport.map((kw, idx) => <p key={`${kw}-${idx}`}>{kw}</p>)}
+            </div>
+          </div>
+        </div>
+        {copyFeedback && <p className="mb-2 text-xs text-emerald-700">{copyFeedback}</p>}
         {[...groupedResult.entries()].slice(0, 100).map(([keyword, items]) => (
           <div key={keyword} className="text-xs text-slate-700">{keyword} · {items.length} URL(s)</div>
         ))}
