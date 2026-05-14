@@ -505,7 +505,7 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
         if (dataforseoLogin) formData.append('dataforseo_login', dataforseoLogin);
         if (dataforseoPassword) formData.append('dataforseo_password', dataforseoPassword);
 
-        const startResponse = await fetch(`${backendBaseUrl}/seo/run`, { method: 'POST', body: formData });
+        const startResponse = await fetch(`${backendBaseUrl}/seo/start`, { method: 'POST', body: formData });
         const startPayload = await startResponse.json();
         if (!startResponse.ok || startPayload?.status !== 'ok') {
           throw new Error(startPayload?.message || 'No se pudo iniciar la clusterización backend');
