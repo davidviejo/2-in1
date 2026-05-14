@@ -112,7 +112,7 @@ interface LayoutProps {
   onDeleteNote?: (noteId: string, type: 'project' | 'general') => void;
 }
 
-type TabType = 'analitica' | 'intelligence' | 'estrategia' | 'acciones' | 'ajustes' | 'backend' | 'admin';
+type TabType = 'analitica' | 'estrategia' | 'acciones' | 'ajustes' | 'backend' | 'admin';
 
 const Layout: React.FC<LayoutProps> = ({
   children,
@@ -185,7 +185,7 @@ const Layout: React.FC<LayoutProps> = ({
       return 'backend';
     }
     if (path.startsWith('/app')) {
-      return 'intelligence';
+      return 'analitica';
     }
     return 'analitica';
   }, [location.pathname]);
@@ -226,9 +226,6 @@ const Layout: React.FC<LayoutProps> = ({
         break;
       case 'estrategia':
         navigate('/app/client-roadmap');
-        break;
-      case 'intelligence':
-        navigate('/app/');
         break;
       case 'acciones':
         navigate('/app/kanban');
@@ -284,6 +281,13 @@ const Layout: React.FC<LayoutProps> = ({
         return (
           <>
             <NavItem
+              to="/app/"
+              icon={<LayoutDashboard size={20} />}
+              label="Panel de Control"
+              subLabel="Vista principal de analítica"
+              onClick={() => setIsMobileMenuOpen(false)}
+            />
+            <NavItem
               to="/app/checklist"
               icon={<ListChecks size={20} />}
               label="Agrupación y Clusterización"
@@ -302,18 +306,6 @@ const Layout: React.FC<LayoutProps> = ({
               icon={<Globe size={20} />}
               label="Impacto GSC · Portfolio"
               subLabel="Vista global multi-site"
-              onClick={() => setIsMobileMenuOpen(false)}
-            />
-          </>
-        );
-      case 'intelligence':
-        return (
-          <>
-            <NavItem
-              to="/app/"
-              icon={<LayoutDashboard size={20} />}
-              label="Panel de Control"
-              subLabel="Vista principal de analítica"
               onClick={() => setIsMobileMenuOpen(false)}
             />
           </>
@@ -435,7 +427,7 @@ const Layout: React.FC<LayoutProps> = ({
 
           {/* Tabs */}
           <nav className="hidden lg:flex items-center space-x-1">
-            {(['intelligence', 'analitica', 'estrategia', 'acciones'] as TabType[]).map((tab) => {
+            {(['analitica', 'estrategia', 'acciones'] as TabType[]).map((tab) => {
               let toPath = '/app/';
               if (tab === 'estrategia') toPath = '/app/client-roadmap';
               if (tab === 'acciones') toPath = '/app/kanban';
@@ -454,7 +446,7 @@ const Layout: React.FC<LayoutProps> = ({
                       : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'
                   }`}
                 >
-                  {tab === 'analitica' ? 'Analítica' : tab === 'intelligence' ? 'Intelligence' : tab}
+                  {tab === 'analitica' ? 'Analítica' : tab}
                 </NavLink>
               );
             })}
@@ -541,11 +533,10 @@ const Layout: React.FC<LayoutProps> = ({
 
             {/* Mobile Tabs */}
             <div className="grid grid-cols-2 gap-2 mb-4">
-              {(['intelligence', 'analitica', 'estrategia', 'acciones'] as TabType[]).map(
+              {(['analitica', 'estrategia', 'acciones'] as TabType[]).map(
                 (tab) => {
                   let toPath = '/app/';
                   if (tab === 'estrategia') toPath = '/app/client-roadmap';
-                  if (tab === 'intelligence') toPath = '/app/';
                   if (tab === 'acciones') toPath = '/app/kanban';
 
                   return (
@@ -563,7 +554,7 @@ const Layout: React.FC<LayoutProps> = ({
                           : 'text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50'
                       }`}
                     >
-                      {tab === 'analitica' ? 'Analítica' : tab === 'intelligence' ? 'Intelligence' : tab}
+                      {tab === 'analitica' ? 'Analítica' : tab}
                     </NavLink>
                   );
                 },
