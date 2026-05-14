@@ -428,12 +428,24 @@ form.addEventListener('submit', e => {
                 poll();
             } else if (d.status === 'busy') {
                 showAlert('Ya hay un proceso en marcha. Espera a que termine antes de lanzar otro.');
+                startBtn.disabled = false;
+                startBtn.innerText = 'INICIAR';
+                document.getElementById('configPanel').style.display='block';
+                document.getElementById('progressPanel').style.display='none';
             } else {
                 showAlert(d.message || 'Error inesperado al iniciar el proceso.');
+                startBtn.disabled = false;
+                startBtn.innerText = 'INICIAR';
+                document.getElementById('configPanel').style.display='block';
+                document.getElementById('progressPanel').style.display='none';
             }
         })
         .catch(()=>{
             showAlert('No se ha podido conectar con el servidor.');
+            startBtn.disabled = false;
+            startBtn.innerText = 'INICIAR';
+            document.getElementById('configPanel').style.display='block';
+            document.getElementById('progressPanel').style.display='none';
         });
 });
 
@@ -470,6 +482,22 @@ function poll(){
                     render(d.results || []); 
                     document.getElementById('progressPanel').style.display='none'; 
                     document.getElementById('resultsPanel').style.display='block'; 
+                    startBtn.disabled = false;
+                    startBtn.innerText = 'INICIAR';
+                    const hasResults = Array.isArray(d.results) && d.results.length > 0;
+                    if (!hasResults) {
+                        const diagnosticKeywords = (d.diagnostics && d.diagnostics.keywords) || {};
+                        const failures = Object.entries(diagnosticKeywords);
+                        if (failures.length > 0) {
+                            const sample = failures
+                                .slice(0, 5)
+                                .map(([kw, reason]) => `${kw}: ${reason}`)
+                                .join(' | ');
+                            showAlert(`No se generaron clusters válidos. Revisa motor/cookie/credenciales. Diagnóstico: ${sample}`);
+                        } else {
+                            showAlert('No se generaron clusters válidos para las keywords enviadas. Prueba con otro motor o reduce filtros.');
+                        }
+                    }
                 }
             })
             .catch(()=>{
