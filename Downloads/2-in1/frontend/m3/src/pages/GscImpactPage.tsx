@@ -41,6 +41,8 @@ import {
   mapAndFilterUrlImpactRows,
 } from '@/features/gsc-impact/segmentation/pipeline';
 import { useProject } from '@/context/ProjectContext';
+import { useSeoChecklist } from '@/hooks/useSeoChecklist';
+import { enrichGscOpportunitiesWithUrlChecklist } from '@/utils/seoOpportunityEnrichment';
 import {
   buildDefaultRanges,
   buildPeriodRangesFromParams,
@@ -995,6 +997,9 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode, standalon
     [filteredUrlRows, filters.minClicks, filters.minImpressions],
   );
 
+  const { pages: seoChecklistPages } = useSeoChecklist();
+  const enrichedUrlRows = useMemo(() => enrichGscOpportunitiesWithUrlChecklist(scoredUrlRows, seoChecklistPages), [scoredUrlRows, seoChecklistPages]);
+
   const topQueryWinners = useMemo(
     () => [...scoredQueryRows].sort((a, b) => b.opportunityScore - a.opportunityScore).slice(0, displayLimit),
     [displayLimit, scoredQueryRows],
@@ -1004,19 +1009,19 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode, standalon
     [displayLimit, scoredQueryRows],
   );
   const topUrlWinners = useMemo(
-    () => [...scoredUrlRows].sort((a, b) => b.opportunityScore - a.opportunityScore).slice(0, displayLimit),
-    [displayLimit, scoredUrlRows],
+    () => [...enrichedUrlRows].sort((a, b) => b.opportunityScore - a.opportunityScore).slice(0, displayLimit),
+    [displayLimit, enrichedUrlRows],
   );
   const topUrlLosers = useMemo(
-    () => [...scoredUrlRows].sort((a, b) => b.impactScore - a.impactScore).slice(0, displayLimit),
-    [displayLimit, scoredUrlRows],
+    () => [...enrichedUrlRows].sort((a, b) => b.impactScore - a.impactScore).slice(0, displayLimit),
+    [displayLimit, enrichedUrlRows],
   );
   const topCtrDeterioration = useMemo(
-    () => [...scoredUrlRows].sort((a, b) => b.ctrDeteriorationScore - a.ctrDeteriorationScore).slice(0, displayLimit),
-    [displayLimit, scoredUrlRows],
+    () => [...enrichedUrlRows].sort((a, b) => b.ctrDeteriorationScore - a.ctrDeteriorationScore).slice(0, displayLimit),
+    [displayLimit, enrichedUrlRows],
   );
   const isQuerySampled = scoredQueryRows.length > displayLimit;
-  const isUrlSampled = scoredUrlRows.length > displayLimit;
+  const isUrlSampled = enrichedUrlRows.length > displayLimit;
 
   const affectedUrlCandidates = useMemo(
     () =>
@@ -1410,13 +1415,13 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode, standalon
         rollout_end: ranges.rollout.end,
         post_start: ranges.post.start,
         post_end: ranges.post.end,
-        total_urls_analyzed: scoredUrlRows.length,
+        total_urls_analyzed: enrichedUrlRows.length,
         total_queries_analyzed: scoredQueryRows.length,
       },
     ];
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), 'Resumen');
 
-    const urlRows = scoredUrlRows.map((row) => ({
+    const urlRows = enrichedUrlRows.map((row) => ({
       url: row.key,
       template: row.template || 'Sin template',
       pre_clicks: row.preClicks,
@@ -1442,6 +1447,17 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode, standalon
       source: row.source,
       rule_id: row.ruleId,
       rule_type: row.ruleType,
+
+      cluster: row.cluster || 'No disponible',
+      target_keyword: row.targetKeyword || 'No disponible',
+      url_type: row.urlType || 'No disponible',
+      checklist_progress_percent: row.checklistProgressPercent ?? 'No disponible',
+      checklist_completed_count: row.checklistCompletedCount ?? 0,
+      checklist_total_count: row.checklistTotalCount ?? 0,
+      pending_checklist_blocks: (row.pendingChecklistBlocks || []).join(' | ') || 'No disponible',
+      seo_priority_score: row.seoPriorityScore ?? 0,
+      seo_priority_label: row.seoPriorityLabel || 'No disponible',
+      opportunity_type_label: row.opportunityTypeLabel || 'No disponible',
     }));
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(urlRows), 'URLs');
 
@@ -1470,6 +1486,17 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode, standalon
       source: row.source,
       rule_id: row.ruleId,
       rule_type: row.ruleType,
+
+      cluster: row.cluster || 'No disponible',
+      target_keyword: row.targetKeyword || 'No disponible',
+      url_type: row.urlType || 'No disponible',
+      checklist_progress_percent: row.checklistProgressPercent ?? 'No disponible',
+      checklist_completed_count: row.checklistCompletedCount ?? 0,
+      checklist_total_count: row.checklistTotalCount ?? 0,
+      pending_checklist_blocks: (row.pendingChecklistBlocks || []).join(' | ') || 'No disponible',
+      seo_priority_score: row.seoPriorityScore ?? 0,
+      seo_priority_label: row.seoPriorityLabel || 'No disponible',
+      opportunity_type_label: row.opportunityTypeLabel || 'No disponible',
     }));
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(queryRows), 'Queries');
 
@@ -2931,7 +2958,7 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode, standalon
                       <Badge variant={getSourceBadgeVariant(row.source)}>{getSourceLabel(row)}</Badge>
                     </div>
                     <p className="text-muted">
-                      Δ clicks {row.deltaClicks.toFixed(0)} · Δ CTR {(row.deltaCtr * 100).toFixed(2)}pp · score {row.opportunityScore}
+                      Δ clicks {row.deltaClicks.toFixed(0)} · Δ CTR {(row.deltaCtr * 100).toFixed(2)}pp · score {row.opportunityScore} · checklist {row.checklistProgressPercent ?? 'N/D'}% · {row.opportunityTypeLabel}
                     </p>
                   </div>
                 ))}
@@ -2952,7 +2979,7 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode, standalon
                       <Badge variant={getSourceBadgeVariant(row.source)}>{getSourceLabel(row)}</Badge>
                     </div>
                     <p className="text-muted">
-                      Δ clicks {row.deltaClicks.toFixed(0)} · Δ CTR {(row.deltaCtr * 100).toFixed(2)}pp · score impacto {row.impactScore}
+                      Δ clicks {row.deltaClicks.toFixed(0)} · Δ CTR {(row.deltaCtr * 100).toFixed(2)}pp · score impacto {row.impactScore} · prioridad {row.seoPriorityLabel || 'N/D'}
                     </p>
                   </div>
                 ))}
@@ -2962,7 +2989,7 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode, standalon
             <Card className="p-5">
               <h3 className="text-lg font-semibold">Mayor crecimiento por URL</h3>
               <p className="mt-1 text-xs text-muted">
-                Mostrando {topUrlWinners.length} de {scoredUrlRows.length} URLs analizadas
+                Mostrando {topUrlWinners.length} de {enrichedUrlRows.length} URLs analizadas
                 {isUrlSampled ? ` (límite ${displayLimit})` : ''}.
               </p>
               <div className="mt-3 space-y-2">
@@ -2973,7 +3000,7 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode, standalon
                       <Badge variant={getSourceBadgeVariant(row.source)}>{getSourceLabel(row)}</Badge>
                     </div>
                     <p className="text-muted">
-                      Δ clicks {row.deltaClicks.toFixed(0)} · Δ CTR {(row.deltaCtr * 100).toFixed(2)}pp · score {row.opportunityScore}
+                      Δ clicks {row.deltaClicks.toFixed(0)} · Δ CTR {(row.deltaCtr * 100).toFixed(2)}pp · score {row.opportunityScore} · checklist {row.checklistProgressPercent ?? 'N/D'}% · {row.opportunityTypeLabel}
                     </p>
                   </div>
                 ))}
@@ -2983,7 +3010,7 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode, standalon
             <Card className="p-5">
               <h3 className="text-lg font-semibold">Mayor caída por URL</h3>
               <p className="mt-1 text-xs text-muted">
-                Mostrando {topUrlLosers.length} de {scoredUrlRows.length} URLs analizadas
+                Mostrando {topUrlLosers.length} de {enrichedUrlRows.length} URLs analizadas
                 {isUrlSampled ? ` (límite ${displayLimit})` : ''}.
               </p>
               <div className="mt-3 space-y-2">
@@ -2994,7 +3021,7 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode, standalon
                       <Badge variant={getSourceBadgeVariant(row.source)}>{getSourceLabel(row)}</Badge>
                     </div>
                     <p className="text-muted">
-                      Δ clicks {row.deltaClicks.toFixed(0)} · Δ CTR {(row.deltaCtr * 100).toFixed(2)}pp · score impacto {row.impactScore}
+                      Δ clicks {row.deltaClicks.toFixed(0)} · Δ CTR {(row.deltaCtr * 100).toFixed(2)}pp · score impacto {row.impactScore} · prioridad {row.seoPriorityLabel || 'N/D'}
                     </p>
                   </div>
                 ))}
@@ -3005,7 +3032,7 @@ const GscImpactPage: React.FC<GscImpactPageProps> = ({ lockedViewMode, standalon
           <section className="surface-panel p-6">
             <h3 className="text-lg font-semibold">Mayor deterioro de CTR (URLs)</h3>
             <p className="mt-1 text-xs text-muted">
-              Mostrando {topCtrDeterioration.length} de {scoredUrlRows.length} URLs analizadas
+              Mostrando {topCtrDeterioration.length} de {enrichedUrlRows.length} URLs analizadas
               {isUrlSampled ? ` (límite ${displayLimit})` : ''}.
             </p>
             <div className="mt-3 space-y-2">
