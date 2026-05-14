@@ -62,8 +62,24 @@ const getTopGscKeywords = (page: SeoPage): KwCandidate[] => {
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 
+const sanitizeRawUrl = (value: string) => value.trim().replace(/[|\s]+$/g, '');
+
+const normalizeUrlMatchKey = (value: string) => {
+  const cleaned = sanitizeRawUrl(value);
+  if (!cleaned) return '';
+  const withProtocol = /^https?:\/\//i.test(cleaned) ? cleaned : `https://${cleaned}`;
+  try {
+    const parsed = new URL(withProtocol);
+    const host = parsed.host.toLowerCase();
+    const pathname = (parsed.pathname || '/').replace(/\/+$/, '') || '/';
+    return `${host}${pathname.toLowerCase()}`;
+  } catch {
+    return cleaned.replace(/\/+$/, '').toLowerCase();
+  }
+};
+
 const normalizeUrlCandidate = (value: string) => {
-  const trimmed = value.trim();
+  const trimmed = sanitizeRawUrl(value);
   if (!trimmed) return '';
   try {
     const parsed = new URL(trimmed);
@@ -256,7 +272,8 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
       const selectedUrlVariants = new Map<string, string>();
       targetPages.forEach((page) => {
         buildUrlVariants(page.url).forEach((variant) => {
-          selectedUrlVariants.set(variant, page.url);
+          const variantKey = normalizeUrlMatchKey(variant);
+          if (variantKey) selectedUrlVariants.set(variantKey, page.url);
         });
       });
 
@@ -265,8 +282,8 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
         const pageUrl = String(row.keys?.[1] || row.page || '').trim();
         if (!query || !pageUrl) return;
 
-        const normalizedPageUrl = normalizeUrlCandidate(pageUrl);
-        const canonicalUrl = selectedUrlVariants.get(normalizedPageUrl);
+        const normalizedPageUrlKey = normalizeUrlMatchKey(pageUrl);
+        const canonicalUrl = selectedUrlVariants.get(normalizedPageUrlKey);
         if (!canonicalUrl) return;
 
         const list = rowsByUrl.get(canonicalUrl) || [];
