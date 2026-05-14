@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { SeoPage } from '@/types/seoChecklist';
 import { Button } from '@/components/ui/Button';
 import { listSites, querySearchAnalyticsPaged } from '@/services/googleSearchConsole';
+import { resolveEngineUrl } from '@/services/apiUrlHelper';
 
 type Props = { pages: SeoPage[]; onBulkUpdate: (updates: { id: string; changes: Partial<SeoPage> }[]) => void };
 
@@ -95,12 +96,6 @@ const buildUrlVariants = (value: string) => {
   if (!normalized) return [];
   if (normalized.endsWith('/')) return [normalized, normalized.slice(0, -1)].filter(Boolean);
   return [normalized, `${normalized}/`];
-};
-
-const getClusterizationBackendBaseUrl = () => {
-  const configured = String(import.meta.env.VITE_PYTHON_ENGINE_URL || import.meta.env.VITE_API_URL || '').trim();
-  if (!configured) return '';
-  return configured.endsWith('/') ? configured.slice(0, -1) : configured;
 };
 
 
@@ -484,10 +479,7 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
       const keywordClusterMap = new Map<string, string>();
 
       if (useDataforseoForClusterization) {
-        const backendBaseUrl = getClusterizationBackendBaseUrl();
-        if (!backendBaseUrl) {
-          throw new Error('Configura VITE_PYTHON_ENGINE_URL o VITE_API_URL para ejecutar la clusterización backend.');
-        }
+        const backendBaseUrl = resolveEngineUrl();
 
         setClusterProgress({
           active: true,
