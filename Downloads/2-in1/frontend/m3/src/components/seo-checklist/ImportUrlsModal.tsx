@@ -54,10 +54,14 @@ const isValidUrl = (rawUrl: string): boolean => {
 const isHeaderLikeRow = (parts: string[]): boolean => {
   if (parts.length === 0) return false;
 
-  const normalized = parts.map((part) => part.trim().toLowerCase());
+  const normalized = parts.map((part) => normalizeHeader(part));
   const hasUrlHeader = normalized.some((part) => part === 'url');
   const hasKeywordHeader = normalized.some(
-    (part) => part.includes('keyword') || part.includes('palabra clave'),
+    (part) =>
+      part.includes('keyword') ||
+      part.includes('palabra clave') ||
+      part.includes('kw principal') ||
+      part.includes('keyword principal'),
   );
 
   return hasUrlHeader && hasKeywordHeader;
