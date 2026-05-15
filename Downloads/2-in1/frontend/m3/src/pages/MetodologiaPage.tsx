@@ -21,8 +21,8 @@ import {
   Copy,
   ChevronDown,
 } from 'lucide-react';
-import Button from '@/components/ui/Button';
-import Badge from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
 
 const kpis = [
   { label: 'módulos', value: '8', subtitle: 'Estructura definida', icon: Layers },
