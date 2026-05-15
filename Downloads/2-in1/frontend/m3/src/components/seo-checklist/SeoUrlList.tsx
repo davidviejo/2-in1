@@ -267,6 +267,25 @@ export const SeoUrlList: React.FC<Props> = ({
     );
   }, [filteredPages]);
 
+  const clusterProgressByName = useMemo(() => {
+    const grouped = new Map<string, { totalProgress: number; count: number }>();
+
+    pages.forEach((page) => {
+      const cluster = page.cluster?.trim();
+      if (!cluster) return;
+      const progress = calculateStatusMetrics(page).progress;
+      const current = grouped.get(cluster) || { totalProgress: 0, count: 0 };
+      current.totalProgress += progress;
+      current.count += 1;
+      grouped.set(cluster, current);
+    });
+
+    return Array.from(grouped.entries()).reduce((acc, [cluster, values]) => {
+      acc[cluster] = values.count > 0 ? Math.round(values.totalProgress / values.count) : 0;
+      return acc;
+    }, {} as Record<string, number>);
+  }, [pages]);
+
   const hasClusterOnlyFilter = useMemo(() => {
     const normalizedFilter = filter.trim().toLowerCase();
     if (!normalizedFilter) return false;
@@ -339,14 +358,13 @@ const sanitizeFileNameChunk = (value: string) =>
     .trim()
     .replace(/[\\/:*?"<>|]/g, '')
     .replace(/\s+/g, '_');
-
-  const calculateStatusMetrics = (page: SeoPage) => {
+  function calculateStatusMetrics(page: SeoPage) {
     const items = Object.values(page.checklist) as ChecklistItem[];
     const siCount = items.filter((i) => i.status_manual === 'SI').length;
     const siIaCount = items.filter((i) => i.status_manual === 'SI_IA').length;
     const progress = Math.round((siCount / items.length) * 100);
     return { progress, siIaCount };
-  };
+  }
 
   const handleExport = async () => {
     const exportProjectName = sanitizeFileNameChunk(currentClient?.name || 'Proyecto');
@@ -1533,7 +1551,7 @@ const sanitizeFileNameChunk = (value: string) =>
                       {page.cluster && (
                         <div className="text-xs text-slate-400 mt-1 flex items-center gap-1">
                           <Layers size={10} />
-                          {page.cluster}
+                          {page.cluster} · {clusterProgressByName[page.cluster] ?? 0}%
                         </div>
                       )}
                     </td>
