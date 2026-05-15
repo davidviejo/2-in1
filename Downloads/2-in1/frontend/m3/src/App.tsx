@@ -25,6 +25,7 @@ const AdminIdeasPage = lazy(() => import('./pages/admin/AdminIdeasPage'));
 const TrendsMediaPage = lazy(() => import('./pages/TrendsMediaPage'));
 const ToolsHub = lazy(() => import('./pages/ToolsHub'));
 const GanttBoard = lazy(() => import('./pages/GanttBoard'));
+const MetodologiaPage = lazy(() => import('./pages/MetodologiaPage'));
 
 const LandingPage = lazy(() => import('./pages/portal/LandingPage'));
 const ClientsLogin = lazy(() => import('./pages/portal/ClientsLogin'));
@@ -188,6 +189,7 @@ const AppRoutes: React.FC = () => {
         },
         { path: 'kanban', element: <KanbanBoard /> },
         { path: 'gantt', element: <GanttBoard /> },
+        { path: 'metodologia', element: <MetodologiaPage /> },
         { path: 'checklist', element: <SeoChecklistPage /> },
         { path: 'ai-roadmap', element: <AIRoadmap /> },
         { path: 'ia-visibility', element: <Navigate to='/app/ai-roadmap' replace /> },
