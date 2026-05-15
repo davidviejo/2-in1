@@ -40,7 +40,79 @@ import { InternalShell } from './shell/ShellVariants';
 import ConfirmDialog from './ui/ConfirmDialog';
 import { useToast } from './ui/ToastContext';
 import { NOTE_CONTEXT_EVENT, NoteContextRequest } from '@/utils/noteEvents';
+import HowItWorksPanel from './HowItWorksPanel';
 
+
+
+const HOW_IT_WORKS_CONTENT: Array<{
+  match: (path: string) => boolean;
+  title: string;
+  steps: string[];
+}> = [
+  {
+    match: (path) => path === '/app' || path === '/app/',
+    title: 'Obtén una lectura rápida del estado SEO del proyecto y prioriza acciones inmediatas.',
+    steps: [
+      'Revisa el score global y los módulos con menor rendimiento para detectar prioridades.',
+      'Entra a cada bloque para validar tareas activas, impacto estimado y contexto del cliente.',
+      'Usa los indicadores para decidir qué mover al roadmap o al tablero de ejecución.'
+    ]
+  },
+  {
+    match: (path) => path.startsWith('/app/module'),
+    title: 'Trabaja un módulo SEO en profundidad con foco en ejecución y seguimiento.',
+    steps: [
+      'Analiza el estado del módulo y sus tareas sugeridas.',
+      'Marca, crea o ajusta tareas en función del progreso real del proyecto.',
+      'Añade notas e impacto para que el equipo tenga trazabilidad antes de comunicar al cliente.'
+    ]
+  },
+  {
+    match: (path) => path.startsWith('/app/client-roadmap'),
+    title: 'Construye una hoja de ruta priorizada para el cliente.',
+    steps: [
+      'Ordena los entregables por impacto y urgencia de negocio.',
+      'Activa o desactiva ítems del roadmap según alcance y recursos disponibles.',
+      'Comparte una narrativa clara de próximos hitos y dependencias.'
+    ]
+  },
+  {
+    match: (path) => path.startsWith('/app/kanban') || path.startsWith('/app/gantt') || path.startsWith('/app/completed-tasks'),
+    title: 'Gestiona la ejecución diaria y la visibilidad de avance.',
+    steps: [
+      'Organiza tareas por estado, prioridad y fechas comprometidas.',
+      'Actualiza bloqueos y responsables para evitar cuellos de botella.',
+      'Registra lo completado para mantener histórico de impacto.'
+    ]
+  },
+  {
+    match: (path) => path.startsWith('/app/checklist') || path.startsWith('/app/trends-media') || path.startsWith('/app/gsc-impact'),
+    title: 'Ejecuta análisis y diagnósticos SEO asistidos por datos.',
+    steps: [
+      'Configura los parámetros de análisis según mercado, idioma y objetivo.',
+      'Lanza el proceso y revisa resultados en bloques accionables.',
+      'Convierte insights en tareas priorizadas dentro del flujo operativo.'
+    ]
+  },
+  {
+    match: (path) => path.startsWith('/app/ai-roadmap'),
+    title: 'Genera un plan estratégico asistido por IA.',
+    steps: [
+      'Define contexto del proyecto y objetivos de negocio.',
+      'Solicita propuestas de acciones, estimaciones y secuencia de implementación.',
+      'Refina las recomendaciones antes de pasarlas al roadmap operativo.'
+    ]
+  },
+  {
+    match: (path) => path.startsWith('/app/tools-hub') || path.startsWith('/app/settings') || path.startsWith('/app/admin'),
+    title: 'Configura herramientas, políticas y gobierno del entorno.',
+    steps: [
+      'Revisa integraciones, parámetros y accesos disponibles.',
+      'Ajusta opciones del workspace según necesidades del equipo.',
+      'Valida cambios para mantener consistencia técnica y operativa.'
+    ]
+  }
+];
 interface NavItemProps {
   to: string;
   icon: React.ReactNode;
@@ -147,6 +219,8 @@ const Layout: React.FC<LayoutProps> = ({
   const [isNotesOpen, setIsNotesOpen] = useState(false);
   const [isConfigMenuOpen, setIsConfigMenuOpen] = useState(false);
   const [noteContext, setNoteContext] = useState<NoteContextRequest | null>(null);
+  const howItWorksConfig = useMemo(() => HOW_IT_WORKS_CONTENT.find((item) => item.match(location.pathname)), [location.pathname]);
+
   const activeTab = useMemo<TabType>(() => {
     const path = location.pathname;
     if (
@@ -657,7 +731,10 @@ const Layout: React.FC<LayoutProps> = ({
 
       {/* Main Content */}
       <main className="flex-1 overflow-auto bg-slate-50/50 dark:bg-slate-900/50 w-full relative">
-        <div className="max-w-7xl mx-auto p-4 lg:p-8">{children}</div>
+        <div className="max-w-7xl mx-auto p-4 lg:p-8">
+          {howItWorksConfig && <HowItWorksPanel title={howItWorksConfig.title} steps={howItWorksConfig.steps} />}
+          {children}
+        </div>
 
         {/* Shortcuts Modal (Simple) */}
         {showShortcuts && (
