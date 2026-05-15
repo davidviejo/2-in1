@@ -79,7 +79,7 @@ const MetodologiaPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 text-slate-800">
+    <div className="space-y-6 overflow-x-hidden text-slate-800">
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -137,13 +137,13 @@ const MetodologiaPage: React.FC = () => {
 
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">Cómo aplicamos la metodología</h2>
-            <div className="mt-5 overflow-x-auto pb-2">
-              <div className="flex min-w-[1120px] items-start gap-4">
+            <div className="mt-5">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {phases.map((phase, idx) => {
                   const Icon = phase.icon;
                   return (
-                    <div key={phase.title} className="relative w-64 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                      {idx < phases.length - 1 && <div className="absolute right-[-16px] top-8 h-[2px] w-4 border-t-2 border-dashed border-blue-300" />}
+                    <div key={phase.title} className="relative rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      
                       <div className="mb-3 flex items-center justify-between">
                         <span className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">{idx + 1}</span>
                         <Badge variant={statusClass[phase.status as keyof typeof statusClass]}>{phase.status}</Badge>
