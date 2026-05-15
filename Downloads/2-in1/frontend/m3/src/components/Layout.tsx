@@ -403,13 +403,6 @@ const Layout: React.FC<LayoutProps> = ({
               subLabel={t('nav.ai_roadmap_sub')}
               onClick={() => setIsMobileMenuOpen(false)}
             />
-            <NavItem
-              to="/app/metodologia"
-              icon={<LibraryBig size={20} />}
-              label="Metodología"
-              subLabel="Proceso y recursos"
-              onClick={() => setIsMobileMenuOpen(false)}
-            />
             <div className="my-4 border-t border-slate-100 dark:border-slate-800"></div>
             <div className="px-4 mb-2 text-xs font-bold text-slate-400 uppercase tracking-wider">
               Módulos de Auditoría
