@@ -201,9 +201,10 @@ const ToolsHub: React.FC = () => {
   };
 
   const pollableApps = useMemo(() => unifiedApps.filter((app) => isEnabledInPanel(app.id)), [unifiedApps, enabledApps]);
+  const hasPortalToken = Boolean(sessionStorage.getItem('portal_token'));
 
   useEffect(() => {
-    if (pollableApps.length === 0) {
+    if (!hasPortalToken || pollableApps.length === 0) {
       return;
     }
 
@@ -241,7 +242,7 @@ const ToolsHub: React.FC = () => {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [pollableApps]);
+  }, [hasPortalToken, pollableApps]);
 
   const executeAction = async (appId: string, action: 'install' | 'start' | 'stop') => {
     setAppErrors((prev) => ({ ...prev, [appId]: '' }));
