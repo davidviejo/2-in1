@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { useToast } from '@/components/ui/ToastContext';
 
 const kpis = [
   { label: 'módulos', value: '8', subtitle: 'Estructura definida', icon: Layers },
@@ -63,8 +64,19 @@ const resources = [
   { title: 'Dashboard de seguimiento', meta: 'Hoja de cálculo · v1.3', type: 'chart' },
 ];
 
+const tabResources: Record<string, typeof resources> = {
+  Documentación: resources,
+  'Enlazado interno': resources.filter((resource) => resource.title.toLowerCase().includes('enlazado') || resource.title.toLowerCase().includes('link')),
+  'URLs clave': resources.filter((resource) => resource.title.toLowerCase().includes('sitemap') || resource.title.toLowerCase().includes('dashboard')),
+  Plantillas: resources.filter((resource) => resource.title.toLowerCase().includes('brief') || resource.title.toLowerCase().includes('checklist')),
+  KPIs: resources.filter((resource) => resource.title.toLowerCase().includes('dashboard')),
+  'Notas rápidas': [],
+};
+
 const MetodologiaPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState('Documentación');
+  const [expandedModuleId, setExpandedModuleId] = useState<string | null>(modules[0].id);
+  const { info, successAction } = useToast();
 
   const statusClass = useMemo(() => ({
     Completado: 'success',
@@ -78,6 +90,8 @@ const MetodologiaPage: React.FC = () => {
     return <FileText size={16} className="text-blue-600" />;
   };
 
+  const filteredResources = tabResources[activeTab] ?? [];
+
   return (
     <div className="space-y-6 overflow-x-hidden text-slate-800">
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -87,8 +101,8 @@ const MetodologiaPage: React.FC = () => {
             <p className="mt-2 text-sm text-slate-600">Centraliza el proceso de trabajo, documentación y recursos estratégicos del proyecto.</p>
           </div>
           <div className="flex gap-3">
-            <Button>+ Añadir recurso</Button>
-            <Button variant="secondary">Editar estructura</Button>
+            <Button onClick={() => successAction('Recurso en creación', 'Abrimos el flujo para añadir un nuevo recurso.')}>+ Añadir recurso</Button>
+            <Button variant="secondary" onClick={() => info('Editor de estructura', 'Aquí podrás reordenar módulos y fases en los próximos pasos.')}>Editar estructura</Button>
           </div>
         </div>
       </section>
@@ -128,8 +142,22 @@ const MetodologiaPage: React.FC = () => {
                     </div>
                     <Badge variant={statusClass[m.status as keyof typeof statusClass]}>{m.status}</Badge>
                     <span className="text-xs text-slate-500">{m.docs} docs · {m.links} enlaces</span>
-                    <ChevronDown size={16} className="text-slate-400" />
+                    <button
+                      type="button"
+                      onClick={() => setExpandedModuleId((current) => (current === m.id ? null : m.id))}
+                      className="rounded-md p-1 transition hover:bg-slate-200"
+                      title={expandedModuleId === m.id ? 'Ocultar detalle' : 'Ver detalle'}
+                    >
+                      <ChevronDown size={16} className={`text-slate-400 transition ${expandedModuleId === m.id ? 'rotate-180' : ''}`} />
+                    </button>
                   </div>
+                  {expandedModuleId === m.id && (
+                    <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700">
+                      <p><span className="font-semibold">Estado:</span> {m.status}</p>
+                      <p><span className="font-semibold">Documentos:</span> {m.docs}</p>
+                      <p><span className="font-semibold">Enlaces:</span> {m.links}</p>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -173,7 +201,7 @@ const MetodologiaPage: React.FC = () => {
             ))}
           </div>
           <div className="mt-4 space-y-3">
-            {resources.map((resource) => (
+            {filteredResources.map((resource) => (
               <article key={resource.title} className="rounded-xl border border-slate-200 p-3">
                 <div className="flex items-start gap-3">
                   <div className="mt-0.5">{getResourceIcon(resource.type)}</div>
@@ -181,12 +209,30 @@ const MetodologiaPage: React.FC = () => {
                     <p className="truncate text-sm font-semibold text-slate-900">{resource.title}</p>
                     <p className="text-xs text-slate-500">{resource.meta}</p>
                   </div>
-                  <ExternalLink size={14} className="text-slate-400" />
+                  <button
+                    type="button"
+                    onClick={() => info('Recurso seleccionado', `Abriremos "${resource.title}" cuando se conecte la fuente real.`)}
+                    title="Abrir recurso"
+                    className="rounded p-1 transition hover:bg-slate-100"
+                  >
+                    <ExternalLink size={14} className="text-slate-400" />
+                  </button>
                 </div>
               </article>
             ))}
+            {filteredResources.length === 0 && (
+              <p className="rounded-lg border border-dashed border-slate-300 p-3 text-xs text-slate-500">
+                No hay recursos para esta pestaña todavía.
+              </p>
+            )}
           </div>
-          <Button variant="secondary" className="mt-4 w-full">Ver todos los recursos</Button>
+          <Button
+            variant="secondary"
+            className="mt-4 w-full"
+            onClick={() => info('Catálogo completo', `Mostrando ${resources.length} recursos en la biblioteca principal.`)}
+          >
+            Ver todos los recursos
+          </Button>
         </aside>
       </div>
 
@@ -244,10 +290,10 @@ const MetodologiaPage: React.FC = () => {
                   <td className="px-3 py-3 text-slate-600">{row[4]}</td>
                   <td className="px-3 py-3">
                     <div className="flex items-center gap-2 text-slate-500">
-                      <button title="Abrir"><ExternalLink size={14} /></button>
-                      <button title="Compartir"><Share2 size={14} /></button>
-                      <button title="Copiar enlace"><Copy size={14} /></button>
-                      <button title="Más"><MoreHorizontal size={14} /></button>
+                      <button type="button" title="Abrir" onClick={() => info('Abrir recurso', `Acción: abrir "${row[1]}".`)}><ExternalLink size={14} /></button>
+                      <button type="button" title="Compartir" onClick={() => successAction('Compartir recurso', `Acción: compartir "${row[1]}".`)}><Share2 size={14} /></button>
+                      <button type="button" title="Copiar enlace" onClick={() => successAction('Enlace copiado', `Acción: copiar enlace de "${row[1]}".`)}><Copy size={14} /></button>
+                      <button type="button" title="Más" onClick={() => info('Más opciones', `Acción: más opciones para "${row[1]}".`)}><MoreHorizontal size={14} /></button>
                     </div>
                   </td>
                 </tr>
