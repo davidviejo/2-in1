@@ -1120,6 +1120,118 @@ def compare_serp():
     return jsonify({"status": "ok", "target": target, "competitors": competitors, "serp_summary": {"avg_words": avg_words, "avg_images": avg_images, "avg_h2": avg_h2, "avg_h3": avg_h3, "common_blocks": common_blocks, "competitor_tfidf_terms": competitor_terms[:20]}, "gaps": gaps, "recommendations": recommendations})
 
 
+
+
+def _truncate_text(text: str, max_chars: int = 12000) -> str:
+    safe = (text or '').strip()
+    if len(safe) <= max_chars:
+        return safe
+    return safe[:max_chars] + "\n...[TRUNCADO POR LONGITUD]"
+
+
+def _format_prompt_url_section(label: str, data: dict) -> str:
+    headings = data.get('headings', []) or []
+    h2_list = [h.get('text', '') for h in headings if h.get('tag') == 'H2'][:12]
+    h3_list = [h.get('text', '') for h in headings if h.get('tag') == 'H3'][:12]
+    entities = (data.get('entities') or [])[:30]
+    blocks = data.get('blocks', {}) or {}
+    present_blocks = [name for name, cfg in blocks.items() if cfg.get('present')]
+
+    technical = data.get('technical', {}) or {}
+    schema = data.get('schema', {}) or {}
+    images = data.get('images_analysis', {}) or {}
+    intent = data.get('intent', {}) or {}
+    scores = {
+        'content': data.get('content_score', 0),
+        'structure': data.get('structure_score', 0),
+        'semantic': data.get('semantic_score', 0),
+        'schema': data.get('schema_score', 0),
+        'conversion': data.get('conversion_score', 0),
+        'technical': data.get('technical_score', 0),
+        'local': data.get('local_score', 0),
+        'seo_total': data.get('seo_score', 0),
+    }
+
+    return f"""
+### {label}
+URL: {data.get('url', '')}
+Title: {data.get('title', '')}
+H1: {data.get('h1', '')}
+Meta description: {technical.get('meta_description', '')}
+Canonical: {technical.get('canonical', '')}
+Primary intent detectada: {intent.get('primary_intent', 'unknown')}
+Word count: {data.get('words', 0)}
+Imágenes: {data.get('imgs', 0)}
+Cobertura ALT (%): {images.get('alt_coverage_percent', 0)}
+H2 ({len(h2_list)}): {' | '.join(h2_list)}
+H3 ({len(h3_list)}): {' | '.join(h3_list)}
+Entidades/top términos: {', '.join(entities)}
+Bloques presentes: {', '.join(present_blocks)}
+Schema types: {', '.join(schema.get('types', []) or [])}
+Scores: {json.dumps(scores, ensure_ascii=False)}
+Issues detectados: {json.dumps(data.get('issues', [])[:20], ensure_ascii=False)}
+
+[CONTENIDO COMPLETO]
+{_truncate_text(data.get('full_text', ''), 16000)}
+""".strip()
+
+
+@seo_bp.route('/build_optimization_prompt', methods=['POST'])
+def build_optimization_prompt():
+    payload = request.json or {}
+    target = payload.get('target') or {}
+    competitors = payload.get('competitors') or []
+
+    if not target or not target.get('url'):
+        return jsonify({'status': 'error', 'message': 'target con url es obligatorio'}), 400
+
+    pillars = """
+1. Calidad de Contenido (People-First y E-E-A-T):
+- Detecta si el contenido aporta valor no básico (information gain), experiencia real y profundidad.
+- Valora señales E-E-A-T: experiencia demostrable, credenciales, fuentes fiables, enlaces salientes de calidad y tono de confianza.
+
+2. Satisfacción de la Intención de Búsqueda:
+- Evalúa alineación exacta con la intención principal y secundarias.
+- Propón/valida formatos ricos: tablas, listas, FAQs, imágenes, vídeos y elementos que aumenten retención.
+
+3. Densidad Semántica y Optimización On-Page:
+- Identifica cobertura semántica faltante (LSI/entidades), jerarquía de encabezados y señales de Helpful Content.
+- Evita fluff y propone redacción directa al grano con alta utilidad práctica.
+
+4. CRO UX/UI Textual:
+- Evalúa fricción cognitiva (muros de texto, legibilidad, escaneabilidad).
+- Optimiza CTAs (claridad, ubicación, relación con objetivo de conversión).
+
+5. Estrategia Competitiva:
+- Detecta content gaps vs competidores (si hay competidores).
+- Propón diferenciación real para superar el patrón promedio de la SERP.
+""".strip()
+
+    prompt_parts = [
+        "Actúa como consultor SEO senior + editor de conversión. Usa SOLO la información proporcionada.",
+        "Tu objetivo es entregar una guía accionable de optimización de contenido y una versión optimizada final.",
+        "Estructura de evaluación obligatoria (5 pilares E-E-A-T):",
+        pillars,
+        "\nREQUISITOS DE SALIDA:",
+        "- Resume diagnóstico por pilar (fortalezas, debilidades, riesgo).",
+        "- Lista priorizada de acciones (Quick wins 48h, medio plazo, alto impacto).",
+        "- Blueprint de estructura ideal (H1-H2-H3, módulos ricos, FAQs, CTAs).",
+        "- Content gaps exactos vs competidores (si aplica).",
+        "- Propuesta de diferenciación (information gain).",
+        "- Entrega una versión reescrita/optimizada del contenido objetivo (o esqueleto desde cero si se indica).",
+    ]
+
+    prompt_parts.append("\n=== INPUT: URL OBJETIVO ===")
+    prompt_parts.append(_format_prompt_url_section('URL OBJETIVO', target))
+
+    if competitors:
+        prompt_parts.append("\n=== INPUT: COMPETIDORES ===")
+        for idx, comp in enumerate(competitors[:5], 1):
+            prompt_parts.append(_format_prompt_url_section(f'COMPETIDOR {idx}', comp))
+
+    final_prompt = "\n\n".join(prompt_parts)
+    return jsonify({'status': 'ok', 'prompt': final_prompt})
+
 @seo_bp.route('/download')
 def download():
     data = job_status['results']
