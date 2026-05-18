@@ -94,7 +94,7 @@ const MetodologiaPage: React.FC = () => {
 
   return (
     <div className="space-y-6 overflow-x-hidden text-slate-800">
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section id="resumen" className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-slate-900">Metodología</h1>
@@ -128,7 +128,7 @@ const MetodologiaPage: React.FC = () => {
 
       <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
         <div className="space-y-6">
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <section id="estructura" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">Estructura de la metodología</h2>
             <div className="mt-4 space-y-3">
               {modules.map((m) => (
@@ -163,7 +163,7 @@ const MetodologiaPage: React.FC = () => {
             </div>
           </section>
 
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <section id="fases" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">Cómo aplicamos la metodología</h2>
             <div className="mt-5">
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -191,7 +191,7 @@ const MetodologiaPage: React.FC = () => {
           </section>
         </div>
 
-        <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <aside id="recursos" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-semibold text-slate-900">Recursos y documentación</h2>
           <div className="mt-4 flex flex-wrap gap-2">
             {tabs.map((tab) => (

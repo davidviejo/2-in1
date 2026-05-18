@@ -351,6 +351,46 @@ const Layout: React.FC<LayoutProps> = ({
     }
   };
 
+
+  const isMetodologiaRoute = location.pathname.startsWith('/app/metodologia');
+
+  const metodologiaSidebar = (
+    <>
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-4 mb-4">
+        <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">Panel Metodología</p>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Acceso rápido a la estructura, fases y recursos del marco de trabajo.</p>
+      </div>
+      <NavItem
+        to="/app/metodologia"
+        icon={<LayoutDashboard size={20} />}
+        label="Resumen"
+        subLabel="Visión general y KPIs"
+        onClick={() => setIsMobileMenuOpen(false)}
+      />
+      <NavItem
+        to="/app/metodologia#estructura"
+        icon={<Layers size={20} />}
+        label="Estructura"
+        subLabel="Módulos y estado"
+        onClick={() => setIsMobileMenuOpen(false)}
+      />
+      <NavItem
+        to="/app/metodologia#fases"
+        icon={<Map size={20} />}
+        label="Fases"
+        subLabel="Proceso paso a paso"
+        onClick={() => setIsMobileMenuOpen(false)}
+      />
+      <NavItem
+        to="/app/metodologia#recursos"
+        icon={<BookOpen size={20} />}
+        label="Recursos"
+        subLabel="Documentación y biblioteca"
+        onClick={() => setIsMobileMenuOpen(false)}
+      />
+    </>
+  );
+
   const renderSidebarContent = () => {
     switch (activeTab) {
       case 'analitica':
@@ -387,6 +427,10 @@ const Layout: React.FC<LayoutProps> = ({
           </>
         );
       case 'estrategia':
+        if (isMetodologiaRoute) {
+          return metodologiaSidebar;
+        }
+
         return (
           <>
             <NavItem
