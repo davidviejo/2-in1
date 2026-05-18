@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/ToastContext';
 import { useLocation } from 'react-router-dom';
+import ResourceSidePanel, { type MetodologiaResource } from '@/components/metodologia/ResourceSidePanel';
 
 const kpis = [
   { label: 'módulos', value: '8', subtitle: 'Estructura definida', icon: Layers },
@@ -56,13 +57,13 @@ const phases = [
 
 const tabs = ['Documentación', 'Enlazado interno', 'URLs clave', 'Plantillas', 'KPIs', 'Notas rápidas'];
 
-const resources = [
-  { title: 'Guía de Metodología SEO - v2.1', meta: 'Google Docs · Actualizado hace 5 días', type: 'doc' },
-  { title: 'Brief inicial del proyecto', meta: 'Documento · v1.2', type: 'doc' },
-  { title: 'Checklist de auditoría', meta: 'Hoja de cálculo · v1.1', type: 'sheet' },
-  { title: 'Roadmap trimestral', meta: 'Documento · v1.0', type: 'doc' },
-  { title: 'Plan de enlazado interno', meta: 'Documento · v1.0', type: 'doc' },
-  { title: 'Dashboard de seguimiento', meta: 'Hoja de cálculo · v1.3', type: 'chart' },
+const resources: MetodologiaResource[] = [
+  { id: 'res-1', title: 'Guía de Metodología SEO - v2.1', meta: 'Google Docs · Actualizado hace 5 días', type: 'Google Docs', moduleId: 'M1', description: 'Manual completo de la metodología y estándares del proyecto.', updatedAt: '12 mayo 2026', owner: 'Laura P.', status: 'Completado', metadata: [{ label: 'Versión', value: 'v2.1' }], quickNotes: ['Revisar onboarding del equipo nuevo.'] },
+  { id: 'res-2', title: 'Brief inicial del proyecto', meta: 'Documento · v1.2', type: 'Google Docs', moduleId: 'M3', description: 'Plantilla para la creación de briefs editoriales.', updatedAt: '07 mayo 2026', owner: 'Carlos T.', status: 'En progreso', metadata: [{ label: 'Versión', value: 'v1.2' }], quickNotes: ['Completar bloque de audiencias.'] },
+  { id: 'res-3', title: 'Checklist de auditoría', meta: 'Hoja de cálculo · v1.1', type: 'Google Sheets', moduleId: 'M4', description: 'Lista de verificación técnica para auditorías avanzadas.', updatedAt: '03 mayo 2026', owner: 'Diego F.', status: 'Pendiente', metadata: [{ label: 'Versión', value: 'v1.1' }], quickNotes: ['Agregar validación de schema por vertical.'] },
+  { id: 'res-4', title: 'Roadmap trimestral', meta: 'Documento · v1.0', type: 'Notion', moduleId: 'M2', description: 'Roadmap priorizado por impacto y dependencia.', updatedAt: '09 mayo 2026', owner: 'Ana R.', status: 'En progreso', metadata: [{ label: 'Versión', value: 'v1.0' }], quickNotes: ['Bloquear capacidad del sprint 5.'] },
+  { id: 'res-5', title: 'Plan de enlazado interno', meta: 'Documento · v1.0', type: 'Google Sheets', moduleId: 'M5', description: 'Estrategia de anchor text y asignación de enlaces.', updatedAt: '11 mayo 2026', owner: 'Marta L.', status: 'Pendiente', metadata: [{ label: 'Versión', value: 'v1.0' }], quickNotes: ['Revisar anchors de money pages.'] },
+  { id: 'res-6', title: 'Dashboard de seguimiento', meta: 'Hoja de cálculo · v1.3', type: 'Google Sheets', moduleId: 'M7', description: 'Consolidación de KPIs y seguimiento de evolución.', updatedAt: '14 mayo 2026', owner: 'Paula G.', status: 'Completado', metadata: [{ label: 'Versión', value: 'v1.3' }], quickNotes: ['Automatizar carga semanal.'] },
 ];
 
 const tabResources: Record<string, typeof resources> = {
@@ -77,6 +78,7 @@ const tabResources: Record<string, typeof resources> = {
 const MetodologiaPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState('Documentación');
   const [expandedModuleId, setExpandedModuleId] = useState<string | null>(modules[0].id);
+  const [selectedResourceId, setSelectedResourceId] = useState<string | null>(null);
   const { info, successAction } = useToast();
   const location = useLocation();
 
@@ -118,12 +120,13 @@ const MetodologiaPage: React.FC = () => {
   } as const), []);
 
   const getResourceIcon = (type: string) => {
-    if (type === 'sheet') return <FileSpreadsheet size={16} className="text-emerald-600" />;
-    if (type === 'chart') return <BarChart3 size={16} className="text-violet-600" />;
+    if (type.toLowerCase().includes('sheet')) return <FileSpreadsheet size={16} className="text-emerald-600" />;
+    if (type.toLowerCase().includes('dashboard')) return <BarChart3 size={16} className="text-violet-600" />;
     return <FileText size={16} className="text-blue-600" />;
   };
 
   const filteredResources = tabResources[activeTab] ?? [];
+  const selectedResource = resources.find((resource) => resource.id === selectedResourceId) ?? null;
 
   return (
     <div className="space-y-6 overflow-x-hidden text-slate-800">
@@ -244,7 +247,7 @@ const MetodologiaPage: React.FC = () => {
                   </div>
                   <button
                     type="button"
-                    onClick={() => openResource(resource.title)}
+                    onClick={() => setSelectedResourceId(resource.id)}
                     title="Abrir recurso"
                     className="rounded p-1 transition hover:bg-slate-100"
                   >
@@ -305,26 +308,19 @@ const MetodologiaPage: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {[
-                ['Google Docs', 'Guía de Metodología SEO - v2.1', 'M1', 'Manual completo de la metodología y estándares del proyecto.', '12 mayo 2026 · Laura P.', 'abrir'],
-                ['Notion', 'Sitemap Maestro & Taxonomía', 'M2', 'Estructura de sitemap y taxonomía por verticales.', '09 mayo 2026 · Ana R.', 'compartir'],
-                ['Google Docs', 'Brief Editorial - Plantilla', 'M3', 'Plantilla para la creación de briefs editoriales.', '07 mayo 2026 · Carlos T.', 'copiar'],
-                ['Google Sheets', 'Plan de Enlazado Interno', 'M5', 'Estrategia de anchor text y asignación de enlaces.', '11 mayo 2026 · Marta L.', 'abrir'],
-                ['PDF', 'Checklist Técnico Avanzado', 'M4', 'Lista de verificación técnica para auditorías avanzadas.', '03 mayo 2026 · Diego F.', 'compartir'],
-                ['Google Docs', 'Plan de Link Building 2026', 'M6', 'Estrategias, partners y tácticas de link building.', '14 mayo 2026 · Paula G.', 'más'],
-              ].map((row) => (
-                <tr key={row[1]} className="border-b border-slate-100 align-top">
-                  <td className="px-3 py-3"><span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700"><NotebookText size={13} />{row[0]}</span></td>
-                  <td className="px-3 py-3 font-medium text-slate-900">{row[1]}</td>
-                  <td className="px-3 py-3"><Badge variant="info">{row[2]}</Badge></td>
-                  <td className="px-3 py-3 text-slate-700">{row[3]}</td>
-                  <td className="px-3 py-3 text-slate-600">{row[4]}</td>
+              {resources.map((resource) => (
+                <tr key={resource.id} className={`cursor-pointer border-b border-slate-100 align-top transition ${selectedResourceId === resource.id ? 'bg-slate-50' : 'hover:bg-slate-50/60'}`} onClick={() => setSelectedResourceId(resource.id)}>
+                  <td className="px-3 py-3"><span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700"><NotebookText size={13} />{resource.type}</span></td>
+                  <td className="px-3 py-3 font-medium text-slate-900">{resource.title}</td>
+                  <td className="px-3 py-3"><Badge variant="info">{resource.moduleId}</Badge></td>
+                  <td className="px-3 py-3 text-slate-700">{resource.description}</td>
+                  <td className="px-3 py-3 text-slate-600">{resource.updatedAt} · {resource.owner}</td>
                   <td className="px-3 py-3">
                     <div className="flex items-center gap-2 text-slate-500">
-                      <button type="button" title="Abrir" onClick={() => openResource(row[1])}><ExternalLink size={14} /></button>
-                      <button type="button" title="Compartir" onClick={() => void shareResource(row[1])}><Share2 size={14} /></button>
-                      <button type="button" title="Copiar enlace" onClick={() => void copyResource(row[1])}><Copy size={14} /></button>
-                      <button type="button" title="Más" onClick={() => info('Más opciones', `Acción: más opciones para "${row[1]}".`)}><MoreHorizontal size={14} /></button>
+                      <button type="button" title="Abrir" onClick={(event) => { event.stopPropagation(); openResource(resource.title); }}><ExternalLink size={14} /></button>
+                      <button type="button" title="Compartir" onClick={(event) => { event.stopPropagation(); void shareResource(resource.title); }}><Share2 size={14} /></button>
+                      <button type="button" title="Copiar enlace" onClick={(event) => { event.stopPropagation(); void copyResource(resource.title); }}><Copy size={14} /></button>
+                      <button type="button" title="Más" onClick={(event) => { event.stopPropagation(); info('Más opciones', `Acción: más opciones para "${resource.title}".`); }}><MoreHorizontal size={14} /></button>
                     </div>
                   </td>
                 </tr>
@@ -333,6 +329,16 @@ const MetodologiaPage: React.FC = () => {
           </table>
         </div>
       </section>
+
+      <ResourceSidePanel
+        resource={selectedResource}
+        onClose={() => setSelectedResourceId(null)}
+        onOpen={(resource) => openResource(resource.title)}
+        onShare={(resource) => void shareResource(resource.title)}
+        onCopy={(resource) => void copyResource(resource.title)}
+        onEdit={(resource) => info('Editar recurso', `Editar \"${resource.title}\" (pendiente de implementación).`)}
+        onDelete={(resource) => info('Eliminar recurso', `Eliminar \"${resource.title}\" (pendiente de confirmación).`)}
+      />
     </div>
   );
 };
