@@ -7,6 +7,7 @@ export interface MethodologyModule {
   status: MethodologyStatus;
   docs: number;
   links: number;
+  order: number;
 }
 
 export interface MethodologyPhase {
@@ -14,6 +15,7 @@ export interface MethodologyPhase {
   desc: string;
   status: MethodologyStatus;
   deliverables: string[];
+  order: number;
 }
 
 export type ResourceType = 'doc' | 'sheet' | 'chart';
@@ -37,5 +39,13 @@ export const metodologiaService = {
 
   async updateResource(resource: MethodologyResource): Promise<MethodologyResource> {
     return Promise.resolve(resource);
+  },
+
+  async reorderModules(modules: MethodologyModule[]): Promise<MethodologyModule[]> {
+    return Promise.resolve(modules);
+  },
+
+  async reorderPhases(phases: MethodologyPhase[]): Promise<MethodologyPhase[]> {
+    return Promise.resolve(phases);
   },
 };
