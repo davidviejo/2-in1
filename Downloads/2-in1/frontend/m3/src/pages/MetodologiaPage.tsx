@@ -131,7 +131,7 @@ const MetodologiaPage: React.FC = () => {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-slate-900">Metodología</h1>
-            <p className="mt-2 text-sm text-slate-600">Centraliza el proceso de trabajo, documentación y recursos estratégicos del proyecto.</p>
+            <p className="mt-2 text-sm text-slate-600">Centraliza el proceso de trabajo, documentación y recursos estratégicos compartidos por todos los proyectos.</p>
           </div>
           <div className="flex gap-3">
             <Button onClick={() => successAction('Recurso en creación', 'Abrimos el flujo para añadir un nuevo recurso.')}>+ Añadir recurso</Button>
@@ -308,7 +308,7 @@ const MetodologiaPage: React.FC = () => {
             </thead>
             <tbody>
               {[
-                ['Google Docs', 'Guía de Metodología SEO - v2.1', 'M1', 'Manual completo de la metodología y estándares del proyecto.', '12 mayo 2026 · Laura P.', 'abrir'],
+                ['Google Docs', 'Guía de Metodología SEO - v2.1', 'M1', 'Manual completo de la metodología y estándares comunes para todos los proyectos.', '12 mayo 2026 · Laura P.', 'abrir'],
                 ['Notion', 'Sitemap Maestro & Taxonomía', 'M2', 'Estructura de sitemap y taxonomía por verticales.', '09 mayo 2026 · Ana R.', 'compartir'],
                 ['Google Docs', 'Brief Editorial - Plantilla', 'M3', 'Plantilla para la creación de briefs editoriales.', '07 mayo 2026 · Carlos T.', 'copiar'],
                 ['Google Sheets', 'Plan de Enlazado Interno', 'M5', 'Estrategia de anchor text y asignación de enlaces.', '11 mayo 2026 · Marta L.', 'abrir'],
