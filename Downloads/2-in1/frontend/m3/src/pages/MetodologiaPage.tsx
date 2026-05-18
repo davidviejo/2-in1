@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { DragDropContext, Draggable, Droppable, type DropResult } from '@hello-pangea/dnd';
 import {
   BookOpen,
   CircleDashed,
@@ -26,6 +27,10 @@ import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/ToastContext';
 import { useLocation } from 'react-router-dom';
 import { safeCopyToClipboard, safeShareResource } from '@/lib/browser/shareClipboard';
+import { metodologiaService } from '@/services/metodologiaService';
+
+type ModuleItem = { id: string; title: string; description: string; status: string; docs: number; links: number; order: number };
+type PhaseItem = { id: string; title: string; desc: string; deliverables: string[]; status: string; icon: React.ComponentType<{ size?: number; className?: string }>; order: number };
 
 const kpis = [
   { label: 'módulos', value: '8', subtitle: 'Estructura definida', icon: Layers },
@@ -34,25 +39,25 @@ const kpis = [
   { label: 'enlaces internos', value: '12', subtitle: 'Referencias activas', icon: Link2 },
 ];
 
-const modules = [
-  { id: 'M1', title: 'Auditoría inicial', description: 'Análisis del estado actual del sitio y detección de oportunidades.', status: 'Completado', docs: 6, links: 3 },
+const modules: ModuleItem[] = [
+  { id: 'M1', title: 'Auditoría inicial', description: 'Análisis del estado actual del sitio y detección de oportunidades.', status: 'Completado', docs: 6, links: 3, order: 1 },
   { id: 'M2', title: 'Estrategia y verticales', description: 'Definición de verticales, segmentos y priorización de acciones.', status: 'En progreso', docs: 5, links: 2 },
   { id: 'M3', title: 'SEO editorial', description: 'Plan editorial, clusters y optimización de contenido.', status: 'En progreso', docs: 4, links: 2 },
   { id: 'M4', title: 'Técnico avanzado', description: 'Rendimiento, indexabilidad, datos estructurados y arquitectura.', status: 'Pendiente', docs: 3, links: 1 },
   { id: 'M5', title: 'Autoridad y E-E-A-T', description: 'Señales de autoridad, reputación y experiencia demostrada.', status: 'Pendiente', docs: 3, links: 2 },
   { id: 'M6', title: 'Distribución y enlaces', description: 'Link building, PR digital y estrategias de distribución.', status: 'Pendiente', docs: 3, links: 2 },
   { id: 'M7', title: 'Medición y reporting', description: 'Consolidación de KPIs, tableros y seguimiento de evolución.', status: 'Pendiente', docs: 2, links: 1 },
-  { id: 'M8', title: 'Escalado y optimización', description: 'Iteración continua y mejora de procesos para escalar resultados.', status: 'Pendiente', docs: 2, links: 1 },
+  { id: 'M8', title: 'Escalado y optimización', description: 'Iteración continua y mejora de procesos para escalar resultados.', status: 'Pendiente', docs: 2, links: 1, order: 8 },
 ];
 
-const phases = [
-  { title: 'Descubrimiento', desc: 'Recopilación de contexto, objetivos, stakeholders y recursos existentes.', deliverables: ['Brief inicial', 'Mapa de stakeholders'], status: 'Completado', icon: Target },
+const phases: PhaseItem[] = [
+  { id: 'P1', title: 'Descubrimiento', desc: 'Recopilación de contexto, objetivos, stakeholders y recursos existentes.', deliverables: ['Brief inicial', 'Mapa de stakeholders'], status: 'Completado', icon: Target, order: 1 },
   { title: 'Auditoría inicial', desc: 'Revisión SEO técnica, contenidos, arquitectura y rendimiento.', deliverables: ['Informe de auditoría', 'Checklist técnico'], status: 'En progreso', icon: CircleDashed },
   { title: 'Priorización', desc: 'Ordenamos hallazgos según impacto, esfuerzo y dependencia.', deliverables: ['Matriz ICE', 'Backlog priorizado'], status: 'En progreso', icon: TrendingUp },
   { title: 'Plan de acción', desc: 'Definimos roadmap, responsables, timings y entregables.', deliverables: ['Roadmap trimestral', 'Plan de acción'], status: 'Pendiente', icon: PencilRuler },
   { title: 'Implementación', desc: 'Ejecución de cambios técnicos, editoriales y de enlazado interno.', deliverables: ['Cambios implementados', 'Registro de tareas'], status: 'Pendiente', icon: Wrench },
   { title: 'Validación', desc: 'Comprobación de resultados, QA y seguimiento de KPIs.', deliverables: ['Informe de validación', 'Dashboard temporal'], status: 'Pendiente', icon: ListTodo },
-  { title: 'Mejora continua', desc: 'Iteración, aprendizaje y optimización recurrente.', deliverables: ['Lecciones aprendidas', 'Backlog iterativo'], status: 'Pendiente', icon: BarChart3 },
+  { id: 'P7', title: 'Mejora continua', desc: 'Iteración, aprendizaje y optimización recurrente.', deliverables: ['Lecciones aprendidas', 'Backlog iterativo'], status: 'Pendiente', icon: BarChart3, order: 7 },
 ];
 
 const tabs = ['Documentación', 'Enlazado interno', 'URLs clave', 'Plantillas', 'KPIs', 'Notas rápidas'];
