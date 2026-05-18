@@ -253,11 +253,9 @@ const MetodologiaPage: React.FC = () => {
                 </div>
               </article>
             ))}
-            {filteredResources.length === 0 && (
-              <p className="rounded-lg border border-dashed border-slate-300 p-3 text-xs text-slate-500">
-                No hay recursos para esta pestaña todavía.
-              </p>
-            )}
+            {filteredResources.length === 0 && <p className="rounded-lg border border-dashed border-slate-300 p-3 text-xs text-slate-500">
+              No hay recursos para esta pestaña todavía.
+            </p>}
           </div>
           <Button
             variant="secondary"
