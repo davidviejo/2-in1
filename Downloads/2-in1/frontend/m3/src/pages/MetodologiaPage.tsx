@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/ToastContext';
 import { useLocation } from 'react-router-dom';
+import { safeCopyToClipboard, safeShareResource } from '@/lib/browser/shareClipboard';
 
 const kpis = [
   { label: 'módulos', value: '8', subtitle: 'Estructura definida', icon: Layers },
@@ -77,7 +78,7 @@ const tabResources: Record<string, typeof resources> = {
 const MetodologiaPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState('Documentación');
   const [expandedModuleId, setExpandedModuleId] = useState<string | null>(modules[0].id);
-  const { info, successAction } = useToast();
+  const { info, successAction, error } = useToast();
   const location = useLocation();
 
   useEffect(() => {
@@ -96,19 +97,43 @@ const MetodologiaPage: React.FC = () => {
 
   const shareResource = async (title: string) => {
     const text = `Recurso metodología: ${title}`;
-    if (navigator.share) {
-      await navigator.share({ title, text });
-      successAction('Compartido', `Has compartido "${title}".`);
-      return;
+
+    try {
+      const result = await safeShareResource(title, text);
+
+      if (result.ok) {
+        const successMessage = result.mode === 'native-share'
+          ? `Has compartido "${title}".`
+          : 'No fue posible abrir el diálogo de compartir, pero copiamos el texto para que lo pegues donde quieras.';
+        successAction('Compartido', successMessage);
+        return;
+      }
+
+      error('No pudimos compartir el recurso', 'Tu navegador no permite compartir o copiar automáticamente. Copia el nombre del recurso manualmente e inténtalo de nuevo.');
+    } catch {
+      error('Error al compartir', 'Ocurrió un problema inesperado al compartir. Reintenta en unos segundos.');
     }
-    await navigator.clipboard.writeText(text);
-    successAction('Compartido', 'Copiamos los datos al portapapeles para compartir.');
   };
 
   const copyResource = async (title: string) => {
     const query = encodeURIComponent(title);
-    await navigator.clipboard.writeText(`https://drive.google.com/drive/search?q=${query}`);
-    successAction('Enlace copiado', `Copiado el acceso para "${title}".`);
+    const link = `https://drive.google.com/drive/search?q=${query}`;
+
+    try {
+      const result = await safeCopyToClipboard(link);
+
+      if (result.ok) {
+        const successMessage = result.mode === 'clipboard-api'
+          ? `Copiado el acceso para "${title}".`
+          : 'Tu navegador limitó el portapapeles moderno, pero logramos copiar el enlace con un método alternativo.';
+        successAction('Enlace copiado', successMessage);
+        return;
+      }
+
+      error('No se pudo copiar el enlace', 'No tuvimos acceso al portapapeles. Copia la URL desde la barra del navegador o habilita permisos de portapapeles.');
+    } catch {
+      error('Error al copiar', 'Ocurrió un problema al copiar el enlace. Inténtalo nuevamente.');
+    }
   };
 
   const statusClass = useMemo(() => ({
