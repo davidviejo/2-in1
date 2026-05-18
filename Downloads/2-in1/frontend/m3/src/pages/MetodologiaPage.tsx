@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BarChart3, BookOpen, ChevronDown, CircleDashed, Copy, ExternalLink, FileSpreadsheet, FileText, GripVertical, Layers, Link2, ListTodo, MoreHorizontal, NotebookText, PencilRuler, Share2, SquarePen, Target, TrendingUp, Workflow, Wrench, X } from 'lucide-react';
+import { DragDropContext, Draggable, Droppable, DropResult } from '@hello-pangea/dnd';
+import { BarChart3, BookOpen, ChevronDown, CircleDashed, Copy, ExternalLink, FileSpreadsheet, FileText, GripVertical, Layers, Link2, ListTodo, Loader2, MoreHorizontal, PencilRuler, Share2, SquarePen, Target, TrendingUp, Workflow, Wrench, X } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/ToastContext';
@@ -15,15 +16,15 @@ const kpis = [
 ];
 
 const initialModules: MethodologyModule[] = [
-  { id: 'M1', title: 'Auditoría inicial', description: 'Análisis del estado actual del sitio y detección de oportunidades.', status: 'Completado', docs: 6, links: 3 },
-  { id: 'M2', title: 'Estrategia y verticales', description: 'Definición de verticales, segmentos y priorización de acciones.', status: 'En progreso', docs: 5, links: 2 },
-  { id: 'M3', title: 'SEO editorial', description: 'Plan editorial, clusters y optimización de contenido.', status: 'En progreso', docs: 4, links: 2 },
+  { id: 'M1', title: 'Auditoría inicial', description: 'Análisis del estado actual del sitio y detección de oportunidades.', status: 'Completado', docs: 6, links: 3, order: 1 },
+  { id: 'M2', title: 'Estrategia y verticales', description: 'Definición de verticales, segmentos y priorización de acciones.', status: 'En progreso', docs: 5, links: 2, order: 2 },
+  { id: 'M3', title: 'SEO editorial', description: 'Plan editorial, clusters y optimización de contenido.', status: 'En progreso', docs: 4, links: 2, order: 3 },
 ];
 
 const initialPhases: MethodologyPhase[] = [
-  { title: 'Descubrimiento', desc: 'Recopilación de contexto, objetivos, stakeholders y recursos existentes.', deliverables: ['Brief inicial', 'Mapa de stakeholders'], status: 'Completado' },
-  { title: 'Auditoría inicial', desc: 'Revisión SEO técnica, contenidos, arquitectura y rendimiento.', deliverables: ['Informe de auditoría', 'Checklist técnico'], status: 'En progreso' },
-  { title: 'Priorización', desc: 'Ordenamos hallazgos según impacto, esfuerzo y dependencia.', deliverables: ['Matriz ICE', 'Backlog priorizado'], status: 'Pendiente' },
+  { title: 'Descubrimiento', desc: 'Recopilación de contexto, objetivos, stakeholders y recursos existentes.', deliverables: ['Brief inicial', 'Mapa de stakeholders'], status: 'Completado', order: 1 },
+  { title: 'Auditoría inicial', desc: 'Revisión SEO técnica, contenidos, arquitectura y rendimiento.', deliverables: ['Informe de auditoría', 'Checklist técnico'], status: 'En progreso', order: 2 },
+  { title: 'Priorización', desc: 'Ordenamos hallazgos según impacto, esfuerzo y dependencia.', deliverables: ['Matriz ICE', 'Backlog priorizado'], status: 'Pendiente', order: 3 },
 ];
 
 const initialResources: MethodologyResource[] = [
@@ -52,13 +53,29 @@ const normalizeResourceType = (value: string): ResourceType => (
   value === 'doc' || value === 'sheet' || value === 'chart' ? value : 'doc'
 );
 
+const stableSortByOrder = <T extends { order: number }>(items: T[]) => items
+  .map((item, index) => ({ item, index }))
+  .sort((a, b) => a.item.order - b.item.order || a.index - b.index)
+  .map(({ item }) => item);
+
+const applyOrder = <T extends { order: number }>(items: T[]) => items.map((item, index) => ({ ...item, order: index + 1 }));
+
+const reorderList = <T,>(list: T[], startIndex: number, endIndex: number): T[] => {
+  const result = [...list];
+  const [removed] = result.splice(startIndex, 1);
+  result.splice(endIndex, 0, removed);
+  return result;
+};
+
 const MetodologiaPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]>('Documentación');
   const [expandedModuleId, setExpandedModuleId] = useState<string | null>(initialModules[0].id);
-  const [modules, setModules] = useState(initialModules);
-  const [phases, setPhases] = useState(initialPhases);
+  const [modules, setModules] = useState(stableSortByOrder(initialModules));
+  const [phases, setPhases] = useState(stableSortByOrder(initialPhases));
   const [resources, setResources] = useState(initialResources);
   const [drawer, setDrawer] = useState<DrawerState>(null);
+  const [isSavingOrder, setIsSavingOrder] = useState(false);
+  const [orderDirty, setOrderDirty] = useState(false);
   const { info, successAction, error } = useToast();
   const location = useLocation();
 
@@ -82,16 +99,37 @@ const MetodologiaPage: React.FC = () => {
 
   const openResource = (title: string) => window.open(`https://drive.google.com/drive/search?q=${encodeURIComponent(title)}`, '_blank', 'noopener,noreferrer');
 
+  const persistOrder = async (nextModules: MethodologyModule[], nextPhases: MethodologyPhase[], previousModules: MethodologyModule[], previousPhases: MethodologyPhase[]) => {
+    setIsSavingOrder(true);
+    try {
+      const [savedModules, savedPhases] = await Promise.all([
+        metodologiaService.reorderModules(nextModules),
+        metodologiaService.reorderPhases(nextPhases),
+      ]);
+      setModules(stableSortByOrder(savedModules));
+      setPhases(stableSortByOrder(savedPhases));
+      setOrderDirty(false);
+      successAction('Orden guardado', 'Se actualizó el orden de módulos y fases.');
+    } catch {
+      setModules(previousModules);
+      setPhases(previousPhases);
+      setOrderDirty(false);
+      error('No se pudo guardar el orden', 'Se restauró el orden anterior.');
+    } finally {
+      setIsSavingOrder(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!drawer) return;
     try {
       if (drawer.kind === 'module') {
         const saved = await metodologiaService.updateModule(drawer.data);
-        setModules((current) => current.some((m) => m.id === saved.id) ? current.map((m) => m.id === saved.id ? saved : m) : [saved, ...current]);
+        setModules((current) => stableSortByOrder(current.some((m) => m.id === saved.id) ? current.map((m) => m.id === saved.id ? saved : m) : [saved, ...current]));
       }
       if (drawer.kind === 'phase') {
         const saved = await metodologiaService.updatePhase(drawer.data);
-        setPhases((current) => current.some((p) => p.title === saved.title) ? current.map((p) => p.title === saved.title ? saved : p) : [saved, ...current]);
+        setPhases((current) => stableSortByOrder(current.some((p) => p.title === saved.title) ? current.map((p) => p.title === saved.title ? saved : p) : [saved, ...current]));
       }
       if (drawer.kind === 'resource') {
         const saved = await metodologiaService.updateResource(drawer.data);
@@ -104,13 +142,58 @@ const MetodologiaPage: React.FC = () => {
     }
   };
 
+  const handleDragEnd = (result: DropResult) => {
+    const { destination, source, type } = result;
+    if (!destination || destination.index === source.index) return;
+
+    const previousModules = modules;
+    const previousPhases = phases;
+
+    if (type === 'MODULE') {
+      const nextModules = applyOrder(reorderList(modules, source.index, destination.index));
+      setModules(nextModules);
+      setOrderDirty(true);
+      void persistOrder(nextModules, phases, previousModules, previousPhases);
+      return;
+    }
+
+    if (type === 'PHASE') {
+      const nextPhases = applyOrder(reorderList(phases, source.index, destination.index));
+      setPhases(nextPhases);
+      setOrderDirty(true);
+      void persistOrder(modules, nextPhases, previousModules, previousPhases);
+    }
+  };
+
   const getResourceIcon = (type: ResourceType) => type === 'sheet' ? <FileSpreadsheet size={16} className="text-emerald-600" /> : type === 'chart' ? <BarChart3 size={16} className="text-violet-600" /> : <FileText size={16} className="text-blue-600" />;
 
   return <div className="space-y-6 overflow-x-hidden text-slate-800">{/* UI kept */}
     <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><div className="flex justify-between"><div><h1 className="text-3xl font-bold text-slate-900">Metodología</h1><p className="mt-1 text-sm text-slate-600">Esta página es única y aplica de la misma forma para todos los proyectos.</p></div><Button onClick={() => setDrawer({ kind: 'resource', mode: 'create', data: { title: '', meta: '', type: 'doc', moduleId: modules[0]?.id ?? 'M1', description: '' } })}>+ Añadir recurso</Button></div></section>
     <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{kpis.map((item) => { const Icon = item.icon; return <article key={item.label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><Icon size={18} /><p>{item.value} {item.label}</p></article>; })}</section>
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2>Estructura</h2>{modules.map((m) => <div key={m.id} className="rounded-xl border p-3 mt-2"><div className="flex items-center gap-2"><GripVertical size={14}/><span>{m.id}</span><p className="flex-1">{m.title}</p><Badge variant={STATUS_VARIANTS[m.status]}>{m.status}</Badge><button onClick={() => setDrawer({ kind: 'module', mode: 'edit', data: m })}><SquarePen size={14}/></button><button onClick={() => setExpandedModuleId(expandedModuleId === m.id ? null : m.id)}><ChevronDown size={14}/></button></div>{expandedModuleId===m.id && <p className="text-sm">{m.description} · {m.docs} docs · {m.links} links</p>}</div>)}</section>
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2>Fases</h2><div className="grid gap-3 sm:grid-cols-2">{phases.map((phase, idx) => { const Icon = phaseIcons[idx % phaseIcons.length]; return <div key={phase.title} className="border rounded-xl p-3"><div className="flex justify-between"><Icon size={16}/><button onClick={() => setDrawer({ kind: 'phase', mode: 'edit', data: phase })}><SquarePen size={14}/></button></div><p>{phase.title}</p><Badge variant={STATUS_VARIANTS[phase.status]}>{phase.status}</Badge></div>; })}</div></section>
+
+    <div className="flex items-center justify-end gap-3">
+      {isSavingOrder && <span className="inline-flex items-center gap-1 text-sm text-slate-500"><Loader2 size={14} className="animate-spin" /> Guardando orden...</span>}
+      <Button variant="secondary" disabled={!orderDirty || isSavingOrder} onClick={() => void persistOrder(modules, phases, modules, phases)}>Guardar orden</Button>
+    </div>
+
+    <DragDropContext onDragEnd={handleDragEnd}>
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2>Estructura</h2>
+        <Droppable droppableId="modules" type="MODULE">
+          {(provided) => <div ref={provided.innerRef} {...provided.droppableProps}>{modules.map((m, index) => <Draggable key={m.id} draggableId={m.id} index={index}>
+            {(dragProvided, snapshot) => <div ref={dragProvided.innerRef} {...dragProvided.draggableProps} className={`rounded-xl border p-3 mt-2 transition ${snapshot.isDragging ? 'border-blue-400 bg-blue-50 shadow-lg' : ''}`}><div className="flex items-center gap-2"><span {...dragProvided.dragHandleProps}><GripVertical size={14}/></span><span>{m.id}</span><p className="flex-1">{m.title}</p><Badge variant={STATUS_VARIANTS[m.status]}>{m.status}</Badge><button onClick={() => setDrawer({ kind: 'module', mode: 'edit', data: m })}><SquarePen size={14}/></button><button onClick={() => setExpandedModuleId(expandedModuleId === m.id ? null : m.id)}><ChevronDown size={14}/></button></div>{expandedModuleId===m.id && <p className="text-sm">{m.description} · {m.docs} docs · {m.links} links</p>}</div>}
+          </Draggable>)}{provided.placeholder}</div>}
+        </Droppable>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2>Fases</h2>
+        <Droppable droppableId="phases" type="PHASE">
+          {(provided) => <div ref={provided.innerRef} {...provided.droppableProps} className="grid gap-3 sm:grid-cols-2">{phases.map((phase, idx) => { const Icon = phaseIcons[idx % phaseIcons.length]; return <Draggable key={phase.title} draggableId={phase.title} index={idx}>
+            {(dragProvided, snapshot) => <div ref={dragProvided.innerRef} {...dragProvided.draggableProps} className={`border rounded-xl p-3 transition ${snapshot.isDragging ? 'border-blue-400 bg-blue-50 shadow-lg' : ''}`}><div className="flex justify-between"><div className="flex items-center gap-2"><span {...dragProvided.dragHandleProps}><GripVertical size={14}/></span><Icon size={16}/></div><button onClick={() => setDrawer({ kind: 'phase', mode: 'edit', data: phase })}><SquarePen size={14}/></button></div><p>{phase.title}</p><Badge variant={STATUS_VARIANTS[phase.status]}>{phase.status}</Badge></div>}
+          </Draggable>; })}{provided.placeholder}</div>}
+        </Droppable>
+      </section>
+    </DragDropContext>
+
     <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex gap-2 flex-wrap">{tabs.map((tab) => <button key={tab} onClick={() => setActiveTab(tab)}>{tab}</button>)}</div>{filteredResources.map((resource) => <article key={resource.title} className="border rounded p-3 mt-2"><div className="flex gap-2 items-center">{getResourceIcon(resource.type)}<p className="flex-1">{resource.title}</p><button onClick={() => setDrawer({ kind: 'resource', mode: 'edit', data: resource })}><SquarePen size={14}/></button><button onClick={() => openResource(resource.title)}><ExternalLink size={14}/></button></div></article>)}</aside>
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2>Biblioteca de recursos</h2><table className="min-w-full text-sm"><tbody>{resources.map((row) => <tr key={row.title}><td>{row.type}</td><td>{row.title}</td><td><Badge variant="info">{row.moduleId}</Badge></td><td>{row.description}</td><td>{row.meta}</td><td><div className="flex gap-2"><button onClick={() => setDrawer({ kind: 'resource', mode: 'edit', data: row })}><SquarePen size={14}/></button><button onClick={() => openResource(row.title)}><ExternalLink size={14}/></button><button onClick={() => void safeShareResource(row.title, row.title)}><Share2 size={14}/></button><button onClick={() => void safeCopyToClipboard(row.title)}><Copy size={14}/></button><button onClick={() => info('Más opciones', row.title)}><MoreHorizontal size={14}/></button></div></td></tr>)}</tbody></table></section>
 
