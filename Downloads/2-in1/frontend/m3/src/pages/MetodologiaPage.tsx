@@ -22,6 +22,7 @@ const KPI_ICONS = {
 } as const;
 
 const STATUS_VARIANTS: Record<MethodologyStatus, 'success' | 'warning' | 'default'> = { Completado: 'success', 'En progreso': 'warning', Pendiente: 'default' };
+const phaseIcons = [CircleDashed, ListTodo, Target, TrendingUp, Wrench, PencilRuler];
 
 type NewResourceDraft = CreateResourceInput;
 
