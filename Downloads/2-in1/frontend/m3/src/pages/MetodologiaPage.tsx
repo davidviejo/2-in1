@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/ToastContext';
 import { useLocation } from 'react-router-dom';
 import { safeCopyToClipboard, safeShareResource } from '@/lib/browser/shareClipboard';
-import { metodologiaService, MethodologyModule, MethodologyPhase, MethodologyResource, MethodologyStatus, ResourceType } from '@/services/metodologiaService';
+import { CreateModuleInput, CreateResourceInput, metodologiaService, MethodologyModule, MethodologyPhase, MethodologyResource, MethodologyStatus, ResourceType } from '@/services/metodologiaService';
 
 const kpis = [
   { label: 'módulos', value: '8', subtitle: 'Estructura definida', icon: Layers },
@@ -36,6 +36,32 @@ const initialResources: MethodologyResource[] = [
 const tabs = ['Documentación', 'Enlazado interno', 'URLs clave', 'Plantillas', 'KPIs', 'Notas rápidas'] as const;
 const phaseIcons = [Target, CircleDashed, TrendingUp, PencilRuler, Wrench, ListTodo, BarChart3];
 const STATUS_VARIANTS: Record<MethodologyStatus, 'success' | 'warning' | 'default'> = { Completado: 'success', 'En progreso': 'warning', Pendiente: 'default' };
+
+type NewResourceDraft = CreateResourceInput;
+
+type NewModuleDraft = CreateModuleInput;
+
+const buildInitialResourceDraft = (moduleId: string): NewResourceDraft => ({
+  type: 'doc',
+  title: '',
+  moduleId,
+  description: '',
+  status: 'Pendiente',
+  links: [],
+  docs: 0,
+  meta: '',
+  metadata: '',
+});
+
+const initialModuleDraft: NewModuleDraft = {
+  id: '',
+  title: '',
+  description: '',
+  status: 'Pendiente',
+  docs: 0,
+  links: 0,
+};
+
 
 type DrawerState =
   | { kind: 'module'; mode: 'edit' | 'create'; data: MethodologyModule }
@@ -74,6 +100,9 @@ const MetodologiaPage: React.FC = () => {
   const [phases, setPhases] = useState(stableSortByOrder(initialPhases));
   const [resources, setResources] = useState(initialResources);
   const [drawer, setDrawer] = useState<DrawerState>(null);
+  const [showCreateResourceDrawer, setShowCreateResourceDrawer] = useState(false);
+  const [newResource, setNewResource] = useState<NewResourceDraft>(() => buildInitialResourceDraft(initialModules[0]?.id ?? 'M1'));
+  const [newModule, setNewModule] = useState<NewModuleDraft>(initialModuleDraft);
   const [isSavingOrder, setIsSavingOrder] = useState(false);
   const [orderDirty, setOrderDirty] = useState(false);
   const { info, successAction, error } = useToast();
@@ -167,8 +196,48 @@ const MetodologiaPage: React.FC = () => {
 
   const getResourceIcon = (type: ResourceType) => type === 'sheet' ? <FileSpreadsheet size={16} className="text-emerald-600" /> : type === 'chart' ? <BarChart3 size={16} className="text-violet-600" /> : <FileText size={16} className="text-blue-600" />;
 
+  const isValidModuleId = (moduleId: string) => modules.some((module) => module.id === moduleId);
+
+  const submitNewResource = async () => {
+    const title = newResource.title.trim();
+    if (!title) {
+      error('Título requerido', 'Completa el título del recurso antes de guardar.');
+      return;
+    }
+    if (!isValidModuleId(newResource.moduleId)) {
+      error('Módulo inválido', 'Selecciona un módulo existente para continuar.');
+      return;
+    }
+
+    const optimisticResource: MethodologyResource = {
+      title,
+      meta: newResource.meta || newResource.metadata,
+      type: newResource.type,
+      moduleId: newResource.moduleId,
+      description: newResource.description,
+      status: newResource.status,
+      links: newResource.links,
+      docs: newResource.docs,
+      metadata: newResource.metadata,
+    };
+
+    setResources((current) => [optimisticResource, ...current]);
+    setShowCreateResourceDrawer(false);
+
+    try {
+      const saved = await metodologiaService.createResource(newResource);
+      setResources((current) => [saved, ...current.filter((resource) => resource !== optimisticResource)]);
+      successAction('Recurso creado', `Se añadió "${saved.title}" correctamente.`);
+    } catch {
+      setResources((current) => current.filter((resource) => resource !== optimisticResource));
+      error('No se pudo crear el recurso', 'No se guardaron los cambios. Intenta nuevamente.');
+    }
+  };
+
+  void newModule;
+
   return <div className="space-y-6 overflow-x-hidden text-slate-800">{/* UI kept */}
-    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><div className="flex justify-between"><div><h1 className="text-3xl font-bold text-slate-900">Metodología</h1><p className="mt-1 text-sm text-slate-600">Esta página es única y aplica de la misma forma para todos los proyectos.</p></div><Button onClick={() => setDrawer({ kind: 'resource', mode: 'create', data: { title: '', meta: '', type: 'doc', moduleId: modules[0]?.id ?? 'M1', description: '' } })}>+ Añadir recurso</Button></div></section>
+    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><div className="flex justify-between"><div><h1 className="text-3xl font-bold text-slate-900">Metodología</h1><p className="mt-1 text-sm text-slate-600">Esta página es única y aplica de la misma forma para todos los proyectos.</p></div><Button onClick={() => { setNewResource(buildInitialResourceDraft(modules[0]?.id ?? 'M1')); setShowCreateResourceDrawer(true); }}>+ Añadir recurso</Button></div></section>
     <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{kpis.map((item) => { const Icon = item.icon; return <article key={item.label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><Icon size={18} /><p>{item.value} {item.label}</p></article>; })}</section>
 
     <div className="flex items-center justify-end gap-3">
@@ -203,6 +272,7 @@ const MetodologiaPage: React.FC = () => {
       {drawer.kind === 'resource' && <div className="space-y-2 mt-4"><input className="w-full border p-2" value={drawer.data.title} onChange={(e) => setDrawer({ ...drawer, data: { ...drawer.data, title: e.target.value } })}/><input className="w-full border p-2" value={drawer.data.meta} onChange={(e) => setDrawer({ ...drawer, data: { ...drawer.data, meta: e.target.value } })}/><select className="w-full border p-2" value={drawer.data.type} onChange={(e) => setDrawer({ ...drawer, data: { ...drawer.data, type: normalizeResourceType(e.target.value) } })}><option value="doc">doc</option><option value="sheet">sheet</option><option value="chart">chart</option></select><select className="w-full border p-2" value={drawer.data.moduleId} onChange={(e) => setDrawer({ ...drawer, data: { ...drawer.data, moduleId: e.target.value } })}>{modules.map((m) => <option key={m.id} value={m.id}>{m.id}</option>)}</select><textarea className="w-full border p-2" value={drawer.data.description} onChange={(e) => setDrawer({ ...drawer, data: { ...drawer.data, description: e.target.value } })}/></div>}
       <div className="mt-4 flex justify-end gap-2"><Button variant="secondary" onClick={() => setDrawer(null)}>Cancelar</Button><Button onClick={() => void handleSave()}>Guardar</Button></div>
     </div></div>}
+    {showCreateResourceDrawer && <div className="fixed inset-0 z-50"><div className="absolute inset-0 bg-slate-900/30" onClick={() => setShowCreateResourceDrawer(false)} /><div className="absolute right-0 top-0 h-full w-full max-w-xl bg-white p-5 shadow-2xl overflow-auto"><div className="flex justify-between"><h3>Nuevo recurso</h3><button onClick={() => setShowCreateResourceDrawer(false)}><X size={16}/></button></div><div className="space-y-2 mt-4"><select className="w-full border p-2" value={newResource.type} onChange={(e) => setNewResource((prev) => ({ ...prev, type: normalizeResourceType(e.target.value) }))}><option value="doc">Documento</option><option value="sheet">Hoja de cálculo</option><option value="chart">Dashboard</option></select><input className="w-full border p-2" placeholder="Título" value={newResource.title} onChange={(e) => setNewResource((prev) => ({ ...prev, title: e.target.value }))} /><select className="w-full border p-2" value={newResource.moduleId} onChange={(e) => setNewResource((prev) => ({ ...prev, moduleId: e.target.value }))}>{modules.map((m) => <option key={m.id} value={m.id}>{m.id} · {m.title}</option>)}</select><textarea className="w-full border p-2" placeholder="Descripción" value={newResource.description} onChange={(e) => setNewResource((prev) => ({ ...prev, description: e.target.value }))} /><select className="w-full border p-2" value={newResource.status} onChange={(e) => setNewResource((prev) => ({ ...prev, status: normalizeStatus(e.target.value) }))}><option>Completado</option><option>En progreso</option><option>Pendiente</option></select><input className="w-full border p-2" placeholder="Enlaces/docs (separados por coma)" value={newResource.links.join(', ')} onChange={(e) => setNewResource((prev) => ({ ...prev, links: e.target.value.split(',').map((link) => link.trim()).filter(Boolean) }))} /><input type="number" className="w-full border p-2" placeholder="Cantidad de docs" value={newResource.docs} onChange={(e) => setNewResource((prev) => ({ ...prev, docs: Number(e.target.value) || 0 }))} /><input className="w-full border p-2" placeholder="Metadatos" value={newResource.metadata} onChange={(e) => setNewResource((prev) => ({ ...prev, metadata: e.target.value, meta: e.target.value }))} /></div><div className="mt-4 flex justify-end gap-2"><Button variant="secondary" onClick={() => setShowCreateResourceDrawer(false)}>Cancelar</Button><Button onClick={() => void submitNewResource()}>Crear recurso</Button></div></div></div>}
   </div>;
 };
 
