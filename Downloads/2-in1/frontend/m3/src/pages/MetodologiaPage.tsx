@@ -7,34 +7,20 @@ import { useToast } from '@/components/ui/ToastContext';
 import { useLocation } from 'react-router-dom';
 import { safeCopyToClipboard, safeShareResource } from '@/lib/browser/shareClipboard';
 import { CreateModuleInput, CreateResourceInput, metodologiaService, MethodologyModule, MethodologyPhase, MethodologyResource, MethodologyStatus, ResourceType } from '@/services/metodologiaService';
+import { useMetodologiaKpis, useMetodologiaModules, useMetodologiaPhases, useMetodologiaResources } from '@/hooks/useMetodologia';
+import { getFilteredResourcesByTab, metodologiaTabs, MetodologiaTab } from '@/lib/metodologia/transforms';
 
-const kpis = [
-  { label: 'módulos', value: '8', subtitle: 'Estructura definida', icon: Layers },
-  { label: 'fases', value: '7', subtitle: 'De principio a fin', icon: Workflow },
-  { label: 'recursos', value: '24', subtitle: 'Documentación y guías', icon: BookOpen },
-  { label: 'enlaces internos', value: '12', subtitle: 'Referencias activas', icon: Link2 },
-];
 
-const initialModules: MethodologyModule[] = [
-  { id: 'M1', title: 'Auditoría inicial', description: 'Análisis del estado actual del sitio y detección de oportunidades.', status: 'Completado', docs: 6, links: 3, order: 1 },
-  { id: 'M2', title: 'Estrategia y verticales', description: 'Definición de verticales, segmentos y priorización de acciones.', status: 'En progreso', docs: 5, links: 2, order: 2 },
-  { id: 'M3', title: 'SEO editorial', description: 'Plan editorial, clusters y optimización de contenido.', status: 'En progreso', docs: 4, links: 2, order: 3 },
-];
 
-const initialPhases: MethodologyPhase[] = [
-  { title: 'Descubrimiento', desc: 'Recopilación de contexto, objetivos, stakeholders y recursos existentes.', deliverables: ['Brief inicial', 'Mapa de stakeholders'], status: 'Completado', order: 1 },
-  { title: 'Auditoría inicial', desc: 'Revisión SEO técnica, contenidos, arquitectura y rendimiento.', deliverables: ['Informe de auditoría', 'Checklist técnico'], status: 'En progreso', order: 2 },
-  { title: 'Priorización', desc: 'Ordenamos hallazgos según impacto, esfuerzo y dependencia.', deliverables: ['Matriz ICE', 'Backlog priorizado'], status: 'Pendiente', order: 3 },
-];
 
-const initialResources: MethodologyResource[] = [
-  { title: 'Guía de Metodología SEO - v2.1', meta: 'Google Docs · Actualizado hace 5 días', type: 'doc', moduleId: 'M1', description: 'Manual completo de la metodología y estándares compartidos para todos los proyectos.' },
-  { title: 'Checklist de auditoría', meta: 'Hoja de cálculo · v1.1', type: 'sheet', moduleId: 'M2', description: 'Lista de validación técnica para auditoría.' },
-  { title: 'Dashboard de seguimiento', meta: 'Hoja de cálculo · v1.3', type: 'chart', moduleId: 'M3', description: 'Control de KPIs y avance del plan.' },
-];
 
-const tabs = ['Documentación', 'Enlazado interno', 'URLs clave', 'Plantillas', 'KPIs', 'Notas rápidas'] as const;
-const phaseIcons = [Target, CircleDashed, TrendingUp, PencilRuler, Wrench, ListTodo, BarChart3];
+const KPI_ICONS = {
+  módulos: Layers,
+  fases: Workflow,
+  recursos: BookOpen,
+  'enlaces internos': Link2,
+} as const;
+
 const STATUS_VARIANTS: Record<MethodologyStatus, 'success' | 'warning' | 'default'> = { Completado: 'success', 'En progreso': 'warning', Pendiente: 'default' };
 
 type NewResourceDraft = CreateResourceInput;
@@ -94,19 +80,37 @@ const reorderList = <T,>(list: T[], startIndex: number, endIndex: number): T[] =
 };
 
 const MetodologiaPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<(typeof tabs)[number]>('Documentación');
-  const [expandedModuleId, setExpandedModuleId] = useState<string | null>(initialModules[0].id);
-  const [modules, setModules] = useState(stableSortByOrder(initialModules));
-  const [phases, setPhases] = useState(stableSortByOrder(initialPhases));
-  const [resources, setResources] = useState(initialResources);
+  const [activeTab, setActiveTab] = useState<MetodologiaTab>('Documentación');
+  const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
+  const [modules, setModules] = useState<MethodologyModule[]>([]);
+  const [phases, setPhases] = useState<MethodologyPhase[]>([]);
+  const [resources, setResources] = useState<MethodologyResource[]>([]);
   const [drawer, setDrawer] = useState<DrawerState>(null);
   const [showCreateResourceDrawer, setShowCreateResourceDrawer] = useState(false);
-  const [newResource, setNewResource] = useState<NewResourceDraft>(() => buildInitialResourceDraft(initialModules[0]?.id ?? 'M1'));
+  const [newResource, setNewResource] = useState<NewResourceDraft>(() => buildInitialResourceDraft('M1'));
   const [newModule, setNewModule] = useState<NewModuleDraft>(initialModuleDraft);
   const [isSavingOrder, setIsSavingOrder] = useState(false);
   const [orderDirty, setOrderDirty] = useState(false);
   const { info, successAction, error } = useToast();
   const location = useLocation();
+
+  const { data: queryModules = [] } = useMetodologiaModules();
+  const { data: queryPhases = [] } = useMetodologiaPhases();
+  const { data: queryResources = [] } = useMetodologiaResources();
+  const { data: kpis = [] } = useMetodologiaKpis();
+
+  useEffect(() => {
+    setModules(stableSortByOrder(queryModules));
+    setExpandedModuleId((current) => current ?? queryModules[0]?.id ?? null);
+  }, [queryModules]);
+
+  useEffect(() => {
+    setPhases(stableSortByOrder(queryPhases));
+  }, [queryPhases]);
+
+  useEffect(() => {
+    setResources(queryResources);
+  }, [queryResources]);
 
   useEffect(() => {
     if (!location.hash) return;
@@ -114,17 +118,7 @@ const MetodologiaPage: React.FC = () => {
     target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [location.hash]);
 
-  const filteredResources = useMemo(() => {
-    const map: Record<(typeof tabs)[number], MethodologyResource[]> = {
-      Documentación: resources,
-      'Enlazado interno': resources.filter((r) => r.title.toLowerCase().includes('enlazado') || r.title.toLowerCase().includes('link')),
-      'URLs clave': resources.filter((r) => r.title.toLowerCase().includes('sitemap') || r.title.toLowerCase().includes('dashboard')),
-      Plantillas: resources.filter((r) => r.title.toLowerCase().includes('brief') || r.title.toLowerCase().includes('checklist')),
-      KPIs: resources.filter((r) => r.title.toLowerCase().includes('dashboard')),
-      'Notas rápidas': [],
-    };
-    return map[activeTab] ?? [];
-  }, [activeTab, resources]);
+  const filteredResources = useMemo(() => getFilteredResourcesByTab(activeTab, resources), [activeTab, resources]);
 
   const openResource = (title: string) => window.open(`https://drive.google.com/drive/search?q=${encodeURIComponent(title)}`, '_blank', 'noopener,noreferrer');
 
@@ -238,7 +232,7 @@ const MetodologiaPage: React.FC = () => {
 
   return <div className="space-y-6 overflow-x-hidden text-slate-800">{/* UI kept */}
     <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><div className="flex justify-between"><div><h1 className="text-3xl font-bold text-slate-900">Metodología</h1><p className="mt-1 text-sm text-slate-600">Esta página es única y aplica de la misma forma para todos los proyectos.</p></div><Button onClick={() => { setNewResource(buildInitialResourceDraft(modules[0]?.id ?? 'M1')); setShowCreateResourceDrawer(true); }}>+ Añadir recurso</Button></div></section>
-    <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{kpis.map((item) => { const Icon = item.icon; return <article key={item.label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><Icon size={18} /><p>{item.value} {item.label}</p></article>; })}</section>
+    <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{kpis.map((item) => { const Icon = KPI_ICONS[item.label as keyof typeof KPI_ICONS] ?? BookOpen; return <article key={item.label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><Icon size={18} /><p>{item.value} {item.label}</p></article>; })}</section>
 
     <div className="flex items-center justify-end gap-3">
       {isSavingOrder && <span className="inline-flex items-center gap-1 text-sm text-slate-500"><Loader2 size={14} className="animate-spin" /> Guardando orden...</span>}
@@ -263,7 +257,7 @@ const MetodologiaPage: React.FC = () => {
       </section>
     </DragDropContext>
 
-    <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex gap-2 flex-wrap">{tabs.map((tab) => <button key={tab} onClick={() => setActiveTab(tab)}>{tab}</button>)}</div>{filteredResources.map((resource) => <article key={resource.title} className="border rounded p-3 mt-2"><div className="flex gap-2 items-center">{getResourceIcon(resource.type)}<p className="flex-1">{resource.title}</p><button onClick={() => setDrawer({ kind: 'resource', mode: 'edit', data: resource })}><SquarePen size={14}/></button><button onClick={() => openResource(resource.title)}><ExternalLink size={14}/></button></div></article>)}</aside>
+    <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex gap-2 flex-wrap">{metodologiaTabs.map((tab) => <button key={tab} onClick={() => setActiveTab(tab)}>{tab}</button>)}</div>{filteredResources.map((resource) => <article key={resource.title} className="border rounded p-3 mt-2"><div className="flex gap-2 items-center">{getResourceIcon(resource.type)}<p className="flex-1">{resource.title}</p><button onClick={() => setDrawer({ kind: 'resource', mode: 'edit', data: resource })}><SquarePen size={14}/></button><button onClick={() => openResource(resource.title)}><ExternalLink size={14}/></button></div></article>)}</aside>
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2>Biblioteca de recursos</h2><table className="min-w-full text-sm"><tbody>{resources.map((row) => <tr key={row.title}><td>{row.type}</td><td>{row.title}</td><td><Badge variant="info">{row.moduleId}</Badge></td><td>{row.description}</td><td>{row.meta}</td><td><div className="flex gap-2"><button onClick={() => setDrawer({ kind: 'resource', mode: 'edit', data: row })}><SquarePen size={14}/></button><button onClick={() => openResource(row.title)}><ExternalLink size={14}/></button><button onClick={() => void safeShareResource(row.title, row.title)}><Share2 size={14}/></button><button onClick={() => void safeCopyToClipboard(row.title)}><Copy size={14}/></button><button onClick={() => info('Más opciones', row.title)}><MoreHorizontal size={14}/></button></div></td></tr>)}</tbody></table></section>
 
     {drawer && <div className="fixed inset-0 z-50"><div className="absolute inset-0 bg-slate-900/30" onClick={() => setDrawer(null)} /><div className="absolute right-0 top-0 h-full w-full max-w-xl bg-white p-5 shadow-2xl overflow-auto"><div className="flex justify-between"><h3>{drawer.mode === 'edit' ? 'Editar' : 'Crear'} {drawer.kind}</h3><button onClick={() => setDrawer(null)}><X size={16}/></button></div>
