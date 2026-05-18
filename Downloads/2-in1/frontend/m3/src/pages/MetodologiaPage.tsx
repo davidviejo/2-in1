@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   BookOpen,
   CircleDashed,
@@ -25,6 +25,15 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/ToastContext';
 import { useLocation } from 'react-router-dom';
+import {
+  CreateModuleInput,
+  CreateResourceInput,
+  MetodologiaModule,
+  MetodologiaResource,
+  RESOURCE_STATUSES,
+  RESOURCE_TYPES,
+  metodologiaService,
+} from '@/services/metodologiaService';
 
 const kpis = [
   { label: 'módulos', value: '8', subtitle: 'Estructura definida', icon: Layers },
@@ -74,11 +83,50 @@ const tabResources: Record<string, typeof resources> = {
   'Notas rápidas': [],
 };
 
+
+
+interface ResourceDraft extends CreateResourceInput {
+  linksText: string;
+}
+
+const moduleCatalog = modules.map((moduleItem) => moduleItem.id);
+
+const initialResourceDraft: ResourceDraft = {
+  type: 'doc',
+  title: '',
+  moduleId: moduleCatalog[0],
+  description: '',
+  status: 'Pendiente',
+  links: [],
+  linksText: '',
+  metadata: {
+    author: '',
+    version: 'v1.0',
+    updatedAt: '',
+  },
+};
+
+const initialModuleDraft: CreateModuleInput = {
+  title: '',
+  description: '',
+  status: 'Pendiente',
+};
+
 const MetodologiaPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState('Documentación');
   const [expandedModuleId, setExpandedModuleId] = useState<string | null>(modules[0].id);
-  const { info, successAction } = useToast();
+  const [isResourceFormOpen, setIsResourceFormOpen] = useState(false);
+  const [newResource, setNewResource] = useState<ResourceDraft>(initialResourceDraft);
+  const [newModule, setNewModule] = useState<CreateModuleInput>(initialModuleDraft);
+  const [userResources, setUserResources] = useState<MetodologiaResource[]>([]);
+  const [userModules, setUserModules] = useState<MetodologiaModule[]>([]);
+  const { info, success, error, successAction } = useToast();
   const location = useLocation();
+
+  useEffect(() => {
+    setUserResources(metodologiaService.listResources());
+    setUserModules(metodologiaService.listModules());
+  }, []);
 
   useEffect(() => {
     if (!location.hash) return;
@@ -123,7 +171,88 @@ const MetodologiaPage: React.FC = () => {
     return <FileText size={16} className="text-blue-600" />;
   };
 
-  const filteredResources = tabResources[activeTab] ?? [];
+  const defaultResources = tabResources[activeTab] ?? [];
+  const mappedUserResources = userResources.map((resource) => ({
+    title: resource.title,
+    meta: `${resource.moduleId} · ${resource.status} · ${resource.metadata.version || 'v1.0'}`,
+    type: resource.type,
+  }));
+  const filteredResources = [...mappedUserResources, ...defaultResources];
+
+
+
+  const handleResourceSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!newResource.title.trim()) {
+      error('El título es obligatorio para crear un recurso.');
+      return;
+    }
+
+    const validModuleIds = [...moduleCatalog, ...userModules.map((m) => m.id)];
+    if (!validModuleIds.includes(newResource.moduleId)) {
+      error('Selecciona un módulo válido antes de guardar.');
+      return;
+    }
+
+    const links = newResource.linksText
+      .split('\n')
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .map((url, idx) => ({ label: `Enlace ${idx + 1}`, url }));
+
+    const payload: CreateResourceInput = {
+      ...newResource,
+      title: newResource.title.trim(),
+      description: newResource.description.trim(),
+      links,
+      metadata: {
+        ...newResource.metadata,
+        author: newResource.metadata.author.trim() || 'Equipo SEO',
+        version: newResource.metadata.version.trim() || 'v1.0',
+        updatedAt: new Date().toISOString(),
+      },
+    };
+
+    const optimistic: MetodologiaResource = {
+      id: `temp-${Date.now()}`,
+      source: 'user',
+      ...payload,
+    };
+
+    setUserResources((current) => [optimistic, ...current]);
+
+    try {
+      const saved = await metodologiaService.createResource(payload);
+      setUserResources((current) => current.map((resource) => (resource.id === optimistic.id ? saved : resource)));
+      success('Recurso creado correctamente.');
+      setNewResource(initialResourceDraft);
+      setIsResourceFormOpen(false);
+    } catch (err) {
+      setUserResources((current) => current.filter((resource) => resource.id !== optimistic.id));
+      error('No se pudo crear el recurso. Intenta de nuevo.');
+    }
+  };
+
+
+  const handleModuleSubmit = async () => {
+    if (!newModule.title.trim()) {
+      error('El título del módulo es obligatorio.');
+      return;
+    }
+    try {
+      const created = await metodologiaService.createModule({
+        ...newModule,
+        title: newModule.title.trim(),
+        description: newModule.description.trim(),
+      });
+      setUserModules((current) => [created, ...current]);
+      setNewResource((current) => ({ ...current, moduleId: created.id }));
+      setNewModule(initialModuleDraft);
+      success('Módulo creado correctamente.');
+    } catch {
+      error('No se pudo crear el módulo.');
+    }
+  };
 
   return (
     <div className="space-y-6 overflow-x-hidden text-slate-800">
@@ -134,7 +263,7 @@ const MetodologiaPage: React.FC = () => {
             <p className="mt-2 text-sm text-slate-600">Centraliza el proceso de trabajo, documentación y recursos estratégicos del proyecto.</p>
           </div>
           <div className="flex gap-3">
-            <Button onClick={() => successAction('Recurso en creación', 'Abrimos el flujo para añadir un nuevo recurso.')}>+ Añadir recurso</Button>
+            <Button onClick={() => setIsResourceFormOpen(true)}>+ Añadir recurso</Button>
             <Button variant="secondary" onClick={() => info('Editor de estructura', 'Aquí podrás reordenar módulos y fases en los próximos pasos.')}>Editar estructura</Button>
           </div>
         </div>
@@ -143,7 +272,82 @@ const MetodologiaPage: React.FC = () => {
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {kpis.map((item) => {
           const Icon = item.icon;
-          return (
+        
+
+  const handleResourceSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!newResource.title.trim()) {
+      error('El título es obligatorio para crear un recurso.');
+      return;
+    }
+
+    const validModuleIds = [...moduleCatalog, ...userModules.map((m) => m.id)];
+    if (!validModuleIds.includes(newResource.moduleId)) {
+      error('Selecciona un módulo válido antes de guardar.');
+      return;
+    }
+
+    const links = newResource.linksText
+      .split('\n')
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .map((url, idx) => ({ label: `Enlace ${idx + 1}`, url }));
+
+    const payload: CreateResourceInput = {
+      ...newResource,
+      title: newResource.title.trim(),
+      description: newResource.description.trim(),
+      links,
+      metadata: {
+        ...newResource.metadata,
+        author: newResource.metadata.author.trim() || 'Equipo SEO',
+        version: newResource.metadata.version.trim() || 'v1.0',
+        updatedAt: new Date().toISOString(),
+      },
+    };
+
+    const optimistic: MetodologiaResource = {
+      id: `temp-${Date.now()}`,
+      source: 'user',
+      ...payload,
+    };
+
+    setUserResources((current) => [optimistic, ...current]);
+
+    try {
+      const saved = await metodologiaService.createResource(payload);
+      setUserResources((current) => current.map((resource) => (resource.id === optimistic.id ? saved : resource)));
+      success('Recurso creado correctamente.');
+      setNewResource(initialResourceDraft);
+      setIsResourceFormOpen(false);
+    } catch (err) {
+      setUserResources((current) => current.filter((resource) => resource.id !== optimistic.id));
+      error('No se pudo crear el recurso. Intenta de nuevo.');
+    }
+  };
+
+
+  const handleModuleSubmit = async () => {
+    if (!newModule.title.trim()) {
+      error('El título del módulo es obligatorio.');
+      return;
+    }
+    try {
+      const created = await metodologiaService.createModule({
+        ...newModule,
+        title: newModule.title.trim(),
+        description: newModule.description.trim(),
+      });
+      setUserModules((current) => [created, ...current]);
+      setNewResource((current) => ({ ...current, moduleId: created.id }));
+      setNewModule(initialModuleDraft);
+      success('Módulo creado correctamente.');
+    } catch {
+      error('No se pudo crear el módulo.');
+    }
+  };
+
+  return (
             <article key={item.label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-blue-700">
@@ -164,7 +368,7 @@ const MetodologiaPage: React.FC = () => {
           <section id="estructura" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">Estructura de la metodología</h2>
             <div className="mt-4 space-y-3">
-              {modules.map((m) => (
+              {[...userModules, ...modules].map((m) => (
                 <div key={m.id} className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
                   <div className="flex flex-wrap items-center gap-3">
                     <GripVertical size={16} className="text-slate-400" />
@@ -202,7 +406,82 @@ const MetodologiaPage: React.FC = () => {
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {phases.map((phase, idx) => {
                   const Icon = phase.icon;
-                  return (
+                
+
+  const handleResourceSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!newResource.title.trim()) {
+      error('El título es obligatorio para crear un recurso.');
+      return;
+    }
+
+    const validModuleIds = [...moduleCatalog, ...userModules.map((m) => m.id)];
+    if (!validModuleIds.includes(newResource.moduleId)) {
+      error('Selecciona un módulo válido antes de guardar.');
+      return;
+    }
+
+    const links = newResource.linksText
+      .split('\n')
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .map((url, idx) => ({ label: `Enlace ${idx + 1}`, url }));
+
+    const payload: CreateResourceInput = {
+      ...newResource,
+      title: newResource.title.trim(),
+      description: newResource.description.trim(),
+      links,
+      metadata: {
+        ...newResource.metadata,
+        author: newResource.metadata.author.trim() || 'Equipo SEO',
+        version: newResource.metadata.version.trim() || 'v1.0',
+        updatedAt: new Date().toISOString(),
+      },
+    };
+
+    const optimistic: MetodologiaResource = {
+      id: `temp-${Date.now()}`,
+      source: 'user',
+      ...payload,
+    };
+
+    setUserResources((current) => [optimistic, ...current]);
+
+    try {
+      const saved = await metodologiaService.createResource(payload);
+      setUserResources((current) => current.map((resource) => (resource.id === optimistic.id ? saved : resource)));
+      success('Recurso creado correctamente.');
+      setNewResource(initialResourceDraft);
+      setIsResourceFormOpen(false);
+    } catch (err) {
+      setUserResources((current) => current.filter((resource) => resource.id !== optimistic.id));
+      error('No se pudo crear el recurso. Intenta de nuevo.');
+    }
+  };
+
+
+  const handleModuleSubmit = async () => {
+    if (!newModule.title.trim()) {
+      error('El título del módulo es obligatorio.');
+      return;
+    }
+    try {
+      const created = await metodologiaService.createModule({
+        ...newModule,
+        title: newModule.title.trim(),
+        description: newModule.description.trim(),
+      });
+      setUserModules((current) => [created, ...current]);
+      setNewResource((current) => ({ ...current, moduleId: created.id }));
+      setNewModule(initialModuleDraft);
+      success('Módulo creado correctamente.');
+    } catch {
+      error('No se pudo crear el módulo.');
+    }
+  };
+
+  return (
                     <div key={phase.title} className="relative rounded-2xl border border-slate-200 bg-slate-50 p-4">
                       
                       <div className="mb-3 flex items-center justify-between">
@@ -333,6 +612,42 @@ const MetodologiaPage: React.FC = () => {
           </table>
         </div>
       </section>
+      {isResourceFormOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white p-5 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">Nuevo recurso</h3>
+              <Button variant="ghost" onClick={() => setIsResourceFormOpen(false)}>Cerrar</Button>
+            </div>
+            <form className="space-y-3" onSubmit={handleResourceSubmit}>
+              <input className="w-full rounded border border-slate-300 px-3 py-2 text-sm" placeholder="Título*" value={newResource.title} onChange={(e) => setNewResource((c) => ({ ...c, title: e.target.value }))} />
+              <div className="grid grid-cols-2 gap-3">
+                <select className="rounded border border-slate-300 px-3 py-2 text-sm" value={newResource.type} onChange={(e) => setNewResource((c) => ({ ...c, type: e.target.value as ResourceDraft['type'] }))}>{RESOURCE_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select>
+                <select className="rounded border border-slate-300 px-3 py-2 text-sm" value={newResource.status} onChange={(e) => setNewResource((c) => ({ ...c, status: e.target.value as ResourceDraft['status'] }))}>{RESOURCE_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}</select>
+              </div>
+              <input className="w-full rounded border border-slate-300 px-3 py-2 text-sm" placeholder="Módulo (ej: M1)" value={newResource.moduleId} onChange={(e) => setNewResource((c) => ({ ...c, moduleId: e.target.value }))} />
+              <textarea className="w-full rounded border border-slate-300 px-3 py-2 text-sm" placeholder="Descripción" value={newResource.description} onChange={(e) => setNewResource((c) => ({ ...c, description: e.target.value }))} />
+              <textarea className="w-full rounded border border-slate-300 px-3 py-2 text-sm" placeholder="Enlaces o docs (uno por línea)" value={newResource.linksText} onChange={(e) => setNewResource((c) => ({ ...c, linksText: e.target.value }))} />
+              <div className="grid grid-cols-2 gap-3">
+                <input className="rounded border border-slate-300 px-3 py-2 text-sm" placeholder="Autor" value={newResource.metadata.author} onChange={(e) => setNewResource((c) => ({ ...c, metadata: { ...c.metadata, author: e.target.value } }))} />
+                <input className="rounded border border-slate-300 px-3 py-2 text-sm" placeholder="Versión" value={newResource.metadata.version} onChange={(e) => setNewResource((c) => ({ ...c, metadata: { ...c.metadata, version: e.target.value } }))} />
+              </div>
+              <div className="rounded-lg border border-slate-200 p-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Nuevo módulo</p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <input className="rounded border border-slate-300 px-3 py-2 text-sm" placeholder="Título módulo" value={newModule.title} onChange={(e) => setNewModule((c) => ({ ...c, title: e.target.value }))} />
+                  <input className="rounded border border-slate-300 px-3 py-2 text-sm" placeholder="Descripción módulo" value={newModule.description} onChange={(e) => setNewModule((c) => ({ ...c, description: e.target.value }))} />
+                  <Button type="button" variant="secondary" onClick={() => void handleModuleSubmit()}>Crear módulo</Button>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="secondary" type="button" onClick={() => setIsResourceFormOpen(false)}>Cancelar</Button>
+                <Button type="submit">Guardar recurso</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
