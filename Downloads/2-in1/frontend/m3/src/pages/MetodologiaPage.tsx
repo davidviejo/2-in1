@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   BookOpen,
   ExternalLink,
@@ -38,15 +38,7 @@ const methodologyPhases = [
   { title: 'Mejora continua', description: 'Iteramos, refinamos y ampliamos el trabajo según resultados y aprendizaje.', chips: ['Optimización', 'Iteración'], icon: Sparkles },
 ] as const;
 
-const featuredResources = [
-  { name: 'Brief inicial del proyecto', description: 'Documento base · Google Docs', icon: FileText },
-  { name: 'Checklist de auditoría', description: 'Hoja de cálculo · Google Sheets', icon: ListChecks },
-  { name: 'Roadmap estratégico', description: 'Documento de trabajo · Google Docs', icon: Milestone },
-  { name: 'Mapa de URLs y verticales', description: 'Documento operativo · Sheet', icon: Map },
-  { name: 'Panel de control SEO', description: 'Dashboard de seguimiento', icon: Rocket },
-] as const;
-
-const deepDiveResources = [
+const initialDeepDiveResources = [
   { name: 'Brief inicial del proyecto', description: 'Documento de arranque con contexto, objetivos y alcance.', type: 'Google Docs', linkText: 'Abrir documento', usage: 'Kickoff' },
   { name: 'Checklist de auditoría SEO', description: 'Listado técnico y editorial para revisar el sitio.', type: 'Google Sheets', linkText: 'Abrir sheet', usage: 'Auditoría inicial' },
   { name: 'Plantilla de puntos de control', description: 'Guía para registrar revisiones y checkpoints clave.', type: 'Google Docs', linkText: 'Abrir documento', usage: 'Puntos de control' },
@@ -55,11 +47,48 @@ const deepDiveResources = [
   { name: 'Checklist de implementación', description: 'Seguimiento de tareas ejecutadas y control de cambios.', type: 'Google Sheets', linkText: 'Abrir sheet', usage: 'Implementación' },
   { name: 'Documento de validación', description: 'QA, revisión de resultados y comprobaciones finales.', type: 'Google Docs', linkText: 'Abrir documento', usage: 'Validación' },
   { name: 'Backlog de mejora continua', description: 'Listado de aprendizajes, optimizaciones y siguientes pasos.', type: 'Notion / Docs', linkText: 'Abrir recurso', usage: 'Mejora continua' },
-] as const;
+];
 
 const resourceTabs = ['Documentación', 'Sheets', 'Enlaces', 'Plantillas'] as const;
 
 const MetodologiaPage: React.FC = () => {
+  const [deepDiveResources, setDeepDiveResources] = useState(initialDeepDiveResources);
+
+  const featuredResources = useMemo(
+    () =>
+      deepDiveResources.slice(0, 5).map((resource, index) => ({
+        name: resource.name,
+        description: `${resource.type} · ${resource.usage}`,
+        icon: [FileText, ListChecks, Milestone, Map, Rocket][index] ?? BookOpen,
+      })),
+    [deepDiveResources],
+  );
+
+  const addResource = () => {
+    const name = window.prompt('Nombre del recurso');
+    if (!name) return;
+    const description = window.prompt('Descripción del recurso') ?? 'Sin descripción';
+    const type = window.prompt('Tipo (Google Docs, Sheet, Notion, etc.)') ?? 'Documento';
+    const usage = window.prompt('Uso recomendado (fase)') ?? 'General';
+    const linkText = window.prompt('Texto del enlace') ?? 'Abrir recurso';
+
+    setDeepDiveResources((prev) => [...prev, { name, description, type, linkText, usage }]);
+  };
+
+  const editResource = (resourceName: string) => {
+    setDeepDiveResources((prev) =>
+      prev.map((resource) => {
+        if (resource.name !== resourceName) return resource;
+        const name = window.prompt('Nombre del recurso', resource.name) ?? resource.name;
+        const description = window.prompt('Descripción', resource.description) ?? resource.description;
+        const type = window.prompt('Tipo', resource.type) ?? resource.type;
+        const usage = window.prompt('Uso recomendado', resource.usage) ?? resource.usage;
+        const linkText = window.prompt('Texto del enlace', resource.linkText) ?? resource.linkText;
+        return { ...resource, name, description, type, usage, linkText };
+      }),
+    );
+  };
+
   return (
     <section className="space-y-6 bg-slate-50 px-4 py-6 sm:px-6 lg:px-8">
       <header id="estructura" className="space-y-4">
@@ -71,8 +100,10 @@ const MetodologiaPage: React.FC = () => {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button>+ Añadir recurso</Button>
-            <Button variant="secondary">Editar contenido</Button>
+            <Button onClick={addResource}>+ Añadir recurso</Button>
+            <Button variant="secondary" onClick={() => editResource(deepDiveResources[0]?.name ?? '')}>
+              Editar primer recurso
+            </Button>
           </div>
         </div>
 
@@ -93,15 +124,15 @@ const MetodologiaPage: React.FC = () => {
         </div>
       </header>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr),340px]" id="fases">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr),370px]" id="fases">
         <Card className="border-border bg-white p-5 shadow-sm sm:p-6">
           <h2 className="text-xl font-semibold text-foreground">Cómo aplicamos la metodología</h2>
           <div className="mt-5 overflow-x-auto pb-2">
-            <div className="grid min-w-[980px] grid-cols-8 gap-4">
+            <div className="grid min-w-[1100px] grid-cols-8 gap-5">
               {methodologyPhases.map((phase, index) => {
                 const Icon = phase.icon;
                 return (
-                  <div key={phase.title} className="relative rounded-xl border border-border bg-slate-50/70 p-4">
+                  <div key={phase.title} className="relative rounded-xl border border-border bg-slate-50/70 p-5">
                     {index < methodologyPhases.length - 1 && (
                       <span className="pointer-events-none absolute left-[calc(100%-8px)] top-8 hidden h-px w-4 border-t border-dashed border-slate-300 lg:block" />
                     )}
@@ -109,11 +140,11 @@ const MetodologiaPage: React.FC = () => {
                       <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-semibold text-on-primary">{index + 1}</span>
                       <span className="rounded-lg bg-slate-100 p-1.5 text-slate-600"><Icon size={15} /></span>
                     </div>
-                    <h3 className="text-sm font-semibold text-foreground">{phase.title}</h3>
-                    <p className="mt-2 text-xs leading-5 text-muted-foreground">{phase.description}</p>
+                    <h3 className="text-base font-semibold text-foreground">{phase.title}</h3>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">{phase.description}</p>
                     <div className="mt-3 flex flex-wrap gap-1.5">
                       {phase.chips.map((chip) => (
-                        <span key={chip} className="rounded-full border border-border bg-white px-2 py-1 text-[11px] font-medium text-slate-600">
+                        <span key={chip} className="rounded-full border border-border bg-white px-2.5 py-1 text-xs font-medium text-slate-600">
                           {chip}
                         </span>
                       ))}
@@ -168,10 +199,10 @@ const MetodologiaPage: React.FC = () => {
         <p className="mt-1 text-sm text-muted-foreground">Documentación, enlaces y materiales de apoyo vinculados a la metodología.</p>
 
         <div className="mt-4 overflow-x-auto">
-          <table className="min-w-[820px] w-full text-sm">
+          <table className="min-w-[980px] w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                <th className="px-3 py-3">Nombre</th><th className="px-3 py-3">Descripción</th><th className="px-3 py-3">Tipo</th><th className="px-3 py-3">Enlace</th><th className="px-3 py-3">Uso recomendado</th>
+                <th className="px-3 py-3">Nombre</th><th className="px-3 py-3">Descripción</th><th className="px-3 py-3">Tipo</th><th className="px-3 py-3">Enlace</th><th className="px-3 py-3">Uso recomendado</th><th className="px-3 py-3">Acción</th>
               </tr>
             </thead>
             <tbody>
@@ -187,6 +218,11 @@ const MetodologiaPage: React.FC = () => {
                     </a>
                   </td>
                   <td className="px-3 py-3 text-slate-600">{resource.usage}</td>
+                  <td className="px-3 py-3">
+                    <Button variant="ghost" className="h-auto px-0 text-xs" onClick={() => editResource(resource.name)}>
+                      Editar
+                    </Button>
+                  </td>
                 </tr>
               ))}
             </tbody>
