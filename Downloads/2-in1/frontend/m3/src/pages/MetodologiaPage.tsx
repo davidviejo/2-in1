@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   BookOpen,
   CircleDashed,
@@ -24,6 +24,7 @@ import {
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/ToastContext';
+import { useLocation } from 'react-router-dom';
 
 const kpis = [
   { label: 'módulos', value: '8', subtitle: 'Estructura definida', icon: Layers },
@@ -77,6 +78,38 @@ const MetodologiaPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState('Documentación');
   const [expandedModuleId, setExpandedModuleId] = useState<string | null>(modules[0].id);
   const { info, successAction } = useToast();
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!location.hash) return;
+    const id = location.hash.replace('#', '');
+    const target = document.getElementById(id);
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [location.hash]);
+
+  const openResource = (title: string) => {
+    const query = encodeURIComponent(title);
+    window.open(`https://drive.google.com/drive/search?q=${query}`, '_blank', 'noopener,noreferrer');
+    successAction('Recurso abierto', `Abriendo búsqueda en Drive para "${title}".`);
+  };
+
+  const shareResource = async (title: string) => {
+    const text = `Recurso metodología: ${title}`;
+    if (navigator.share) {
+      await navigator.share({ title, text });
+      successAction('Compartido', `Has compartido "${title}".`);
+      return;
+    }
+    await navigator.clipboard.writeText(text);
+    successAction('Compartido', 'Copiamos los datos al portapapeles para compartir.');
+  };
+
+  const copyResource = async (title: string) => {
+    const query = encodeURIComponent(title);
+    await navigator.clipboard.writeText(`https://drive.google.com/drive/search?q=${query}`);
+    successAction('Enlace copiado', `Copiado el acceso para "${title}".`);
+  };
 
   const statusClass = useMemo(() => ({
     Completado: 'success',
@@ -211,7 +244,7 @@ const MetodologiaPage: React.FC = () => {
                   </div>
                   <button
                     type="button"
-                    onClick={() => info('Recurso seleccionado', `Abriremos "${resource.title}" cuando se conecte la fuente real.`)}
+                    onClick={() => openResource(resource.title)}
                     title="Abrir recurso"
                     className="rounded p-1 transition hover:bg-slate-100"
                   >
@@ -229,7 +262,7 @@ const MetodologiaPage: React.FC = () => {
           <Button
             variant="secondary"
             className="mt-4 w-full"
-            onClick={() => info('Catálogo completo', `Mostrando ${resources.length} recursos en la biblioteca principal.`)}
+            onClick={() => setActiveTab('Documentación')}
           >
             Ver todos los recursos
           </Button>
@@ -290,9 +323,9 @@ const MetodologiaPage: React.FC = () => {
                   <td className="px-3 py-3 text-slate-600">{row[4]}</td>
                   <td className="px-3 py-3">
                     <div className="flex items-center gap-2 text-slate-500">
-                      <button type="button" title="Abrir" onClick={() => info('Abrir recurso', `Acción: abrir "${row[1]}".`)}><ExternalLink size={14} /></button>
-                      <button type="button" title="Compartir" onClick={() => successAction('Compartir recurso', `Acción: compartir "${row[1]}".`)}><Share2 size={14} /></button>
-                      <button type="button" title="Copiar enlace" onClick={() => successAction('Enlace copiado', `Acción: copiar enlace de "${row[1]}".`)}><Copy size={14} /></button>
+                      <button type="button" title="Abrir" onClick={() => openResource(row[1])}><ExternalLink size={14} /></button>
+                      <button type="button" title="Compartir" onClick={() => void shareResource(row[1])}><Share2 size={14} /></button>
+                      <button type="button" title="Copiar enlace" onClick={() => void copyResource(row[1])}><Copy size={14} /></button>
                       <button type="button" title="Más" onClick={() => info('Más opciones', `Acción: más opciones para "${row[1]}".`)}><MoreHorizontal size={14} /></button>
                     </div>
                   </td>
