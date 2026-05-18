@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/ToastContext';
 import { useLocation } from 'react-router-dom';
 import { safeCopyToClipboard, safeShareResource } from '@/lib/browser/shareClipboard';
-import { metodologiaService, MethodologyModule, MethodologyPhase, MethodologyResource, MethodologyStatus, ResourceType } from '@/services/metodologiaService';
+import { CreateModuleInput, CreateResourceInput, metodologiaService, MethodologyModule, MethodologyPhase, MethodologyResource, MethodologyStatus, ResourceType } from '@/services/metodologiaService';
 
 const kpis = [
   { label: 'módulos', value: '8', subtitle: 'Estructura definida', icon: Layers },
@@ -27,9 +27,9 @@ const initialPhases: MethodologyPhase[] = [
 ];
 
 const initialResources: MethodologyResource[] = [
-  { title: 'Guía de Metodología SEO - v2.1', meta: 'Google Docs · Actualizado hace 5 días', type: 'doc', moduleId: 'M1', description: 'Manual completo de la metodología y estándares compartidos para todos los proyectos.' },
-  { title: 'Checklist de auditoría', meta: 'Hoja de cálculo · v1.1', type: 'sheet', moduleId: 'M2', description: 'Lista de validación técnica para auditoría.' },
-  { title: 'Dashboard de seguimiento', meta: 'Hoja de cálculo · v1.3', type: 'chart', moduleId: 'M3', description: 'Control de KPIs y avance del plan.' },
+  { title: 'Guía de Metodología SEO - v2.1', meta: 'Google Docs · Actualizado hace 5 días', type: 'doc', moduleId: 'M1', description: 'Manual completo de la metodología y estándares compartidos para todos los proyectos.', status: 'Completado', docs: 1, links: ['https://docs.google.com'], metadata: 'owner: equipo-seo' },
+  { title: 'Checklist de auditoría', meta: 'Hoja de cálculo · v1.1', type: 'sheet', moduleId: 'M2', description: 'Lista de validación técnica para auditoría.', status: 'En progreso', docs: 1, links: ['https://sheets.google.com'], metadata: 'owner: analitica' },
+  { title: 'Dashboard de seguimiento', meta: 'Hoja de cálculo · v1.3', type: 'chart', moduleId: 'M3', description: 'Control de KPIs y avance del plan.', status: 'Pendiente', docs: 1, links: ['https://lookerstudio.google.com'], metadata: 'owner: growth' },
 ];
 
 const tabs = ['Documentación', 'Enlazado interno', 'URLs clave', 'Plantillas', 'KPIs', 'Notas rápidas'] as const;
@@ -43,6 +43,25 @@ type DrawerState =
   | null;
 
 const defaultStatus: MethodologyStatus = 'Pendiente';
+
+
+const initialNewResource: CreateResourceInput = {
+  title: '',
+  type: 'doc',
+  moduleId: initialModules[0]?.id ?? 'M1',
+  description: '',
+  status: 'Pendiente',
+  docs: 1,
+  links: [],
+  metadata: '',
+};
+
+const initialNewModule: CreateModuleInput = {
+  id: '',
+  title: '',
+  description: '',
+  status: 'Pendiente',
+};
 
 const normalizeStatus = (value: string): MethodologyStatus => (
   value === 'Completado' || value === 'En progreso' || value === 'Pendiente' ? value : defaultStatus
@@ -59,6 +78,8 @@ const MetodologiaPage: React.FC = () => {
   const [phases, setPhases] = useState(initialPhases);
   const [resources, setResources] = useState(initialResources);
   const [drawer, setDrawer] = useState<DrawerState>(null);
+  const [newResource, setNewResource] = useState<CreateResourceInput>(initialNewResource);
+  const [newModule, setNewModule] = useState<CreateModuleInput>(initialNewModule);
   const { info, successAction, error } = useToast();
   const location = useLocation();
 
@@ -104,10 +125,68 @@ const MetodologiaPage: React.FC = () => {
     }
   };
 
+
+  const handleCreateResource = async () => {
+    if (!newResource.title.trim()) {
+      error('Título requerido', 'Debes ingresar un título del recurso.');
+      return;
+    }
+    if (!modules.some((m) => m.id === newResource.moduleId)) {
+      error('Módulo inválido', 'Selecciona un módulo existente.');
+      return;
+    }
+
+    const optimistic: MethodologyResource = {
+      ...newResource,
+      title: newResource.title.trim(),
+      description: newResource.description.trim(),
+      metadata: newResource.metadata.trim(),
+      links: newResource.links,
+      meta: newResource.metadata || 'Nuevo recurso',
+    };
+
+    setResources((current) => [optimistic, ...current]);
+
+    try {
+      const saved = await metodologiaService.createResource(optimistic);
+      setResources((current) => [saved, ...current.filter((r) => r.title !== optimistic.title)]);
+      successAction('Recurso creado', 'El recurso se guardó correctamente.');
+      setDrawer(null);
+      setNewResource(initialNewResource);
+    } catch {
+      setResources((current) => current.filter((r) => r.title !== optimistic.title));
+      error('No se pudo crear', 'El recurso no se guardó.');
+    }
+  };
+
+  const handleCreateModule = async () => {
+    if (!newModule.title.trim()) {
+      error('Título requerido', 'Debes ingresar el título del módulo.');
+      return;
+    }
+    if (!newModule.id.trim()) {
+      error('Módulo inválido', 'Debes ingresar un identificador de módulo.');
+      return;
+    }
+
+    const optimistic: MethodologyModule = { ...newModule, id: newModule.id.trim(), title: newModule.title.trim(), docs: 0, links: 0 };
+    setModules((current) => [optimistic, ...current.filter((m) => m.id !== optimistic.id)]);
+
+    try {
+      const saved = await metodologiaService.createModule(newModule);
+      setModules((current) => [saved, ...current.filter((m) => m.id !== optimistic.id)]);
+      successAction('Módulo creado', 'El módulo se guardó correctamente.');
+      setNewModule(initialNewModule);
+    } catch {
+      setModules((current) => current.filter((m) => m.id !== optimistic.id));
+      error('No se pudo crear', 'El módulo no se guardó.');
+    }
+  };
+
   const getResourceIcon = (type: ResourceType) => type === 'sheet' ? <FileSpreadsheet size={16} className="text-emerald-600" /> : type === 'chart' ? <BarChart3 size={16} className="text-violet-600" /> : <FileText size={16} className="text-blue-600" />;
 
   return <div className="space-y-6 overflow-x-hidden text-slate-800">{/* UI kept */}
-    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><div className="flex justify-between"><div><h1 className="text-3xl font-bold text-slate-900">Metodología</h1><p className="mt-1 text-sm text-slate-600">Esta página es única y aplica de la misma forma para todos los proyectos.</p></div><Button onClick={() => setDrawer({ kind: 'resource', mode: 'create', data: { title: '', meta: '', type: 'doc', moduleId: modules[0]?.id ?? 'M1', description: '' } })}>+ Añadir recurso</Button></div></section>
+    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><div className="flex justify-between"><div><h1 className="text-3xl font-bold text-slate-900">Metodología</h1><p className="mt-1 text-sm text-slate-600">Esta página es única y aplica de la misma forma para todos los proyectos.</p></div><Button onClick={() => { setNewResource((prev) => ({ ...prev, moduleId: modules[0]?.id ?? prev.moduleId })); setDrawer({ kind: 'resource', mode: 'create', data: { ...initialResources[0], title: '', description: '', status: 'Pendiente', docs: 1, links: [], metadata: '', meta: '' } }); }}>+ Añadir recurso</Button></div></section>
     <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{kpis.map((item) => { const Icon = item.icon; return <article key={item.label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><Icon size={18} /><p>{item.value} {item.label}</p></article>; })}</section>
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2>Estructura</h2>{modules.map((m) => <div key={m.id} className="rounded-xl border p-3 mt-2"><div className="flex items-center gap-2"><GripVertical size={14}/><span>{m.id}</span><p className="flex-1">{m.title}</p><Badge variant={STATUS_VARIANTS[m.status]}>{m.status}</Badge><button onClick={() => setDrawer({ kind: 'module', mode: 'edit', data: m })}><SquarePen size={14}/></button><button onClick={() => setExpandedModuleId(expandedModuleId === m.id ? null : m.id)}><ChevronDown size={14}/></button></div>{expandedModuleId===m.id && <p className="text-sm">{m.description} · {m.docs} docs · {m.links} links</p>}</div>)}</section>
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2>Fases</h2><div className="grid gap-3 sm:grid-cols-2">{phases.map((phase, idx) => { const Icon = phaseIcons[idx % phaseIcons.length]; return <div key={phase.title} className="border rounded-xl p-3"><div className="flex justify-between"><Icon size={16}/><button onClick={() => setDrawer({ kind: 'phase', mode: 'edit', data: phase })}><SquarePen size={14}/></button></div><p>{phase.title}</p><Badge variant={STATUS_VARIANTS[phase.status]}>{phase.status}</Badge></div>; })}</div></section>
@@ -117,8 +196,8 @@ const MetodologiaPage: React.FC = () => {
     {drawer && <div className="fixed inset-0 z-50"><div className="absolute inset-0 bg-slate-900/30" onClick={() => setDrawer(null)} /><div className="absolute right-0 top-0 h-full w-full max-w-xl bg-white p-5 shadow-2xl overflow-auto"><div className="flex justify-between"><h3>{drawer.mode === 'edit' ? 'Editar' : 'Crear'} {drawer.kind}</h3><button onClick={() => setDrawer(null)}><X size={16}/></button></div>
       {drawer.kind === 'module' && <div className="space-y-2 mt-4"><input className="w-full border p-2" value={drawer.data.id} onChange={(e) => setDrawer({ ...drawer, data: { ...drawer.data, id: e.target.value } })}/><input className="w-full border p-2" value={drawer.data.title} onChange={(e) => setDrawer({ ...drawer, data: { ...drawer.data, title: e.target.value } })}/><textarea className="w-full border p-2" value={drawer.data.description} onChange={(e) => setDrawer({ ...drawer, data: { ...drawer.data, description: e.target.value } })}/><select className="w-full border p-2" value={drawer.data.status} onChange={(e) => setDrawer({ ...drawer, data: { ...drawer.data, status: normalizeStatus(e.target.value) } })}><option>Completado</option><option>En progreso</option><option>Pendiente</option></select><input type="number" className="w-full border p-2" value={drawer.data.docs} onChange={(e) => setDrawer({ ...drawer, data: { ...drawer.data, docs: Number(e.target.value) } })}/><input type="number" className="w-full border p-2" value={drawer.data.links} onChange={(e) => setDrawer({ ...drawer, data: { ...drawer.data, links: Number(e.target.value) } })}/></div>}
       {drawer.kind === 'phase' && <div className="space-y-2 mt-4"><input className="w-full border p-2" value={drawer.data.title} onChange={(e) => setDrawer({ ...drawer, data: { ...drawer.data, title: e.target.value } })}/><textarea className="w-full border p-2" value={drawer.data.desc} onChange={(e) => setDrawer({ ...drawer, data: { ...drawer.data, desc: e.target.value } })}/><select className="w-full border p-2" value={drawer.data.status} onChange={(e) => setDrawer({ ...drawer, data: { ...drawer.data, status: normalizeStatus(e.target.value) } })}><option>Completado</option><option>En progreso</option><option>Pendiente</option></select><textarea className="w-full border p-2" value={drawer.data.deliverables.join(', ')} onChange={(e) => setDrawer({ ...drawer, data: { ...drawer.data, deliverables: e.target.value.split(',').map((d) => d.trim()).filter(Boolean) } })}/></div>}
-      {drawer.kind === 'resource' && <div className="space-y-2 mt-4"><input className="w-full border p-2" value={drawer.data.title} onChange={(e) => setDrawer({ ...drawer, data: { ...drawer.data, title: e.target.value } })}/><input className="w-full border p-2" value={drawer.data.meta} onChange={(e) => setDrawer({ ...drawer, data: { ...drawer.data, meta: e.target.value } })}/><select className="w-full border p-2" value={drawer.data.type} onChange={(e) => setDrawer({ ...drawer, data: { ...drawer.data, type: normalizeResourceType(e.target.value) } })}><option value="doc">doc</option><option value="sheet">sheet</option><option value="chart">chart</option></select><select className="w-full border p-2" value={drawer.data.moduleId} onChange={(e) => setDrawer({ ...drawer, data: { ...drawer.data, moduleId: e.target.value } })}>{modules.map((m) => <option key={m.id} value={m.id}>{m.id}</option>)}</select><textarea className="w-full border p-2" value={drawer.data.description} onChange={(e) => setDrawer({ ...drawer, data: { ...drawer.data, description: e.target.value } })}/></div>}
-      <div className="mt-4 flex justify-end gap-2"><Button variant="secondary" onClick={() => setDrawer(null)}>Cancelar</Button><Button onClick={() => void handleSave()}>Guardar</Button></div>
+      {drawer.kind === 'resource' && <div className="space-y-2 mt-4">{drawer.mode === 'create' ? <><select className="w-full border p-2" value={newResource.type} onChange={(e) => setNewResource({ ...newResource, type: normalizeResourceType(e.target.value) })}><option value="doc">doc</option><option value="sheet">sheet</option><option value="chart">chart</option></select><input className="w-full border p-2" placeholder="Título" value={newResource.title} onChange={(e) => setNewResource({ ...newResource, title: e.target.value })}/><select className="w-full border p-2" value={newResource.moduleId} onChange={(e) => setNewResource({ ...newResource, moduleId: e.target.value })}>{modules.map((m) => <option key={m.id} value={m.id}>{m.id}</option>)}</select><textarea className="w-full border p-2" placeholder="Descripción" value={newResource.description} onChange={(e) => setNewResource({ ...newResource, description: e.target.value })}/><select className="w-full border p-2" value={newResource.status} onChange={(e) => setNewResource({ ...newResource, status: normalizeStatus(e.target.value) })}><option>Completado</option><option>En progreso</option><option>Pendiente</option></select><input type="number" className="w-full border p-2" placeholder="Cantidad de docs" value={newResource.docs} onChange={(e) => setNewResource({ ...newResource, docs: Number(e.target.value) })}/><input className="w-full border p-2" placeholder="Enlaces (coma separados)" value={newResource.links.join(', ')} onChange={(e) => setNewResource({ ...newResource, links: e.target.value.split(',').map((link) => link.trim()).filter(Boolean) })}/><input className="w-full border p-2" placeholder="Metadatos" value={newResource.metadata} onChange={(e) => setNewResource({ ...newResource, metadata: e.target.value })}/></> : <><input className="w-full border p-2" value={drawer.data.title} onChange={(e) => setDrawer({ ...drawer, data: { ...drawer.data, title: e.target.value } })}/><input className="w-full border p-2" value={drawer.data.meta} onChange={(e) => setDrawer({ ...drawer, data: { ...drawer.data, meta: e.target.value } })}/><select className="w-full border p-2" value={drawer.data.type} onChange={(e) => setDrawer({ ...drawer, data: { ...drawer.data, type: normalizeResourceType(e.target.value) } })}><option value="doc">doc</option><option value="sheet">sheet</option><option value="chart">chart</option></select><select className="w-full border p-2" value={drawer.data.moduleId} onChange={(e) => setDrawer({ ...drawer, data: { ...drawer.data, moduleId: e.target.value } })}>{modules.map((m) => <option key={m.id} value={m.id}>{m.id}</option>)}</select><textarea className="w-full border p-2" value={drawer.data.description} onChange={(e) => setDrawer({ ...drawer, data: { ...drawer.data, description: e.target.value } })}/></>}</div>}
+      <div className="mt-4 flex justify-end gap-2"><Button variant="secondary" onClick={() => setDrawer(null)}>Cancelar</Button>{drawer.kind === 'resource' && drawer.mode === 'create' ? <Button onClick={() => void handleCreateResource()}>Crear recurso</Button> : <Button onClick={() => void handleSave()}>Guardar</Button>}</div><div className="mt-3"><Button variant="secondary" onClick={() => void handleCreateModule()}>Crear módulo rápido</Button></div>
     </div></div>}
   </div>;
 };
