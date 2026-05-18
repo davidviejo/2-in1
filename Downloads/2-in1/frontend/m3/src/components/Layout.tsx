@@ -185,7 +185,7 @@ interface LayoutProps {
   onDeleteNote?: (noteId: string, type: 'project' | 'general') => void;
 }
 
-type TabType = 'analitica' | 'estrategia' | 'acciones' | 'ajustes' | 'backend' | 'admin';
+type TabType = 'analitica' | 'estrategia' | 'metodologia' | 'acciones' | 'ajustes' | 'backend' | 'admin';
 
 const Layout: React.FC<LayoutProps> = ({
   children,
@@ -239,10 +239,12 @@ const Layout: React.FC<LayoutProps> = ({
       path.startsWith('/app/client-roadmap') ||
       path.startsWith('/app/ai-roadmap') ||
       path.startsWith('/app/ia-visibility') ||
-      path.startsWith('/app/module') ||
-      path.startsWith('/app/metodologia')
+      path.startsWith('/app/module')
     ) {
       return 'estrategia';
+    }
+    if (path.startsWith('/app/metodologia')) {
+      return 'metodologia';
     }
     if (path.startsWith('/app/settings')) {
       return 'ajustes';
@@ -302,6 +304,9 @@ const Layout: React.FC<LayoutProps> = ({
         break;
       case 'estrategia':
         navigate('/app/client-roadmap');
+        break;
+      case 'metodologia':
+        navigate('/app/metodologia');
         break;
       case 'acciones':
         navigate('/app/kanban');
@@ -547,9 +552,10 @@ const Layout: React.FC<LayoutProps> = ({
 
           {/* Tabs */}
           <nav className="hidden lg:flex items-center space-x-1">
-            {(['analitica', 'estrategia', 'acciones'] as TabType[]).map((tab) => {
+            {(['analitica', 'estrategia', 'metodologia', 'acciones'] as TabType[]).map((tab) => {
               let toPath = '/app/';
               if (tab === 'estrategia') toPath = '/app/client-roadmap';
+              if (tab === 'metodologia') toPath = '/app/metodologia';
               if (tab === 'acciones') toPath = '/app/kanban';
 
               return (
@@ -571,16 +577,6 @@ const Layout: React.FC<LayoutProps> = ({
               );
             })}
 
-            <NavLink
-              to="/app/metodologia"
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                location.pathname.startsWith('/app/metodologia')
-                  ? 'bg-danger/10 text-primary dark:bg-primary/30 dark:text-white ring-1 ring-danger/30'
-                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'
-              }`}
-            >
-              Metodología
-            </NavLink>
 
             <div className="relative">
               <button
@@ -664,11 +660,12 @@ const Layout: React.FC<LayoutProps> = ({
 
             {/* Mobile Tabs */}
             <div className="grid grid-cols-2 gap-2 mb-4">
-              {(['analitica', 'estrategia', 'acciones'] as TabType[]).map(
+              {(['analitica', 'estrategia', 'metodologia', 'acciones'] as TabType[]).map(
                 (tab) => {
                   let toPath = '/app/';
                   if (tab === 'estrategia') toPath = '/app/client-roadmap';
-                  if (tab === 'acciones') toPath = '/app/kanban';
+                  if (tab === 'metodologia') toPath = '/app/metodologia';
+              if (tab === 'acciones') toPath = '/app/kanban';
 
                   return (
                     <NavLink
