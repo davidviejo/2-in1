@@ -179,6 +179,7 @@ export const useGSCData = (
     deferTrendPageDateFetch?: boolean;
     urlIncludeTerms?: string[];
     urlExcludeTerms?: string[];
+    excludedUrls?: string[];
     analysisMaxRows?: number;
     evolutionMaxRows?: number;
     autoRun?: boolean;
@@ -276,7 +277,7 @@ export const useGSCData = (
     isLoading: isLoadingData,
     error: dataError,
   } = useQuery({
-    queryKey: ['gscData', accessToken, resolvedSelectedSite, startDate, endDate, comparisonMode, context?.propertyId, context?.projectType, (context?.analysisProjectTypes || []).join('|'), context?.sector, context?.geoScope, (context?.brandTerms || []).join('|'), (context?.urlIncludeTerms || []).join('|'), (context?.urlExcludeTerms || []).join('|'), context?.analysisMaxRows || 0, context?.evolutionMaxRows || 0, context?.runKey || 0, context?.deferTrendPageDateFetch ? 'defer_page_date' : 'with_page_date'],
+    queryKey: ['gscData', accessToken, resolvedSelectedSite, startDate, endDate, comparisonMode, context?.propertyId, context?.projectType, (context?.analysisProjectTypes || []).join('|'), context?.sector, context?.geoScope, (context?.brandTerms || []).join('|'), (context?.urlIncludeTerms || []).join('|'), (context?.urlExcludeTerms || []).join('|'), (context?.excludedUrls || []).join('|'), context?.analysisMaxRows || 0, context?.evolutionMaxRows || 0, context?.runKey || 0, context?.deferTrendPageDateFetch ? 'defer_page_date' : 'with_page_date'],
     queryFn: async () => {
       const finalEndDate = endDate || new Date().toISOString().split('T')[0];
       const finalStartDate =
@@ -470,8 +471,11 @@ export const useGSCData = (
 
       const includeTerms = context?.urlIncludeTerms || [];
       const excludeTerms = context?.urlExcludeTerms || [];
-      const analysisCurrentRows = applyUrlTermsFilter(currentQueryPageResponse.rows || [], includeTerms, excludeTerms);
-      const analysisPreviousRows = applyUrlTermsFilter(previousQueryPageResponse.rows || [], includeTerms, excludeTerms);
+      const excludedUrlSet = new Set((context?.excludedUrls || []).map((value) => (value || '').trim().toLowerCase()));
+      const urlExclusionFilter = (rows: GSCRow[]) =>
+        rows.filter((row) => !excludedUrlSet.has((row.keys?.[1] || '').trim().toLowerCase()));
+      const analysisCurrentRows = urlExclusionFilter(applyUrlTermsFilter(currentQueryPageResponse.rows || [], includeTerms, excludeTerms));
+      const analysisPreviousRows = urlExclusionFilter(applyUrlTermsFilter(previousQueryPageResponse.rows || [], includeTerms, excludeTerms));
       const currentPartialReason = currentQueryPageResponse.metadata?.truncatedReason;
       const previousPartialReason = previousQueryPageResponse.metadata?.truncatedReason;
 

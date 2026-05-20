@@ -173,6 +173,28 @@ const parseUrlConditionLines = (rawValue: string) =>
     ),
   );
 
+const URL_EXCLUSION_TEMPLATE = `url,mode,active,reason
+https://dominio.com/gracias,EXCLUDE_ANALYSIS,TRUE,URL transaccional
+https://dominio.com/tag/*,EXCLUDE_ANALYSIS,TRUE,Taxonomía a excluir`;
+
+const normalizeUrlValue = (value: string) => value.trim().toLowerCase();
+
+const parseUrlCsvList = (content: string): string[] => {
+  const workbook = XLSX.read(content, { type: 'string', raw: false });
+  const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+  if (!firstSheet) return [];
+  const rows = XLSX.utils.sheet_to_json<Array<string | number | null>>(firstSheet, { header: 1 });
+  if (rows.length === 0) return [];
+  const header = (rows[0] || []).map((cell) => normalizeUrlValue(String(cell || '')));
+  const urlIndex = header.indexOf('url');
+  const startRowIndex = urlIndex >= 0 ? 1 : 0;
+  const fallbackIndex = urlIndex >= 0 ? urlIndex : 0;
+  return rows
+    .slice(startRowIndex)
+    .map((row) => normalizeUrlValue(String((row || [])[fallbackIndex] || '')))
+    .filter(Boolean);
+};
+
 const parseBoundedInteger = (rawValue: string, fallback: number, minAllowed: number, maxAllowed: number) => {
   const normalized = rawValue.trim().replace(/[.,\s]/g, '');
   if (!/^\d+$/.test(normalized)) {
@@ -840,6 +862,16 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   const [gscRunAnalysisProjectTypes, setGscRunAnalysisProjectTypes] = useState<ProjectType[]>([]);
   const [gscRunIncludeTerms, setGscRunIncludeTerms] = useState<string[]>([]);
   const [gscRunExcludeTerms, setGscRunExcludeTerms] = useState<string[]>([]);
+  const [excludedUrlsInput, setExcludedUrlsInput] = useState('');
+  const [excludedUrls, setExcludedUrls] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem('mediaflow_gsc_excluded_urls');
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.map((item) => normalizeUrlValue(String(item || ''))).filter(Boolean) : [];
+    } catch {
+      return [];
+    }
+  });
   const [gscAnalysisMaxRowsInput, setGscAnalysisMaxRowsInput] = useState<string>(() => {
     try {
       const persisted = localStorage.getItem('mediaflow_gsc_analysis_max_rows');
@@ -950,6 +982,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     deferTrendPageDateFetch: true,
     urlIncludeTerms: gscRunIncludeTerms,
     urlExcludeTerms: gscRunExcludeTerms,
+    excludedUrls,
     analysisMaxRows: gscAnalysisMaxRows,
     evolutionMaxRows: gscAnalysisMaxRows,
     autoRun: false,
@@ -971,6 +1004,13 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       console.warn('[Dashboard] No se pudo guardar mediaflow_gsc_insight_table_limit.', error);
     }
   }, [insightTableLimit]);
+  useEffect(() => {
+    try {
+      localStorage.setItem('mediaflow_gsc_excluded_urls', JSON.stringify(excludedUrls));
+    } catch (error) {
+      console.warn('[Dashboard] No se pudo guardar mediaflow_gsc_excluded_urls.', error);
+    }
+  }, [excludedUrls]);
 
   useEffect(() => {
     setTrendingAnalysisRows(null);
@@ -2170,6 +2210,34 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     setHasTriggeredGscRun(true);
     setGscRunKey((prev) => prev + 1);
     showInfo('Iniciando análisis de Search Console con filtros y tipologías seleccionadas.');
+  };
+  const addManualExcludedUrls = () => {
+    const parsed = parseUrlConditionLines(excludedUrlsInput).map((url) => normalizeUrlValue(url));
+    if (parsed.length === 0) {
+      showWarning('No se detectaron URLs válidas para excluir.');
+      return;
+    }
+    setExcludedUrls((current) => Array.from(new Set([...current, ...parsed])));
+    setExcludedUrlsInput('');
+    showSuccess(`${parsed.length} URL(s) añadidas a exclusión.`);
+  };
+  const handleExcludedUrlsCsvImport = async (file: File) => {
+    const content = await file.text();
+    const importedUrls = parseUrlCsvList(content);
+    if (importedUrls.length === 0) {
+      showWarning('El CSV no contiene URLs válidas (columna "url").');
+      return;
+    }
+    setExcludedUrls((current) => Array.from(new Set([...current, ...importedUrls])));
+    showSuccess(`${importedUrls.length} URL(s) importadas.`);
+  };
+  const downloadExcludedUrlsTemplate = () => {
+    const blob = new Blob([URL_EXCLUSION_TEMPLATE], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'plantilla-exclusion-urls-gsc.csv';
+    link.click();
+    URL.revokeObjectURL(link.href);
   };
 
   const handleExportTrendingUrls = () => {
@@ -3491,6 +3559,55 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                     </span>
                   </label>
                 </div>
+                <div className="rounded-lg border border-border bg-surface p-3 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">URLs excluidas del análisis</div>
+                    <Button size="sm" variant="secondary" onClick={downloadExcludedUrlsTemplate}>
+                      <Download size={14} /> Plantilla CSV
+                    </Button>
+                  </div>
+                  <label className="block">
+                    <textarea
+                      value={excludedUrlsInput}
+                      onChange={(e) => setExcludedUrlsInput(e.target.value)}
+                      placeholder="https://dominio.com/gracias&#10;https://dominio.com/tag/*"
+                      className="h-20 w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button size="sm" variant="secondary" onClick={addManualExcludedUrls}>
+                      Alta manual
+                    </Button>
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-brand-md bg-primary px-3 py-1.5 text-xs font-medium text-on-primary hover:bg-primary-hover">
+                      <Upload size={14} /> Importar CSV
+                      <input
+                        type="file"
+                        accept=".csv,text/csv"
+                        className="hidden"
+                        onChange={async (event) => {
+                          const file = event.target.files?.[0];
+                          if (!file) return;
+                          await handleExcludedUrlsCsvImport(file);
+                          event.target.value = '';
+                        }}
+                      />
+                    </label>
+                    <Button size="sm" variant="ghost" onClick={() => setExcludedUrls([])}>
+                      Limpiar lista
+                    </Button>
+                  </div>
+                  <div className="max-h-28 overflow-y-auto rounded-md border border-border bg-surface-alt p-2 text-[11px] text-muted">
+                    {excludedUrls.length === 0 ? (
+                      <p>Sin URLs excluidas.</p>
+                    ) : (
+                      <ul className="space-y-1">
+                        {excludedUrls.slice(0, 100).map((url) => (
+                          <li key={url} className="truncate">{url}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
                 <div>
                   <div className="text-[11px] font-semibold uppercase tracking-wide text-muted mb-2">Tipologías para esta corrida</div>
                   <div className="flex flex-wrap gap-2">
@@ -3519,7 +3636,7 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
                   </Button>
                   <span className="text-[11px] text-muted">
                     {hasTriggeredGscRun
-                      ? `Última corrida: incluir ${gscRunIncludeTerms.length} patrón(es), excluir ${gscRunExcludeTerms.length} patrón(es), ${gscRunAnalysisProjectTypes.length} tipología(s), base máx. ${gscAnalysisMaxRows.toLocaleString('es-ES')} filas, tabla insight máx. ${insightTableLimit.toLocaleString('es-ES')} filas.`
+                      ? `Última corrida: incluir ${gscRunIncludeTerms.length} patrón(es), excluir ${gscRunExcludeTerms.length} patrón(es), URLs excluidas ${excludedUrls.length}, ${gscRunAnalysisProjectTypes.length} tipología(s), base máx. ${gscAnalysisMaxRows.toLocaleString('es-ES')} filas, tabla insight máx. ${insightTableLimit.toLocaleString('es-ES')} filas.`
                       : 'Aún no hay corrida. Los insights se generan solo al iniciar manualmente.'}
                   </span>
                 </div>
