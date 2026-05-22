@@ -256,14 +256,17 @@
                     </button>
                 </div>
 
-                <textarea id="manualUrls" class="form-control mb-2" rows="6" placeholder="https://tu-url-1.com
-https://tu-url-2.com"></textarea>
-                <div class="small text-muted mb-3">
-                    Una URL por línea. Útil para auditar rápidamente competidores o URLs propias (title, H1, headings, palabras, imágenes, entidades…).
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <label class="form-label mb-0 fw-semibold">URLs + HTML manual (opcional)</label>
+                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="addLabEntry()">➕ Añadir fila</button>
                 </div>
-                <textarea id="manualHtmlMap" class="form-control mb-2" rows="8" placeholder='{"https://tu-url-1.com":"<!doctype html>...","https://tu-url-2.com":"<html>...</html>"}'></textarea>
+                <textarea id="manualUrls" class="form-control mb-2" rows="4" placeholder="https://tu-url-1.com&#10;https://tu-url-2.com"></textarea>
+                <div class="small text-muted mb-2">
+                    También puedes usar el formato clásico: <strong>una URL por línea</strong>. Se combina con las filas de abajo.
+                </div>
+                <div id="labEntries" class="d-flex flex-column gap-2 mb-2"></div>
                 <div class="small text-muted mb-3">
-                    Opcional: pega un JSON URL → HTML completo. Si una URL existe en este JSON, se analizará ese HTML manual sin hacer scraping remoto.
+                    Cada fila tiene 2 campos: URL y HTML completo opcional. Si pegas HTML, se analiza ese contenido sin scraping remoto.
                 </div>
 
                 <button class="btn btn-dark w-100 mb-3" id="bulkBtn" onclick="runBulk()">🕵️ Analizar</button>
@@ -753,40 +756,31 @@ function copyStructure(id){
 
 function runBulk(){
     hideAlert();
-    const urlsRaw = document.getElementById('manualUrls').value.trim();
-    if (!urlsRaw) {
+    const urlsRaw = (document.getElementById('manualUrls')?.value || '').trim();
+    const classicUrls = urlsRaw
+        ? urlsRaw.split('\n').map(u => u.trim()).filter(Boolean)
+        : [];
+    const entryRows = Array.from(document.querySelectorAll('.lab-entry-row'));
+    const parsedRows = entryRows.map((row) => ({
+        url: (row.querySelector('.lab-entry-url')?.value || '').trim(),
+        html: (row.querySelector('.lab-entry-html')?.value || '').trim()
+    })).filter(item => item.url);
+
+    if (!parsedRows.length && !classicUrls.length) {
         showAlert('Introduce al menos una URL en el laboratorio.');
         return;
     }
 
-    let urls = urlsRaw.split('\n')
-        .map(u => u.trim())
-        .filter(u => u);
-
-    if (!urls.length){
-        showAlert('No se han detectado URLs válidas.');
-        return;
-    }
-
-    // Quitar duplicados
-    urls = Array.from(new Set(urls));
-
-    const manualHtmlRaw = (document.getElementById('manualHtmlMap')?.value || '').trim();
+    const urls = Array.from(new Set(classicUrls));
     let manualHtmlMap = {};
-    if (manualHtmlRaw) {
-        try {
-            const parsed = JSON.parse(manualHtmlRaw);
-            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-                manualHtmlMap = parsed;
-            } else {
-                showAlert('El bloque de HTML manual debe ser un JSON tipo objeto: {"url":"html"}');
-                return;
-            }
-        } catch (err) {
-            showAlert('JSON inválido en HTML manual. Revisa comillas/escapes.');
-            return;
+    parsedRows.forEach(({url, html}) => {
+        if (!urls.includes(url)) {
+            urls.push(url);
         }
-    }
+        if (html) {
+            manualHtmlMap[url] = html;
+        }
+    });
 
     const resDiv  = document.getElementById('bulkResults'); 
     const bulkBtn = document.getElementById('bulkBtn');
@@ -1290,6 +1284,8 @@ function exportBulkLab() {
 
 function clearLab(){
     document.getElementById('manualUrls').value = '';
+    document.getElementById('labEntries').innerHTML = '';
+    addLabEntry();
     document.getElementById('bulkResults').innerHTML = '';
     lastBulkResults = [];
     renderRawResults();
@@ -1300,8 +1296,10 @@ function fillSampleUrls(){
         'https://www.wikipedia.org/',
         'https://www.python.org/',
         'https://www.mozilla.org/'
-    ].join('\n');
-    document.getElementById('manualUrls').value = sample;
+    ];
+    document.getElementById('manualUrls').value = sample.join('\n');
+    document.getElementById('labEntries').innerHTML = '';
+    sample.forEach((url) => addLabEntry({ url }));
 }
 
 function pasteFromClipboard(){
@@ -1312,14 +1310,42 @@ function pasteFromClipboard(){
     navigator.clipboard.readText()
         .then(text => {
             if (!text) return;
-            const textarea = document.getElementById('manualUrls');
-            textarea.value = text;
+            const lines = text.split('\n').map(x => x.trim()).filter(Boolean);
+            if (!lines.length) return;
+            document.getElementById('manualUrls').value = lines.join('\n');
+            document.getElementById('labEntries').innerHTML = '';
+            lines.forEach((url) => addLabEntry({ url }));
         })
         .catch(() => {
             alert('No se ha podido leer del portapapeles.');
         });
 }
 
+function addLabEntry({ url = '', html = '' } = {}){
+    const container = document.getElementById('labEntries');
+    if (!container) return;
+
+    const row = document.createElement('div');
+    row.className = 'lab-entry-row border rounded p-2 bg-light';
+    row.innerHTML = `
+        <div class="d-flex justify-content-end mb-2">
+            <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeLabEntry(this)">✖</button>
+        </div>
+        <input type="url" class="form-control form-control-sm mb-2 lab-entry-url" placeholder="https://tu-url.com/pagina" value="${url}">
+        <textarea class="form-control form-control-sm lab-entry-html" rows="5" placeholder="Pega aquí el HTML completo (opcional)"></textarea>
+    `;
+    container.appendChild(row);
+    row.querySelector('.lab-entry-html').value = html;
+}
+
+function removeLabEntry(button){
+    const row = button.closest('.lab-entry-row');
+    row?.remove();
+    const remaining = document.querySelectorAll('.lab-entry-row').length;
+    if (!remaining) addLabEntry();
+}
+
+addLabEntry();
 renderRawResults();
 </script>
 {% endblock %}
