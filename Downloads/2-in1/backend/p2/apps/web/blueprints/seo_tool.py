@@ -440,53 +440,6 @@ def _normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").lower()).strip()
 
 
-def _extract_schema_from_soup(soup):
-    schema_types = []
-    schema_json_ld_count = 0
-    schema_microdata_count = 0
-
-    def _collect_schema_types(node):
-        if isinstance(node, dict):
-            stype = node.get('@type')
-            if isinstance(stype, str):
-                schema_types.append(stype)
-            elif isinstance(stype, list):
-                schema_types.extend([t for t in stype if isinstance(t, str)])
-            for val in node.values():
-                _collect_schema_types(val)
-        elif isinstance(node, list):
-            for item in node:
-                _collect_schema_types(item)
-
-    for script in soup.find_all('script', attrs={'type': 'application/ld+json'}):
-        raw = (script.string or script.get_text() or '').strip()
-        if not raw:
-            continue
-        try:
-            payload = json.loads(raw)
-        except Exception:
-            continue
-        schema_json_ld_count += 1
-        _collect_schema_types(payload)
-
-    schema_microdata_count = len(soup.select('[itemscope]'))
-    for tag in soup.select('[itemtype]'):
-        itemtype = (tag.get('itemtype') or '').strip()
-        if not itemtype:
-            continue
-        for raw_type in itemtype.split():
-            t = raw_type.rstrip('/').split('/')[-1]
-            if t:
-                schema_types.append(t)
-
-    return {
-        'json_ld_count': schema_json_ld_count,
-        'microdata_count': schema_microdata_count,
-        'total_blocks': schema_json_ld_count + schema_microdata_count,
-        'types': sorted(set([t.strip() for t in schema_types if t and t.strip()]))[:30],
-    }
-
-
 def _extract_enriched_from_html(url: str, html: str):
     soup = BeautifulSoup(html or "", 'html.parser')
     page_title = (soup.title.string.strip() if soup.title and soup.title.string else '') or ''
@@ -513,7 +466,7 @@ def _extract_enriched_from_html(url: str, html: str):
         'structure': structure_lines,
         'headings': headings,
         'entities': [w for w, _ in wc.most_common(30)],
-        'schema': _extract_schema_from_soup(soup),
+        'schema': {'json_ld_count': 0, 'microdata_count': 0, 'total_blocks': 0, 'types': []},
     }
     anchors = soup.find_all('a', href=True)
     final_host = urllib.parse.urlparse(url).netloc.lower()
