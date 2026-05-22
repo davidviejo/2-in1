@@ -260,10 +260,6 @@
                     <label class="form-label mb-0 fw-semibold">URLs + HTML manual (opcional)</label>
                     <button type="button" class="btn btn-sm btn-outline-primary" onclick="addLabEntry()">➕ Añadir fila</button>
                 </div>
-                <textarea id="manualUrls" class="form-control mb-2" rows="4" placeholder="https://tu-url-1.com&#10;https://tu-url-2.com"></textarea>
-                <div class="small text-muted mb-2">
-                    También puedes usar el formato clásico: <strong>una URL por línea</strong>. Se combina con las filas de abajo.
-                </div>
                 <div id="labEntries" class="d-flex flex-column gap-2 mb-2"></div>
                 <div class="small text-muted mb-3">
                     Cada fila tiene 2 campos: URL y HTML completo opcional. Si pegas HTML, se analiza ese contenido sin scraping remoto.
@@ -756,22 +752,18 @@ function copyStructure(id){
 
 function runBulk(){
     hideAlert();
-    const urlsRaw = (document.getElementById('manualUrls')?.value || '').trim();
-    const classicUrls = urlsRaw
-        ? urlsRaw.split('\n').map(u => u.trim()).filter(Boolean)
-        : [];
     const entryRows = Array.from(document.querySelectorAll('.lab-entry-row'));
     const parsedRows = entryRows.map((row) => ({
         url: (row.querySelector('.lab-entry-url')?.value || '').trim(),
         html: (row.querySelector('.lab-entry-html')?.value || '').trim()
     })).filter(item => item.url);
 
-    if (!parsedRows.length && !classicUrls.length) {
+    if (!parsedRows.length) {
         showAlert('Introduce al menos una URL en el laboratorio.');
         return;
     }
 
-    const urls = Array.from(new Set(classicUrls));
+    const urls = [];
     let manualHtmlMap = {};
     parsedRows.forEach(({url, html}) => {
         if (!urls.includes(url)) {
@@ -1283,7 +1275,6 @@ function exportBulkLab() {
 }
 
 function clearLab(){
-    document.getElementById('manualUrls').value = '';
     document.getElementById('labEntries').innerHTML = '';
     addLabEntry();
     document.getElementById('bulkResults').innerHTML = '';
@@ -1297,7 +1288,6 @@ function fillSampleUrls(){
         'https://www.python.org/',
         'https://www.mozilla.org/'
     ];
-    document.getElementById('manualUrls').value = sample.join('\n');
     document.getElementById('labEntries').innerHTML = '';
     sample.forEach((url) => addLabEntry({ url }));
 }
@@ -1312,7 +1302,6 @@ function pasteFromClipboard(){
             if (!text) return;
             const lines = text.split('\n').map(x => x.trim()).filter(Boolean);
             if (!lines.length) return;
-            document.getElementById('manualUrls').value = lines.join('\n');
             document.getElementById('labEntries').innerHTML = '';
             lines.forEach((url) => addLabEntry({ url }));
         })
