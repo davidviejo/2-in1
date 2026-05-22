@@ -3,8 +3,10 @@ import { Link, ExternalLink, ChevronDown, ChevronUp, Type, Check, X } from 'luci
 
 export interface InternalLinkData {
   anchor: string;
-  url_to: string;
+  url_to?: string;
+  href?: string;
   type: string; // 'dofollow' | 'nofollow' | 'ugc' | 'sponsored'
+  location?: 'header' | 'content' | 'footer' | string;
   target_blank?: boolean;
 }
 
@@ -20,7 +22,7 @@ export const InternalLinksAnalysis: React.FC<Props> = ({ internal_links }) => {
   }, [internal_links, showAll]);
 
   const uniqueDestinations = useMemo(() => {
-    const destinations = new Set(internal_links.map((link) => link.url_to));
+    const destinations = new Set(internal_links.map((link) => link.url_to || link.href || ''));
     return destinations.size;
   }, [internal_links]);
 
@@ -109,38 +111,47 @@ export const InternalLinksAnalysis: React.FC<Props> = ({ internal_links }) => {
               <th className="px-3 py-2">Anchor</th>
               <th className="px-3 py-2">URL Destino</th>
               <th className="px-3 py-2 text-center">Rel</th>
+              <th className="px-3 py-2 text-center">Ubicación</th>
               <th className="px-3 py-2 text-center" title="Target Blank">
                 Blank
               </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-700 bg-white dark:bg-slate-900">
-            {displayedLinks.map((link, i) => (
-              <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                <td className="px-3 py-2 font-medium truncate max-w-[200px]" title={link.anchor}>
-                  {link.anchor || <span className="text-slate-400 italic">Sin anchor</span>}
-                </td>
-                <td className="px-3 py-2 truncate max-w-[250px]" title={link.url_to}>
-                  {link.url_to}
-                </td>
-                <td className="px-3 py-2 text-center">
-                  <span
-                    className={`inline-block px-2 py-0.5 rounded-[4px] text-[10px] font-bold border uppercase tracking-wide ${getTypeStyle(
-                      link.type,
-                    )}`}
-                  >
-                    {link.type}
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-center">
-                  {link.target_blank ? (
-                    <Check size={16} className="text-emerald-500 mx-auto" />
-                  ) : (
-                    <span className="text-slate-300">-</span>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {displayedLinks.map((link, i) => {
+              const destination = link.url_to || link.href || '-';
+              return (
+                <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                  <td className="px-3 py-2 font-medium truncate max-w-[200px]" title={link.anchor}>
+                    {link.anchor || <span className="text-slate-400 italic">Sin anchor</span>}
+                  </td>
+                  <td className="px-3 py-2 truncate max-w-[250px]" title={destination}>
+                    {destination}
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    <span
+                      className={`inline-block px-2 py-0.5 rounded-[4px] text-[10px] font-bold border uppercase tracking-wide ${getTypeStyle(
+                        link.type,
+                      )}`}
+                    >
+                      {link.type}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    <span className="inline-block px-2 py-0.5 rounded-[4px] text-[10px] font-bold border uppercase tracking-wide text-slate-600 bg-slate-50 dark:bg-slate-900/20 border-slate-200 dark:border-slate-800">
+                      {link.location || 'content'}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    {link.target_blank ? (
+                      <Check size={16} className="text-emerald-500 mx-auto" />
+                    ) : (
+                      <span className="text-slate-300">-</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
 

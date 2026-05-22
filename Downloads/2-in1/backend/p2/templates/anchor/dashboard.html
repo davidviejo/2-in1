@@ -3,21 +3,41 @@
 {% block content %}
 <div class="container-fluid">
     <h2>⚓ Anchor Auditor</h2>
-    <textarea id="u" class="form-control mb-2" rows="10"></textarea>
+    <p class="text-muted">Pega una URL por línea para analizar enlazado interno, anchor y URL objetivo.</p>
+    <textarea id="u" class="form-control mb-2" rows="10" placeholder="https://dominio.com/url-1\nhttps://dominio.com/url-2"></textarea>
     <button onclick="run()" class="btn btn-dark w-100">Scan</button>
-    <div id="res" class="mt-3"></div>
+
+    <div id="summary" class="mt-4"></div>
+    <div id="details" class="mt-4"></div>
 </div>
 <script>
-let cd=[];
-function run(){
-    const u = document.getElementById('u').value.split('\n');
-    fetch('/api/v1/anchor/analyze', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({urls:u})})
-    .then(r=>r.json()).then(d=>{
-        cd=d.data;
-        let h='<table class="table"><tr><th>Target</th><th>Inlinks</th><th>Top Anchors</th></tr>';
-        d.data.forEach(r=>{ h+=`<tr><td>${r.url}</td><td>${r.total}</td><td>${r.top}</td></tr>` });
-        document.getElementById('res').innerHTML=h+'</table>';
-    });
+let detailRows = [];
+
+function run() {
+    const urls = document.getElementById('u').value.split('\n').map(v => v.trim()).filter(Boolean);
+    fetch('/api/v1/anchor/analyze', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({urls})
+    })
+        .then(r => r.json())
+        .then(d => {
+            detailRows = d.details || [];
+
+            let summaryHtml = '<h5>Resumen por URL objetivo</h5><table class="table table-striped"><thead><tr><th>URL objetivo</th><th>Inlinks</th><th>Top anchors</th></tr></thead><tbody>';
+            (d.summary || []).forEach(row => {
+                summaryHtml += `<tr><td>${row.url}</td><td>${row.total}</td><td>${row.top}</td></tr>`;
+            });
+            summaryHtml += '</tbody></table>';
+            document.getElementById('summary').innerHTML = summaryHtml;
+
+            let detailsHtml = '<h5>Detalle por enlace interno</h5><table class="table table-bordered table-sm"><thead><tr><th>URL origen</th><th>Anchor usado</th><th>URL objetivo</th><th>Ubicación</th></tr></thead><tbody>';
+            detailRows.forEach(row => {
+                detailsHtml += `<tr><td>${row.source_url}</td><td>${row.anchor}</td><td>${row.target_url}</td><td><span class="badge text-bg-secondary text-uppercase">${row.location}</span></td></tr>`;
+            });
+            detailsHtml += '</tbody></table>';
+            document.getElementById('details').innerHTML = detailsHtml;
+        });
 }
 </script>
 {% endblock %}
