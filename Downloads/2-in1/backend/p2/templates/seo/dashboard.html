@@ -290,12 +290,15 @@ https://tu-url-2.com"></textarea>
             <div class="alert alert-light border small mb-3">
                 <strong>Cómo funciona esta pestaña:</strong><br>
                 1) Analiza URLs (igual que en Laboratorio).<br>
-                2) Verás el HTML bruto completo por URL para detectar anomalías.<br>
-                3) Copia el HTML y pégalo en tu IA para revisión profunda con prompts.
+                2) Se detectan automáticamente <strong>errores críticos/altos</strong> antes de abrir el HTML completo.<br>
+                3) Si hace falta, despliega y copia el HTML bruto para revisión profunda con IA/prompts.
             </div>
             <div class="card shadow p-4">
                 <div class="small text-muted mb-3">
                     Esta vista reutiliza el último análisis masivo ejecutado en <strong>2. Laboratorio</strong>.
+                </div>
+                <div class="d-flex justify-content-end mb-2">
+                    <button type="button" class="btn btn-sm btn-outline-dark" onclick="copyCompactBriefAll()">🤖 Copiar brief IA (todo)</button>
                 </div>
                 <div id="rawResults" class="d-flex flex-column gap-3"></div>
             </div>
@@ -855,18 +858,89 @@ function renderRawResults() {
     rawDiv.innerHTML = lastBulkResults.map((i, idx) => {
         const safeUrl = i.url || 'URL sin identificar';
         const html = i.raw_html || '';
+        const diagnostics = buildRawHtmlDiagnostics(i);
+        const criticalBadges = diagnostics.critical
+            .map(item => `<span class="badge text-bg-danger me-1 mb-1">${item}</span>`)
+            .join('');
+        const highBadges = diagnostics.high
+            .map(item => `<span class="badge text-bg-warning text-dark me-1 mb-1">${item}</span>`)
+            .join('');
+        const mediumBadges = diagnostics.medium
+            .map(item => `<span class="badge text-bg-secondary me-1 mb-1">${item}</span>`)
+            .join('');
+        const riskClass = diagnostics.critical.length > 0
+            ? 'border-danger'
+            : diagnostics.high.length > 0
+                ? 'border-warning'
+                : 'border-success';
+        const riskLabel = diagnostics.critical.length > 0
+            ? 'Crítico'
+            : diagnostics.high.length > 0
+                ? 'Alto'
+                : 'Bajo';
+
         return `
-            <div class="card">
+            <div class="card ${riskClass}">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span class="small text-truncate me-2" title="${safeUrl}">${safeUrl}</span>
-                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="copyRawHtml(${idx})">📋 Copiar HTML</button>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge ${diagnostics.critical.length ? 'text-bg-danger' : diagnostics.high.length ? 'text-bg-warning text-dark' : 'text-bg-success'}">
+                            Riesgo: ${riskLabel}
+                        </span>
+                        <button type="button" class="btn btn-sm btn-outline-dark" onclick="copyCompactBrief(${idx})">🤖 Brief IA</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="copyRawHtml(${idx})">📋 Copiar HTML</button>
+                    </div>
                 </div>
                 <div class="card-body p-2">
-                    <textarea class="form-control font-monospace" rows="14" readonly>${html.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                    <div class="small mb-2">
+                        <strong>Resumen técnico:</strong>
+                        <span class="ms-1">Críticos: <strong>${diagnostics.critical.length}</strong></span>
+                        <span class="ms-2">Altos: <strong>${diagnostics.high.length}</strong></span>
+                        <span class="ms-2">Medios: <strong>${diagnostics.medium.length}</strong></span>
+                    </div>
+                    <div class="mb-2">${criticalBadges || '<span class="badge text-bg-success me-1 mb-1">Sin críticos detectados</span>'}</div>
+                    <div class="mb-2">${highBadges || '<span class="badge text-bg-light border text-dark me-1 mb-1">Sin altos detectados</span>'}</div>
+                    <div class="mb-2">${mediumBadges || ''}</div>
+                    <details>
+                        <summary class="small fw-semibold">Ver HTML bruto completo</summary>
+                        <textarea class="form-control font-monospace mt-2" rows="14" readonly>${html.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                    </details>
                 </div>
             </div>
         `;
     }).join('');
+}
+
+function buildRawHtmlDiagnostics(item) {
+    const html = String(item?.raw_html || '');
+    const normalized = html.toLowerCase();
+    const title = String(item?.title || '').trim();
+    const h1 = String(item?.h1 || '').trim();
+    const words = Number(item?.words || 0);
+    const imgs = Number(item?.imgs || 0);
+    const headings = Array.isArray(item?.headings) ? item.headings : [];
+    const h2Count = headings.filter(h => String(h?.tag || '').toLowerCase() === 'h2').length;
+    const canonicalMatch = normalized.match(/<link[^>]+rel=["']canonical["'][^>]*>/i);
+    const robotsNoindex = /<meta[^>]+name=["']robots["'][^>]*content=["'][^"']*noindex/i.test(normalized);
+    const hasLang = /<html[^>]+lang=/.test(normalized);
+
+    const critical = [];
+    const high = [];
+    const medium = [];
+
+    if (!title) critical.push('Sin <title>');
+    if (!h1) critical.push('Sin H1');
+    if (robotsNoindex) critical.push('Meta robots con noindex');
+
+    if (words < 250) high.push(`Contenido escaso (${words} palabras)`);
+    if (!canonicalMatch) high.push('Sin canonical');
+    if (!hasLang) high.push('Sin atributo lang en <html>');
+    if (h2Count === 0) high.push('Sin H2');
+
+    if (imgs > 0 && normalized.includes('<img') && !normalized.includes('alt=')) medium.push('Imágenes sin ALT detectado');
+    if (normalized.length > 200000) medium.push('HTML muy pesado (>200KB)');
+
+    return { critical, high, medium };
 }
 
 function copyRawHtml(index) {
@@ -882,6 +956,118 @@ function copyRawHtml(index) {
     navigator.clipboard.writeText(item.raw_html)
         .then(() => showAlert('HTML bruto copiado al portapapeles.'))
         .catch(() => showAlert('No se pudo copiar el HTML bruto.'));
+}
+
+function buildCompactBrief(item) {
+    const diagnostics = buildRawHtmlDiagnostics(item);
+    const headings = Array.isArray(item?.headings) ? item.headings : [];
+    const h2 = headings.filter(h => String(h?.tag || '').toLowerCase() === 'h2').map(h => (h?.text || '').trim()).filter(Boolean).slice(0, 8);
+    const h3 = headings.filter(h => String(h?.tag || '').toLowerCase() === 'h3').map(h => (h?.text || '').trim()).filter(Boolean).slice(0, 8);
+    const headingParagraphContext = extractHeadingParagraphContext(item?.raw_html || '', 10);
+    const entities = Array.isArray(item?.entities) ? item.entities.slice(0, 15) : [];
+    const schema = item?.schema || {};
+
+    return {
+        url: item?.url || '',
+        risk: diagnostics.critical.length ? 'critical' : diagnostics.high.length ? 'high' : 'low',
+        issues: {
+            critical: diagnostics.critical,
+            high: diagnostics.high,
+            medium: diagnostics.medium
+        },
+        onpage: {
+            title: item?.title || '',
+            h1: item?.h1 || '',
+            words: Number(item?.words || 0),
+            images: Number(item?.imgs || 0),
+            h2,
+            h3
+        },
+        semantica: {
+            entities,
+            structure: item?.structure || '',
+            heading_paragraph_context: headingParagraphContext
+        },
+        schema: {
+            total_blocks: schema?.total_blocks || 0,
+            json_ld_count: schema?.json_ld_count || 0,
+            microdata_count: schema?.microdata_count || 0,
+            types: Array.isArray(schema?.types) ? schema.types.slice(0, 10) : []
+        },
+        prompt_instructions: [
+            'Prioriza primero issues critical y high.',
+            'Propón fixes concretos (qué cambiar y ejemplo).',
+            'No repitas HTML; responde en checklist accionable.',
+            'Ordena por impacto SEO y esfuerzo.'
+        ]
+    };
+}
+
+function extractHeadingParagraphContext(rawHtml, limit = 10) {
+    const html = String(rawHtml || '');
+    if (!html) return [];
+
+    // Extrae: heading (h1-h3) + primer párrafo posterior antes del siguiente heading h1-h3.
+    const regex = /<(h[1-3])[^>]*>([\s\S]*?)<\/\1>([\s\S]*?)(?=<(?:h[1-3])[^>]*>|$)/gi;
+    const stripTags = (value) => String(value || '')
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const results = [];
+    let match;
+    while ((match = regex.exec(html)) && results.length < limit) {
+        const tag = (match[1] || '').toLowerCase();
+        const headingText = stripTags(match[2]);
+        const sectionHtml = match[3] || '';
+        if (!headingText) continue;
+
+        const paragraphMatch = sectionHtml.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
+        const paragraphText = paragraphMatch ? stripTags(paragraphMatch[1]) : '';
+
+        results.push({
+            heading_tag: tag,
+            heading: headingText,
+            first_paragraph: paragraphText || ''
+        });
+    }
+    return results;
+}
+
+function copyCompactBrief(index) {
+    const item = (lastBulkResults || [])[index];
+    if (!item) {
+        showAlert('No hay datos para generar brief IA.');
+        return;
+    }
+    const compact = buildCompactBrief(item);
+    if (!navigator.clipboard) {
+        showAlert('Portapapeles no disponible en este navegador.');
+        return;
+    }
+    navigator.clipboard.writeText(JSON.stringify(compact, null, 2))
+        .then(() => showAlert('Brief IA compacto copiado (sin HTML bruto).'))
+        .catch(() => showAlert('No se pudo copiar el brief IA.'));
+}
+
+function copyCompactBriefAll() {
+    if (!lastBulkResults || lastBulkResults.length === 0) {
+        showAlert('No hay resultados para generar brief IA.');
+        return;
+    }
+    const payload = {
+        created_at: new Date().toISOString(),
+        urls: lastBulkResults.map(buildCompactBrief)
+    };
+    if (!navigator.clipboard) {
+        showAlert('Portapapeles no disponible en este navegador.');
+        return;
+    }
+    navigator.clipboard.writeText(JSON.stringify(payload, null, 2))
+        .then(() => showAlert('Brief IA global copiado (sin HTML bruto).'))
+        .catch(() => showAlert('No se pudo copiar el brief IA global.'));
 }
 
 function runCompareSerp(){
