@@ -44,6 +44,9 @@
         <li class="nav-item">
             <button class="nav-link fw-bold" data-bs-toggle="tab" data-bs-target="#lab">2. Laboratorio</button>
         </li>
+        <li class="nav-item">
+            <button class="nav-link fw-bold" data-bs-toggle="tab" data-bs-target="#bruto">3. Bruto</button>
+        </li>
     </ul>
 
     <div class="tab-content">
@@ -224,14 +227,13 @@
             </div>
         </div>
 
-                <!-- TAB LABORATORIO -->
-        <!-- Mini guía pestaña estrategia -->
+        <!-- TAB LABORATORIO -->
+        <div class="tab-pane fade" id="lab">
             <div class="alert alert-light border small mb-3">
                 <strong>Cómo funciona esta pestaña:</strong><br>
-                1) Pega las URLs de tus competidores <br>
-                2) Analiza todos los competidores<br>
+                1) Pega las URLs de tus competidores.<br>
+                2) Analiza todos los competidores.
             </div>
-        <div class="tab-pane fade" id="lab">
             <div class="card shadow p-4">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h5 class="text-primary mb-0">Analizador Masivo</h5>
@@ -282,6 +284,22 @@ https://tu-url-2.com"></textarea>
                 <div id="compareResults" class="mt-3"></div>
             </div>
         </div>
+
+        <div class="tab-pane fade" id="bruto">
+            <div class="alert alert-light border small mb-3">
+                <strong>Cómo funciona esta pestaña:</strong><br>
+                1) Analiza URLs (igual que en Laboratorio).<br>
+                2) Verás el HTML bruto completo por URL para detectar anomalías.<br>
+                3) Copia el HTML y pégalo en tu IA para revisión profunda con prompts.
+            </div>
+            <div class="card shadow p-4">
+                <div class="small text-muted mb-3">
+                    Esta vista reutiliza el último análisis masivo ejecutado en <strong>2. Laboratorio</strong>.
+                </div>
+                <div id="rawResults" class="d-flex flex-column gap-3"></div>
+            </div>
+        </div>
+    </div>
 
 <script>
 let lastResults = [];
@@ -760,6 +778,7 @@ function runBulk(){
     .then(r=>r.json())
     .then(d=>{
         lastBulkResults = d.data || [];
+        renderRawResults();
         resDiv.innerHTML = lastBulkResults.map(i=>{
             const headings = (i.headings || []).slice(0, 10).map(h => `
                 <div class="small mb-1">
@@ -823,6 +842,45 @@ function runBulk(){
         bulkBtn.disabled = false;
         bulkBtn.innerText = '🕵️ Analizar';
     });
+}
+
+function renderRawResults() {
+    const rawDiv = document.getElementById('rawResults');
+    if (!rawDiv) return;
+    if (!lastBulkResults || lastBulkResults.length === 0) {
+        rawDiv.innerHTML = '<div class="alert alert-warning small mb-0">No hay resultados todavía. Ejecuta "🕵️ Analizar" en la pestaña 2. Laboratorio.</div>';
+        return;
+    }
+    rawDiv.innerHTML = lastBulkResults.map((i, idx) => {
+        const safeUrl = i.url || 'URL sin identificar';
+        const html = i.raw_html || '';
+        return `
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span class="small text-truncate me-2" title="${safeUrl}">${safeUrl}</span>
+                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="copyRawHtml(${idx})">📋 Copiar HTML</button>
+                </div>
+                <div class="card-body p-2">
+                    <textarea class="form-control font-monospace" rows="14" readonly>${html.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function copyRawHtml(index) {
+    const item = (lastBulkResults || [])[index];
+    if (!item || !item.raw_html) {
+        showAlert('No hay HTML bruto disponible para esta URL.');
+        return;
+    }
+    if (!navigator.clipboard) {
+        showAlert('Portapapeles no disponible en este navegador.');
+        return;
+    }
+    navigator.clipboard.writeText(item.raw_html)
+        .then(() => showAlert('HTML bruto copiado al portapapeles.'))
+        .catch(() => showAlert('No se pudo copiar el HTML bruto.'));
 }
 
 function runCompareSerp(){
@@ -1025,6 +1083,8 @@ function exportBulkLab() {
 function clearLab(){
     document.getElementById('manualUrls').value = '';
     document.getElementById('bulkResults').innerHTML = '';
+    lastBulkResults = [];
+    renderRawResults();
 }
 
 function fillSampleUrls(){
@@ -1051,5 +1111,7 @@ function pasteFromClipboard(){
             alert('No se ha podido leer del portapapeles.');
         });
 }
+
+renderRawResults();
 </script>
 {% endblock %}
