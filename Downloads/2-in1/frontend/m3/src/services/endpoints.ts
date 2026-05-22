@@ -64,6 +64,7 @@ export const endpoints = {
     },
     jobItemResult: (jobId: string, itemId: string) =>
       `api/jobs/${encodePathParam(jobId)}/items/${encodePathParam(itemId)}/result`,
+    internalLinksByLines: () => 'api/internal-links/by-lines',
   },
 };
 
