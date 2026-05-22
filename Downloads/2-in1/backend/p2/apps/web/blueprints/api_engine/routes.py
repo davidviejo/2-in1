@@ -1,6 +1,7 @@
 import json
 import os
 import logging
+from urllib.parse import urlparse
 from flask import jsonify, request, current_app
 from datetime import datetime
 from apps.tools.utils import safe_get_json, clean_url, is_safe_url
@@ -8,6 +9,9 @@ from apps.core.database import get_user_settings
 from apps.web.blueprints.api_error_utils import api_error
 from . import api_engine_bp
 from .seo_checklist_orchestrator import run_orchestrated_checklist
+from bs4 import BeautifulSoup
+import requests
+from urllib.parse import urljoin
 
 DEFAULT_MAX_URLS_PER_BATCH = int(os.environ.get('ENGINE_MAX_URLS_PER_BATCH', 10000))
 
@@ -270,3 +274,57 @@ def capabilities():
         "limits": limits,
         "costModel": cost_model
     })
+
+
+@api_engine_bp.route('/api/internal-links/by-lines', methods=['POST'])
+def internal_links_by_lines():
+    data = safe_get_json()
+    raw_urls = str(data.get('urls') or '')
+    urls = [clean_url(line.strip()) for line in raw_urls.splitlines() if line.strip()]
+
+    if not urls:
+        return api_error('validation_error', 'Debes enviar al menos una URL (una por línea).', 400)
+
+    results = []
+    headers = {'User-Agent': 'Mozilla/5.0'}
+
+    def resolve_link_location(anchor_tag):
+        for parent in anchor_tag.parents:
+            if not getattr(parent, 'name', None):
+                continue
+            tag_name = parent.name.lower()
+            if tag_name == 'header':
+                return 'header'
+            if tag_name == 'footer':
+                return 'footer'
+            if tag_name == 'main':
+                return 'content'
+        return 'content'
+
+    for raw_url in urls:
+        if not is_safe_url(raw_url):
+            results.append({'url': raw_url, 'error': 'URL inválida o insegura', 'internal_links': []})
+            continue
+        try:
+            response = requests.get(raw_url, headers=headers, timeout=12)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, 'html.parser')
+            base_domain = urlparse(raw_url).netloc.removeprefix('www.')
+            links = []
+            for a in soup.find_all('a', href=True):
+                full_url = urljoin(raw_url, a.get('href', ''))
+                parsed = urlparse(full_url)
+                if parsed.netloc.removeprefix('www.') != base_domain:
+                    continue
+                anchor = a.get_text(' ', strip=True)
+                links.append({
+                    'anchor': anchor,
+                    'url_to': full_url,
+                    'location': resolve_link_location(a),
+                })
+            results.append({'url': raw_url, 'internal_links_count': len(links), 'internal_links': links})
+        except Exception as exc:
+            current_app.logger.exception('internal-links by-lines failed for %s', raw_url)
+            results.append({'url': raw_url, 'error': str(exc), 'internal_links': []})
+
+    return jsonify({'results': results, 'generatedAt': datetime.utcnow().isoformat()})

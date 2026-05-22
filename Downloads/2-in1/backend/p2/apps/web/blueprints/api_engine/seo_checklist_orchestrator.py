@@ -1113,6 +1113,30 @@ def _analyze_internal_links(soup, base_url):
     Analyzes internal links in the page content.
     Returns detailed information about each internal link.
     """
+    def _resolve_link_location(anchor_tag):
+        """Classify a link by main page area: header, content or footer."""
+        for parent in anchor_tag.parents:
+            if not getattr(parent, 'name', None):
+                continue
+            tag_name = parent.name.lower()
+            if tag_name == 'header':
+                return 'header'
+            if tag_name == 'footer':
+                return 'footer'
+            if tag_name == 'main':
+                return 'content'
+
+            classes = ' '.join(parent.get('class', [])) if parent.get('class') else ''
+            element_id = parent.get('id', '') or ''
+            identity = f"{classes} {element_id}".lower()
+
+            if any(token in identity for token in ('header', 'topbar', 'navbar', 'nav-bar', 'site-head')):
+                return 'header'
+            if any(token in identity for token in ('footer', 'site-foot', 'bottom-bar')):
+                return 'footer'
+
+        return 'content'
+
     if not soup:
         return {
             "internal_links_count": 0,
@@ -1160,9 +1184,22 @@ def _analyze_internal_links(soup, base_url):
 
         anchor_text = a.get_text(" ", strip=True)
 
+        link_type = 'dofollow'
+        if is_sponsored:
+            link_type = 'sponsored'
+        elif is_ugc:
+            link_type = 'ugc'
+        elif is_nofollow:
+            link_type = 'nofollow'
+
+        location = _resolve_link_location(a)
+
         link_obj = {
             "href": full_url,
+            "url_to": full_url,
             "anchor": anchor_text,
+            "type": link_type,
+            "location": location,
             "rel": rel_attr or [], # Legacy compatibility
             "rel_raw": rel_raw,
             "is_nofollow": is_nofollow,
