@@ -440,6 +440,91 @@ def _normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").lower()).strip()
 
 
+def _extract_enriched_from_html(url: str, html: str):
+    soup = BeautifulSoup(html or "", 'html.parser')
+    page_title = (soup.title.string.strip() if soup.title and soup.title.string else '') or ''
+    h1_tag = soup.find('h1')
+    h1_text = (h1_tag.get_text(strip=True) if h1_tag else '')
+    words = [w for w in re.split(r'\W+', soup.get_text(separator=' ')) if w]
+    headings = []
+    structure_lines = []
+    for tag in soup.find_all(['h1', 'h2', 'h3']):
+        txt = (tag.get_text(strip=True) or '')[:120]
+        if not txt:
+            continue
+        structure_lines.append(f"{tag.name.upper()}: {txt}")
+        headings.append({'tag': tag.name.upper(), 'text': txt})
+    wc = Counter(w.lower() for w in words if len(w) > 3)
+    raw_text = re.sub(r"\s+", " ", soup.get_text(separator=' ', strip=True)).strip()
+    text_clean = _normalize_text(raw_text)
+    base = {
+        'url': url,
+        'title': page_title,
+        'h1': h1_text,
+        'words': len(words),
+        'imgs': len(soup.find_all('img')),
+        'structure': structure_lines,
+        'headings': headings,
+        'entities': [w for w, _ in wc.most_common(30)],
+        'schema': {'json_ld_count': 0, 'microdata_count': 0, 'total_blocks': 0, 'types': []},
+    }
+    anchors = soup.find_all('a', href=True)
+    final_host = urllib.parse.urlparse(url).netloc.lower()
+    internal_links_count, external_links_count = 0, 0
+    for a in anchors:
+        parsed = urllib.parse.urlparse(urllib.parse.urljoin(url, a.get('href') or ''))
+        if not parsed.netloc or parsed.netloc.lower() == final_host:
+            internal_links_count += 1
+        else:
+            external_links_count += 1
+    images = soup.find_all('img')
+    without_alt = sum(1 for img in images if img.get('alt') is None)
+    empty_alt = sum(1 for img in images if img.get('alt') is not None and not (img.get('alt') or '').strip())
+    with_alt = max(len(images) - without_alt - empty_alt, 0)
+    blocks = {}
+    for block, pats in BLOCK_PATTERNS.items():
+        hits, first = [], None
+        for pat in pats:
+            for m in re.finditer(re.escape(pat.lower()), text_clean):
+                hits.append(pat)
+                if first is None:
+                    first = (m.start() / max(len(text_clean), 1)) * 100
+        blocks[block] = {"present": bool(hits), "count": len(hits), "first_position_percent": round(first, 2) if first is not None else None, "signals": sorted(set(hits))[:8]}
+    intent_scores = {"local": 3 if blocks["location"]["present"] else 0, "transactional": (3 if blocks["price"]["present"] else 0) + (3 if blocks["cta"]["present"] else 0), "informational": len(re.findall(r"\b(qué es|que es|cómo|como|guía|guide|how to|tutorial)\b", text_clean)), "commercial": int(blocks["reviews"]["present"]) + int(blocks["price"]["present"]) + int(blocks["guarantee"]["present"]), "comparison": 3 if blocks["comparison"]["present"] else 0, "navigational": len(re.findall(r"\b(login|contacto|soporte|support|área cliente|client area)\b", text_clean))}
+    primary_intent = max(intent_scores, key=lambda k: intent_scores[k]) if any(intent_scores.values()) else "informational"
+    page_type_scores = defaultdict(int)
+    schema_types = [t.lower() for t in base["schema"].get("types", [])]
+    page_type_scores["product_page"] += 3 if blocks["price"]["present"] and "product" in schema_types else 0
+    page_type_scores["service_landing"] += 2 if blocks["cta"]["present"] and (blocks["contact"]["present"] or blocks["form"]["present"]) else 0
+    page_type_scores["blog_article"] += 2 if "article" in schema_types else 0
+    page_type_scores["pricing_page"] += 3 if blocks["price"]["count"] >= 2 else 0
+    page_type_scores["comparison_page"] += 3 if blocks["comparison"]["present"] else 0
+    page_type_scores["local_page"] += 3 if blocks["location"]["present"] and re.search(r"\b(\+?\d[\d\-\s]{7,})\b", text_clean) else 0
+    page_type_scores["homepage"] += 2 if urllib.parse.urlparse(url).path in ("", "/") else 0
+    page_type = max(page_type_scores, key=lambda k: page_type_scores[k]) if page_type_scores else "other"
+    meta_description = (soup.find('meta', attrs={'name': re.compile(r'description', re.I)}) or {}).get('content', '')
+    h1_count = len(soup.find_all('h1'))
+    issues = []
+    if not base.get("title"):
+        issues.append({"id": "title_missing", "category": "content", "severity": "high", "message": "Falta title", "recommendation": "Añade una etiqueta title única y descriptiva.", "evidence": [url]})
+    if not meta_description:
+        issues.append({"id": "meta_description_missing", "category": "technical", "severity": "medium", "message": "Falta meta description", "recommendation": "Añade meta description orientada al CTR.", "evidence": [url]})
+    if h1_count == 0:
+        issues.append({"id": "h1_missing", "category": "structure", "severity": "high", "message": "Falta H1", "recommendation": "Incluye un H1 alineado con la intención.", "evidence": [url]})
+    if h1_count > 1:
+        issues.append({"id": "h1_multiple", "category": "structure", "severity": "medium", "message": "Múltiples H1", "recommendation": "Mantén un único H1 principal.", "evidence": [str(h1_count)]})
+    technical_score = (20 if raw_text else 0) + (10 if soup.find('link', rel=lambda x: x and 'canonical' in str(x).lower()) else 0) + (10 if soup.find('meta', attrs={'name': re.compile(r'robots', re.I)}) else 0) + (10 if meta_description else 0) + (10 if h1_count == 1 else 0)
+    conversion_score = min(100, blocks["cta"]["count"] * 8 + blocks["contact"]["count"] * 6 + blocks["form"]["count"] * 6 + blocks["reviews"]["count"] * 5 + blocks["guarantee"]["count"] * 4)
+    content_score = min(100, 20 + (10 if base.get("words", 0) > 400 else 0) + (10 if base.get("h1") else 0))
+    structure_score = min(100, 20 + min(len(base.get("headings", [])) * 4, 40))
+    semantic_score = min(100, 20 + min(len(base.get("entities", [])), 30))
+    schema_score = min(100, 10 + base["schema"].get("json_ld_count", 0) * 8 + base["schema"].get("microdata_count", 0) * 4)
+    local_score = min(100, 20 + blocks["location"]["count"] * 8) if intent_scores["local"] > 0 else 0
+    seo_score = int((content_score + structure_score + semantic_score + schema_score + conversion_score + technical_score + (local_score or 0)) / (7 if local_score else 6))
+    base.update({"technical": {"status_code": 200, "final_url": url, "redirect_chain": [], "canonical": (soup.find('link', rel=lambda x: x and 'canonical' in str(x).lower()) or {}).get('href', ''), "meta_robots": (soup.find('meta', attrs={'name': re.compile(r'robots', re.I)}) or {}).get('content', ''), "x_robots_tag": '', "meta_description": meta_description, "hreflang_count": len(soup.find_all('link', attrs={'hreflang': True})), "open_graph_count": len(soup.find_all('meta', attrs={'property': re.compile(r'^og:', re.I)})), "twitter_card_count": len(soup.find_all('meta', attrs={'name': re.compile(r'^twitter:', re.I)})), "internal_links_count": internal_links_count, "external_links_count": external_links_count}, "images_analysis": {"total_images": len(images), "images_without_alt": without_alt, "images_empty_alt": empty_alt, "alt_coverage_percent": round((with_alt / max(len(images), 1)) * 100, 2), "duplicate_alt_count": 0, "lazy_loaded_images_count": sum(1 for img in images if (img.get('loading') or '').lower() == 'lazy')}, "blocks": blocks, "intent": {"primary_intent": primary_intent, "intent_scores": intent_scores}, "page_classification": {"page_type": page_type, "page_type_scores": dict(page_type_scores)}, "content_score": content_score, "structure_score": structure_score, "semantic_score": semantic_score, "schema_score": schema_score, "conversion_score": conversion_score, "technical_score": technical_score, "local_score": local_score, "seo_score": seo_score, "issues": issues, "full_text": raw_text, "raw_html": html or ""})
+    return base
+
+
 def _extract_enriched_page_data(url: str):
     response = _fetch_url_html(url, timeout=25)
     soup = BeautifulSoup(response.text or "", 'html.parser')
@@ -1098,15 +1183,21 @@ def analyze_bulk():
     """
     payload = request.get_json(silent=True) or {}
     urls = extract_urls_from_bulk_input(payload.get('urls', []))
+    manual_html_map = payload.get('manual_html_map', {}) if isinstance(payload.get('manual_html_map'), dict) else {}
+    normalized_manual_html_map = {str(k).strip(): str(v) for k, v in manual_html_map.items() if str(k).strip() and str(v).strip()}
     res = []
 
     for u in urls:
         d = None
         try:
-            try:
-                d = _extract_enriched_page_data(u)
-            except Exception:
-                d = scrape_page(u)
+            manual_html = normalized_manual_html_map.get(u, '')
+            if manual_html:
+                d = _extract_enriched_from_html(u, manual_html)
+            else:
+                try:
+                    d = _extract_enriched_page_data(u)
+                except Exception:
+                    d = scrape_page(u)
         except Exception:
             d = None
         if d:

@@ -261,6 +261,10 @@ https://tu-url-2.com"></textarea>
                 <div class="small text-muted mb-3">
                     Una URL por línea. Útil para auditar rápidamente competidores o URLs propias (title, H1, headings, palabras, imágenes, entidades…).
                 </div>
+                <textarea id="manualHtmlMap" class="form-control mb-2" rows="8" placeholder='{"https://tu-url-1.com":"<!doctype html>...","https://tu-url-2.com":"<html>...</html>"}'></textarea>
+                <div class="small text-muted mb-3">
+                    Opcional: pega un JSON URL → HTML completo. Si una URL existe en este JSON, se analizará ese HTML manual sin hacer scraping remoto.
+                </div>
 
                 <button class="btn btn-dark w-100 mb-3" id="bulkBtn" onclick="runBulk()">🕵️ Analizar</button>
                 <hr />
@@ -767,6 +771,23 @@ function runBulk(){
     // Quitar duplicados
     urls = Array.from(new Set(urls));
 
+    const manualHtmlRaw = (document.getElementById('manualHtmlMap')?.value || '').trim();
+    let manualHtmlMap = {};
+    if (manualHtmlRaw) {
+        try {
+            const parsed = JSON.parse(manualHtmlRaw);
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                manualHtmlMap = parsed;
+            } else {
+                showAlert('El bloque de HTML manual debe ser un JSON tipo objeto: {"url":"html"}');
+                return;
+            }
+        } catch (err) {
+            showAlert('JSON inválido en HTML manual. Revisa comillas/escapes.');
+            return;
+        }
+    }
+
     const resDiv  = document.getElementById('bulkResults'); 
     const bulkBtn = document.getElementById('bulkBtn');
 
@@ -777,7 +798,7 @@ function runBulk(){
     fetch('/seo/analyze_bulk', {
         method:'POST', 
         headers:{'Content-Type':'application/json'}, 
-        body:JSON.stringify({urls:urls})
+        body:JSON.stringify({urls:urls, manual_html_map: manualHtmlMap})
     })
     .then(r=>r.json())
     .then(d=>{
