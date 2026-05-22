@@ -153,7 +153,7 @@ def classify_intent(kw: str) -> str:
 
 
 def _fetch_url_html(url: str, timeout: int = 20):
-    """Fetch robusto para páginas públicas: mejora compatibilidad con WAF/anti-bot ligeros."""
+    """Fetch robusto para páginas públicas con reintentos y fallback https->http."""
     session = requests.Session()
     parsed_target = urllib.parse.urlparse(url)
     origin = f"{parsed_target.scheme}://{parsed_target.netloc}" if parsed_target.scheme and parsed_target.netloc else ""
@@ -182,15 +182,21 @@ def _fetch_url_html(url: str, timeout: int = 20):
     if parsed.scheme == 'https':
         attempts.append(urllib.parse.urlunparse(parsed._replace(scheme='http')))
 
+    retry_delays = [0.0, 0.6, 1.2]
     last_error = None
     for candidate in attempts:
-        try:
-            response = session.get(candidate, timeout=timeout, allow_redirects=True)
-            response.raise_for_status()
-            return response
-        except Exception as exc:
-            last_error = exc
-            continue
+        for wait_seconds in retry_delays:
+            if wait_seconds:
+                time.sleep(wait_seconds)
+            try:
+                response = session.get(candidate, timeout=timeout, allow_redirects=True)
+                response.raise_for_status()
+                return response
+            except requests.HTTPError as exc:
+                last_error = exc
+            except Exception as exc:
+                last_error = exc
+                continue
 
     raise last_error if last_error else RuntimeError('Unable to fetch URL')
 
