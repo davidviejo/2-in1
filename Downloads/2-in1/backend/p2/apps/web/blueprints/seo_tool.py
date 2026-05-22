@@ -150,6 +150,39 @@ def classify_intent(kw: str) -> str:
 
 # --- SCRAPER SIMPLE PARA PÁGINAS (ANÁLISIS ONPAGE) ---
 
+
+
+def _fetch_url_html(url: str, timeout: int = 20):
+    """Fetch robusto para páginas públicas: mejora compatibilidad con WAF/anti-bot ligeros."""
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+    })
+
+    attempts = [url]
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme == 'https':
+        attempts.append(urllib.parse.urlunparse(parsed._replace(scheme='http')))
+
+    last_error = None
+    for candidate in attempts:
+        try:
+            response = session.get(candidate, timeout=timeout, allow_redirects=True)
+            response.raise_for_status()
+            return response
+        except Exception as exc:
+            last_error = exc
+            continue
+
+    raise last_error if last_error else RuntimeError('Unable to fetch URL')
+
 def scrape_page_local(url: str):
     """
     Scraper sencillo local:
@@ -160,12 +193,8 @@ def scrape_page_local(url: str):
     - Devuelve además title, h1 y todos los encabezados como lista
     """
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (compatible; SEO-Suite/1.0; +https://example.com)"
-        }
-        r = requests.get(url, headers=headers, timeout=15)
-        r.raise_for_status()
-        html = r.text
+        r = _fetch_url_html(url, timeout=20)
+        html = r.text or ''
     except Exception:
         return None
 
@@ -395,9 +424,7 @@ def _normalize_text(text: str) -> str:
 
 
 def _extract_enriched_page_data(url: str):
-    headers = {"User-Agent": "Mozilla/5.0 (compatible; SEO-Suite/1.1; +https://example.com)"}
-    response = requests.get(url, headers=headers, timeout=20, allow_redirects=True)
-    response.raise_for_status()
+    response = _fetch_url_html(url, timeout=25)
     soup = BeautifulSoup(response.text or "", 'html.parser')
     raw_text = re.sub(r"\s+", " ", soup.get_text(separator=' ', strip=True)).strip()
     text_clean = _normalize_text(raw_text)
