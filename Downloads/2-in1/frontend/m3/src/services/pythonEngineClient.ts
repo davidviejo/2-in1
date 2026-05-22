@@ -163,6 +163,25 @@ export class BatchJobNotFoundError extends Error {
   }
 }
 
+export interface InternalLinksByLineItem {
+  url: string;
+  error?: string;
+  internal_links_count?: number;
+  internal_links: Array<{
+    anchor: string;
+    url_to: string;
+    location?: 'header' | 'content' | 'footer' | string;
+  }>;
+}
+
+export const analyzeInternalLinksByLines = async (urls: string): Promise<{ results: InternalLinksByLineItem[] }> => {
+  try {
+    return await engineHttpClient.post<{ results: InternalLinksByLineItem[] }>(endpoints.engine.internalLinksByLines(), { urls });
+  } catch (error) {
+    throw buildError(error, 'No se pudo analizar el enlazado interno por líneas');
+  }
+};
+
 export const getCapabilities = async (): Promise<Capabilities | null> => {
   try {
     const data = await engineHttpClient.get<Capabilities>(endpoints.engine.capabilities());

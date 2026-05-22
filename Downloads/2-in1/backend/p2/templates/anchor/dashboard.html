@@ -3,21 +3,61 @@
 {% block content %}
 <div class="container-fluid">
     <h2>⚓ Anchor Auditor</h2>
-    <textarea id="u" class="form-control mb-2" rows="10"></textarea>
+    <p class="text-muted mb-2">Introduce una URL semilla (o varias, se usará la primera válida) y elige el modo de scraping.</p>
+    <textarea id="u" class="form-control mb-2" rows="6" placeholder="https://dominio.com/url-semilla"></textarea>
+
+    <label for="scanMode" class="form-label fw-semibold">Modo de scraping</label>
+    <select id="scanMode" class="form-select mb-3">
+        <option value="single_only">1) Solo la URL semilla</option>
+        <option value="single_plus_links">2) URL semilla + enlaces internos detectados (1 nivel)</option>
+        <option value="recursive">3) URL semilla y continuar por todos los internos detectados (recursivo)</option>
+    </select>
+
     <button onclick="run()" class="btn btn-dark w-100">Scan</button>
-    <div id="res" class="mt-3"></div>
+
+    <div id="meta" class="mt-3"></div>
+    <div id="summary" class="mt-4"></div>
+    <div id="details" class="mt-4"></div>
 </div>
 <script>
-let cd=[];
-function run(){
-    const u = document.getElementById('u').value.split('\n');
-    fetch('/api/v1/anchor/analyze', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({urls:u})})
-    .then(r=>r.json()).then(d=>{
-        cd=d.data;
-        let h='<table class="table"><tr><th>Target</th><th>Inlinks</th><th>Top Anchors</th></tr>';
-        d.data.forEach(r=>{ h+=`<tr><td>${r.url}</td><td>${r.total}</td><td>${r.top}</td></tr>` });
-        document.getElementById('res').innerHTML=h+'</table>';
-    });
+let detailRows = [];
+
+function run() {
+    const urls = document.getElementById('u').value.split('\n').map(v => v.trim()).filter(Boolean);
+    const scanMode = document.getElementById('scanMode').value;
+
+    fetch('/api/v1/anchor/analyze', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({urls, scan_mode: scanMode})
+    })
+        .then(r => r.json())
+        .then(d => {
+            if (d.status !== 'ok') {
+                document.getElementById('meta').innerHTML = `<div class="alert alert-danger">${d.message || 'Error en el análisis.'}</div>`;
+                document.getElementById('summary').innerHTML = '';
+                document.getElementById('details').innerHTML = '';
+                return;
+            }
+
+            detailRows = d.details || [];
+
+            document.getElementById('meta').innerHTML = `<div class="alert alert-info mb-0"><strong>Modo:</strong> ${d.scan_mode} · <strong>URLs escaneadas:</strong> ${d.scanned_urls_count}</div>`;
+
+            let summaryHtml = '<h5>Resumen por URL objetivo</h5><table class="table table-striped"><thead><tr><th>URL objetivo</th><th>Inlinks</th><th>Top anchors</th></tr></thead><tbody>';
+            (d.summary || []).forEach(row => {
+                summaryHtml += `<tr><td>${row.url}</td><td>${row.total}</td><td>${row.top}</td></tr>`;
+            });
+            summaryHtml += '</tbody></table>';
+            document.getElementById('summary').innerHTML = summaryHtml;
+
+            let detailsHtml = '<h5>Detalle por enlace interno</h5><table class="table table-bordered table-sm"><thead><tr><th>URL origen</th><th>Anchor usado</th><th>URL objetivo</th><th>Ubicación</th></tr></thead><tbody>';
+            detailRows.forEach(row => {
+                detailsHtml += `<tr><td>${row.source_url}</td><td>${row.anchor}</td><td>${row.target_url}</td><td><span class="badge text-bg-secondary text-uppercase">${row.location}</span></td></tr>`;
+            });
+            detailsHtml += '</tbody></table>';
+            document.getElementById('details').innerHTML = detailsHtml;
+        });
 }
 </script>
 {% endblock %}

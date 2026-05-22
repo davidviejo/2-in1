@@ -22,6 +22,7 @@ import { AutoClusterizationPanel } from '../components/seo-checklist/AutoCluster
 import { AutoAssignKeywordsPanel } from '../components/seo-checklist/AutoAssignKeywordsPanel';
 import { KwClusterizationPanel } from '../components/seo-checklist/KwClusterizationPanel';
 import { WebBreakdownPanel } from '../components/seo-checklist/WebBreakdownPanel';
+import { InternalLinksByLinesPanel } from '../components/seo-checklist/InternalLinksByLinesPanel';
 
 const SeoChecklistPage: React.FC = () => {
   const { currentClientId } = useProject();
@@ -73,7 +74,7 @@ const SeoChecklistPage: React.FC = () => {
   } = useSeoChecklist();
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [activeView, setActiveView] = useState<'official' | 'auto_cluster' | 'auto_kw' | 'kw_cluster' | 'web_breakdown'>('official');
+  const [activeView, setActiveView] = useState<'official' | 'auto_cluster' | 'auto_kw' | 'kw_cluster' | 'web_breakdown' | 'internal_links_backend'>('official');
   const [allowKwAutoSelectInBasic, setAllowKwAutoSelectInBasic] = useState(true);
 
 
@@ -263,6 +264,13 @@ const SeoChecklistPage: React.FC = () => {
                 Desglose Web
               </Button>
               <Button
+                variant={activeView === 'internal_links_backend' ? 'primary' : 'secondary'}
+                onClick={() => setActiveView('internal_links_backend')}
+              >
+                <ListChecks size={16} />
+                Backend · Enlazado interno
+              </Button>
+              <Button
                 variant={activeView === 'kw_cluster' ? 'primary' : 'secondary'}
                 onClick={() => setActiveView('kw_cluster')}
               >
@@ -290,6 +298,8 @@ const SeoChecklistPage: React.FC = () => {
             <KwClusterizationPanel pages={pages} onBulkUpdate={bulkUpdatePages} />
           ) : activeView === 'web_breakdown' ? (
             <WebBreakdownPanel pages={pages} onBulkUpdate={bulkUpdatePages} />
+          ) : activeView === 'internal_links_backend' ? (
+            <InternalLinksByLinesPanel />
           ) : (
             <AutoAssignKeywordsPanel pages={pages} onBulkUpdate={bulkUpdatePages} onAddPages={addPages} />
           )}
