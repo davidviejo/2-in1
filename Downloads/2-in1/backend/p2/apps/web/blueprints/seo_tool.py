@@ -1059,9 +1059,12 @@ def analyze_bulk():
     for u in urls:
         d = None
         try:
-            d = _extract_enriched_page_data(u)
+            try:
+                d = _extract_enriched_page_data(u)
+            except Exception:
+                d = scrape_page(u)
         except Exception:
-            d = scrape_page(u)
+            d = None
         if d:
             # structure: pasamos a string para el front actual
             d['structure'] = "\n".join(d.get('structure', [])[:20])
