@@ -155,6 +155,8 @@ def classify_intent(kw: str) -> str:
 def _fetch_url_html(url: str, timeout: int = 20):
     """Fetch robusto para páginas públicas: mejora compatibilidad con WAF/anti-bot ligeros."""
     session = requests.Session()
+    parsed_target = urllib.parse.urlparse(url)
+    origin = f"{parsed_target.scheme}://{parsed_target.netloc}" if parsed_target.scheme and parsed_target.netloc else ""
     session.headers.update({
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -162,6 +164,15 @@ def _fetch_url_html(url: str, timeout: int = 20):
         ),
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Connection": "keep-alive",
+        "DNT": "1",
+        "Referer": origin or "https://www.google.com/",
         "Cache-Control": "no-cache",
         "Pragma": "no-cache",
     })
