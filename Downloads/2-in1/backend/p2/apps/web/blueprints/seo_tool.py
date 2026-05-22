@@ -85,6 +85,55 @@ def is_valid_url(url, title=None):
     return True
 
 
+def normalize_candidate_url(raw_value: str) -> str:
+    """Normaliza una URL candidata para análisis masivo."""
+    candidate = (raw_value or '').strip().strip('\'"<>[](){}.,;')
+    if not candidate:
+        return ''
+    if candidate.startswith(('http://', 'https://')):
+        return candidate
+    if candidate.startswith('//'):
+        return f'https:{candidate}'
+    if re.match(r'^[\w.-]+\.[A-Za-z]{2,}(/.*)?$', candidate):
+        return f'https://{candidate}'
+    return ''
+
+
+def extract_urls_from_bulk_input(raw_urls) -> list[str]:
+    """Acepta listas de strings con texto mixto y extrae todas las URLs detectables."""
+    if not isinstance(raw_urls, list):
+        return []
+
+    extracted = []
+    seen = set()
+    url_pattern = re.compile(r'https?://[^\s<>"\'\],)]+|(?:^|[\s(])(?:www\.[^\s<>"\'\],)]+)')
+
+    for entry in raw_urls:
+        if not isinstance(entry, str):
+            continue
+        text = entry.strip()
+        if not text:
+            continue
+
+        # Caso 1: la entrada ya es una URL limpia.
+        normalized_direct = normalize_candidate_url(text)
+        if normalized_direct and normalized_direct not in seen:
+            extracted.append(normalized_direct)
+            seen.add(normalized_direct)
+            continue
+
+        # Caso 2: texto libre (bullets, notas, separadores...) con una o varias URLs embebidas.
+        for match in url_pattern.finditer(text):
+            token = match.group(0).strip()
+            if token.startswith('('):
+                token = token[1:]
+            normalized = normalize_candidate_url(token)
+            if normalized and normalized not in seen:
+                extracted.append(normalized)
+                seen.add(normalized)
+    return extracted
+
+
 def classify_intent(kw: str) -> str:
     """Clasificación muy sencilla de intención de búsqueda a partir de la keyword padre."""
     k = (kw or '').lower()
@@ -1003,17 +1052,16 @@ def analyze_bulk():
       - headings (lista de encabezados)
       - entities
     """
-    urls = request.json.get('urls', [])
+    payload = request.get_json(silent=True) or {}
+    urls = extract_urls_from_bulk_input(payload.get('urls', []))
     res = []
 
     for u in urls:
-        if not u.strip():
-            continue
         d = None
         try:
-            d = _extract_enriched_page_data(u.strip())
+            d = _extract_enriched_page_data(u)
         except Exception:
-            d = scrape_page(u.strip())
+            d = scrape_page(u)
         if d:
             # structure: pasamos a string para el front actual
             d['structure'] = "\n".join(d.get('structure', [])[:20])
