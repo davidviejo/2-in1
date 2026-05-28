@@ -2148,6 +2148,63 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     showSuccess(`Se exportaron ${totalFiles} archivos optimizados para Google Sheets con el menor número de pestañas posible.`);
   };
 
+  const handleExportAuditWorkbook = () => {
+    if (exportableActionableInsights.length === 0) {
+      showSuccess('No hay puntos para exportar en modo auditoría.');
+      return;
+    }
+
+    const exportDate = new Date().toISOString().slice(0, 10);
+    const baselineByQueryUrl = buildInsightBaselineMap(comparisonQueryPageData || []);
+    const detailRows = sanitizeRowsForSheets(
+      exportableActionableInsights.flatMap((insight) => buildInsightExportRows(insight, baselineByQueryUrl)),
+    );
+
+    const auditRows = detailRows.map((row) => ({
+      propiedad: row.propiedad || '',
+      categoria: row.categoria || '',
+      factor: row.regla || '',
+      prioridad: row.prioridad || '',
+      insightId: row.insightId || '',
+      titulo: row.titulo || '',
+      accionSugerida: row.accionSugerida || '',
+      query: row.query || '',
+      url: row.url || '',
+      clicks: row.clicks || 0,
+      impressions: row.impressions || 0,
+      ctrPct: row.ctr || 0,
+      position: row.position || 0,
+      deltaClicks: row.deltaClicks || 0,
+      deltaImpressions: row.deltaImpressions || 0,
+      deltaCtrPp: row.deltaCtrPp || 0,
+      deltaPosition: row.deltaPosition || 0,
+      affectedCount: row.affectedCount || 0,
+      periodoActual: row.periodoActual || '',
+      periodoAnterior: row.periodoAnterior || '',
+    }));
+
+    const baseColumns = ['propiedad', 'categoria', 'factor', 'prioridad', 'insightId', 'titulo', 'accionSugerida', 'periodoActual', 'periodoAnterior'] as const;
+    const factorColumns = ['query', 'url', 'clicks', 'impressions', 'ctrPct', 'position', 'deltaClicks', 'deltaImpressions', 'deltaCtrPp', 'deltaPosition', 'affectedCount'] as const;
+    const pickColumns = (row: Record<string, unknown>, columns: readonly string[]) =>
+      Object.fromEntries(columns.map((column) => [column, row[column] ?? '']));
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(auditRows), 'Auditoria');
+    const factorKeys = Array.from(
+      new Set(auditRows.map((row) => String(row.factor || '').trim()).filter(Boolean)),
+    ).sort((a, b) => a.localeCompare(b));
+    factorKeys.forEach((factor) => {
+      const rows = auditRows
+        .filter((row) => String(row.factor || '').trim() === factor)
+        .map((row) => pickColumns(row as unknown as Record<string, unknown>, [...baseColumns, ...factorColumns]));
+      if (rows.length === 0) return;
+      const sheetName = buildUniqueSheetName(`Factor_${factor}`, `Factor_${factor}`, new Set(workbook.SheetNames));
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), sheetName);
+    });
+    XLSX.writeFile(workbook, `SEO_Auditoria_GSC_${exportDate}.xlsx`);
+    showSuccess('Exportación de auditoría generada con pestañas por factor concreto (regla) y una pestaña general.');
+  };
+
   const runTrendingAnalysis = () => {
     if (!gscAccessToken || !selectedSite) {
       showError('Conecta Search Console y selecciona una propiedad antes de ejecutar el análisis.');
@@ -3190,6 +3247,13 @@ auditoria seo local,https://dominio.com/seo-local`}</pre>
               className="inline-flex items-center justify-center gap-2 rounded-lg border border-success/30 bg-success-soft px-3 py-2 text-sm font-medium text-success hover:border-success/50"
             >
               <Download size={16} /> Exportar análisis detallado Excel
+            </button>
+            <button
+              type="button"
+              onClick={handleExportAuditWorkbook}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-primary/30 bg-primary-soft px-3 py-2 text-sm font-medium text-primary hover:border-primary/50"
+            >
+              <Download size={16} /> Exportar auditoría (sheet)
             </button>
             <button
               type="button"
