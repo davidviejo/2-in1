@@ -2318,11 +2318,18 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
   const roadmapAnnotations = useMemo(
     () =>
       (currentClient?.completedTasksLog || [])
-        .map((item) => ({
-          id: item.id,
-          label: `${item.title}${item.moduleId ? ` (M${item.moduleId})` : ''}`,
-          date: new Date(item.completedAt).toISOString().split('T')[0],
-        }))
+        .map((item) => {
+          const completedDate = new Date(item.completedAt);
+          if (Number.isNaN(completedDate.getTime())) {
+            return null;
+          }
+          return {
+            id: item.id,
+            label: `${item.title}${item.moduleId ? ` (M${item.moduleId})` : ''}`,
+            date: completedDate.toISOString().split('T')[0],
+          };
+        })
+        .filter((item): item is { id: string; label: string; date: string } => item !== null)
         .filter((item) => gscChartData.some((chartRow) => chartRow.label === item.date))
         .slice(-8),
     [currentClient?.completedTasksLog, gscChartData],
