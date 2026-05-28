@@ -2163,6 +2163,7 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
     const auditRows = detailRows.map((row) => ({
       propiedad: row.propiedad || '',
       categoria: row.categoria || '',
+      factor: row.regla || '',
       prioridad: row.prioridad || '',
       insightId: row.insightId || '',
       titulo: row.titulo || '',
@@ -2182,33 +2183,26 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       periodoAnterior: row.periodoAnterior || '',
     }));
 
-    const categorySpecificColumns: Record<string, string[]> = {
-      opportunity: ['clicks', 'impressions', 'ctrPct', 'position', 'deltaClicks', 'deltaImpressions'],
-      risk: ['clicks', 'impressions', 'position', 'deltaClicks', 'deltaPosition', 'affectedCount'],
-      performance: ['clicks', 'impressions', 'ctrPct', 'position', 'deltaCtrPp', 'deltaPosition'],
-      coverage: ['url', 'impressions', 'clicks', 'position', 'affectedCount'],
-      content: ['query', 'url', 'impressions', 'clicks', 'ctrPct', 'position'],
-      linking: ['url', 'impressions', 'clicks', 'position', 'affectedCount'],
-      ctr: ['query', 'url', 'clicks', 'impressions', 'ctrPct', 'deltaCtrPp', 'position'],
-      position: ['query', 'url', 'position', 'deltaPosition', 'impressions', 'clicks'],
-    };
-
-    const baseColumns = ['propiedad', 'categoria', 'prioridad', 'insightId', 'titulo', 'accionSugerida', 'periodoActual', 'periodoAnterior'] as const;
+    const baseColumns = ['propiedad', 'categoria', 'factor', 'prioridad', 'insightId', 'titulo', 'accionSugerida', 'periodoActual', 'periodoAnterior'] as const;
+    const factorColumns = ['query', 'url', 'clicks', 'impressions', 'ctrPct', 'position', 'deltaClicks', 'deltaImpressions', 'deltaCtrPp', 'deltaPosition', 'affectedCount'] as const;
     const pickColumns = (row: Record<string, unknown>, columns: readonly string[]) =>
       Object.fromEntries(columns.map((column) => [column, row[column] ?? '']));
 
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(auditRows), 'Auditoria');
-    Object.entries(categorySpecificColumns).forEach(([category, categoryColumns]) => {
+    const factorKeys = Array.from(
+      new Set(auditRows.map((row) => String(row.factor || '').trim()).filter(Boolean)),
+    ).sort((a, b) => a.localeCompare(b));
+    factorKeys.forEach((factor) => {
       const rows = auditRows
-        .filter((row) => String(row.categoria || '') === category)
-        .map((row) => pickColumns(row as unknown as Record<string, unknown>, [...baseColumns, ...categoryColumns]));
+        .filter((row) => String(row.factor || '').trim() === factor)
+        .map((row) => pickColumns(row as unknown as Record<string, unknown>, [...baseColumns, ...factorColumns]));
       if (rows.length === 0) return;
-      const sheetName = buildUniqueSheetName(`Audit_${category}`, `Audit_${category}`, new Set(workbook.SheetNames));
+      const sheetName = buildUniqueSheetName(`Factor_${factor}`, `Factor_${factor}`, new Set(workbook.SheetNames));
       XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), sheetName);
     });
     XLSX.writeFile(workbook, `SEO_Auditoria_GSC_${exportDate}.xlsx`);
-    showSuccess('Exportación de auditoría generada con pestañas por tipo de punto y columnas clave específicas por categoría.');
+    showSuccess('Exportación de auditoría generada con pestañas por factor concreto (regla) y una pestaña general.');
   };
 
   const runTrendingAnalysis = () => {
