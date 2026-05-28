@@ -2182,10 +2182,33 @@ const Dashboard: React.FC<DashboardProps> = ({ modules, globalScore }) => {
       periodoAnterior: row.periodoAnterior || '',
     }));
 
+    const categorySpecificColumns: Record<string, string[]> = {
+      opportunity: ['clicks', 'impressions', 'ctrPct', 'position', 'deltaClicks', 'deltaImpressions'],
+      risk: ['clicks', 'impressions', 'position', 'deltaClicks', 'deltaPosition', 'affectedCount'],
+      performance: ['clicks', 'impressions', 'ctrPct', 'position', 'deltaCtrPp', 'deltaPosition'],
+      coverage: ['url', 'impressions', 'clicks', 'position', 'affectedCount'],
+      content: ['query', 'url', 'impressions', 'clicks', 'ctrPct', 'position'],
+      linking: ['url', 'impressions', 'clicks', 'position', 'affectedCount'],
+      ctr: ['query', 'url', 'clicks', 'impressions', 'ctrPct', 'deltaCtrPp', 'position'],
+      position: ['query', 'url', 'position', 'deltaPosition', 'impressions', 'clicks'],
+    };
+
+    const baseColumns = ['propiedad', 'categoria', 'prioridad', 'insightId', 'titulo', 'accionSugerida', 'periodoActual', 'periodoAnterior'] as const;
+    const pickColumns = (row: Record<string, unknown>, columns: readonly string[]) =>
+      Object.fromEntries(columns.map((column) => [column, row[column] ?? '']));
+
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(auditRows), 'Auditoria');
+    Object.entries(categorySpecificColumns).forEach(([category, categoryColumns]) => {
+      const rows = auditRows
+        .filter((row) => String(row.categoria || '') === category)
+        .map((row) => pickColumns(row as unknown as Record<string, unknown>, [...baseColumns, ...categoryColumns]));
+      if (rows.length === 0) return;
+      const sheetName = buildUniqueSheetName(`Audit_${category}`, `Audit_${category}`, new Set(workbook.SheetNames));
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), sheetName);
+    });
     XLSX.writeFile(workbook, `SEO_Auditoria_GSC_${exportDate}.xlsx`);
-    showSuccess('Exportación en modo auditoría generada (solo columnas clave para ejecución).');
+    showSuccess('Exportación de auditoría generada con pestañas por tipo de punto y columnas clave específicas por categoría.');
   };
 
   const runTrendingAnalysis = () => {
