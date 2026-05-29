@@ -409,6 +409,7 @@ export interface Client {
   seoClusters?: {
     id: string;
     name: string;
+    level?: number;
     urls: string[];
   }[];
   initialConfigPreset?: ProjectInitialConfigPreset;

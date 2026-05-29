@@ -112,7 +112,162 @@ type ManualClusterRule = {
 };
 const UNASSIGNED_CLUSTER = 'Sin cluster';
 
-export const parseManualClusterRules = (rulesText: string): ManualClusterRule[] =>
+const normalizeHeader = (value: string): string =>
+  value
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+
+const parseDelimitedLine = (line: string, delimiter: string): string[] => {
+  const values: string[] = [];
+  let current = '';
+  let insideQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const nextChar = line[index + 1];
+
+    if (char === '"') {
+      if (insideQuotes && nextChar === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        insideQuotes = !insideQuotes;
+      }
+      continue;
+    }
+
+    if (char === delimiter && !insideQuotes) {
+      values.push(current.trim());
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  values.push(current.trim());
+  return values;
+};
+
+const detectDelimiter = (headerLine: string): string => {
+  const delimiters = ['\t', ';', ','];
+  return delimiters
+    .map((delimiter) => ({ delimiter, count: parseDelimitedLine(headerLine, delimiter).length }))
+    .sort((a, b) => b.count - a.count)[0]?.delimiter || '\t';
+};
+
+const toManualClusterLines = (rules: ManualClusterRule[]): string =>
+  rules
+    .map((rule) => `${rule.name}|${rule.level || 1}|${rule.urls.join(',')}`)
+    .join('\n');
+
+const getObjectValue = (record: Record<string, unknown>, candidates: string[]): string => {
+  for (const candidate of candidates) {
+    const matchingKey = Object.keys(record).find((key) => normalizeHeader(key) === normalizeHeader(candidate));
+    const value = matchingKey ? record[matchingKey] : undefined;
+    if (typeof value === 'string' || typeof value === 'number') return String(value).trim();
+  }
+
+  return '';
+};
+
+const parseJsonBreadcrumbClusterRules = (rulesText: string): ManualClusterRule[] => {
+  const trimmedText = rulesText.trim();
+  if (!trimmedText.startsWith('[')) return [];
+
+  try {
+    const records = JSON.parse(trimmedText) as unknown;
+    if (!Array.isArray(records)) return [];
+
+    const rulesByNameAndLevel = new Map<string, ManualClusterRule>();
+
+    for (const item of records) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+      const record = item as Record<string, unknown>;
+      const url = getObjectValue(record, ['url', 'urls', 'pagina', 'page', 'landing page']);
+      if (!url) continue;
+
+      for (const key of Object.keys(record)) {
+        const normalizedKey = normalizeHeader(key);
+        const match = normalizedKey.match(/^nivel\s*(\d+)$/i) || normalizedKey.match(/^level\s*(\d+)$/i);
+        const rawClusterName = record[key];
+        if (!match || (typeof rawClusterName !== 'string' && typeof rawClusterName !== 'number')) continue;
+
+        const level = Number(match[1]);
+        const clusterName = String(rawClusterName).trim();
+        if (!Number.isFinite(level) || level <= 0 || !clusterName) continue;
+
+        const ruleKey = `${clusterName.toLowerCase()}::${level}`;
+        const current = rulesByNameAndLevel.get(ruleKey) || {
+          name: clusterName,
+          level,
+          urls: [],
+        };
+        if (!current.urls.includes(url)) current.urls.push(url);
+        rulesByNameAndLevel.set(ruleKey, current);
+      }
+    }
+
+    return Array.from(rulesByNameAndLevel.values());
+  } catch {
+    return [];
+  }
+};
+
+export const parseBreadcrumbClusterRules = (rulesText: string): ManualClusterRule[] => {
+  const jsonRules = parseJsonBreadcrumbClusterRules(rulesText);
+  if (jsonRules.length > 0) return jsonRules;
+
+  const lines = rulesText
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\r')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length < 2) return [];
+
+  const delimiter = detectDelimiter(lines[0]);
+  const headers = parseDelimitedLine(lines[0], delimiter).map(normalizeHeader);
+  const urlIndex = headers.findIndex((header) => ['url', 'urls', 'pagina', 'page', 'landing page'].includes(header));
+  const levelColumns = headers
+    .map((header, index) => {
+      const match = header.match(/^nivel\s*(\d+)$/i) || header.match(/^level\s*(\d+)$/i);
+      return match ? { index, level: Number(match[1]) } : null;
+    })
+    .filter((item): item is { index: number; level: number } => Boolean(item) && Number.isFinite(item.level) && item.level > 0);
+
+  if (urlIndex === -1 || levelColumns.length === 0) return [];
+
+  const rulesByNameAndLevel = new Map<string, ManualClusterRule>();
+
+  for (const line of lines.slice(1)) {
+    const values = parseDelimitedLine(line, delimiter);
+    const url = values[urlIndex]?.trim();
+    if (!url) continue;
+
+    for (const column of levelColumns) {
+      const clusterName = values[column.index]?.trim();
+      if (!clusterName) continue;
+
+      const key = `${clusterName.toLowerCase()}::${column.level}`;
+      const current = rulesByNameAndLevel.get(key) || {
+        name: clusterName,
+        level: column.level,
+        urls: [],
+      };
+      if (!current.urls.includes(url)) current.urls.push(url);
+      rulesByNameAndLevel.set(key, current);
+    }
+  }
+
+  return Array.from(rulesByNameAndLevel.values());
+};
+
+const parseLineBasedManualClusterRules = (rulesText: string): ManualClusterRule[] =>
   rulesText
     .replace(/\\n/g, '\n')
     .replace(/\\r/g, '\r')
@@ -148,6 +303,13 @@ export const parseManualClusterRules = (rulesText: string): ManualClusterRule[] 
     })
     .filter((item): item is ManualClusterRule => Boolean(item) && item.urls.length > 0);
 
+export const parseManualClusterRules = (rulesText: string): ManualClusterRule[] => {
+  const breadcrumbRules = parseBreadcrumbClusterRules(rulesText);
+  if (breadcrumbRules.length > 0) return breadcrumbRules;
+
+  return parseLineBasedManualClusterRules(rulesText);
+};
+
 const matchesManualPattern = (url: string, pattern: string): boolean => {
   const trimmedPattern = pattern.trim();
   if (!trimmedPattern) return false;
@@ -158,7 +320,20 @@ const matchesManualPattern = (url: string, pattern: string): boolean => {
   }
 
   const pathname = getPathname(url) || url;
+  const patternPathname = getPathname(trimmedPattern);
+  const normalizeForExactMatch = (value: string) => {
+    const normalized = value.toLowerCase().replace(/\/+$/, '');
+    return normalized || '/';
+  };
   const normalizedPattern = trimmedPattern.toLowerCase();
+  const normalizedUrl = normalizeForExactMatch(url);
+  const normalizedPathname = normalizeForExactMatch(pathname);
+  const normalizedPatternPathname = normalizeForExactMatch(patternPathname);
+
+  if (/^https?:\/\//i.test(trimmedPattern) && patternPathname) {
+    const normalizedAbsolutePattern = normalizeForExactMatch(normalizedPattern);
+    return normalizedUrl === normalizedAbsolutePattern || normalizedPathname === normalizedPatternPathname;
+  }
 
   if (normalizedPattern.includes('*')) {
     const wildcardRegex = new RegExp(`^${escapeRegExp(normalizedPattern).replace(/\\\*/g, '.*')}$`, 'i');
@@ -364,6 +539,7 @@ const SiteClusteringPage: React.FC = () => {
   const [hasStartedAnalysis, setHasStartedAnalysis] = useState(false);
   const [manualClusterRules, setManualClusterRules] = useState('');
   const [clusterRulesFileName, setClusterRulesFileName] = useState('');
+  const [clusterImportStatus, setClusterImportStatus] = useState('');
   const [minimumClicks, setMinimumClicks] = useState(10);
   const [clusterDepth, setClusterDepth] = useState(2);
   const [autoClusterStatus, setAutoClusterStatus] = useState('');
@@ -371,7 +547,7 @@ const SiteClusteringPage: React.FC = () => {
   const { gscAccessToken, googleUser, login, handleLogoutGsc } = useGSCAuth();
   const { currentClient, updateCurrentClientProfile } = useProject();
   const { pages: checklistPages } = useSeoChecklist();
-  const { gscSites, selectedSite, setSelectedSite, gscData, queryPageData, pageDateData, isLoadingGsc } = useGSCData(gscAccessToken, startDate, endDate, 'previous_period', {
+  const { gscSites, selectedSite, setSelectedSite, queryPageData, pageDateData, isLoadingGsc } = useGSCData(gscAccessToken, startDate, endDate, 'previous_period', {
     autoRun: false,
     runKey,
   });
@@ -379,6 +555,32 @@ const SiteClusteringPage: React.FC = () => {
   const handleStartAnalysis = () => {
     setHasStartedAnalysis(true);
     setRunKey((prev) => prev + 1);
+  };
+
+  const handleClusterRulesFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    setClusterRulesFileName(file?.name || '');
+    setClusterImportStatus('');
+
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const importedRules = parseManualClusterRules(text);
+
+      if (importedRules.length === 0) {
+        setClusterImportStatus('No se detectaron columnas URL + Nivel N ni reglas manuales válidas en el archivo.');
+        return;
+      }
+
+      const importedLines = toManualClusterLines(importedRules);
+      setManualClusterRules((previous) => [previous.trim(), importedLines].filter(Boolean).join('\n'));
+      setClusterImportStatus(`Importadas ${importedRules.length} regla(s) desde el archivo. Puedes editarlas antes de iniciar el análisis.`);
+    } catch {
+      setClusterImportStatus('No se pudo leer el archivo importado. Revisa el formato y vuelve a intentarlo.');
+    } finally {
+      event.target.value = '';
+    }
   };
 
   const maxDepth = useMemo(() => getMaxDepthFromRows(queryPageData), [queryPageData]);
@@ -551,7 +753,7 @@ const SiteClusteringPage: React.FC = () => {
             className="w-full min-h-32 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-sm"
             value={manualClusterRules}
             onChange={(e) => setManualClusterRules(e.target.value)}
-            placeholder={'Una regla por línea.\nFormato oficial: Cluster|Nivel|/path1,/path2\nEj: Blog Posts|1|/blog/*,/articulos/*\nCompatible legacy: /blog/* => cluster: contenido'}
+            placeholder={'Una regla por línea.\nFormato oficial: Cluster|Nivel|/path1,/path2\nEj: Blog Posts|1|/blog/*,/articulos/*\nTambién puedes pegar una tabla exportada con columnas URL, Nivel 1, Nivel 2, Nivel 3...\nCompatible legacy: /blog/* => cluster: contenido'}
           />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -559,11 +761,12 @@ const SiteClusteringPage: React.FC = () => {
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Importar reglas</label>
             <input
               type="file"
-              accept=".txt,.csv,.json"
-              onChange={(e) => setClusterRulesFileName(e.target.files?.[0]?.name || '')}
+              accept=".txt,.csv,.tsv,.json"
+              onChange={handleClusterRulesFileChange}
               className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-slate-900 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-white"
             />
             {clusterRulesFileName && <p className="text-xs text-slate-500 mt-2">Archivo cargado: {clusterRulesFileName}</p>}
+            {clusterImportStatus && <p className="text-xs text-slate-500 mt-1">{clusterImportStatus}</p>}
           </div>
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Mínimo de clics</label>

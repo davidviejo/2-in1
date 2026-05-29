@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildAutoClustersFromChecklist, buildRowsByLevel, getMaxDepthFromRows, getPathname, isLikelyPageKey, parseManualClusterRules, resolveClusterName } from './SiteClusteringPage';
+import { buildAutoClustersFromChecklist, buildRowsByLevel, getMaxDepthFromRows, getPathname, isLikelyPageKey, parseBreadcrumbClusterRules, parseManualClusterRules, resolveClusterName } from './SiteClusteringPage';
 
 describe('SiteClusteringPage helpers', () => {
   it('accepts strong page keys and rejects search queries with slash', () => {
@@ -19,6 +19,54 @@ describe('SiteClusteringPage helpers', () => {
     expect(rules).toHaveLength(3);
     expect(rules[0]).toMatchObject({ name: 'Home', level: 1, urls: ['/'] });
     expect(rules[1]).toMatchObject({ name: 'Geolocal Madrid', level: 2, urls: ['/rinoplastia-en-madrid', '/rinoplastia-en-madrid/*'] });
+  });
+
+
+  it('parses exported breadcrumb cluster tables with dynamic level columns', () => {
+    const table = [
+      'URL	Nivel 1	Nivel 2	Nivel 4	Nivel 3',
+      'https://www.gbthegreenbrand.it/semi-autofiorenti-royal-queen-seeds/1555-vendita-semi-di-marijuana-royal-cheese.html	Producto	Semi di cannabis	Semi autofiorenti Royal Queen Seeds	Semi di cannabis autofiorenti',
+      'https://www.gbthegreenbrand.it/	Categoria	Vasi e sottovasi	Vasi e sottovasi	Vasi e sottovasi',
+      'https://www.gbthegreenbrand.it/793-tabacco-senza-nicotina	Categoria	Smoke Shop	Tabacco senza nicotina	Tabacco senza nicotina',
+    ].join('\n');
+
+    const rules = parseBreadcrumbClusterRules(table);
+
+    expect(rules).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'Producto', level: 1, urls: ['https://www.gbthegreenbrand.it/semi-autofiorenti-royal-queen-seeds/1555-vendita-semi-di-marijuana-royal-cheese.html'] }),
+      expect.objectContaining({ name: 'Semi di cannabis', level: 2 }),
+      expect.objectContaining({ name: 'Semi di cannabis autofiorenti', level: 3 }),
+      expect.objectContaining({ name: 'Semi autofiorenti Royal Queen Seeds', level: 4 }),
+    ]));
+    expect(rules.find((rule) => rule.name === 'Categoria' && rule.level === 1)?.urls).toHaveLength(2);
+  });
+
+  it('matches imported absolute URLs against relative GSC page paths at the requested level', () => {
+    const table = [
+      'URL,Nivel 1,Nivel 2',
+      'https://www.gbthegreenbrand.it/793-tabacco-senza-nicotina,Categoria,Smoke Shop',
+    ].join('\n');
+    const rules = parseManualClusterRules(table);
+
+    expect(resolveClusterName('/793-tabacco-senza-nicotina', 1, rules)).toBe('Categoria');
+    expect(resolveClusterName('/793-tabacco-senza-nicotina', 2, rules)).toBe('Smoke Shop');
+  });
+
+  it('matches imported absolute homepage URLs against relative root paths', () => {
+    const rules = parseManualClusterRules('URL,Nivel 1\nhttps://www.gbthegreenbrand.it/,Categoria');
+
+    expect(resolveClusterName('/', 1, rules)).toBe('Categoria');
+  });
+
+  it('parses JSON breadcrumb exports with URL and dynamic levels', () => {
+    const rules = parseBreadcrumbClusterRules(JSON.stringify([
+      { URL: 'https://www.gbthegreenbrand.it/793-tabacco-senza-nicotina', 'Nivel 1': 'Categoria', 'Nivel 2': 'Smoke Shop' },
+    ]));
+
+    expect(rules).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'Categoria', level: 1 }),
+      expect.objectContaining({ name: 'Smoke Shop', level: 2 }),
+    ]));
   });
 
   it('builds editable auto clusters (no serialized regex)', () => {
