@@ -32,4 +32,22 @@ describe('analysis mode validation', () => {
 
     expect(validateCreateRunInput(payload).errors?.analysisMode).toContain('analysisMode is required');
   });
+
+  it('accepts dataforseo provider and google ai surfaces for ai mode/overview', () => {
+    const payload = {
+      promptId: 'p1',
+      provider: 'dataforseo',
+      surface: 'google ai overview',
+      analysisMode: 'AI Overviews',
+      model: 'dataforseo-google-ai-overview',
+      captureMethod: 'api',
+      source: 'API',
+      triggerType: 'MANUAL'
+    };
+
+    const result = validateCreateRunInput(payload);
+    expect(result.values?.analysisMode).toBe('ai_overview');
+    expect(result.values?.provider).toBe('dataforseo');
+    expect(result.values?.surface).toBe('google_ai_overview');
+  });
 });
