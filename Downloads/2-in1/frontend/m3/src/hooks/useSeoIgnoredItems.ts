@@ -7,13 +7,18 @@ export interface SeoIgnoredEntry {
   key: string;
   query: string;
   url: string;
+  scope?: string;
   source: 'manual' | 'import';
   createdAt: string;
 }
 
 const normalizeValue = (value?: string) => (value || '').trim().toLowerCase();
+const GLOBAL_SCOPE = 'global';
 
-export const buildIgnoredEntryKey = (query?: string, url?: string) =>
+export const buildIgnoredEntryKey = (query?: string, url?: string, scope?: string) =>
+  `${normalizeValue(scope || GLOBAL_SCOPE)}::${normalizeValue(query)}||${normalizeValue(url)}`;
+
+const buildLegacyIgnoredEntryKey = (query?: string, url?: string) =>
   `${normalizeValue(query)}||${normalizeValue(url)}`;
 
 const parseCsvLine = (line: string) => {
@@ -101,17 +106,38 @@ export const useSeoIgnoredItems = () => {
   }, [entries]);
 
   const ignoredKeys = useMemo(() => new Set(entries.map((entry) => entry.key)), [entries]);
-
-  const isIgnored = useCallback(
-    (row: Pick<GSCRow, 'keys'>) =>
-      ignoredKeys.has(buildIgnoredEntryKey(row.keys?.[0], row.keys?.[1])),
-    [ignoredKeys],
+  const ignoredByQueryOnly = useMemo(
+    () => new Set(entries.filter((entry) => entry.query && !entry.url && !entry.scope).map((entry) => normalizeValue(entry.query))),
+    [entries],
+  );
+  const ignoredByUrlOnly = useMemo(
+    () => new Set(entries.filter((entry) => entry.url && !entry.query && !entry.scope).map((entry) => normalizeValue(entry.url))),
+    [entries],
   );
 
-  const ignoreRow = useCallback((row: Pick<GSCRow, 'keys'>) => {
-    const query = row.keys?.[0] || '';
-    const url = row.keys?.[1] || '';
-    const key = buildIgnoredEntryKey(query, url);
+  const isIgnored = useCallback(
+    (row: Pick<GSCRow, 'keys'>, scope?: string) => {
+      const query = row.keys?.[0] || '';
+      const url = row.keys?.[1] || '';
+      const normalizedQuery = normalizeValue(query);
+      const normalizedUrl = normalizeValue(url);
+      const scopedKey = buildIgnoredEntryKey(query, url, scope);
+      const globalKey = buildIgnoredEntryKey(query, url);
+      const legacyGlobalKey = buildLegacyIgnoredEntryKey(query, url);
+
+      return (
+        ignoredKeys.has(scopedKey) ||
+        ignoredKeys.has(globalKey) ||
+        ignoredKeys.has(legacyGlobalKey) ||
+        (Boolean(normalizedQuery) && ignoredByQueryOnly.has(normalizedQuery)) ||
+        (Boolean(normalizedUrl) && ignoredByUrlOnly.has(normalizedUrl))
+      );
+    },
+    [ignoredByQueryOnly, ignoredByUrlOnly, ignoredKeys],
+  );
+
+  const ignoreEntry = useCallback((query: string, url: string, options?: { scope?: string; source?: SeoIgnoredEntry['source'] }) => {
+    const key = buildIgnoredEntryKey(query, url, options?.scope);
 
     setEntries((current) => {
       if (current.some((entry) => entry.key === key)) {
@@ -123,13 +149,20 @@ export const useSeoIgnoredItems = () => {
           key,
           query,
           url,
-          source: 'manual',
+          scope: options?.scope,
+          source: options?.source || 'manual',
           createdAt: new Date().toISOString(),
         },
         ...current,
       ];
     });
   }, []);
+
+  const ignoreRow = useCallback((row: Pick<GSCRow, 'keys'>, scope?: string) => {
+    const query = row.keys?.[0] || '';
+    const url = row.keys?.[1] || '';
+    ignoreEntry(query, url, { scope, source: 'manual' });
+  }, [ignoreEntry]);
 
   const unignoreKey = useCallback((key: string) => {
     setEntries((current) => current.filter((entry) => entry.key !== key));
@@ -151,6 +184,7 @@ export const useSeoIgnoredItems = () => {
     entries,
     ignoredKeys,
     isIgnored,
+    ignoreEntry,
     ignoreRow,
     unignoreKey,
     importEntries,
