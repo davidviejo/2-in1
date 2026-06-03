@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% block title %}URL Finder{% endblock %}
+{% block content %}
+<div class="space-y-6 animate-fade-in">
+  <div class="bg-slate-900 rounded-2xl p-6 text-white shadow-xl">
+    <p class="text-xs uppercase tracking-wider text-blue-300 font-semibold">Python Tool</p>
+    <h1 class="text-3xl font-bold mt-2">🔎 URL Finder</h1>
+    <p class="text-slate-300 mt-2 max-w-4xl">Inserta URLs, palabras/frases y dominios para analizar texto visible y enlazado HTML en paralelo con progreso en tiempo real.</p>
+  </div>
+
+  <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+    <div class="bg-white rounded-xl border border-slate-100 p-5 shadow-sm xl:col-span-2">
+      <label class="text-sm font-bold text-slate-700" for="urls">URLs a analizar</label>
+      <textarea id="urls" class="form-control mt-2" rows="9" placeholder="https://dominio.com/url-1&#10;dominio.com/url-2"></textarea>
+      <p class="text-xs text-slate-500 mt-2">Acepta una URL por línea, coma o punto y coma. Si falta el esquema se usará https://.</p>
+    </div>
+
+    <div class="space-y-4">
+      <div class="bg-white rounded-xl border border-slate-100 p-5 shadow-sm">
+        <label class="text-sm font-bold text-slate-700" for="words">Palabras o frases</label>
+        <textarea id="words" class="form-control mt-2" rows="5" placeholder="marca&#10;producto x&#10;keyword estratégica"></textarea>
+        <p class="text-xs text-slate-500 mt-2">Cuenta apariciones en texto visible sin distinguir mayúsculas ni acentos.</p>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-100 p-5 shadow-sm">
+        <label class="text-sm font-bold text-slate-700" for="domains">Dominios en enlaces</label>
+        <textarea id="domains" class="form-control mt-2" rows="5" placeholder="linkedin.com&#10;partner.es"></textarea>
+        <p class="text-xs text-slate-500 mt-2">Detecta coincidencia exacta y subdominios: linkedin.com, www.linkedin.com y es.linkedin.com.</p>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-100 p-5 shadow-sm">
+        <label class="text-sm font-bold text-slate-700" for="maxWorkers">URLs en paralelo</label>
+        <input id="maxWorkers" type="number" min="1" max="20" value="8" class="form-control mt-2">
+        <p class="text-xs text-slate-500 mt-2">Máximo permitido: 20. Valor recomendado: 8.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="flex flex-col sm:flex-row gap-3">
+    <button id="runBtn" onclick="runFinderJob()" class="btn btn-dark px-5 py-3 font-bold">Analizar URLs</button>
+    <button id="downloadBtn" onclick="downloadCsv()" class="btn btn-outline-secondary px-5 py-3" disabled>Descargar CSV</button>
+  </div>
+
+  <div id="statusBox" class="hidden rounded-xl border p-4"></div>
+
+  <div id="progressPanel" class="hidden bg-white rounded-xl border border-slate-100 p-5 shadow-sm">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-3">
+      <div>
+        <h2 class="text-xl font-bold text-slate-800">Progreso</h2>
+        <p id="progressState" class="text-sm text-slate-500 mb-0">Esperando...</p>
+      </div>
+      <div class="text-sm text-slate-600"><span id="progressCompleted">0</span>/<span id="progressTotal">0</span> URLs · ETA: <span id="progressEta">-</span></div>
+    </div>
+    <div class="progress h-4" role="progressbar" aria-label="Progreso del análisis">
+      <div id="progressBar" class="progress-bar bg-success" style="width: 0%">0%</div>
+    </div>
+    <p class="text-xs text-slate-500 mt-3 mb-0">Última URL procesada: <span id="progressCurrent">-</span></p>
+  </div>
+
+  <div id="summary" class="hidden bg-white rounded-xl border border-slate-100 p-5 shadow-sm"></div>
+  <div id="results" class="hidden bg-white rounded-xl border border-slate-100 p-5 shadow-sm"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let latestResults = [];
+let activePollTimer = null;
+
+function readRaw(id) {
+  return document.getElementById(id).value;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>'"]/g, char => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'}[char]));
+}
+
+function setStatus(message, type = 'info') {
+  const box = document.getElementById('statusBox');
+  const palette = type === 'error' ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-blue-50 border-blue-200 text-blue-700';
+  box.className = `rounded-xl border p-4 ${palette}`;
+  box.textContent = message;
+}
+
+function payload() {
+  return {
+    urls: readRaw('urls'),
+    words: readRaw('words'),
+    domains: readRaw('domains'),
+    max_workers: Number(document.getElementById('maxWorkers').value || 8)
+  };
+}
+
+async function runFinderJob() {
+  const runBtn = document.getElementById('runBtn');
+  const downloadBtn = document.getElementById('downloadBtn');
+  runBtn.disabled = true;
+  downloadBtn.disabled = true;
+  latestResults = [];
+  hideResults();
+  renderProgress({status: 'queued', total: 0, completed: 0, progress_percent: 0, current_url: '', eta_seconds: null});
+  setStatus('Creando trabajo de análisis...');
+
+  try {
+    const response = await fetch('/api/v1/url_finder/api/jobs', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload())
+    });
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || 'No se pudo crear el trabajo.');
+    }
+    setStatus(`Trabajo creado: ${data.job_id}`);
+    pollJob(data.job_id);
+  } catch (error) {
+    runBtn.disabled = false;
+    setStatus(error.message, 'error');
+  }
+}
+
+function pollJob(jobId) {
+  if (activePollTimer) clearInterval(activePollTimer);
+  const tick = async () => {
+    try {
+      const response = await fetch(`/api/v1/url_finder/api/jobs/${encodeURIComponent(jobId)}`);
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'No se pudo consultar el trabajo.');
+      }
+      renderProgress(data);
+      if (data.status === 'completed') {
+        clearInterval(activePollTimer);
+        activePollTimer = null;
+        latestResults = data.results || [];
+        renderSummary(data.summary || {});
+        renderResults(latestResults);
+        document.getElementById('downloadBtn').disabled = latestResults.length === 0;
+        document.getElementById('runBtn').disabled = false;
+        setStatus(`Análisis completado: ${data.completed}/${data.total} URLs procesadas.`);
+      } else if (data.status === 'failed') {
+        throw new Error(data.error || 'El trabajo falló.');
+      }
+    } catch (error) {
+      clearInterval(activePollTimer);
+      activePollTimer = null;
+      document.getElementById('runBtn').disabled = false;
+      setStatus(error.message, 'error');
+    }
+  };
+  tick();
+  activePollTimer = setInterval(tick, 1000);
+}
+
+function hideResults() {
+  document.getElementById('summary').classList.add('hidden');
+  document.getElementById('results').classList.add('hidden');
+}
+
+function renderProgress(job) {
+  const panel = document.getElementById('progressPanel');
+  panel.classList.remove('hidden');
+  const percent = Number(job.progress_percent || 0).toFixed(0);
+  const bar = document.getElementById('progressBar');
+  bar.style.width = `${percent}%`;
+  bar.textContent = `${percent}%`;
+  document.getElementById('progressState').textContent = `Estado actual: ${job.status || 'queued'}`;
+  document.getElementById('progressCompleted').textContent = job.completed || 0;
+  document.getElementById('progressTotal').textContent = job.total || 0;
+  document.getElementById('progressEta').textContent = formatEta(job.eta_seconds);
+  document.getElementById('progressCurrent').textContent = job.current_url || '-';
+}
+
+function formatEta(seconds) {
+  if (seconds === null || seconds === undefined) return '-';
+  const value = Number(seconds);
+  if (!Number.isFinite(value)) return '-';
+  if (value < 60) return `${Math.max(0, Math.round(value))}s`;
+  const minutes = Math.floor(value / 60);
+  const rest = Math.round(value % 60);
+  return `${minutes}m ${rest}s`;
+}
+
+function renderSummary(summary) {
+  const words = Object.entries(summary.words || summary.terms || {}).map(([word, count]) => `<tr><td>${escapeHtml(word)}</td><td class="text-end fw-bold">${count}</td></tr>`).join('') || '<tr><td colspan="2" class="text-slate-500">Sin palabras buscadas</td></tr>';
+  const domains = Object.entries(summary.domains || {}).map(([domain, count]) => `<tr><td>${escapeHtml(domain)}</td><td class="text-end fw-bold">${count}</td></tr>`).join('') || '<tr><td colspan="2" class="text-slate-500">Sin dominios encontrados</td></tr>';
+  document.getElementById('summary').classList.remove('hidden');
+  document.getElementById('summary').innerHTML = `
+    <h2 class="text-xl font-bold text-slate-800 mb-4">Resumen global</h2>
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+      <div class="rounded-lg bg-slate-50 p-3"><div class="text-xs text-slate-500">URLs</div><div class="text-2xl font-bold">${summary.urls_total || 0}</div></div>
+      <div class="rounded-lg bg-emerald-50 p-3"><div class="text-xs text-slate-500">OK</div><div class="text-2xl font-bold text-emerald-700">${summary.urls_ok || 0}</div></div>
+      <div class="rounded-lg bg-blue-50 p-3"><div class="text-xs text-slate-500">Coincidencias texto</div><div class="text-2xl font-bold text-blue-700">${summary.total_word_matches || summary.total_term_matches || 0}</div></div>
+      <div class="rounded-lg bg-amber-50 p-3"><div class="text-xs text-slate-500">Enlaces dominio</div><div class="text-2xl font-bold text-amber-700">${summary.total_domain_link_matches || 0}</div></div>
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div><h3 class="font-bold mb-2">Palabras</h3><table class="table table-sm"><tbody>${words}</tbody></table></div>
+      <div><h3 class="font-bold mb-2">Dominios enlazados</h3><table class="table table-sm"><tbody>${domains}</tbody></table></div>
+    </div>`;
+}
+
+function renderResults(results) {
+  const rows = results.map(result => {
+    const words = Object.entries(result.word_counts || result.term_counts || {}).map(([word, count]) => `${escapeHtml(word)}: <strong>${count}</strong>`).join('<br>') || '-';
+    const domains = Object.entries(result.domain_counts || {}).map(([domain, count]) => `${escapeHtml(domain)}: <strong>${count}</strong>`).join('<br>') || '-';
+    const links = (result.matched_links || []).slice(0, 12).map(link => `<a href="${escapeHtml(link.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.found_domain || link.link_domain)}</a> <span class="text-slate-500">→ ${escapeHtml(link.target_domain || link.domain || '')} · ${escapeHtml(link.anchor)}</span>`).join('<br>') || '-';
+    const status = result.status === 'ok' ? '<span class="badge text-bg-success">OK</span>' : `<span class="badge text-bg-danger">Error</span><div class="small text-danger mt-1">${escapeHtml(result.error)}</div>`;
+    return `<tr><td>${result.input_index ?? ''}</td><td class="break-all"><div>${escapeHtml(result.input_url || result.url)}</div><small class="text-slate-500">${escapeHtml(result.final_url || '')}</small></td><td>${status}<div class="small text-slate-500">${escapeHtml(result.status_code || '')} ${escapeHtml(result.content_type || '')}</div></td><td>${words}</td><td>${domains}</td><td>${result.total_links || 0}</td><td>${escapeHtml((result.unique_link_domains || []).join(', '))}</td><td>${links}</td></tr>`;
+  }).join('');
+  document.getElementById('results').classList.remove('hidden');
+  document.getElementById('results').innerHTML = `
+    <h2 class="text-xl font-bold text-slate-800 mb-4">Detalle por URL</h2>
+    <div class="table-responsive"><table class="table table-striped align-top"><thead><tr><th>#</th><th>URL</th><th>Estado</th><th>Palabras</th><th>Dominios</th><th>Total links</th><th>Dominios únicos</th><th>Enlaces encontrados</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+async function downloadCsv() {
+  const response = await fetch('/api/v1/url_finder/download', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({results: latestResults})
+  });
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'url_finder_results.csv';
+  link.click();
+  URL.revokeObjectURL(url);
+}
+</script>
+{% endblock %}

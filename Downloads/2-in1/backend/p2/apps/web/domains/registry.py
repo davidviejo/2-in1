@@ -184,6 +184,17 @@ DOMAIN_BOOTSTRAP: Sequence[DomainBootstrap] = (
             BlueprintSpec('apps.web.blueprints.pixel_tool', 'pixel_bp'),
             BlueprintSpec('apps.web.blueprints.anchor_tool', 'anchor_bp'),
             BlueprintSpec(
+                'apps.web.blueprints.url_finder_tool',
+                'url_finder_bp',
+                ToolMetadata(
+                    id='url-finder',
+                    name='URL Finder',
+                    path='/url_finder',
+                    status='migrada',
+                    description='Busca palabras en URLs y dominios presentes en el enlazado HTML.',
+                ),
+            ),
+            BlueprintSpec(
                 'apps.web.blueprints.crawler_tool',
                 'crawler_bp',
                 ToolMetadata(
