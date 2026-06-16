@@ -47,13 +47,8 @@ const createEmptyChecklist = () =>
     {} as SeoPage['checklist'],
   );
 
-
 const parseFilterTokens = (rawFilter: string) => {
-  const tokens = rawFilter
-    .trim()
-    .toLowerCase()
-    .split(/\s+/)
-    .filter(Boolean);
+  const tokens = rawFilter.trim().toLowerCase().split(/\s+/).filter(Boolean);
 
   const include: string[] = [];
   const exclude: string[] = [];
@@ -105,9 +100,9 @@ const safeStringify = (value: unknown) => {
 
 const matchesUrlFilter = (page: SeoPage, rawFilter: string) => {
   const { include, exclude } = parseFilterTokens(rawFilter);
-  if (include.length === 0 && exclude.length === 0) return true
+  if (include.length === 0 && exclude.length === 0) return true;
 
-  const searchable = [page.url, page.kwPrincipal, page.cluster || '']
+  const searchable = [page.url, page.kwPrincipal, page.cluster || '', ...(page.tags || [])]
     .join(' ')
     .toLowerCase();
 
@@ -123,7 +118,11 @@ type AnalysisAgeFilter = 'all' | 'never' | 'gt_7d' | 'gt_30d' | 'gt_180d' | 'gt_
 const ANALYSIS_AGE_FILTER_STORAGE_KEY = 'mediaflow_seo_analysis_age_filter';
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export const matchesAnalysisAge = (page: SeoPage, analysisAgeFilter: AnalysisAgeFilter, nowMs: number) => {
+export const matchesAnalysisAge = (
+  page: SeoPage,
+  analysisAgeFilter: AnalysisAgeFilter,
+  nowMs: number,
+) => {
   if (analysisAgeFilter === 'all') return true;
 
   const analyzedTimeMs = page.lastAnalyzedAt ? new Date(page.lastAnalyzedAt).getTime() : Number.NaN;
@@ -188,7 +187,9 @@ export const SeoUrlList: React.FC<Props> = ({
   const [analysisMode, setAnalysisMode] = useState<'basic' | 'advanced'>('basic');
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
-  const [bulkAiState, setBulkAiState] = useState<'idle' | 'analyzing' | 'completed' | 'error'>('idle');
+  const [bulkAiState, setBulkAiState] = useState<'idle' | 'analyzing' | 'completed' | 'error'>(
+    'idle',
+  );
   const [bulkAiMessage, setBulkAiMessage] = useState<string | null>(null);
   const [bulkAiSummary, setBulkAiSummary] = useState<{
     updated: number;
@@ -196,20 +197,17 @@ export const SeoUrlList: React.FC<Props> = ({
     errors: string[];
   } | null>(null);
   const { currentClient } = useProject();
-  const {
-    gscAccessToken,
-    googleUser,
-    login,
-    handleLogoutGsc,
-  } = useGSCAuth();
-  const [gscSites, setGscSites] = useState<Array<{ siteUrl: string; permissionLevel?: string }>>([]);
+  const { gscAccessToken, googleUser, login, handleLogoutGsc } = useGSCAuth();
+  const [gscSites, setGscSites] = useState<Array<{ siteUrl: string; permissionLevel?: string }>>(
+    [],
+  );
   const [selectedGscSite, setSelectedGscSite] = useState<string>(
     () => localStorage.getItem('mediaflow_gsc_selected_site') || '',
   );
   const [isLoadingGscSites, setIsLoadingGscSites] = useState(false);
   const [isSyncingGscMetrics, setIsSyncingGscMetrics] = useState(false);
   const [gscSyncStatus, setGscSyncStatus] = useState<string | null>(null);
-  const [gscSyncNewUrlsLimitInput, setGscSyncNewUrlsLimitInput] = useState('10000');
+  const [gscSyncNewUrlsLimitInput, setGscSyncNewUrlsLimitInput] = useState('0');
   const [gscPropertySearch, setGscPropertySearch] = useState('');
   const [quickSelectCountInput, setQuickSelectCountInput] = useState('21');
 
@@ -224,7 +222,9 @@ export const SeoUrlList: React.FC<Props> = ({
     direction: 'desc',
   });
 
-  const filteredPages = pages.filter((p) => matchesPageFilters(p, filter, analysisAgeFilter, Date.now()));
+  const filteredPages = pages.filter((p) =>
+    matchesPageFilters(p, filter, analysisAgeFilter, Date.now()),
+  );
 
   const sortedFilteredPages = useMemo(() => {
     const getProgress = (page: SeoPage) => calculateStatusMetrics(page).progress;
@@ -281,10 +281,13 @@ export const SeoUrlList: React.FC<Props> = ({
       grouped.set(cluster, current);
     });
 
-    return Array.from(grouped.entries()).reduce((acc, [cluster, values]) => {
-      acc[cluster] = values.count > 0 ? Math.round(values.totalProgress / values.count) : 0;
-      return acc;
-    }, {} as Record<string, number>);
+    return Array.from(grouped.entries()).reduce(
+      (acc, [cluster, values]) => {
+        acc[cluster] = values.count > 0 ? Math.round(values.totalProgress / values.count) : 0;
+        return acc;
+      },
+      {} as Record<string, number>,
+    );
   }, [pages]);
 
   const hasClusterOnlyFilter = useMemo(() => {
@@ -299,7 +302,9 @@ export const SeoUrlList: React.FC<Props> = ({
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage,
   );
-  const handleSort = (key: 'clicks' | 'impressions' | 'position' | 'progress' | 'lastAnalyzedAt') => {
+  const handleSort = (
+    key: 'clicks' | 'impressions' | 'position' | 'progress' | 'lastAnalyzedAt',
+  ) => {
     setSortConfig((prev) => ({
       key,
       direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc',
@@ -328,37 +333,50 @@ export const SeoUrlList: React.FC<Props> = ({
     setCurrentPage(1);
   };
 
+  const MASSIVE_EXPORT_THRESHOLD = 1;
+  const EXPORT_DOWNLOAD_PAUSE_MS = 250;
 
-const MASSIVE_EXPORT_THRESHOLD = 1;
-const EXPORT_DOWNLOAD_PAUSE_MS = 250;
+  const escapeTsvField = (value: unknown): string => {
+    const normalized = value == null ? '' : String(value);
+    return normalized.replace(/\t/g, ' ').replace(/\r?\n/g, ' | ');
+  };
 
-const escapeTsvField = (value: unknown): string => {
-  const normalized = value == null ? '' : String(value);
-  return normalized.replace(/\t/g, ' ').replace(/\r?\n/g, ' | ');
-};
+  const buildTsv = (headers: unknown[], rows: unknown[][]): string => {
+    const lines = [headers, ...rows].map((row) =>
+      row.map((value) => escapeTsvField(value)).join('	'),
+    );
+    return `${lines.join('\n')}\n`;
+  };
 
-const buildTsv = (headers: unknown[], rows: unknown[][]): string => {
-  const lines = [headers, ...rows].map((row) => row.map((value) => escapeTsvField(value)).join('	'));
-  return `${lines.join('\n')}\n`;
-};
+  const downloadTsv = (content: string, filename: string) => {
+    const blob = new Blob([content], { type: 'text/tab-separated-values;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
-const downloadTsv = (content: string, filename: string) => {
-  const blob = new Blob([content], { type: 'text/tab-separated-values;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-};
+  const sanitizeFileNameChunk = (value: string) =>
+    value
+      .trim()
+      .replace(/[\\/:*?"<>|]/g, '')
+      .replace(/\s+/g, '_');
 
-const sanitizeFileNameChunk = (value: string) =>
-  value
-    .trim()
-    .replace(/[\\/:*?"<>|]/g, '')
-    .replace(/\s+/g, '_');
+  const formatSeoPageTags = (tags?: string[]) => (tags || []).join(', ');
+
+  const parseSeoPageTags = (value: string) =>
+    Array.from(
+      new Set(
+        value
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter(Boolean),
+      ),
+    );
   function calculateStatusMetrics(page: SeoPage) {
     const items = Object.values(page.checklist) as ChecklistItem[];
     const siCount = items.filter((i) => i.status_manual === 'SI').length;
@@ -369,9 +387,7 @@ const sanitizeFileNameChunk = (value: string) =>
 
   const handleExport = async () => {
     const exportProjectName = sanitizeFileNameChunk(currentClient?.name || 'Proyecto');
-    const exportPages = selectedIds.size > 0
-      ? pages.filter((p) => selectedIds.has(p.id))
-      : pages;
+    const exportPages = selectedIds.size > 0 ? pages.filter((p) => selectedIds.has(p.id)) : pages;
 
     if (exportPages.length === 0) {
       setGscSyncStatus('No hay URLs para exportar.');
@@ -385,7 +401,9 @@ const sanitizeFileNameChunk = (value: string) =>
     setIsExporting(true);
     try {
       if (isMassiveExport) {
-        setGscSyncStatus(`Exportación masiva detectada (${exportPages.length.toLocaleString()} URLs). Generando 3 TSV completos...`);
+        setGscSyncStatus(
+          `Exportación masiva detectada (${exportPages.length.toLocaleString()} URLs). Generando 3 TSV completos...`,
+        );
 
         const summaryHeaders = [
           'URL',
@@ -393,6 +411,7 @@ const sanitizeFileNameChunk = (value: string) =>
           'KWs Secundarias',
           'Tipo',
           'Cluster',
+          'Etiquetas',
           'Clics',
           'Impresiones',
           'Posición media',
@@ -402,16 +421,31 @@ const sanitizeFileNameChunk = (value: string) =>
         const summaryData = exportPages.map((p) => [
           p.url,
           p.kwPrincipal,
-          ((p.checklist.OPORTUNIDADES?.autoData?.autoAssignedSecondaryKeywords as string[] | undefined) || []).join(', '),
+          (
+            (p.checklist.OPORTUNIDADES?.autoData?.autoAssignedSecondaryKeywords as
+              | string[]
+              | undefined) || []
+          ).join(', '),
           p.pageType,
           p.cluster || '',
+          formatSeoPageTags(p.tags),
           p.gscMetrics?.clicks || 0,
           p.gscMetrics?.impressions || 0,
           p.gscMetrics?.position ?? '',
           ...CHECKLIST_POINTS.map((point) => p.checklist[point.key]?.status_manual || 'NA'),
         ]);
 
-        const detailHeaders = ['URL', 'KW Principal', 'KWs Secundarias', 'Tipo', 'Cluster', 'Clics', 'Impresiones', 'Posición media'];
+        const detailHeaders = [
+          'URL',
+          'KW Principal',
+          'KWs Secundarias',
+          'Tipo',
+          'Cluster',
+          'Etiquetas',
+          'Clics',
+          'Impresiones',
+          'Posición media',
+        ];
         CHECKLIST_POINTS.forEach((p) => {
           detailHeaders.push(`${p.label} - Estado`);
           detailHeaders.push(`${p.label} - Notas`);
@@ -422,9 +456,14 @@ const sanitizeFileNameChunk = (value: string) =>
           const row = [
             p.url,
             p.kwPrincipal,
-            ((p.checklist.OPORTUNIDADES?.autoData?.autoAssignedSecondaryKeywords as string[] | undefined) || []).join(', '),
+            (
+              (p.checklist.OPORTUNIDADES?.autoData?.autoAssignedSecondaryKeywords as
+                | string[]
+                | undefined) || []
+            ).join(', '),
             p.pageType,
             p.cluster || '',
+            formatSeoPageTags(p.tags),
             p.gscMetrics?.clicks || 0,
             p.gscMetrics?.impressions || 0,
             p.gscMetrics?.position ?? '',
@@ -506,13 +545,24 @@ const sanitizeFileNameChunk = (value: string) =>
         });
 
         const dateTag = new Date().toISOString().slice(0, 10);
-        downloadTsv(buildTsv(summaryHeaders, summaryData), `${exportProjectName}_SEO_Checklist_Resumen_${dateTag}.tsv`);
+        downloadTsv(
+          buildTsv(summaryHeaders, summaryData),
+          `${exportProjectName}_SEO_Checklist_Resumen_${dateTag}.tsv`,
+        );
         await new Promise((resolve) => setTimeout(resolve, EXPORT_DOWNLOAD_PAUSE_MS));
-        downloadTsv(buildTsv(detailHeaders, detailData), `${exportProjectName}_SEO_Checklist_Detalle_${dateTag}.tsv`);
+        downloadTsv(
+          buildTsv(detailHeaders, detailData),
+          `${exportProjectName}_SEO_Checklist_Detalle_${dateTag}.tsv`,
+        );
         await new Promise((resolve) => setTimeout(resolve, EXPORT_DOWNLOAD_PAUSE_MS));
-        downloadTsv(buildTsv(clusterHeaders, clusterRows), `${exportProjectName}_SEO_Checklist_Clusterizacion_${dateTag}.tsv`);
+        downloadTsv(
+          buildTsv(clusterHeaders, clusterRows),
+          `${exportProjectName}_SEO_Checklist_Clusterizacion_${dateTag}.tsv`,
+        );
 
-        setGscSyncStatus(`Exportación masiva completada. Se exportaron 3 datasets completos (Resumen, Detalle y Clusterización) con ${exportPages.length.toLocaleString()} URL(s).`);
+        setGscSyncStatus(
+          `Exportación masiva completada. Se exportaron 3 datasets completos (Resumen, Detalle y Clusterización) con ${exportPages.length.toLocaleString()} URL(s).`,
+        );
         return;
       }
 
@@ -531,6 +581,7 @@ const sanitizeFileNameChunk = (value: string) =>
           'KWs Secundarias',
           'Tipo',
           'Cluster',
+          'Etiquetas',
           'Clics',
           'Impresiones',
           'Posición media',
@@ -540,9 +591,14 @@ const sanitizeFileNameChunk = (value: string) =>
         const summaryData = chunkPages.map((p) => [
           p.url,
           p.kwPrincipal,
-          ((p.checklist.OPORTUNIDADES?.autoData?.autoAssignedSecondaryKeywords as string[] | undefined) || []).join(', '),
+          (
+            (p.checklist.OPORTUNIDADES?.autoData?.autoAssignedSecondaryKeywords as
+              | string[]
+              | undefined) || []
+          ).join(', '),
           p.pageType,
           p.cluster || '',
+          formatSeoPageTags(p.tags),
           p.gscMetrics?.clicks || 0,
           p.gscMetrics?.impressions || 0,
           p.gscMetrics?.position ?? '',
@@ -551,7 +607,17 @@ const sanitizeFileNameChunk = (value: string) =>
 
         const wsSummary = XLSX.utils.aoa_to_sheet([summaryHeaders, ...summaryData]);
 
-        const detailHeaders = ['URL', 'KW Principal', 'KWs Secundarias', 'Tipo', 'Cluster', 'Clics', 'Impresiones', 'Posición media'];
+        const detailHeaders = [
+          'URL',
+          'KW Principal',
+          'KWs Secundarias',
+          'Tipo',
+          'Cluster',
+          'Etiquetas',
+          'Clics',
+          'Impresiones',
+          'Posición media',
+        ];
         CHECKLIST_POINTS.forEach((p) => {
           detailHeaders.push(`${p.label} - Estado`);
           detailHeaders.push(`${p.label} - Notas`);
@@ -562,9 +628,14 @@ const sanitizeFileNameChunk = (value: string) =>
           const row = [
             p.url,
             p.kwPrincipal,
-            ((p.checklist.OPORTUNIDADES?.autoData?.autoAssignedSecondaryKeywords as string[] | undefined) || []).join(', '),
+            (
+              (p.checklist.OPORTUNIDADES?.autoData?.autoAssignedSecondaryKeywords as
+                | string[]
+                | undefined) || []
+            ).join(', '),
             p.pageType,
             p.cluster || '',
+            formatSeoPageTags(p.tags),
             p.gscMetrics?.clicks || 0,
             p.gscMetrics?.impressions || 0,
             p.gscMetrics?.position ?? '',
@@ -651,7 +722,9 @@ const sanitizeFileNameChunk = (value: string) =>
           }
         });
 
-        const wsClusters = XLSX.utils.aoa_to_sheet(clusterRows.length > 0 ? [clusterHeaders, ...clusterRows] : [clusterHeaders]);
+        const wsClusters = XLSX.utils.aoa_to_sheet(
+          clusterRows.length > 0 ? [clusterHeaders, ...clusterRows] : [clusterHeaders],
+        );
         XLSX.utils.book_append_sheet(wb, wsClusters, 'Clusterización (Intenciones)');
 
         const fileSuffix = totalFiles > 1 ? `_part-${String(fileIndex + 1).padStart(2, '0')}` : '';
@@ -724,9 +797,7 @@ const sanitizeFileNameChunk = (value: string) =>
 
     const maxSelectable = sortedFilteredPages.length;
     const effectiveCount = Math.min(parsedCount, maxSelectable);
-    const nextSelectedIds = sortedFilteredPages
-      .slice(0, effectiveCount)
-      .map((page) => page.id);
+    const nextSelectedIds = sortedFilteredPages.slice(0, effectiveCount).map((page) => page.id);
     setSelectedIds(new Set(nextSelectedIds));
   };
 
@@ -928,7 +999,9 @@ const sanitizeFileNameChunk = (value: string) =>
               evaluationMeta: item.evaluationMeta,
             };
           });
-          onBulkUpdate([{ id: page.id, changes: { checklist: pageChecklist, lastAnalyzedAt: Date.now() } }]);
+          onBulkUpdate([
+            { id: page.id, changes: { checklist: pageChecklist, lastAnalyzedAt: Date.now() } },
+          ]);
         }
       }
 
@@ -993,7 +1066,9 @@ const sanitizeFileNameChunk = (value: string) =>
     const targetPages = pages.filter((page) => targetIds.has(page.id));
 
     setIsSyncingGscMetrics(true);
-    setGscSyncStatus('Sincronizando clics, impresiones y posición media desde el informe de páginas de GSC...');
+    setGscSyncStatus(
+      'Sincronizando clics, impresiones y posición media desde el informe de páginas de GSC...',
+    );
 
     const endDate = new Date().toISOString().slice(0, 10);
     const startDate = new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -1027,14 +1102,21 @@ const sanitizeFileNameChunk = (value: string) =>
         searchType: 'web',
       });
       const rows = Array.isArray(response.rows) ? response.rows : [];
-      const metricsByUrl = new Map<string, { clicks: number; impressions: number; weightedPosition: number }>();
+      const metricsByUrl = new Map<
+        string,
+        { clicks: number; impressions: number; weightedPosition: number }
+      >();
 
       for (const row of rows) {
         const rawUrl = String(row?.keys?.[0] || '').trim();
         if (!rawUrl) continue;
         const normalizedUrl = normalizeUrlCandidate(rawUrl);
         if (!normalizedUrl) continue;
-        const current = metricsByUrl.get(normalizedUrl) || { clicks: 0, impressions: 0, weightedPosition: 0 };
+        const current = metricsByUrl.get(normalizedUrl) || {
+          clicks: 0,
+          impressions: 0,
+          weightedPosition: 0,
+        };
         const rowClicks = Number(row.clicks || 0);
         const rowImpressions = Number(row.impressions || 0);
         const rowPosition = Number(row.position || 0);
@@ -1087,8 +1169,8 @@ const sanitizeFileNameChunk = (value: string) =>
         processed += 1;
       }
 
-      const maxNewUrls = Number.parseInt(gscSyncNewUrlsLimitInput, 10);
-      const hasNewUrlsLimit = Number.isFinite(maxNewUrls) && maxNewUrls > 0;
+      const maxNewUrls = Math.max(0, Number.parseInt(gscSyncNewUrlsLimitInput, 10) || 0);
+      const canImportNewUrls = maxNewUrls > 0;
       const rowsNotInChecklist = Array.from(metricsByUrl.entries())
         .filter(([url, metrics]) => {
           if (normalizedExistingUrls.has(url)) return false;
@@ -1096,24 +1178,24 @@ const sanitizeFileNameChunk = (value: string) =>
         })
         .sort(([, metricsA], [, metricsB]) => {
           if (metricsB.clicks !== metricsA.clicks) return metricsB.clicks - metricsA.clicks;
-          if (metricsB.impressions !== metricsA.impressions) return metricsB.impressions - metricsA.impressions;
+          if (metricsB.impressions !== metricsA.impressions)
+            return metricsB.impressions - metricsA.impressions;
           return metricsA.weightedPosition - metricsB.weightedPosition;
         });
 
-      const rowsToImport = hasNewUrlsLimit ? rowsNotInChecklist.slice(0, maxNewUrls) : rowsNotInChecklist;
+      const rowsToImport = canImportNewUrls ? rowsNotInChecklist.slice(0, maxNewUrls) : [];
 
       rowsToImport.forEach(([url, metrics]) => {
         const ctr = metrics.impressions > 0 ? metrics.clicks / metrics.impressions : 0;
         const position =
-          metrics.impressions > 0
-            ? metrics.weightedPosition / metrics.impressions
-            : undefined;
+          metrics.impressions > 0 ? metrics.weightedPosition / metrics.impressions : undefined;
         updates.push({
           id: `gsc-${url}`,
           changes: {
             url,
             kwPrincipal: '',
             pageType: 'Pendiente',
+            tags: ['GSC'],
             checklist: createEmptyChecklist(),
             gscMetrics: {
               clicks: metrics.clicks,
@@ -1137,7 +1219,7 @@ const sanitizeFileNameChunk = (value: string) =>
         return;
       }
       setGscSyncStatus(
-        `Sincronización completada: ${processed}/${targetPages.length} URL(s) actualizadas y ${rowsToImport.length} URL(s) nuevas añadidas desde GSC${hasNewUrlsLimit ? ` (tope aplicado: ${maxNewUrls})` : ''}.`,
+        `Sincronización completada: ${processed}/${targetPages.length} URL(s) actualizadas y ${rowsToImport.length} URL(s) nuevas añadidas desde GSC${canImportNewUrls ? ` (tope aplicado: ${maxNewUrls})` : ' (volcado de nuevas URLs desactivado)'}.`,
       );
     } finally {
       setIsSyncingGscMetrics(false);
@@ -1195,7 +1277,9 @@ const sanitizeFileNameChunk = (value: string) =>
           className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-bold shadow-lg shadow-emerald-500/20 transition-all shrink-0 disabled:opacity-60"
         >
           {isExporting ? <Loader2 className="animate-spin" size={18} /> : <Download size={18} />}
-          <span className="hidden sm:inline">{isExporting ? 'Exportando...' : 'Exportar Excel'}</span>
+          <span className="hidden sm:inline">
+            {isExporting ? 'Exportando...' : 'Exportar Excel'}
+          </span>
         </button>
       </div>
 
@@ -1261,7 +1345,7 @@ const sanitizeFileNameChunk = (value: string) =>
             )}
           </select>
           <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-            Máx nuevas URL a volcar
+            Máx nuevas URL a volcar (0 = no añadir)
             <input
               type="number"
               min={0}
@@ -1269,7 +1353,7 @@ const sanitizeFileNameChunk = (value: string) =>
               value={gscSyncNewUrlsLimitInput}
               onChange={(e) => setGscSyncNewUrlsLimitInput(e.target.value)}
               className="w-28 px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs"
-              title="0 = sin límite"
+              title="0 = no añadir URLs nuevas; valores mayores limitan el volcado"
             />
           </label>
           <button
@@ -1277,7 +1361,9 @@ const sanitizeFileNameChunk = (value: string) =>
             disabled={!gscAccessToken || !selectedGscSite || isSyncingGscMetrics}
             className="px-3 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50"
           >
-            {isSyncingGscMetrics ? 'Sincronizando GSC...' : 'Asignar clics/impresiones/posición a URLs'}
+            {isSyncingGscMetrics
+              ? 'Sincronizando GSC...'
+              : 'Asignar clics/impresiones/posición a URLs'}
           </button>
           <span className="text-xs text-slate-500 dark:text-slate-400">
             {selectedIds.size > 0
@@ -1536,28 +1622,49 @@ const sanitizeFileNameChunk = (value: string) =>
                 <th className="px-6 py-4">URL</th>
                 <th className="px-6 py-4">Keyword</th>
                 <th className="px-6 py-4">Tipo</th>
+                <th className="px-6 py-4">Etiquetas</th>
                 <th className="px-6 py-4 text-right">
-                  <button type="button" onClick={() => handleSort('clicks')} className="inline-flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('clicks')}
+                    className="inline-flex items-center gap-1"
+                  >
                     Clics GSC <ArrowUpDown size={12} />
                   </button>
                 </th>
                 <th className="px-6 py-4 text-right">
-                  <button type="button" onClick={() => handleSort('impressions')} className="inline-flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('impressions')}
+                    className="inline-flex items-center gap-1"
+                  >
                     Impresiones GSC <ArrowUpDown size={12} />
                   </button>
                 </th>
                 <th className="px-6 py-4 text-right">
-                  <button type="button" onClick={() => handleSort('position')} className="inline-flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('position')}
+                    className="inline-flex items-center gap-1"
+                  >
                     Posición media <ArrowUpDown size={12} />
                   </button>
                 </th>
                 <th className="px-6 py-4 text-center">
-                  <button type="button" onClick={() => handleSort('progress')} className="inline-flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('progress')}
+                    className="inline-flex items-center gap-1"
+                  >
                     Progreso <ArrowUpDown size={12} />
                   </button>
                 </th>
                 <th className="px-6 py-4 text-right">
-                  <button type="button" onClick={() => handleSort('lastAnalyzedAt')} className="inline-flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('lastAnalyzedAt')}
+                    className="inline-flex items-center gap-1"
+                  >
                     Último Análisis <ArrowUpDown size={12} />
                   </button>
                 </th>
@@ -1614,6 +1721,24 @@ const sanitizeFileNameChunk = (value: string) =>
                         {page.pageType}
                       </span>
                     </td>
+                    <td className="px-6 py-4 text-slate-500">
+                      <input
+                        type="text"
+                        value={formatSeoPageTags(page.tags)}
+                        onChange={(event) =>
+                          onBulkUpdate([
+                            {
+                              id: page.id,
+                              changes: { tags: parseSeoPageTags(event.target.value) },
+                            },
+                          ])
+                        }
+                        onClick={(event) => event.stopPropagation()}
+                        className="w-40 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs"
+                        placeholder="etiqueta1, etiqueta2"
+                        aria-label={`Etiquetas para ${page.url}`}
+                      />
+                    </td>
                     <td className="px-6 py-4 text-right text-slate-600 dark:text-slate-300 font-mono text-xs">
                       {(page.gscMetrics?.clicks || 0).toLocaleString('es-ES')}
                     </td>
@@ -1622,7 +1747,10 @@ const sanitizeFileNameChunk = (value: string) =>
                     </td>
                     <td className="px-6 py-4 text-right text-slate-600 dark:text-slate-300 font-mono text-xs">
                       {typeof page.gscMetrics?.position === 'number'
-                        ? page.gscMetrics.position.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                        ? page.gscMetrics.position.toLocaleString('es-ES', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })
                         : '-'}
                     </td>
                     <td className="px-6 py-4 text-center">
