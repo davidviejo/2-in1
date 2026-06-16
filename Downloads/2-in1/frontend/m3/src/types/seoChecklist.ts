@@ -90,6 +90,7 @@ export interface SeoPage {
   pageType: string;
   geoTarget?: string;
   cluster?: string;
+  tags?: string[];
   gscMetrics?: SeoPageGscMetrics;
   checklist: Record<ChecklistKey, ChecklistItem>;
   lastAnalyzedAt?: number;
