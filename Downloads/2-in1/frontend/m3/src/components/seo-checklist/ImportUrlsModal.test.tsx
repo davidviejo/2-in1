@@ -28,7 +28,6 @@ describe('ImportUrlsModal', () => {
     });
   });
 
-  
   it('carga archivo TSV y permite importar conservando el orden de filas', async () => {
     const onImport = vi.fn();
 
@@ -45,7 +44,9 @@ describe('ImportUrlsModal', () => {
     fireEvent.change(fileInput, { target: { files: [file] } });
 
     await waitFor(() => {
-      expect((screen.getByPlaceholderText(/https:\/\/example.com\/page1/i) as HTMLTextAreaElement).value).toContain('https://example.com/uno');
+      expect(
+        (screen.getByPlaceholderText(/https:\/\/example.com\/page1/i) as HTMLTextAreaElement).value,
+      ).toContain('https://example.com/uno');
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Importar URLs' }));
@@ -58,12 +59,10 @@ describe('ImportUrlsModal', () => {
     expect(importedPages[0].url).toBe('https://example.com/uno');
     expect(importedPages[1].url).toBe('https://example.com/dos');
   });
-it('importa URLs aunque randomUUID no esté disponible', async () => {
+  it('importa URLs aunque randomUUID no esté disponible', async () => {
     const onImport = vi.fn();
 
-    render(
-      <ImportUrlsModal isOpen onClose={vi.fn()} onImport={onImport} existingPages={[]} />,
-    );
+    render(<ImportUrlsModal isOpen onClose={vi.fn()} onImport={onImport} existingPages={[]} />);
 
     fireEvent.change(screen.getByPlaceholderText(/https:\/\/example.com\/page1/i), {
       target: { value: 'https://example.com/page-1\tkeyword uno' },
@@ -113,9 +112,7 @@ it('importa URLs aunque randomUUID no esté disponible', async () => {
       return `https://example.com/page-${index + 1}\tkw ${index + 1}`;
     }).join('\n');
 
-    render(
-      <ImportUrlsModal isOpen onClose={vi.fn()} onImport={onImport} existingPages={[]} />,
-    );
+    render(<ImportUrlsModal isOpen onClose={vi.fn()} onImport={onImport} existingPages={[]} />);
 
     fireEvent.change(screen.getByPlaceholderText(/https:\/\/example.com\/page1/i), {
       target: { value: largeInput },
@@ -136,9 +133,7 @@ it('importa URLs aunque randomUUID no esté disponible', async () => {
   it('usa la URL nueva cuando recibe formato de migración "URL antigua | URL nueva"', async () => {
     const onImport = vi.fn();
 
-    render(
-      <ImportUrlsModal isOpen onClose={vi.fn()} onImport={onImport} existingPages={[]} />,
-    );
+    render(<ImportUrlsModal isOpen onClose={vi.fn()} onImport={onImport} existingPages={[]} />);
 
     fireEvent.change(screen.getByPlaceholderText(/https:\/\/example.com\/page1/i), {
       target: {
@@ -165,9 +160,7 @@ it('importa URLs aunque randomUUID no esté disponible', async () => {
   it('acepta separador pipe para formato estándar sin migración', async () => {
     const onImport = vi.fn();
 
-    render(
-      <ImportUrlsModal isOpen onClose={vi.fn()} onImport={onImport} existingPages={[]} />,
-    );
+    render(<ImportUrlsModal isOpen onClose={vi.fn()} onImport={onImport} existingPages={[]} />);
 
     fireEvent.change(screen.getByPlaceholderText(/https:\/\/example.com\/page1/i), {
       target: { value: 'https://example.com/page-pipe | keyword pipe | Article' },
@@ -188,9 +181,7 @@ it('importa URLs aunque randomUUID no esté disponible', async () => {
   it('acepta columnas separadas por múltiples espacios cuando no llegan tabuladores', async () => {
     const onImport = vi.fn();
 
-    render(
-      <ImportUrlsModal isOpen onClose={vi.fn()} onImport={onImport} existingPages={[]} />,
-    );
+    render(<ImportUrlsModal isOpen onClose={vi.fn()} onImport={onImport} existingPages={[]} />);
 
     fireEvent.change(screen.getByPlaceholderText(/https:\/\/example.com\/page1/i), {
       target: {
@@ -218,9 +209,7 @@ it('importa URLs aunque randomUUID no esté disponible', async () => {
       return `https://example.com/page-${index + 1}\tkw ${index + 1}`;
     }).join('\n');
 
-    render(
-      <ImportUrlsModal isOpen onClose={vi.fn()} onImport={onImport} existingPages={[]} />,
-    );
+    render(<ImportUrlsModal isOpen onClose={vi.fn()} onImport={onImport} existingPages={[]} />);
 
     fireEvent.change(screen.getByPlaceholderText(/https:\/\/example.com\/page1/i), {
       target: { value: largeInput },
@@ -229,7 +218,9 @@ it('importa URLs aunque randomUUID no esté disponible', async () => {
     fireEvent.click(screen.getByRole('button', { name: 'Importar URLs' }));
 
     expect(screen.getByText(/Importando URLs/i)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Importando…' }).getAttribute('disabled')).not.toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Importando…' }).getAttribute('disabled'),
+    ).not.toBeNull();
 
     await waitFor(() => {
       expect(onImport).toHaveBeenCalledTimes(20);
@@ -288,9 +279,7 @@ it('importa URLs aunque randomUUID no esté disponible', async () => {
   it('omite fila de encabezado y no importa pseudo-URLs inválidas', async () => {
     const onImport = vi.fn();
 
-    render(
-      <ImportUrlsModal isOpen onClose={vi.fn()} onImport={onImport} existingPages={[]} />,
-    );
+    render(<ImportUrlsModal isOpen onClose={vi.fn()} onImport={onImport} existingPages={[]} />);
 
     fireEvent.change(screen.getByPlaceholderText(/https:\/\/example.com\/page1/i), {
       target: {
@@ -316,9 +305,7 @@ it('importa URLs aunque randomUUID no esté disponible', async () => {
   it('separa URLs concatenadas sin salto de línea al pegar desde hojas de cálculo', async () => {
     const onImport = vi.fn();
 
-    render(
-      <ImportUrlsModal isOpen onClose={vi.fn()} onImport={onImport} existingPages={[]} />,
-    );
+    render(<ImportUrlsModal isOpen onClose={vi.fn()} onImport={onImport} existingPages={[]} />);
 
     fireEvent.change(screen.getByPlaceholderText(/https:\/\/example.com\/page1/i), {
       target: {
@@ -343,12 +330,35 @@ it('importa URLs aunque randomUUID no esté disponible', async () => {
     );
   });
 
+  it('importa etiquetas cuando llegan desde el exportable de checklist SEO', async () => {
+    const onImport = vi.fn();
+
+    render(<ImportUrlsModal isOpen onClose={vi.fn()} onImport={onImport} existingPages={[]} />);
+
+    fireEvent.change(screen.getByPlaceholderText(/https:\/\/example.com\/page1/i), {
+      target: {
+        value: [
+          'URL\tKeyword Principal\tTipo\tCluster\tEtiquetas\tClics\tImpresiones',
+          'https://example.com/page-tags\tkw tags\tArticle\tCluster Tags\tprioridad, blog, local\t10\t200',
+        ].join('\n'),
+      },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Importar URLs' }));
+
+    await waitFor(() => {
+      expect(onImport).toHaveBeenCalledTimes(1);
+    });
+
+    const importedPage = onImport.mock.calls[0][0][0];
+    expect(importedPage.tags).toEqual(['prioridad', 'blog', 'local']);
+    expect(importedPage.cluster).toBe('Cluster Tags');
+  });
+
   it('importa estados de checklist cuando llegan columnas del exportable de Excel', async () => {
     const onImport = vi.fn();
 
-    render(
-      <ImportUrlsModal isOpen onClose={vi.fn()} onImport={onImport} existingPages={[]} />,
-    );
+    render(<ImportUrlsModal isOpen onClose={vi.fn()} onImport={onImport} existingPages={[]} />);
 
     fireEvent.change(screen.getByPlaceholderText(/https:\/\/example.com\/page1/i), {
       target: {
@@ -381,9 +391,7 @@ it('importa URLs aunque randomUUID no esté disponible', async () => {
     const appendChildSpy = vi.spyOn(document.body, 'appendChild');
     const removeChildSpy = vi.spyOn(document.body, 'removeChild');
 
-    render(
-      <ImportUrlsModal isOpen onClose={vi.fn()} onImport={vi.fn()} existingPages={[]} />,
-    );
+    render(<ImportUrlsModal isOpen onClose={vi.fn()} onImport={vi.fn()} existingPages={[]} />);
 
     fireEvent.click(screen.getByRole('button', { name: /Descargar plantilla de importación/i }));
 
