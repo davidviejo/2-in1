@@ -25,9 +25,19 @@ interface ImportErrorSummary {
   duplicateImportedUrlRows: number[];
 }
 
+type ImportMetadataField =
+  | 'url'
+  | 'kwPrincipal'
+  | 'pageType'
+  | 'geoTarget'
+  | 'cluster'
+  | 'tags'
+  | 'position'
+  | 'secondaryKeywords';
+
 interface ParsedImportHeaders {
   checklistColumnsByIndex: Map<number, ChecklistKey>;
-  metadataColumnsByField: Map<'url' | 'kwPrincipal' | 'pageType' | 'geoTarget' | 'cluster' | 'position' | 'secondaryKeywords', number>;
+  metadataColumnsByField: Map<ImportMetadataField, number>;
 }
 
 const createSeoPageId = (): string => {
@@ -74,7 +84,9 @@ const normalizeImportedInput = (rawInput: string): string => {
   return rawInput.replace(/([^\s|,;])(https?:\/\/)/g, '$1\n$2');
 };
 
-const resolveImportedUrlColumns = (parts: string[]): {
+const resolveImportedUrlColumns = (
+  parts: string[],
+): {
   rawUrl: string;
   metadataOffset: number;
 } => {
@@ -150,14 +162,13 @@ const normalizeHeader = (value: string): string =>
     .trim()
     .replace(/\s+/g, ' ');
 
-
-const METADATA_HEADER_ALIASES: Record<string, keyof ParsedImportHeaders['metadataColumnsByField']> = {
+const METADATA_HEADER_ALIASES: Record<string, ImportMetadataField> = {
   url: 'url',
   'keyword principal': 'kwPrincipal',
   'kw principal': 'kwPrincipal',
   keyword: 'kwPrincipal',
   'palabra clave': 'kwPrincipal',
-  'tipo': 'pageType',
+  tipo: 'pageType',
   'tipo pagina': 'pageType',
   'tipo de pagina': 'pageType',
   'page type': 'pageType',
@@ -165,6 +176,10 @@ const METADATA_HEADER_ALIASES: Record<string, keyof ParsedImportHeaders['metadat
   'geo (opcional)': 'geoTarget',
   cluster: 'cluster',
   'cluster (opcional)': 'cluster',
+  etiquetas: 'tags',
+  tags: 'tags',
+  'etiquetas (opcional)': 'tags',
+  'tags (opcional)': 'tags',
   'posicion media': 'position',
   'posición media': 'position',
   'average position': 'position',
@@ -191,7 +206,14 @@ const CHECKLIST_LABEL_ALIASES: Record<string, ChecklistKey> = CHECKLIST_POINTS.r
 const parseImportHeaders = (parts: string[]): ParsedImportHeaders => {
   const checklistColumnsByIndex = new Map<number, ChecklistKey>();
   const metadataColumnsByField = new Map<
-    'url' | 'kwPrincipal' | 'pageType' | 'geoTarget' | 'cluster' | 'position' | 'secondaryKeywords',
+    | 'url'
+    | 'kwPrincipal'
+    | 'pageType'
+    | 'geoTarget'
+    | 'cluster'
+    | 'tags'
+    | 'position'
+    | 'secondaryKeywords',
     number
   >();
 
@@ -217,7 +239,7 @@ const parseImportHeaders = (parts: string[]): ParsedImportHeaders => {
 
 const getMappedColumnIndex = (
   parsedHeaders: ParsedImportHeaders | null,
-  field: keyof ParsedImportHeaders['metadataColumnsByField'],
+  field: ImportMetadataField,
   fallbackIndex: number,
 ): number => {
   if (!parsedHeaders) return fallbackIndex;
@@ -242,6 +264,19 @@ const buildSeenUrls = (pages: SeoPage[]): Set<string> => {
   return seen;
 };
 
+const readImportFileAsText = (file: File): Promise<string> => {
+  if (typeof file.text === 'function') {
+    return file.text();
+  }
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(file);
+  });
+};
+
 const buildImportTemplateTsv = (): string => {
   const headers = [
     'URL',
@@ -249,6 +284,7 @@ const buildImportTemplateTsv = (): string => {
     'Tipo Página',
     'Geo (Opcional)',
     'Cluster (Opcional)',
+    'Etiquetas (Opcional)',
     'Posición media (Opcional)',
     'KWs secundarias (Opcional)',
     ...CHECKLIST_POINTS.map((point) => point.label),
@@ -260,6 +296,7 @@ const buildImportTemplateTsv = (): string => {
     'Article',
     'ES',
     'Cluster Local SEO',
+    'prioridad, blog',
     '12.4',
     'keyword secundaria 1 | keyword secundaria 2',
     ...CHECKLIST_POINTS.map(() => 'NA'),
@@ -345,16 +382,36 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
             }
             seenImportedUrls.add(normalizedUrlKey);
 
-            const kwPrincipalIndex = getMappedColumnIndex(parsedHeaders, 'kwPrincipal', 1 + metadataOffset);
-            const pageTypeIndex = getMappedColumnIndex(parsedHeaders, 'pageType', 2 + metadataOffset);
-            const geoTargetIndex = getMappedColumnIndex(parsedHeaders, 'geoTarget', 3 + metadataOffset);
+            const kwPrincipalIndex = getMappedColumnIndex(
+              parsedHeaders,
+              'kwPrincipal',
+              1 + metadataOffset,
+            );
+            const pageTypeIndex = getMappedColumnIndex(
+              parsedHeaders,
+              'pageType',
+              2 + metadataOffset,
+            );
+            const geoTargetIndex = getMappedColumnIndex(
+              parsedHeaders,
+              'geoTarget',
+              3 + metadataOffset,
+            );
             const clusterIndex = getMappedColumnIndex(parsedHeaders, 'cluster', 4 + metadataOffset);
+            const tagsIndex = getMappedColumnIndex(parsedHeaders, 'tags', -1);
 
             const kwPrincipal = readColumnValue(parts, kwPrincipalIndex);
             const isBrandKeyword = kwPrincipal ? isBrandTermMatch(kwPrincipal, brandTerms) : false;
+            const tags = readColumnValue(parts, tagsIndex)
+              .split(',')
+              .map((tag) => tag.trim())
+              .filter(Boolean);
 
             const checklist = createEmptyChecklist();
-            if (parsedHeaders?.checklistColumnsByIndex && parsedHeaders.checklistColumnsByIndex.size > 0) {
+            if (
+              parsedHeaders?.checklistColumnsByIndex &&
+              parsedHeaders.checklistColumnsByIndex.size > 0
+            ) {
               parsedHeaders.checklistColumnsByIndex.forEach((checklistKey, columnIndex) => {
                 const rawStatus = parts[columnIndex];
                 if (!rawStatus) return;
@@ -373,6 +430,7 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
               pageType: readColumnValue(parts, pageTypeIndex, 'Article'),
               geoTarget: readColumnValue(parts, geoTargetIndex),
               cluster: readColumnValue(parts, clusterIndex),
+              tags,
               checklist,
             });
           } catch (error) {
@@ -412,14 +470,12 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
     }
   };
 
-
-
   const handleFileImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     try {
-      const content = await file.text();
+      const content = await readImportFileAsText(file);
       setInputText(content);
       setImportErrors(null);
     } finally {
@@ -464,7 +520,8 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
             Copia y pega tus URLs desde Excel o Google Sheets. El formato esperado es:
             <br />
             <code className="bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-xs mt-1 block w-fit">
-              URL | Keyword Principal | Tipo Página | Geo (Opcional) | Cluster (Opcional)
+              URL | Keyword Principal | Tipo Página | Geo (Opcional) | Cluster (Opcional) |
+              Etiquetas (Opcional)
             </code>
           </p>
           <div className="mb-4 flex flex-wrap gap-2">
@@ -492,8 +549,8 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
           </div>
           {brandTerms.length > 0 && (
             <p className="text-xs text-amber-600 dark:text-amber-400 mb-4">
-              Términos de marca activos: {brandTerms.join(', ')}. Si la keyword coincide, la URL
-              se importará como &quot;KW de marca&quot; y sin keyword principal asignada.
+              Términos de marca activos: {brandTerms.join(', ')}. Si la keyword coincide, la URL se
+              importará como &quot;KW de marca&quot; y sin keyword principal asignada.
             </p>
           )}
 
@@ -553,8 +610,8 @@ export const ImportUrlsModal: React.FC<Props> = ({ isOpen, onClose, onImport, ex
                 )}
                 {importErrors.duplicateExistingUrlRows.length > 0 && (
                   <li>
-                    URL ya existente en checklist: {importErrors.duplicateExistingUrlRows.length}{' '}
-                    (#{importErrors.duplicateExistingUrlRows.join(', #')})
+                    URL ya existente en checklist: {importErrors.duplicateExistingUrlRows.length} (#
+                    {importErrors.duplicateExistingUrlRows.join(', #')})
                   </li>
                 )}
                 {importErrors.duplicateImportedUrlRows.length > 0 && (
