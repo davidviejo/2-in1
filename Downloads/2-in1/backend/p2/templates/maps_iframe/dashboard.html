@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Google Maps iframe Checker{% endblock %}
+{% block content %}
+<div class="space-y-6 animate-fade-in">
+  <div class="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
+    <p class="text-xs uppercase tracking-wider text-blue-600 font-bold">Auditoría local</p>
+    <h1 class="text-3xl font-bold text-slate-900 mt-2">Detector de iframe de Google Maps</h1>
+    <p class="text-slate-500 mt-2 max-w-3xl">Analiza una URL o un listado de URLs desde el backend y marca cuáles incluyen un iframe embebido de Google Maps.</p>
+  </div>
+
+  <div class="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
+    <label for="urls" class="block text-sm font-bold text-slate-700 mb-2">URLs a analizar</label>
+    <textarea id="urls" rows="8" class="w-full rounded-xl border-slate-200 focus:border-blue-500 focus:ring-blue-500" placeholder="https://ejemplo.com/contacto&#10;https://ejemplo.com/ubicacion"></textarea>
+    <div class="flex flex-wrap gap-3 mt-4">
+      <button id="analyzeBtn" class="px-5 py-2.5 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 transition-colors">Analizar iframes</button>
+      <button id="toggleAllCodeBtn" class="hidden px-5 py-2.5 rounded-xl bg-slate-900 text-white font-bold hover:bg-slate-800 transition-colors">Ver código encontrado de todas las URLs</button>
+    </div>
+    <p id="statusMessage" class="text-sm text-slate-500 mt-3"></p>
+  </div>
+
+  <div id="summary" class="hidden grid grid-cols-1 md:grid-cols-3 gap-4"></div>
+  <div id="results" class="space-y-3"></div>
+</div>
+
+<script>
+const analyzeBtn = document.getElementById('analyzeBtn');
+const toggleAllCodeBtn = document.getElementById('toggleAllCodeBtn');
+const statusMessage = document.getElementById('statusMessage');
+const resultsEl = document.getElementById('results');
+const summaryEl = document.getElementById('summary');
+let showingAllCode = false;
+
+function escapeHtml(value) {
+  return String(value || '').replace(/[&<>'"]/g, (char) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'}[char]));
+}
+
+function renderSummary(summary) {
+  summaryEl.classList.remove('hidden');
+  summaryEl.innerHTML = [
+    ['Total', summary.total, 'bg-slate-50 text-slate-700'],
+    ['Con iframe', summary.with_maps_iframe, 'bg-emerald-50 text-emerald-700'],
+    ['Sin iframe', summary.without_maps_iframe, 'bg-amber-50 text-amber-700'],
+  ].map(([label, value, klass]) => `<div class="rounded-2xl p-5 ${klass}"><div class="text-xs uppercase font-bold">${label}</div><div class="text-3xl font-black mt-1">${value}</div></div>`).join('');
+}
+
+function renderResults(results) {
+  const hasAnyCode = results.some((item) => item.iframe_code);
+  toggleAllCodeBtn.classList.toggle('hidden', !hasAnyCode);
+  showingAllCode = false;
+  toggleAllCodeBtn.textContent = 'Ver código encontrado de todas las URLs';
+  resultsEl.innerHTML = results.map((item, index) => {
+    const badge = item.has_maps_iframe
+      ? '<span class="px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold">Tiene Google Maps</span>'
+      : '<span class="px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-bold">No detectado</span>';
+    const codeBlock = item.iframe_code
+      ? `<pre class="maps-code hidden mt-4 whitespace-pre-wrap break-all rounded-xl bg-slate-950 text-slate-100 p-4 text-xs overflow-auto"><code>${escapeHtml(item.iframe_code)}</code></pre>`
+      : '';
+    const error = item.error ? `<p class="text-sm text-red-600 mt-2">${escapeHtml(item.error)}</p>` : '';
+    const status = item.status_code ? `<span class="text-xs text-slate-400">HTTP ${item.status_code}</span>` : '';
+    return `<article class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm" data-index="${index}">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div class="min-w-0">
+          <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" class="font-bold text-slate-800 hover:text-blue-600 break-all">${escapeHtml(item.url)}</a>
+          <div class="flex items-center gap-2 mt-2">${badge}${status}</div>
+          ${error}
+        </div>
+        ${item.iframe_code ? '<button class="toggle-code px-3 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-bold hover:bg-slate-200">Ver código</button>' : ''}
+      </div>
+      ${codeBlock}
+    </article>`;
+  }).join('');
+}
+
+analyzeBtn.addEventListener('click', async () => {
+  analyzeBtn.disabled = true;
+  analyzeBtn.textContent = 'Analizando...';
+  statusMessage.textContent = 'Descargando HTML y buscando iframes de Google Maps...';
+  resultsEl.innerHTML = '';
+  summaryEl.classList.add('hidden');
+  toggleAllCodeBtn.classList.add('hidden');
+  try {
+    const response = await fetch('/maps_iframe/analyze', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({urls: document.getElementById('urls').value}),
+    });
+    const data = await response.json();
+    if (!response.ok || data.status !== 'ok') throw new Error(data.error || 'No se pudo completar el análisis.');
+    renderSummary(data.summary);
+    renderResults(data.results);
+    statusMessage.textContent = 'Análisis completado.';
+  } catch (error) {
+    statusMessage.textContent = error.message;
+  } finally {
+    analyzeBtn.disabled = false;
+    analyzeBtn.textContent = 'Analizar iframes';
+  }
+});
+
+resultsEl.addEventListener('click', (event) => {
+  const button = event.target.closest('.toggle-code');
+  if (!button) return;
+  const article = button.closest('article');
+  const code = article.querySelector('.maps-code');
+  const hidden = code.classList.toggle('hidden');
+  button.textContent = hidden ? 'Ver código' : 'Ocultar código';
+});
+
+toggleAllCodeBtn.addEventListener('click', () => {
+  showingAllCode = !showingAllCode;
+  document.querySelectorAll('.maps-code').forEach((code) => code.classList.toggle('hidden', !showingAllCode));
+  document.querySelectorAll('.toggle-code').forEach((button) => { button.textContent = showingAllCode ? 'Ocultar código' : 'Ver código'; });
+  toggleAllCodeBtn.textContent = showingAllCode ? 'Ocultar código encontrado de todas las URLs' : 'Ver código encontrado de todas las URLs';
+});
+</script>
+{% endblock %}

@@ -156,6 +156,17 @@ DOMAIN_BOOTSTRAP: Sequence[DomainBootstrap] = (
             BlueprintSpec('apps.web.blueprints.decay_tool', 'decay_bp'),
             BlueprintSpec('apps.web.blueprints.index_checker', 'indexer_bp'),
             BlueprintSpec('apps.web.blueprints.headers_tool', 'headers_bp'),
+            BlueprintSpec(
+                'apps.web.blueprints.maps_iframe_tool',
+                'maps_iframe_bp',
+                ToolMetadata(
+                    id='maps-iframe-checker',
+                    name='Google Maps iframe Checker',
+                    path='/maps_iframe',
+                    status='migrada',
+                    description='Detecta iframes embebidos de Google Maps en una URL o listado de URLs.',
+                ),
+            ),
             BlueprintSpec('apps.web.blueprints.duplicate_tool', 'duplicate_bp'),
             BlueprintSpec('apps.web.blueprints.overlap_tool', 'overlap_bp'),
             BlueprintSpec('apps.web.blueprints.seo_tfidf', 'seo_tfidf_bp'),
