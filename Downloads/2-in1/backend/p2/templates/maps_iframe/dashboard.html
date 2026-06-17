@@ -19,6 +19,7 @@
   </div>
 
   <div id="summary" class="hidden grid grid-cols-1 md:grid-cols-3 gap-4"></div>
+  <div id="withoutIframeGroup" class="hidden bg-amber-50 rounded-2xl border border-amber-100 p-6 shadow-sm"></div>
   <div id="results" class="space-y-3"></div>
 </div>
 
@@ -28,6 +29,7 @@ const toggleAllCodeBtn = document.getElementById('toggleAllCodeBtn');
 const statusMessage = document.getElementById('statusMessage');
 const resultsEl = document.getElementById('results');
 const summaryEl = document.getElementById('summary');
+const withoutIframeGroupEl = document.getElementById('withoutIframeGroup');
 let showingAllCode = false;
 
 function escapeHtml(value) {
@@ -41,6 +43,41 @@ function renderSummary(summary) {
     ['Con iframe', summary.with_maps_iframe, 'bg-emerald-50 text-emerald-700'],
     ['Sin iframe', summary.without_maps_iframe, 'bg-amber-50 text-amber-700'],
   ].map(([label, value, klass]) => `<div class="rounded-2xl p-5 ${klass}"><div class="text-xs uppercase font-bold">${label}</div><div class="text-3xl font-black mt-1">${value}</div></div>`).join('');
+}
+
+
+function renderWithoutIframeGroup(groupedResults) {
+  const urlsWithoutIframe = groupedResults?.without_maps_iframe || [];
+  withoutIframeGroupEl.classList.toggle('hidden', urlsWithoutIframe.length === 0);
+  if (urlsWithoutIframe.length === 0) {
+    withoutIframeGroupEl.innerHTML = '';
+    return;
+  }
+
+  const urlList = urlsWithoutIframe.map((item) => `
+    <li class="flex flex-col gap-1 rounded-xl bg-white/70 px-4 py-3 border border-amber-100">
+      <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" class="font-bold text-amber-900 hover:text-blue-600 break-all">${escapeHtml(item.url)}</a>
+      ${item.error ? `<span class="text-xs text-red-600">${escapeHtml(item.error)}</span>` : ''}
+      ${item.status_code ? `<span class="text-xs text-amber-700">HTTP ${item.status_code}</span>` : ''}
+    </li>
+  `).join('');
+
+  withoutIframeGroupEl.innerHTML = `
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <p class="text-xs uppercase tracking-wider text-amber-700 font-bold">URLs agrupadas sin iframe</p>
+        <h2 class="text-xl font-black text-amber-950 mt-1">${urlsWithoutIframe.length} URL${urlsWithoutIframe.length === 1 ? '' : 's'} sin Google Maps embebido</h2>
+        <p class="text-sm text-amber-800 mt-2">Listado rápido para priorizar las páginas donde falta el iframe de Google Maps.</p>
+      </div>
+      <button id="copyWithoutIframeBtn" class="px-4 py-2 rounded-xl bg-amber-600 text-white text-sm font-bold hover:bg-amber-700 transition-colors">Copiar URLs</button>
+    </div>
+    <ul class="mt-4 space-y-2">${urlList}</ul>
+  `;
+
+  document.getElementById('copyWithoutIframeBtn').addEventListener('click', async () => {
+    await navigator.clipboard.writeText(urlsWithoutIframe.map((item) => item.url).join('\n'));
+    document.getElementById('copyWithoutIframeBtn').textContent = 'URLs copiadas';
+  });
 }
 
 function renderResults(results) {
@@ -78,6 +115,8 @@ analyzeBtn.addEventListener('click', async () => {
   resultsEl.innerHTML = '';
   summaryEl.classList.add('hidden');
   toggleAllCodeBtn.classList.add('hidden');
+  withoutIframeGroupEl.classList.add('hidden');
+  withoutIframeGroupEl.innerHTML = '';
   try {
     const response = await fetch('/maps_iframe/analyze', {
       method: 'POST',
@@ -87,6 +126,7 @@ analyzeBtn.addEventListener('click', async () => {
     const data = await response.json();
     if (!response.ok || data.status !== 'ok') throw new Error(data.error || 'No se pudo completar el análisis.');
     renderSummary(data.summary);
+    renderWithoutIframeGroup(data.grouped_results);
     renderResults(data.results);
     statusMessage.textContent = 'Análisis completado.';
   } catch (error) {
