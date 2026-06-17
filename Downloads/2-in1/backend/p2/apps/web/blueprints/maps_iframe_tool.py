@@ -9,6 +9,14 @@ from flask import Blueprint, jsonify, render_template, request
 
 from apps.tools.utils import clean_url, is_safe_url, validate_url
 
+
+def group_maps_iframe_results(results: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Group analyzed URLs by Google Maps iframe detection status."""
+    return {
+        'with_maps_iframe': [item for item in results if item['has_maps_iframe']],
+        'without_maps_iframe': [item for item in results if not item['has_maps_iframe']],
+    }
+
 maps_iframe_bp = Blueprint('maps_iframe', __name__, url_prefix='/maps_iframe')
 
 
@@ -105,14 +113,17 @@ def analyze():
         return jsonify({'status': 'error', 'error': 'Añade al menos una URL.'}), 400
 
     results = [analyze_url_for_maps_iframe(url).to_dict() for url in urls]
+    grouped_results = group_maps_iframe_results(results)
     return jsonify(
         {
             'status': 'ok',
             'summary': {
                 'total': len(results),
-                'with_maps_iframe': sum(1 for item in results if item['has_maps_iframe']),
-                'without_maps_iframe': sum(1 for item in results if not item['has_maps_iframe']),
+                'with_maps_iframe': len(grouped_results['with_maps_iframe']),
+                'without_maps_iframe': len(grouped_results['without_maps_iframe']),
             },
             'results': results,
+            'grouped_results': grouped_results,
+            'urls_without_maps_iframe': [item['url'] for item in grouped_results['without_maps_iframe']],
         }
     )
