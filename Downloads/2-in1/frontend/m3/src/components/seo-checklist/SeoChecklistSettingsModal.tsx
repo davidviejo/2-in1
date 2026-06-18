@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, Settings, Database, DollarSign, Target, Shield, AlertTriangle, Upload } from 'lucide-react';
+import { X, Settings, Database, DollarSign, Target, Shield, AlertTriangle, Upload, Download } from 'lucide-react';
 import { SeoChecklistSettings, Capabilities } from '../../types/seoChecklist';
 import { parseBrandTerms } from '../../utils/brandTerms';
 
@@ -52,6 +52,39 @@ export const SeoChecklistSettingsModal: React.FC<Props> = ({
       brandTerms: parseBrandTerms(brandTermsText),
     });
     onClose();
+  };
+
+  const handleDownloadStrategyTemplate = () => {
+    const headers = ['url', 'kw padre', 'keyword', 'children', 'tipo'];
+    const rows = [
+      [
+        'https://www.ejemplo.com/servicio-seo/',
+        'consultoria seo',
+        'consultoria seo madrid',
+        'auditoria seo; estrategia seo; posicionamiento seo',
+        'servicio',
+      ],
+      [
+        'https://www.ejemplo.com/blog/guia-seo-local/',
+        'seo local',
+        'guia seo local',
+        'google business profile; posicionamiento local',
+        'blog',
+      ],
+    ];
+    const escapeCsvCell = (value: string) => `"${value.replace(/"/g, '""')}"`;
+    const csv = [headers, ...rows]
+      .map((row) => row.map(escapeCsvCell).join(','))
+      .join('\n');
+    const blob = new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'plantilla_estrategia_serp_clusters.csv';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const handleStrategyFileUpload = async (file?: File | null) => {
@@ -374,12 +407,22 @@ export const SeoChecklistSettingsModal: React.FC<Props> = ({
                           <Upload size={14} />
                           Archivo de estrategia (/seo/)
                         </label>
-                        <input
-                          type="file"
-                          accept=".xlsx,.xls,.csv,.json"
-                          onChange={(e) => handleStrategyFileUpload(e.target.files?.[0])}
-                          className="w-full text-sm text-slate-600 dark:text-slate-300 file:mr-3 file:px-3 file:py-2 file:border-0 file:rounded-lg file:bg-blue-600 file:text-white hover:file:bg-blue-700"
-                        />
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                          <input
+                            type="file"
+                            accept=".xlsx,.xls,.csv,.json"
+                            onChange={(e) => handleStrategyFileUpload(e.target.files?.[0])}
+                            className="w-full text-sm text-slate-600 dark:text-slate-300 file:mr-3 file:px-3 file:py-2 file:border-0 file:rounded-lg file:bg-blue-600 file:text-white hover:file:bg-blue-700"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleDownloadStrategyTemplate}
+                            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-50 dark:border-blue-900/50 dark:bg-slate-900 dark:text-blue-300 dark:hover:bg-blue-950/30"
+                          >
+                            <Download size={14} />
+                            Descargar plantilla
+                          </button>
+                        </div>
                         {formData.serp.strategyWorkbookName ? (
                           <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center justify-between gap-3">
                             <span className="truncate">
