@@ -956,7 +956,9 @@ function restoreStrategyHistory(index){
     const item = getStrategyHistory()[index];
     if (!item || !Array.isArray(item.results)) return;
     render(item.results, { skipHistory: true });
-    document.getElementById('configPanel').style.display = 'none';
+    // Mantener visible el bloque de configuración/recluster al restaurar para poder
+    // recalcular el análisis actual con otro Top N o Strict sin relanzar búsquedas.
+    document.getElementById('configPanel').style.display = 'block';
     document.getElementById('progressPanel').style.display = 'none';
     document.getElementById('resultsPanel').style.display = 'block';
     renderStrategyHistory();
