@@ -729,7 +729,7 @@ def cluster_serp_results(serp_data_map: dict, strict_level: int = 3, target_doma
             continue
 
         res1 = serp_data_map.get(k1, [])
-        urls1 = [r['url'] for r in res1]
+        urls1 = [r['url'] for r in res1 if r.get('url')]
 
         grp = {
             'id': f"G-{curr_id:03d}",
@@ -737,6 +737,7 @@ def cluster_serp_results(serp_data_map: dict, strict_level: int = 3, target_doma
             'children': [],
             'urls_set': set(urls1),
             'serp_dump': res1,
+            'overlap_evidence': [],
             'analyzed': False,
             'avg_words': '-',
             'avg_imgs': '-',
@@ -755,17 +756,21 @@ def cluster_serp_results(serp_data_map: dict, strict_level: int = 3, target_doma
                 continue
 
             res2 = serp_data_map.get(k2, [])
-            urls2 = [r['url'] for r in res2]
+            urls2 = [r['url'] for r in res2 if r.get('url')]
 
             # Scoring logic (reused)
             score = 0
+            common_urls = []
+            common_domains = []
             for u in urls2:
                 if u in urls1:
                     score += 1
+                    common_urls.append(u)
                 else:
                     d = get_domain(u)
                     if d and any(d in cu for cu in urls1):
                         score += 0.5
+                        common_domains.append(d)
 
             ts = text_similarity(k1, k2)
             th = strict_level
@@ -774,6 +779,14 @@ def cluster_serp_results(serp_data_map: dict, strict_level: int = 3, target_doma
 
             if score >= th:
                 grp['children'].append(k2)
+                grp['overlap_evidence'].append({
+                    'baseKeyword': k1,
+                    'variationKeyword': k2,
+                    'commonUrls': common_urls,
+                    'commonDomains': sorted(set(common_domains)),
+                    'score': score,
+                    'threshold': th,
+                })
                 # Merge serp dump
                 for r in res2:
                     if not any(x['url'] == r['url'] for x in grp['serp_dump']):

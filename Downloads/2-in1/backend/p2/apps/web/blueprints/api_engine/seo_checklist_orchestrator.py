@@ -609,11 +609,21 @@ def run_orchestrated_checklist(
                             notes = f"Cluster {'Oportunidad' if is_opportunity else 'Owned'}: {c.get('parent')}"
 
                             top_urls = [u['url'] for u in c.get('serp_dump', [])[:5] if isinstance(u, dict) and 'url' in u]
+                            overlap_evidence = c.get('overlap_evidence', [])
+                            shared_urls = []
+                            for evidence in overlap_evidence:
+                                if not isinstance(evidence, dict):
+                                    continue
+                                for shared_url in evidence.get('commonUrls', []):
+                                    if shared_url and shared_url not in shared_urls:
+                                        shared_urls.append(shared_url)
 
                             formatted_clusters.append({
                                 "clusterId": c.get('id'),
                                 "keywords": list(set([c.get('parent')] + c.get('children', []))),
                                 "serpOverlapSummary": {"minCommonUrls": strict},
+                                "serpOverlapEvidence": overlap_evidence,
+                                "sharedUrlsBetweenVariations": shared_urls,
                                 "owned": not is_opportunity,
                                 "opportunity": is_opportunity,
                                 "topUrlsSample": top_urls,
