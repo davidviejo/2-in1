@@ -878,6 +878,39 @@ function updateSummary(list){
     summary.innerText = `Clusters: ${totalClusters} | Keywords totales: ${totalKeywords} | OWNED: ${owned} | Oportunidad: ${opp}`;
 }
 
+function renderOverlapEvidence(cluster){
+    const evidence = cluster.overlap_evidence || cluster.serpOverlapEvidence || [];
+    if (!Array.isArray(evidence) || evidence.length === 0) {
+        return '<div class="small text-muted p-2">Este cluster no tiene variaciones unificadas por overlap SERP.</div>';
+    }
+
+    return evidence.map((item) => {
+        const commonUrls = Array.isArray(item.commonUrls) ? item.commonUrls : [];
+        const commonDomains = Array.isArray(item.commonDomains) ? item.commonDomains : [];
+        const urlsHtml = commonUrls.length
+            ? commonUrls.map(url => `
+                <li class="list-group-item py-1 text-break">
+                    <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>
+                </li>
+            `).join('')
+            : `<li class="list-group-item py-1 text-muted">
+                Coincidencia por dominio: ${escapeHtml(commonDomains.join(', ') || '—')}
+            </li>`;
+
+        return `
+            <div class="border rounded bg-white mb-2">
+                <div class="p-2 small bg-light border-bottom">
+                    <strong>${escapeHtml(item.baseKeyword || cluster.parent || '')}</strong>
+                    <span class="text-muted">↔</span>
+                    <strong>${escapeHtml(item.variationKeyword || '')}</strong>
+                    <span class="badge bg-info text-dark ms-2">score ${escapeHtml(String(item.score ?? '-'))}/${escapeHtml(String(item.threshold ?? '-'))}</span>
+                </div>
+                <ul class="list-group list-group-flush small">${urlsHtml}</ul>
+            </div>
+        `;
+    }).join('');
+}
+
 function paintClusters(list){
     const c = document.getElementById('clusterList'); 
     c.innerHTML = '';
@@ -942,6 +975,7 @@ function paintClusters(list){
                     </div>
                     <div class="d-flex gap-2">
                         <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#u-${x.id}">URLs</button>
+                        <button class="btn btn-sm btn-outline-info" data-bs-toggle="collapse" data-bs-target="#ov-${x.id}">Coincidencias</button>
                         <button onclick="analyzeClust('${x.id}')" class="btn btn-sm ${an?'btn-success':'btn-primary'}" id="btn-${x.id}">
                             ${an ? '✅' : '👁️'}
                         </button>
@@ -949,6 +983,12 @@ function paintClusters(list){
                 </div>
                 ${childrenHtml}
                 <div class="collapse mt-2" id="u-${x.id}">${uL}</div>
+                <div class="collapse mt-2" id="ov-${x.id}">
+                    <div class="alert alert-info py-2 mb-2 small">
+                        URLs que han coincidido entre la keyword padre y cada variación. Sirven como justificación para unificar keywords.
+                    </div>
+                    ${renderOverlapEvidence(x)}
+                </div>
                 <div id="cnt-${x.id}">${info}</div>
             </div>
         </div>`;

@@ -661,6 +661,10 @@ def load_history(f):
     try:
         df_s = pd.read_excel(f, sheet_name='Estrategia')
         df_u = pd.read_excel(f, sheet_name='URLs')
+        try:
+            df_o = pd.read_excel(f, sheet_name='Overlap SERP')
+        except Exception:
+            df_o = pd.DataFrame()
         clusters = {}
         max_id = 0
         for _, r in df_s.iterrows():
@@ -685,7 +689,8 @@ def load_history(f):
                     'own_urls': [],
                     'own_count': 0,
                     'coverage': r.get('Cobertura', '-') if 'Cobertura' in df_s.columns else '-',
-                    'intent': r.get('Intención', '-') if 'Intención' in df_s.columns else '-'
+                    'intent': r.get('Intención', '-') if 'Intención' in df_s.columns else '-',
+                    'overlap_evidence': []
                 }
             if r['Rol'] == 'PADRE':
                 clusters[cid]['parent'] = r['Keyword']
@@ -700,6 +705,30 @@ def load_history(f):
                     'url': r['URL'],
                     'title': r['Título'],
                     'rank': r['Rank']
+                })
+
+        if not df_o.empty:
+            for _, r in df_o.iterrows():
+                cid = r.get('Cluster ID')
+                if cid not in clusters:
+                    continue
+                common_urls = [
+                    value.strip()
+                    for value in str(r.get('URLs Coincidentes', '') or '').split('\n')
+                    if value.strip()
+                ]
+                common_domains = [
+                    value.strip()
+                    for value in str(r.get('Dominios Coincidentes', '') or '').split(',')
+                    if value.strip()
+                ]
+                clusters[cid]['overlap_evidence'].append({
+                    'baseKeyword': r.get('Keyword Padre', ''),
+                    'variationKeyword': r.get('Keyword Variación', ''),
+                    'commonUrls': common_urls,
+                    'commonDomains': common_domains,
+                    'score': r.get('Score', '-'),
+                    'threshold': r.get('Umbral', '-'),
                 })
 
         return list(clusters.values()), max_id
@@ -1484,7 +1513,17 @@ def build_optimization_prompt():
 @seo_bp.route('/download')
 def download():
     data = job_status['results']
-    r1, r2 = [], []
+    r1, r2, r3 = [], [], []
+
+    def _format_overlap_urls(cluster, keyword=None):
+        urls = []
+        for evidence in cluster.get('overlap_evidence', []) or []:
+            if keyword and evidence.get('variationKeyword') != keyword and evidence.get('baseKeyword') != keyword:
+                continue
+            for url in evidence.get('commonUrls', []) or []:
+                if url and url not in urls:
+                    urls.append(url)
+        return "\n".join(urls)
 
     for c in data:
         an = c.get('analyzed', False)
@@ -1499,7 +1538,8 @@ def download():
             # NUEVO
             'Cobertura': c.get('coverage', '-'),
             'URLs Propias': ", ".join(c.get('own_urls', [])),
-            'Intención': c.get('intent', '-')
+            'Intención': c.get('intent', '-'),
+            'URLs Coincidentes entre Variaciones': _format_overlap_urls(c)
         })
 
         for ch in c.get('children', []):
@@ -1513,7 +1553,8 @@ def download():
                 'Estructura': '-',
                 'Cobertura': '-',
                 'URLs Propias': '',
-                'Intención': c.get('intent', '-')
+                'Intención': c.get('intent', '-'),
+                'URLs Coincidentes entre Variaciones': _format_overlap_urls(c, ch)
             })
 
         for u in c.get('serp_dump', []):
@@ -1523,6 +1564,17 @@ def download():
                 'Rank': u.get('rank'),
                 'URL': u.get('url'),
                 'Título': u.get('title')
+            })
+
+        for evidence in c.get('overlap_evidence', []) or []:
+            r3.append({
+                'Cluster ID': c.get('id'),
+                'Keyword Padre': evidence.get('baseKeyword') or c.get('parent'),
+                'Keyword Variación': evidence.get('variationKeyword'),
+                'Score': evidence.get('score'),
+                'Umbral': evidence.get('threshold'),
+                'URLs Coincidentes': "\n".join(evidence.get('commonUrls', []) or []),
+                'Dominios Coincidentes': ", ".join(evidence.get('commonDomains', []) or [])
             })
 
 
@@ -1537,12 +1589,14 @@ def download():
             'Estructura': '-',
             'Cobertura': '-',
             'URLs Propias': '',
-            'Intención': row.get('reason', 'No se pudo clusterizar')
+            'Intención': row.get('reason', 'No se pudo clusterizar'),
+            'URLs Coincidentes entre Variaciones': ''
         })
 
     o = io.BytesIO()
     with pd.ExcelWriter(o, engine='openpyxl') as w:
         pd.DataFrame(r1).to_excel(w, sheet_name='Estrategia', index=False)
         pd.DataFrame(r2).to_excel(w, sheet_name='URLs', index=False)
+        pd.DataFrame(r3).to_excel(w, sheet_name='Overlap SERP', index=False)
     o.seek(0)
     return send_file(o, download_name='seo_v17.xlsx', as_attachment=True)
