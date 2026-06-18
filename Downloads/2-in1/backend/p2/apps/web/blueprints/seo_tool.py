@@ -767,6 +767,7 @@ def cluster_serp_results(serp_data_map: dict, strict_level: int = 3, target_doma
             'urls_set': set(urls1),
             'serp_dump': res1,
             'overlap_evidence': [],
+            'keyword_serps': {k1: res1},
             'analyzed': False,
             'avg_words': '-',
             'avg_imgs': '-',
@@ -801,13 +802,11 @@ def cluster_serp_results(serp_data_map: dict, strict_level: int = 3, target_doma
                         score += 0.5
                         common_domains.append(d)
 
-            ts = text_similarity(k1, k2)
             th = strict_level
-            if ts > 0.85:
-                th = max(1, th - 1)
 
             if score >= th:
                 grp['children'].append(k2)
+                grp.setdefault('keyword_serps', {})[k2] = res2
                 grp['overlap_evidence'].append({
                     'baseKeyword': k1,
                     'variationKeyword': k2,
@@ -1043,13 +1042,11 @@ def worker(kws, file, cfg):
                         if d and any(d in cu for cu in c_urls):
                             score += 0.5
 
-                ts = text_similarity(kw, c['parent'])
                 th = cfg['strict']
-                if ts > 0.85:
-                    th = max(1, th - 1)
 
                 if score >= th:
                     c['children'].append(kw)
+                    c.setdefault('keyword_serps', {})[kw] = res
                     for r in res:
                         if not any(x['url'] == r['url'] for x in c['serp_dump']):
                             c['serp_dump'].append(r)

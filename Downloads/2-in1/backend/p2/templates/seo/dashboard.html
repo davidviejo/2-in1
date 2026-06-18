@@ -72,18 +72,26 @@
                             <input type="file" name="history_file" class="form-control form-control-sm">
                             <div class="border rounded bg-light p-2 mt-3">
                                 <div class="fw-semibold small mb-1">Reanalizar sheet exportado por Top SERP</div>
-                                <div class="small text-muted mb-2">Sube un sheet exportado y genera uno nuevo con otro corte Top N sin ejecutar otra búsqueda.</div>
+                                <div class="small text-muted mb-2">Sube un sheet exportado y genera uno nuevo con otro corte Top N y Strict sin ejecutar otra búsqueda.</div>
                                 <div class="row g-2 align-items-end">
                                     <div class="col-4">
                                         <label class="small">Top URLs:</label>
                                         <input type="number" id="reclusterTopN" class="form-control form-control-sm" value="5" min="1" max="100">
                                     </div>
-                                    <div class="col-8">
+                                    <div class="col-4">
+                                        <label class="small">Strict:</label>
+                                        <select id="reclusterStrict" class="form-select form-select-sm">
+                                            <option value="3">3</option>
+                                            <option value="2">2</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-4">
                                         <label class="small">Sheet exportado:</label>
                                         <input type="file" id="reclusterSheetFile" class="form-control form-control-sm" accept=".xlsx,.xls,.csv,.tsv">
                                     </div>
                                 </div>
                                 <button type="button" class="btn btn-sm btn-outline-primary w-100 mt-2" id="reclusterSheetBtn" onclick="reprocessClusterSheetFromStrategy()">Subir y generar nuevo sheet</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary w-100 mt-2" onclick="reclusterCurrentStrategyResults()">Recalcular análisis restaurado/actual con Top y Strict</button>
                                 <div class="small mt-2 text-muted" id="reclusterSheetStatus"></div>
                             </div>
                         </div>
@@ -189,8 +197,8 @@
                                 <div class="col">
                                     <label>Strict:</label>
                                     <select name="strict" class="form-select form-select-sm">
-                                        <option value="3">3 (más estricto)</option>
-                                        <option value="2">2 (más laxo)</option>
+                                        <option value="3">3 (más estricto: exige 3 coincidencias reales)</option>
+                                        <option value="2">2 (más laxo: exige 2 coincidencias reales)</option>
                                     </select>
                                 </div>
                             </div>
@@ -368,7 +376,7 @@ function findReclusterHeaderIndex(headers, label) {
     return headers.findIndex((header) => String(header).trim().toLowerCase() === label.toLowerCase());
 }
 
-function buildBackendTopSerpClusterWorkbook(workbook, topUrlLimit) {
+function buildBackendTopSerpClusterWorkbook(workbook, topUrlLimit, strictOverlap) {
     const sheetName = workbook.SheetNames.includes(CLUSTER_REPROCESS_SHEET_NAME)
         ? CLUSTER_REPROCESS_SHEET_NAME
         : workbook.SheetNames.find((name) => name.toLowerCase().includes('cluster')) || workbook.SheetNames[0];
@@ -414,14 +422,13 @@ function buildBackendTopSerpClusterWorkbook(workbook, topUrlLimit) {
         const rootRight = find(right);
         if (rootLeft !== rootRight) parent[rootRight] = rootLeft;
     };
-    const urlOwners = new Map();
-    records.forEach((record, index) => {
-        new Set(record.urls).forEach((url) => {
-            const owner = urlOwners.get(url);
-            if (owner === undefined) urlOwners.set(url, index);
-            else union(owner, index);
-        });
-    });
+    for (let left = 0; left < records.length; left += 1) {
+        const leftUrls = new Set(records[left].urls);
+        for (let right = left + 1; right < records.length; right += 1) {
+            const overlap = records[right].urls.filter((url) => leftUrls.has(url)).length;
+            if (overlap >= strictOverlap) union(left, right);
+        }
+    }
 
     const grouped = new Map();
     records.forEach((record, index) => {
@@ -448,7 +455,7 @@ function buildBackendTopSerpClusterWorkbook(workbook, topUrlLimit) {
             if (clusterIdIndex >= 0) nextRow[clusterIdIndex] = clusterId;
             if (coverageIndex >= 0) nextRow[coverageIndex] = coverage;
             if (urlsIndex >= 0) nextRow[urlsIndex] = record === parentRecord ? mergedUrls.join('\n') : '';
-            if (runIdIndex >= 0) nextRow[runIdIndex] = `sheet-top-${topUrlLimit}-${dateTag}`;
+            if (runIdIndex >= 0) nextRow[runIdIndex] = `sheet-top-${topUrlLimit}-strict-${strictOverlap}-${dateTag}`;
             if (totalIndex >= 0) nextRow[totalIndex] = totalClusters;
             if (ownedIndex >= 0) nextRow[ownedIndex] = ownedCount;
             if (opportunityIndex >= 0) nextRow[opportunityIndex] = totalClusters - ownedCount;
@@ -458,13 +465,14 @@ function buildBackendTopSerpClusterWorkbook(workbook, topUrlLimit) {
 
     const nextWorkbook = XLSX.utils.book_new();
     const nextSheet = XLSX.utils.aoa_to_sheet([headers, ...outputRows]);
-    XLSX.utils.book_append_sheet(nextWorkbook, nextSheet, `Clusterización Top ${topUrlLimit}`);
+    XLSX.utils.book_append_sheet(nextWorkbook, nextSheet, `Top ${topUrlLimit} Strict ${strictOverlap}`);
     return { workbook: nextWorkbook, totalClusters, totalKeywords: records.length };
 }
 
 async function reprocessClusterSheetFromStrategy() {
     const fileInput = document.getElementById('reclusterSheetFile');
     const topInput = document.getElementById('reclusterTopN');
+    const strictInput = document.getElementById('reclusterStrict');
     const status = document.getElementById('reclusterSheetStatus');
     const button = document.getElementById('reclusterSheetBtn');
     const file = fileInput?.files?.[0];
@@ -479,22 +487,23 @@ async function reprocessClusterSheetFromStrategy() {
         return;
     }
     const topUrlLimit = Math.max(1, Math.min(100, Number.parseInt(topInput?.value || '5', 10) || 5));
+    const strictOverlap = Math.max(1, Math.min(100, Number.parseInt(strictInput?.value || '3', 10) || 3));
     button.disabled = true;
-    status.textContent = `Procesando sheet con Top ${topUrlLimit}...`;
+    status.textContent = `Procesando sheet con Top ${topUrlLimit} y Strict ${strictOverlap}...`;
     status.className = 'small mt-2 text-muted';
     try {
         const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
-        const result = buildBackendTopSerpClusterWorkbook(workbook, topUrlLimit);
+        const result = buildBackendTopSerpClusterWorkbook(workbook, topUrlLimit, strictOverlap);
         const safeBaseName = (file.name.replace(/\.[^.]+$/, '') || 'Clusterizacion')
             .trim()
             .replace(/[^a-z0-9_-]+/gi, '_')
             .replace(/^_+|_+$/g, '') || 'Clusterizacion';
         XLSX.writeFile(
             result.workbook,
-            `${safeBaseName}_recluster_top-${topUrlLimit}_${new Date().toISOString().slice(0, 10)}.xlsx`,
+            `${safeBaseName}_recluster_top-${topUrlLimit}_strict-${strictOverlap}_${new Date().toISOString().slice(0, 10)}.xlsx`,
             { compression: true },
         );
-        status.textContent = `Generado Top ${topUrlLimit}: ${result.totalKeywords.toLocaleString()} keyword(s) en ${result.totalClusters.toLocaleString()} cluster(s).`;
+        status.textContent = `Generado Top ${topUrlLimit} / Strict ${strictOverlap}: ${result.totalKeywords.toLocaleString()} keyword(s) en ${result.totalClusters.toLocaleString()} cluster(s).`;
         status.className = 'small mt-2 text-success';
     } catch (error) {
         console.error(error);
@@ -503,6 +512,117 @@ async function reprocessClusterSheetFromStrategy() {
     } finally {
         button.disabled = false;
     }
+}
+
+function getReclusterControls() {
+    const topInput = document.getElementById('reclusterTopN');
+    const strictInput = document.getElementById('reclusterStrict');
+    return {
+        topUrlLimit: Math.max(1, Math.min(100, Number.parseInt(topInput?.value || '5', 10) || 5)),
+        strictOverlap: Math.max(1, Math.min(100, Number.parseInt(strictInput?.value || '3', 10) || 3)),
+    };
+}
+
+function getResultKeywordSerps(cluster) {
+    if (cluster?.keyword_serps && typeof cluster.keyword_serps === 'object') return cluster.keyword_serps;
+    if (cluster?.keywordSerps && typeof cluster.keywordSerps === 'object') return cluster.keywordSerps;
+    return null;
+}
+
+function normalizeSerpEntries(entries, topUrlLimit) {
+    return (Array.isArray(entries) ? entries : [])
+        .filter((item) => item && item.url)
+        .slice(0, topUrlLimit)
+        .map((item, index) => ({ ...item, rank: item.rank || index + 1 }));
+}
+
+function reclusterFromKeywordSerps(keywordSerps, strictOverlap, topUrlLimit) {
+    const keywords = Object.keys(keywordSerps).sort();
+    const output = [];
+    const processed = new Set();
+    let clusterIndex = 1;
+
+    keywords.forEach((baseKeyword) => {
+        if (processed.has(baseKeyword)) return;
+        const baseSerp = normalizeSerpEntries(keywordSerps[baseKeyword], topUrlLimit);
+        const baseUrls = baseSerp.map((item) => item.url);
+        const cluster = {
+            id: `R-${String(clusterIndex).padStart(3, '0')}`,
+            parent: baseKeyword,
+            children: [],
+            serp_dump: [...baseSerp],
+            overlap_evidence: [],
+            keyword_serps: { [baseKeyword]: baseSerp },
+            analyzed: false,
+            avg_words: '-',
+            avg_imgs: '-',
+            top_structure: '-',
+            entities: '-',
+            own_urls: [],
+            own_count: 0,
+            coverage: '-',
+            intent: 'Mixta / Desconocida',
+        };
+        processed.add(baseKeyword);
+
+        keywords.forEach((candidateKeyword) => {
+            if (candidateKeyword === baseKeyword || processed.has(candidateKeyword)) return;
+            const candidateSerp = normalizeSerpEntries(keywordSerps[candidateKeyword], topUrlLimit);
+            const candidateUrls = candidateSerp.map((item) => item.url);
+            const commonUrls = candidateUrls.filter((url) => baseUrls.includes(url));
+            const score = commonUrls.length;
+            if (score >= strictOverlap) {
+                cluster.children.push(candidateKeyword);
+                cluster.keyword_serps[candidateKeyword] = candidateSerp;
+                cluster.overlap_evidence.push({
+                    baseKeyword,
+                    variationKeyword: candidateKeyword,
+                    commonUrls,
+                    commonDomains: [],
+                    score,
+                    threshold: strictOverlap,
+                });
+                candidateSerp.forEach((item) => {
+                    if (!cluster.serp_dump.some((existing) => existing.url === item.url)) cluster.serp_dump.push(item);
+                });
+                processed.add(candidateKeyword);
+            }
+        });
+        output.push(cluster);
+        clusterIndex += 1;
+    });
+    return output;
+}
+
+function reclusterCurrentStrategyResults() {
+    const status = document.getElementById('reclusterSheetStatus');
+    const { topUrlLimit, strictOverlap } = getReclusterControls();
+    if (!Array.isArray(lastResults) || !lastResults.length) {
+        status.textContent = 'No hay análisis actual/restaurado para recalcular.';
+        status.className = 'small mt-2 text-danger';
+        return;
+    }
+
+    const keywordSerps = {};
+    lastResults.forEach((cluster) => {
+        const clusterSerps = getResultKeywordSerps(cluster);
+        if (!clusterSerps) return;
+        Object.entries(clusterSerps).forEach(([keyword, serp]) => {
+            if (keyword && Array.isArray(serp)) keywordSerps[keyword] = serp;
+        });
+    });
+
+    if (!Object.keys(keywordSerps).length) {
+        status.textContent = 'Este análisis/restaurado no conserva SERPs por keyword. Sube el sheet exportado para recalcular Top/Strict sin buscar de nuevo.';
+        status.className = 'small mt-2 text-warning';
+        return;
+    }
+
+    const nextResults = reclusterFromKeywordSerps(keywordSerps, strictOverlap, topUrlLimit);
+    render(nextResults, { skipHistory: true });
+    saveStrategyHistorySnapshot(nextResults);
+    status.textContent = `Análisis recalculado con Top ${topUrlLimit} / Strict ${strictOverlap}: ${nextResults.length.toLocaleString()} cluster(s).`;
+    status.className = 'small mt-2 text-success';
 }
 
 let lastResults = [];
