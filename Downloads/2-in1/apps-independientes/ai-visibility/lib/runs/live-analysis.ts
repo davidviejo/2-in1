@@ -120,7 +120,7 @@ async function callGemini(promptText: string, model: string): Promise<ProviderOu
   };
 }
 
-async function callDataForSeoAiMode(promptText: string, language: string): Promise<ProviderOutput> {
+async function callDataForSeoAiMode(promptText: string, language: string, mode: 'ai_mode' | 'ai_overview'): Promise<ProviderOutput> {
   const login = requiredEnv('DATAFORSEO_LOGIN');
   const password = requiredEnv('DATAFORSEO_PASSWORD');
   const locationCode = Number.parseInt(process.env.DATAFORSEO_LOCATION_CODE ?? '2840', 10);
@@ -156,13 +156,13 @@ async function callDataForSeoAiMode(promptText: string, language: string): Promi
   const firstResult = (result[0] ?? null) as Record<string, unknown> | null;
   const items = Array.isArray(firstResult?.items) ? firstResult?.items : [];
 
-  const aiOverview = items.find((item) => item && typeof item === 'object' && (item as Record<string, unknown>).type === 'ai_overview') as
-    | Record<string, unknown>
-    | undefined;
+  const aiOverview = items.find((item) => item && typeof item === 'object' && (item as Record<string, unknown>).type === 'ai_overview') as Record<string, unknown> | undefined;
+  const aiMode = items.find((item) => item && typeof item === 'object' && (item as Record<string, unknown>).type === 'ai_mode') as Record<string, unknown> | undefined;
+  const preferred = mode === 'ai_overview' ? aiOverview : aiMode ?? aiOverview;
 
   const text = firstString([
-    aiOverview?.markdown,
-    aiOverview?.description,
+    preferred?.markdown,
+    preferred?.description,
     ...items
       .map((item) => (item && typeof item === 'object' ? (item as Record<string, unknown>).description : null))
       .filter((value): value is string => typeof value === 'string')
@@ -174,7 +174,7 @@ async function callDataForSeoAiMode(promptText: string, language: string): Promi
 
   return {
     text,
-    model: 'unknown',
+    model: mode === 'ai_overview' ? 'dataforseo-google-ai-overview' : 'dataforseo-google-ai-mode',
     rawSources: items,
     rawResponse: payload
   };
@@ -190,7 +190,7 @@ async function executeProvider(mode: string, promptText: string, model: string, 
   }
 
   if (mode === 'ai_mode' || mode === 'ai_overview') {
-    return callDataForSeoAiMode(promptText, language);
+    return callDataForSeoAiMode(promptText, language, mode);
   }
 
   throw new Error(`Unsupported analysis mode: ${mode}`);
@@ -219,6 +219,12 @@ export async function executeLiveAnalysis(input: LiveAnalysisInput) {
       normalizeModelLabel(input.payload.model) ?? input.payload.model,
       input.payload.language ?? 'en'
     );
+    const normalizedProviderModel = normalizeModelLabel(providerOutput.model) ?? providerOutput.model;
+
+    await prisma.run.update({
+      where: { id: run.id },
+      data: { model: normalizedProviderModel || run.model }
+    });
 
     await updateRunStatus(input.projectId, run.id, {
       status: 'SUCCEEDED',
