@@ -1,7 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { X, Settings, Database, DollarSign, Target, Shield, AlertTriangle, Upload } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import {
+  X,
+  Settings,
+  Database,
+  DollarSign,
+  Target,
+  Shield,
+  AlertTriangle,
+  Upload,
+} from 'lucide-react';
 import { SeoChecklistSettings, Capabilities } from '../../types/seoChecklist';
 import { parseBrandTerms } from '../../utils/brandTerms';
+import { buildTopSerpClusterWorkbook } from '../../utils/serpClusterSheet';
 
 interface Props {
   isOpen: boolean;
@@ -20,6 +31,9 @@ export const SeoChecklistSettingsModal: React.FC<Props> = ({
 }) => {
   const [formData, setFormData] = useState<SeoChecklistSettings>(settings);
   const [brandTermsText, setBrandTermsText] = useState((settings.brandTerms || []).join('\n'));
+  const [clusterSheetTopInput, setClusterSheetTopInput] = useState('5');
+  const [isReprocessingClusterSheet, setIsReprocessingClusterSheet] = useState(false);
+  const [clusterSheetStatus, setClusterSheetStatus] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -81,6 +95,37 @@ export const SeoChecklistSettingsModal: React.FC<Props> = ({
     } catch (error) {
       console.error(error);
       alert('No se pudo cargar el archivo de estrategia. Inténtalo de nuevo.');
+    }
+  };
+
+  const handleClusterSheetReprocessUpload = async (file?: File | null) => {
+    if (!file) return;
+
+    const topUrlLimit = Math.max(1, Math.min(100, Number.parseInt(clusterSheetTopInput, 10) || 5));
+    setIsReprocessingClusterSheet(true);
+    setClusterSheetStatus(null);
+    try {
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+      const result = buildTopSerpClusterWorkbook(workbook, topUrlLimit);
+      const safeBaseName =
+        (file.name.replace(/\.[^.]+$/, '') || 'Clusterizacion')
+          .trim()
+          .replace(/[^a-z0-9_-]+/gi, '_')
+          .replace(/^_+|_+$/g, '') || 'Clusterizacion';
+      XLSX.writeFile(
+        result.workbook,
+        `${safeBaseName}_recluster_top-${topUrlLimit}_${new Date().toISOString().slice(0, 10)}.xlsx`,
+        { compression: true },
+      );
+      setClusterSheetStatus(
+        `Generado Top ${topUrlLimit}: ${result.totalKeywords.toLocaleString()} keyword(s) en ${result.totalClusters.toLocaleString()} cluster(s).`,
+      );
+    } catch (error) {
+      console.error(error);
+      const message = error instanceof Error ? error.message : 'No se pudo reprocesar el sheet.';
+      setClusterSheetStatus(`Error: ${message}`);
+    } finally {
+      setIsReprocessingClusterSheet(false);
     }
   };
 
@@ -166,9 +211,7 @@ export const SeoChecklistSettingsModal: React.FC<Props> = ({
                       disabled={Boolean(capabilities && !isDataforseoAvailable)}
                     >
                       DataForSEO (Predeterminado){' '}
-                      {capabilities && !isDataforseoAvailable
-                        ? '(No disponible)'
-                        : ''}
+                      {capabilities && !isDataforseoAvailable ? '(No disponible)' : ''}
                     </option>
                     <option
                       value="serpapi"
@@ -317,9 +360,7 @@ export const SeoChecklistSettingsModal: React.FC<Props> = ({
                         </label>
                         <select
                           value={formData.serp.dataforseoDetail || 'advanced'}
-                          onChange={(e) =>
-                            handleChange('serp', 'dataforseoDetail', e.target.value)
-                          }
+                          onChange={(e) => handleChange('serp', 'dataforseoDetail', e.target.value)}
                           className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
                         >
                           <option value="advanced">Advanced (recomendado)</option>
@@ -380,6 +421,54 @@ export const SeoChecklistSettingsModal: React.FC<Props> = ({
                           onChange={(e) => handleStrategyFileUpload(e.target.files?.[0])}
                           className="w-full text-sm text-slate-600 dark:text-slate-300 file:mr-3 file:px-3 file:py-2 file:border-0 file:rounded-lg file:bg-blue-600 file:text-white hover:file:bg-blue-700"
                         />
+
+                        <div className="mt-4 rounded-lg border border-indigo-100 bg-indigo-50/60 p-3 dark:border-indigo-900/40 dark:bg-indigo-950/20">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                            <div className="flex-1">
+                              <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                                Reanalizar sheet exportado por Top SERP
+                              </label>
+                              <p className="text-xs text-slate-500 dark:text-slate-400">
+                                Sube el sheet de clusterización exportado y genera un nuevo archivo
+                                con otro corte Top N.
+                              </p>
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-300">
+                                Top URLs
+                              </label>
+                              <input
+                                type="number"
+                                min={1}
+                                max={100}
+                                value={clusterSheetTopInput}
+                                onChange={(e) => setClusterSheetTopInput(e.target.value)}
+                                className="w-24 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+                              />
+                            </div>
+                            <label
+                              className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-700 aria-disabled:pointer-events-none aria-disabled:opacity-60"
+                              aria-disabled={isReprocessingClusterSheet}
+                            >
+                              <Upload size={16} />
+                              {isReprocessingClusterSheet ? 'Procesando...' : 'Subir y generar'}
+                              <input
+                                type="file"
+                                accept=".xlsx,.xls,.csv,.tsv"
+                                className="hidden"
+                                disabled={isReprocessingClusterSheet}
+                                onChange={(e) =>
+                                  void handleClusterSheetReprocessUpload(e.target.files?.[0])
+                                }
+                              />
+                            </label>
+                          </div>
+                          {clusterSheetStatus && (
+                            <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">
+                              {clusterSheetStatus}
+                            </p>
+                          )}
+                        </div>
                         {formData.serp.strategyWorkbookName ? (
                           <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center justify-between gap-3">
                             <span className="truncate">
@@ -399,7 +488,8 @@ export const SeoChecklistSettingsModal: React.FC<Props> = ({
                           </div>
                         ) : (
                           <p className="text-xs text-slate-500 dark:text-slate-400">
-                            Sube el Excel/CSV usado en estrategia para reutilizar keywords y unificar el análisis.
+                            Sube el Excel/CSV usado en estrategia para reutilizar keywords y
+                            unificar el análisis.
                           </p>
                         )}
                       </div>
@@ -540,7 +630,6 @@ export const SeoChecklistSettingsModal: React.FC<Props> = ({
             </div>
           </section>
 
-
           <section className="space-y-4">
             <div className="flex items-center gap-2 text-slate-800 dark:text-slate-200 font-semibold text-lg pb-2 border-b border-slate-100 dark:border-slate-800">
               <Target size={20} className="text-pink-500" />
@@ -555,10 +644,11 @@ export const SeoChecklistSettingsModal: React.FC<Props> = ({
                 value={brandTermsText}
                 onChange={(e) => setBrandTermsText(e.target.value)}
                 className="w-full min-h-[120px] px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
-                placeholder={"marca\nmi marca\nnombre comercial"}
+                placeholder={'marca\nmi marca\nnombre comercial'}
               />
               <p className="text-xs text-slate-400 mt-2">
-                Un término por línea o separado por comas. Se aplicará en importaciones y reasignación automática de KWs.
+                Un término por línea o separado por comas. Se aplicará en importaciones y
+                reasignación automática de KWs.
               </p>
             </div>
 
@@ -568,14 +658,17 @@ export const SeoChecklistSettingsModal: React.FC<Props> = ({
                   Permitir actualizar la KW principal al analizar
                 </p>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Si está desactivado, se conserva la KW principal actual. Nunca se asignará una KW de marca como principal.
+                  Si está desactivado, se conserva la KW principal actual. Nunca se asignará una KW
+                  de marca como principal.
                 </p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
                   type="checkbox"
                   checked={formData.allowKwPrincipalUpdate ?? true}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, allowKwPrincipalUpdate: e.target.checked }))}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, allowKwPrincipalUpdate: e.target.checked }))
+                  }
                   className="sr-only peer"
                 />
                 <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
