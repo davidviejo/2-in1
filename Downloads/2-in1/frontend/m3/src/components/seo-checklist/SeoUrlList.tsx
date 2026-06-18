@@ -33,6 +33,7 @@ import { useProject } from '../../context/ProjectContext';
 import { validateChecklistWithAI } from '../../services/seoChecklistAIValidator';
 import { useGSCAuth } from '../../hooks/useGSCAuth';
 import { listSites, querySearchAnalyticsPaged } from '../../services/googleSearchConsole';
+import { buildTopSerpClusterWorkbook } from '../../utils/serpClusterSheet';
 
 const createEmptyChecklist = () =>
   CHECKLIST_POINTS.reduce(
