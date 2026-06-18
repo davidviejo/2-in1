@@ -217,6 +217,17 @@
                 <div class="console" id="consoleBox"></div>
             </div>
 
+            <div id="strategyHistoryPanel" class="card border-secondary mb-3" style="display:none;">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div>
+                        <strong>Historial de estrategia (esta sesión/navegador)</strong>
+                        <div class="small text-muted">Recupera análisis SERP y clusters anteriores sin volver a ejecutarlos.</div>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="clearStrategyHistory()">🧹 Vaciar historial</button>
+                </div>
+                <div class="card-body p-2" id="strategyHistoryList"></div>
+            </div>
+
             <div id="resultsPanel" style="display:none;">
                 <div class="alert alert-info small d-none" id="costResultPanel"></div>
                 <div class="d-flex justify-content-between mb-3 flex-wrap gap-2">
@@ -316,6 +327,8 @@
 <script>
 let lastResults = [];
 let lastBulkResults = [];
+const STRATEGY_HISTORY_KEY = 'seoStrategyHistory';
+const STRATEGY_HISTORY_LIMIT = 12;
 
 const modeSel   = document.getElementById('modeSelect');
 const dfsDetailSel = document.getElementById('dfsDetailSelect');
@@ -351,6 +364,7 @@ window.addEventListener('load', () => {
         modeSel.dispatchEvent(new Event('change'));
     }
     renderCostEstimator();
+    renderStrategyHistory();
 });
 
 function normalizeDepth(numResults){
@@ -510,7 +524,8 @@ function poll(){
                     renderCostResult(d.diagnostics || {});
                     render(d.results || []); 
                     document.getElementById('progressPanel').style.display='none'; 
-                    document.getElementById('resultsPanel').style.display='block'; 
+                    document.getElementById('resultsPanel').style.display='block';
+                    renderStrategyHistory(); 
                 }
             })
             .catch(()=>{
@@ -539,11 +554,117 @@ function renderCostResult(diagnostics){
     `;
 }
 
-function render(list){
+function render(list, options = {}){
     lastResults = list || [];
     updateSummary(lastResults);
     paintClusters(lastResults);
     setupFilter();
+    if (!options.skipHistory && lastResults.length) {
+        saveStrategyHistorySnapshot(lastResults);
+    }
+}
+
+
+function getStrategyHistory(){
+    const raw = localStorage.getItem(STRATEGY_HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+}
+
+function setStrategyHistory(items){
+    localStorage.setItem(STRATEGY_HISTORY_KEY, JSON.stringify(items.slice(0, STRATEGY_HISTORY_LIMIT)));
+}
+
+function getCurrentStrategyConfigSummary(){
+    const keywords = (form.elements['keywords']?.value || '')
+        .split('\n')
+        .map(x => x.trim())
+        .filter(Boolean);
+    return {
+        keywords,
+        gl: form.elements['gl']?.value || '',
+        hl: form.elements['hl']?.value || '',
+        mode: form.elements['mode']?.value || '',
+        top_n: form.elements['top_n']?.value || '',
+        strict: form.elements['strict']?.value || '',
+        target_domain: form.elements['target_domain']?.value || ''
+    };
+}
+
+function saveStrategyHistorySnapshot(results){
+    if (!Array.isArray(results) || !results.length) return;
+    const config = getCurrentStrategyConfigSummary();
+    const firstParents = results.slice(0, 3).map(x => x.parent).filter(Boolean);
+    const snapshot = {
+        id: `strategy-${Date.now()}`,
+        createdAt: new Date().toISOString(),
+        config,
+        results,
+        summary: {
+            clusters: results.length,
+            keywords: results.reduce((acc, x) => acc + 1 + ((x.children || []).length), 0),
+            analyzed: results.filter(x => x.analyzed).length,
+            sample: firstParents.join(', ')
+        }
+    };
+    const history = getStrategyHistory()
+        .filter(item => JSON.stringify(item.results || []) !== JSON.stringify(results));
+    setStrategyHistory([snapshot, ...history]);
+    renderStrategyHistory();
+}
+
+function escapeHtml(value){
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function renderStrategyHistory(){
+    const panel = document.getElementById('strategyHistoryPanel');
+    const list = document.getElementById('strategyHistoryList');
+    if (!panel || !list) return;
+    const history = getStrategyHistory();
+    if (!history.length) {
+        panel.style.display = 'none';
+        list.innerHTML = '';
+        return;
+    }
+    panel.style.display = 'block';
+    list.innerHTML = history.map((item, index) => {
+        const date = new Date(item.createdAt).toLocaleString('es-ES');
+        const cfg = item.config || {};
+        const summary = item.summary || {};
+        return `
+            <div class="border rounded p-2 mb-2">
+                <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+                    <div class="small">
+                        <div><strong>${escapeHtml(date)}</strong> · ${summary.clusters || 0} clusters · ${summary.keywords || 0} keywords · ${summary.analyzed || 0} analizados</div>
+                        <div class="text-muted">${escapeHtml(cfg.mode || 'motor n/a')} · ${escapeHtml(cfg.gl || '')}/${escapeHtml(cfg.hl || '')} · Top ${escapeHtml(cfg.top_n || '')} · Strict ${escapeHtml(cfg.strict || '')} · ${escapeHtml(cfg.target_domain || 'sin dominio')}</div>
+                        <div class="text-muted">${escapeHtml(summary.sample || 'Sin muestra')}</div>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="restoreStrategyHistory(${index})">Restaurar</button>
+                </div>
+            </div>`;
+    }).join('');
+}
+
+function restoreStrategyHistory(index){
+    const item = getStrategyHistory()[index];
+    if (!item || !Array.isArray(item.results)) return;
+    render(item.results, { skipHistory: true });
+    document.getElementById('configPanel').style.display = 'none';
+    document.getElementById('progressPanel').style.display = 'none';
+    document.getElementById('resultsPanel').style.display = 'block';
+    renderStrategyHistory();
+}
+
+function clearStrategyHistory(){
+    localStorage.removeItem(STRATEGY_HISTORY_KEY);
+    renderStrategyHistory();
 }
 
 function setupFilter(){
@@ -695,6 +816,7 @@ function analyzeClustInternal(id, updateButtonUI){
                 btn.classList.add('btn-success');
                 btn.innerText = '✅';
             }
+            saveStrategyHistorySnapshot(lastResults);
         }
     })
     .catch(()=>{
@@ -739,6 +861,7 @@ async function analyzeAll(){
 
     btn.disabled = false;
     btn.innerText = '📊 Analizar todos';
+    saveStrategyHistorySnapshot(lastResults);
 }
 
 // Copiar estructura de un cluster al portapapeles
