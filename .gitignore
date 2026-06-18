@@ -1,0 +1,13 @@
+node_modules/
+.next/
+out/
+dist/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+Downloads/2-in1/**/node_modules/
+Downloads/2-in1/**/venv/
+Downloads/2-in1/**/__pycache__/
+gantt/node_modules/
