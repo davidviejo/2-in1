@@ -166,6 +166,54 @@ export const ClusteringAnalysis: React.FC<Props> = ({ data }) => {
                     </div>
                   )}
 
+                  {/* SERP overlap evidence */}
+                  {cluster.serpOverlapEvidence && cluster.serpOverlapEvidence.length > 0 && (
+                    <div className="mb-4">
+                      <h4 className="text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1">
+                        <Search size={12} /> URLs compartidas entre variaciones
+                      </h4>
+                      <div className="space-y-3">
+                        {cluster.serpOverlapEvidence.map((evidence: any, i: number) => (
+                          <div
+                            key={i}
+                            className="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded"
+                          >
+                            <p className="text-xs text-slate-600 dark:text-slate-300 mb-2">
+                              <span className="font-semibold">{evidence.baseKeyword}</span>
+                              {' ↔ '}
+                              <span className="font-semibold">{evidence.variationKeyword}</span>
+                              <span className="text-slate-400">
+                                {' '}
+                                ({evidence.score}/{evidence.threshold})
+                              </span>
+                            </p>
+                            <div className="space-y-1">
+                              {(evidence.commonUrls || []).map((url: string, urlIndex: number) => (
+                                <a
+                                  key={urlIndex}
+                                  href={url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400 hover:underline truncate"
+                                >
+                                  <ExternalLink size={10} className="shrink-0" />
+                                  {url}
+                                </a>
+                              ))}
+                              {(!evidence.commonUrls || evidence.commonUrls.length === 0) &&
+                                evidence.commonDomains?.length > 0 && (
+                                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                                    Coincidencia por dominio:{' '}
+                                    {evidence.commonDomains.join(', ')}
+                                  </p>
+                                )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Top URLs Sample */}
                   {(cluster.topUrlsSample || cluster.urls) && (
                     <div>
