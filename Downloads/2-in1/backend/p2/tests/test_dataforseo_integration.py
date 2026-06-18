@@ -12,7 +12,7 @@ sys.modules['pandas'] = MagicMock()
 sys.modules['duckduckgo_search'] = MagicMock()
 sys.modules['playwright'] = MagicMock()
 sys.modules['playwright.sync_api'] = MagicMock()
-sys.modules['requests'] = MagicMock()
+sys.modules['playwright.async_api'] = MagicMock()
 sys.modules['bs4'] = MagicMock()
 sys.modules['google.oauth2.credentials'] = MagicMock()
 sys.modules['google_auth_oauthlib.flow'] = MagicMock()
@@ -101,6 +101,59 @@ class TestDataForSEOIntegration(unittest.TestCase):
         with patch('apps.core.config.Config.DATAFORSEO_LOGIN', None):
             smart_serp_search("test", config={'mode': 'google_api_official', 'cse_key': 'k', 'cse_cx': 'c'})
             self.mock_google.assert_called_once()
+
+from apps.tools.scraper_core import search_dataforseo
+
+class TestDataForSEOPollingDiagnostics(unittest.TestCase):
+    @patch('apps.tools.scraper_core.time.sleep', return_value=None)
+    @patch('apps.tools.scraper_core.requests.get')
+    @patch('apps.tools.scraper_core.requests.post')
+    def test_priority_reuses_task_id_until_ready(self, mock_post, mock_get, _sleep):
+        post_response = MagicMock(status_code=200)
+        post_response.json.return_value = {'status_code': 20000, 'status_message': 'Ok.', 'tasks': [{'id': 'task-123'}]}
+        not_ready = MagicMock(status_code=200)
+        not_ready.json.return_value = {'status_code': 20000, 'status_message': 'Ok.', 'tasks': [{'result': []}]}
+        ready = MagicMock(status_code=200)
+        ready.json.return_value = {'status_code': 20000, 'status_message': 'Ok.', 'tasks': [{'result': [{'id': 'task-123'}]}]}
+        task_get = MagicMock(status_code=200)
+        task_get.json.return_value = {
+            'status_code': 20000,
+            'status_message': 'Ok.',
+            'tasks': [{'cost': 0.001, 'result': [{'items_count': 1, 'result_count': 1, 'items': [{
+                'type': 'organic', 'url': 'https://example.com', 'title': 'Example', 'description': 'Snippet', 'rank_group': 1
+            }]}]}]
+        }
+        mock_post.return_value = post_response
+        mock_get.side_effect = [not_ready, ready, task_get]
+
+        results, diag = search_dataforseo(
+            'precio implante dental madrid', 'login', 'pass', execution_mode='priority', return_metadata=True, total_timeout_seconds=35
+        )
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(diag['task_id'], 'task-123')
+        self.assertEqual(diag['poll_attempts_used'], 2)
+        self.assertEqual(mock_post.call_count, 1)
+        self.assertEqual(mock_get.call_args_list[-1].args[0], 'https://api.dataforseo.com/v3/serp/google/organic/task_get/regular/task-123')
+
+    @patch('apps.tools.scraper_core.time.sleep', return_value=None)
+    @patch('apps.tools.scraper_core.requests.get')
+    @patch('apps.tools.scraper_core.requests.post')
+    def test_pending_timeout_classified_not_real_zero(self, mock_post, mock_get, _sleep):
+        post_response = MagicMock(status_code=200)
+        post_response.json.return_value = {'status_code': 20000, 'status_message': 'Ok.', 'tasks': [{'id': 'task-456'}]}
+        not_ready = MagicMock(status_code=200)
+        not_ready.json.return_value = {'status_code': 20000, 'status_message': 'Ok.', 'tasks': [{'result': []}]}
+        mock_post.return_value = post_response
+        mock_get.return_value = not_ready
+
+        results, diag = search_dataforseo(
+            'implantes dentales madrid', 'login', 'pass', execution_mode='standard', poll_attempts=2, return_metadata=True, total_timeout_seconds=35
+        )
+
+        self.assertEqual(results, [])
+        self.assertEqual(diag['zero_reason'], 'provider_pending_timeout')
+        self.assertEqual(diag['task_id'], 'task-456')
 
 if __name__ == '__main__':
     unittest.main()

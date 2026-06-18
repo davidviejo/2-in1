@@ -6,6 +6,7 @@ import time, io, threading, re, urllib.parse, math
 from difflib import SequenceMatcher
 from collections import Counter, defaultdict
 import json
+import os
 
 from apps.core_monitor import update_global, reset_global
 from apps.tools.scraper_core import smart_serp_search, GoogleSERPBlockedError
@@ -915,10 +916,58 @@ def worker(kws, file, cfg):
                 new_data[ckw] = []
                 unclusterable[ckw] = f"Error SERP: {err or 'Error desconocido'}"
             elif not res:
-                cause = f"{provider}: sin resultados (http={http_status or 'n/a'}, parsed={results_count}, t={elapsed_ms or 'n/a'}ms)"
-                append_log(f"⚠️ 0 resultados reales: {ckw}", keyword=ckw, technical_cause=cause)
+                zero_reason = diag.get('zero_reason') or ('provider_error' if err else 'real_zero_results')
+                before_filters = diag.get('items_before_filters', diag.get('items_count', 0))
+                after_filters = diag.get('items_after_filters', len(res or []))
+                if zero_reason == 'provider_pending_timeout':
+                    user_msg = f"⏳ DataForSEO pendiente/timeout: {ckw} (task_id={diag.get('task_id') or 'n/a'}, intentos={diag.get('poll_attempts_used') or 'n/a'})"
+                    uncluster_msg = 'DataForSEO pendiente tras agotar polling'
+                elif zero_reason == 'provider_error':
+                    user_msg = f"⛔ Error DataForSEO: {ckw} ({diag.get('status_message') or err or 'error desconocido'})"
+                    uncluster_msg = 'Error del proveedor SERP'
+                elif zero_reason == 'parser_empty':
+                    user_msg = f"⚠️ Parser sin orgánicos: {ckw} (items provider={diag.get('items_count', 0)})"
+                    uncluster_msg = 'Respuesta con items, parser sin orgánicos'
+                elif zero_reason == 'filtered_to_zero':
+                    user_msg = f"⚠️ Filtros dejaron 0 URLs: {ckw} (antes={before_filters}, después={after_filters})"
+                    uncluster_msg = 'Filtrado interno dejó la SERP a 0'
+                else:
+                    user_msg = f"⚠️ 0 resultados reales confirmados: {ckw}"
+                    uncluster_msg = 'Sin resultados SERP reales confirmados'
+                cause = (
+                    f"{provider}: {zero_reason} (http={http_status or 'n/a'}, dfs_status={diag.get('status_code') or 'n/a'}, "
+                    f"msg={diag.get('status_message') or 'n/a'}, task_id={diag.get('task_id') or 'n/a'}, "
+                    f"result_count={diag.get('result_count', 0)}, items_count={diag.get('items_count', 0)}, "
+                    f"before={before_filters}, after={after_filters}, cost={diag.get('actual_cost') or 'n/a'}, t={elapsed_ms or 'n/a'}ms)"
+                )
+                append_log(user_msg, keyword=ckw, technical_cause=cause)
+                if cfg.get('serp_debug'):
+                    debug_fields = {
+                        'keyword_original': ckw,
+                        'keyword_normalized': diag.get('keyword_normalized') or ckw.strip(),
+                        'country': cfg.get('gl'),
+                        'location_name': diag.get('location_name'),
+                        'language_code': diag.get('language_code'),
+                        'engine': provider,
+                        'detail': diag.get('detail'),
+                        'execution_mode': diag.get('execution_mode'),
+                        'top_n': cfg.get('top_n'),
+                        'tos': cfg.get('tos'),
+                        'strict': cfg.get('strict'),
+                        'task_id': diag.get('task_id'),
+                        'http_status': http_status,
+                        'status_code': diag.get('status_code'),
+                        'status_message': diag.get('status_message'),
+                        'result_count': diag.get('result_count'),
+                        'items_count': diag.get('items_count'),
+                        'items_before_filters': before_filters,
+                        'items_after_filters': after_filters,
+                        'zero_reason': zero_reason,
+                        'actual_cost': diag.get('actual_cost'),
+                    }
+                    append_log(f"🔎 SERP_DEBUG {json.dumps(debug_fields, ensure_ascii=False)}")
                 new_data[ckw] = []
-                unclusterable[ckw] = 'Sin resultados SERP válidos'
+                unclusterable[ckw] = uncluster_msg
             else:
                 cause = f"{provider}: ok (http={http_status or 'n/a'}, parsed={results_count}, t={elapsed_ms or 'n/a'}ms)"
                 append_log(f"✅ {ckw}: {len(res)} URLs", keyword=ckw, technical_cause=cause)
@@ -1069,7 +1118,8 @@ def start():
         'google_scraping_allow_ddg_fallback': _to_bool(request.form.get('google_scraping_allow_ddg_fallback'), False),
 
         # NUEVO: dominio objetivo (opcional)
-        'target_domain': (request.form.get('target_domain') or '').strip().lower()
+        'target_domain': (request.form.get('target_domain') or '').strip().lower(),
+        'serp_debug': str(request.form.get('serp_debug') or os.environ.get('SERP_DEBUG') or '').strip().lower() in ('1', 'true', 'yes', 'on')
     }
 
     if cfg.get('mode') == 'dataforseo':
