@@ -15,6 +15,7 @@ import {
   ArrowUpDown,
   Search,
   Download,
+  Upload,
   Play,
   Layers,
   Loader2,
@@ -32,6 +33,7 @@ import { useProject } from '../../context/ProjectContext';
 import { validateChecklistWithAI } from '../../services/seoChecklistAIValidator';
 import { useGSCAuth } from '../../hooks/useGSCAuth';
 import { listSites, querySearchAnalyticsPaged } from '../../services/googleSearchConsole';
+import { buildTopSerpClusterWorkbook } from '../../utils/serpClusterSheet';
 
 const createEmptyChecklist = () =>
   CHECKLIST_POINTS.reduce(
@@ -210,6 +212,8 @@ export const SeoUrlList: React.FC<Props> = ({
   const [gscSyncNewUrlsLimitInput, setGscSyncNewUrlsLimitInput] = useState('0');
   const [gscPropertySearch, setGscPropertySearch] = useState('');
   const [quickSelectCountInput, setQuickSelectCountInput] = useState('21');
+  const [clusterSheetTopInput, setClusterSheetTopInput] = useState('5');
+  const [isReprocessingClusterSheet, setIsReprocessingClusterSheet] = useState(false);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -748,6 +752,36 @@ export const SeoUrlList: React.FC<Props> = ({
     }
   };
 
+  const handleClusterSheetUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    const topUrlLimit = Math.max(1, Math.min(100, Number.parseInt(clusterSheetTopInput, 10) || 5));
+    setIsReprocessingClusterSheet(true);
+    try {
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+      const result = buildTopSerpClusterWorkbook(workbook, topUrlLimit);
+      const safeBaseName = sanitizeFileNameChunk(
+        file.name.replace(/\.[^.]+$/, '') || 'Clusterizacion',
+      );
+      XLSX.writeFile(
+        result.workbook,
+        `${safeBaseName}_recluster_top-${topUrlLimit}_${new Date().toISOString().slice(0, 10)}.xlsx`,
+        { compression: true },
+      );
+      setGscSyncStatus(
+        `Sheet reprocesado con Top ${topUrlLimit}: ${result.totalKeywords.toLocaleString()} keyword(s) redistribuidas en ${result.totalClusters.toLocaleString()} cluster(s).`,
+      );
+    } catch (error) {
+      console.error('Error reprocessing cluster sheet', error);
+      const message = error instanceof Error ? error.message : 'No se pudo reprocesar el sheet.';
+      setGscSyncStatus(`Error al reprocesar sheet de clusterización: ${message}`);
+    } finally {
+      setIsReprocessingClusterSheet(false);
+    }
+  };
+
   const buildAnalysisConfig = (): AnalysisConfigPayload => {
     const currentLimits = {
       maxKeywordsPerUrl: Math.min(
@@ -1271,6 +1305,42 @@ export const SeoUrlList: React.FC<Props> = ({
           <Settings size={18} />
           <span className="hidden sm:inline">Configuración</span>
         </button>
+
+        <div className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-2 rounded-xl shrink-0">
+          <label
+            className="text-xs font-semibold text-slate-600 dark:text-slate-300"
+            htmlFor="cluster-sheet-top-input"
+          >
+            Reanalizar sheet Top
+          </label>
+          <input
+            id="cluster-sheet-top-input"
+            type="number"
+            min={1}
+            max={100}
+            value={clusterSheetTopInput}
+            onChange={(event) => setClusterSheetTopInput(event.target.value)}
+            className="w-16 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-sm"
+          />
+          <label
+            className="flex cursor-pointer items-center gap-2 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-bold text-white shadow-lg shadow-indigo-500/20 transition-all hover:bg-indigo-700 aria-disabled:pointer-events-none aria-disabled:opacity-60"
+            aria-disabled={isReprocessingClusterSheet}
+          >
+            {isReprocessingClusterSheet ? (
+              <Loader2 className="animate-spin" size={16} />
+            ) : (
+              <Upload size={16} />
+            )}
+            <span>{isReprocessingClusterSheet ? 'Procesando...' : 'Subir sheet'}</span>
+            <input
+              type="file"
+              accept=".xlsx,.xls,.csv,.tsv"
+              className="hidden"
+              onChange={(event) => void handleClusterSheetUpload(event)}
+              disabled={isReprocessingClusterSheet}
+            />
+          </label>
+        </div>
         <button
           onClick={() => void handleExport()}
           disabled={isExporting}
