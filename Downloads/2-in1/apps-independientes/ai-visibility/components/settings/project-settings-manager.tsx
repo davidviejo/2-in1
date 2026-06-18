@@ -78,6 +78,14 @@ function toForm(project?: Project | null): ProjectFormState {
   };
 }
 
+async function parseJsonSafely<T>(response: Response): Promise<T | null> {
+  try {
+    return (await response.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
 export function ProjectSettingsManager() {
   const { currentProjectId, refreshProjects, setCurrentProjectId } = useProjectContext();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -125,11 +133,24 @@ export function ProjectSettingsManager() {
   async function loadProjects() {
     setLoading(true);
     const response = await fetch('/api/projects', { cache: 'no-store' });
-    const data = (await response.json()) as { projects: Project[] };
+    const data = await parseJsonSafely<{ projects?: Project[]; error?: string }>(response);
 
-    setProjects(data.projects ?? []);
-    if ((data.projects ?? []).length > 0) {
-      setSelectedProjectId((current) => (current === 'new' ? data.projects[0].id : current));
+    if (!response.ok) {
+      setProjects([]);
+      setStatusMessage(
+        response.status === 401
+          ? 'Session expired. Please log in again.'
+          : response.status === 403
+            ? 'Your role does not have access to this action.'
+            : 'Projects are currently unavailable. Check database connectivity.'
+      );
+      setLoading(false);
+      return;
+    }
+
+    setProjects(data?.projects ?? []);
+    if ((data?.projects ?? []).length > 0) {
+      setSelectedProjectId((current) => (current === 'new' ? (data?.projects ?? [])[0].id : current));
     }
     setLoading(false);
   }
@@ -152,10 +173,10 @@ export function ProjectSettingsManager() {
       fetch(`/api/projects/${projectId}/tags`, { cache: 'no-store' }),
       fetch(`/api/projects/${projectId}/competitors`, { cache: 'no-store' })
     ]);
-    const tagsData = (await tagsResponse.json()) as { tags: QuickTag[] };
-    const competitorsData = (await competitorsResponse.json()) as { competitors: QuickCompetitor[] };
-    setQuickTags(tagsData.tags ?? []);
-    setQuickCompetitors(competitorsData.competitors ?? []);
+    const tagsData = await parseJsonSafely<{ tags?: QuickTag[] }>(tagsResponse);
+    const competitorsData = await parseJsonSafely<{ competitors?: QuickCompetitor[] }>(competitorsResponse);
+    setQuickTags(tagsData?.tags ?? []);
+    setQuickCompetitors(competitorsData?.competitors ?? []);
   }
 
   async function submitProject(event: FormEvent<HTMLFormElement>) {
@@ -173,15 +194,23 @@ export function ProjectSettingsManager() {
       body: JSON.stringify(form)
     });
 
-    const data = (await response.json()) as {
+    const data = (await parseJsonSafely<{
       project?: Project;
       fieldErrors?: Record<string, string>;
       error?: string;
-    };
+    }>(response)) ?? {};
 
     if (!response.ok) {
       setFieldErrors(data.fieldErrors ?? {});
-      setStatusMessage(data.error === 'validation_failed' ? 'Please fix validation errors.' : 'Request failed.');
+      setStatusMessage(
+        data.error === 'validation_failed'
+          ? 'Please fix validation errors.'
+          : response.status === 401
+            ? 'Session expired. Please log in again.'
+            : response.status === 403
+              ? 'Your role does not have access to create or edit projects.'
+              : 'Project request failed. Check API/database status.'
+      );
       setBusy(false);
       return;
     }
@@ -215,7 +244,7 @@ export function ProjectSettingsManager() {
       body: JSON.stringify({ alias: aliasInput })
     });
 
-    const data = (await response.json()) as { fieldErrors?: Record<string, string> };
+    const data = (await parseJsonSafely<{ fieldErrors?: Record<string, string> }>(response)) ?? {};
 
     if (!response.ok) {
       setFieldErrors(data.fieldErrors ?? {});
