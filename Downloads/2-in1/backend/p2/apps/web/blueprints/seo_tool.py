@@ -801,10 +801,7 @@ def cluster_serp_results(serp_data_map: dict, strict_level: int = 3, target_doma
                         score += 0.5
                         common_domains.append(d)
 
-            ts = text_similarity(k1, k2)
             th = strict_level
-            if ts > 0.85:
-                th = max(1, th - 1)
 
             if score >= th:
                 grp['children'].append(k2)
@@ -1043,10 +1040,7 @@ def worker(kws, file, cfg):
                         if d and any(d in cu for cu in c_urls):
                             score += 0.5
 
-                ts = text_similarity(kw, c['parent'])
                 th = cfg['strict']
-                if ts > 0.85:
-                    th = max(1, th - 1)
 
                 if score >= th:
                     c['children'].append(kw)
