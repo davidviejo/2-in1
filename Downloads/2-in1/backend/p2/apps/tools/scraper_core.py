@@ -7,6 +7,7 @@ import atexit
 import logging
 import base64
 import hashlib
+import re
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
 import urllib.parse
@@ -610,6 +611,21 @@ def _get_dataforseo_location_name(country: str) -> str:
     return location_name
 
 
+def _dataforseo_count_fields(data: Dict[str, Any]) -> Dict[str, Any]:
+    result_count = 0
+    items_count = 0
+    for task in data.get('tasks', []) or []:
+        for result in task.get('result', []) or []:
+            if not isinstance(result, dict):
+                continue
+            result_count += int(result.get('result_count') or 0)
+            if result.get('items_count') is not None:
+                items_count += int(result.get('items_count') or 0)
+            elif isinstance(result.get('items'), list):
+                items_count += len(result.get('items') or [])
+    return {'result_count': result_count, 'items_count': items_count}
+
+
 def _extract_dataforseo_organic_results(data: Dict[str, Any], num_results: int) -> List[Dict[str, Any]]:
     results: List[Dict[str, Any]] = []
     for task in data.get('tasks', []):
@@ -719,8 +735,9 @@ def search_dataforseo(
     detail: str = 'regular',
     execution_mode: str = 'live',
     poll_attempts: int = 8,
-    poll_delay: float = 1.5,
-    return_metadata: bool = False
+    poll_delay: float = 5.0,
+    return_metadata: bool = False,
+    total_timeout_seconds: Optional[int] = None
 ) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], Dict[str, Any]]]:
     normalized_detail = _normalize_dataforseo_detail(detail)
     normalized_mode = _normalize_dataforseo_execution_mode(execution_mode)
@@ -734,6 +751,19 @@ def search_dataforseo(
         'task_id': None,
         'estimated_cost': estimate_dataforseo_cost(num_results=num_results, detail=normalized_detail, execution_mode=normalized_mode).get('estimated_cost'),
         'actual_cost': None,
+        'keyword_original': keyword,
+        'keyword_normalized': re.sub(r'\s+', ' ', (keyword or '').strip()) if 're' in globals() else (keyword or '').strip(),
+        'language_code': (lang or 'es')[:2],
+        'location_name': _get_dataforseo_location_name(country),
+        'http_status': None,
+        'status_code': None,
+        'status_message': None,
+        'result_count': 0,
+        'items_count': 0,
+        'items_before_filters': 0,
+        'items_after_filters': 0,
+        'zero_reason': None,
+        'poll_attempts_used': 0,
     }
     try:
         auth_b64 = base64.b64encode(f"{login}:{passw}".encode('utf-8')).decode('utf-8')
@@ -754,14 +784,22 @@ def search_dataforseo(
             increment_api_usage(1)
             live_url = f"https://api.dataforseo.com/v3/serp/google/organic/live/{normalized_detail}"
             response = requests.post(live_url, json=payload, headers=headers, timeout=60)
+            metadata['http_status'] = response.status_code
             data = response.json()
+            metadata['status_code'] = data.get('status_code')
+            metadata['status_message'] = data.get('status_message')
             if data.get('status_code') != 20000:
                 logging.error(f"DataForSEO Live response error: {data.get('status_message')}")
                 metadata['error'] = data.get('status_message')
                 results: List[Dict[str, Any]] = []
             else:
                 metadata['actual_cost'] = _extract_dataforseo_actual_cost(data)
+                metadata.update(_dataforseo_count_fields(data))
+                metadata['items_before_filters'] = metadata.get('items_count') or 0
                 results = _extract_dataforseo_organic_results(data, num_results)[:num_results]
+                metadata['items_after_filters'] = len(results)
+                if not results:
+                    metadata['zero_reason'] = 'parser_empty' if (metadata.get('items_count') or 0) > 0 else 'real_zero_results'
             metadata['elapsed_ms'] = int((time.time() - start_ts) * 1000)
             if return_metadata:
                 return results, metadata
@@ -770,11 +808,15 @@ def search_dataforseo(
         increment_api_usage(1)
         task_post_url = "https://api.dataforseo.com/v3/serp/google/organic/task_post"
         task_post_response = requests.post(task_post_url, json=payload, headers=headers, timeout=60)
+        metadata['http_status'] = task_post_response.status_code
         task_post_data = task_post_response.json()
+        metadata['status_code'] = task_post_data.get('status_code')
+        metadata['status_message'] = task_post_data.get('status_message')
         if task_post_data.get('status_code') != 20000:
             logging.error(f"DataForSEO Standard POST error: {task_post_data.get('status_message')}")
             metadata['error'] = task_post_data.get('status_message')
             metadata['elapsed_ms'] = int((time.time() - start_ts) * 1000)
+            metadata['zero_reason'] = metadata.get('zero_reason') or 'provider_error'
             if return_metadata:
                 return [], metadata
             return []
@@ -790,12 +832,21 @@ def search_dataforseo(
             return []
         metadata['task_id'] = task_id
 
-        safe_poll_attempts = max(int(poll_attempts or 1), 1)
+        total_timeout = max(int(total_timeout_seconds or 0), 35 if normalized_mode in {'standard', 'priority'} else 0)
+        safe_poll_attempts = max(int(poll_attempts or 5), 1)
+        poll_delays = [5, 10, 20, 30, 45]
         tasks_ready_url = "https://api.dataforseo.com/v3/serp/google/organic/tasks_ready"
         task_get_url = f"https://api.dataforseo.com/v3/serp/google/organic/task_get/{normalized_detail}/{task_id}"
         for attempt in range(safe_poll_attempts):
+            metadata['poll_attempts_used'] = attempt + 1
+            if total_timeout and (time.time() - start_ts) > total_timeout:
+                metadata['zero_reason'] = 'provider_pending_timeout'
+                break
             tasks_ready_response = requests.get(tasks_ready_url, headers=headers, timeout=60)
+            metadata['http_status'] = tasks_ready_response.status_code
             tasks_ready_data = tasks_ready_response.json()
+            metadata['status_code'] = tasks_ready_data.get('status_code')
+            metadata['status_message'] = tasks_ready_data.get('status_message')
 
             if tasks_ready_data.get('status_code') != 20000:
                 logging.error(f"DataForSEO Standard Tasks Ready error: {tasks_ready_data.get('status_message')}")
@@ -808,11 +859,18 @@ def search_dataforseo(
             ready_task_ids = _extract_dataforseo_ready_task_ids(tasks_ready_data)
             if str(task_id) not in ready_task_ids:
                 if attempt < safe_poll_attempts - 1:
-                    time.sleep(max(float(poll_delay or 0), 0))
+                    delay_seconds = poll_delays[min(attempt, len(poll_delays)-1)] if poll_delay == 5.0 else max(float(poll_delay or 0), 0)
+                    if total_timeout:
+                        delay_seconds = min(delay_seconds, max(total_timeout - (time.time() - start_ts), 0))
+                    if delay_seconds > 0:
+                        time.sleep(delay_seconds)
                 continue
 
             task_get_response = requests.get(task_get_url, headers=headers, timeout=60)
+            metadata['http_status'] = task_get_response.status_code
             task_get_data = task_get_response.json()
+            metadata['status_code'] = task_get_data.get('status_code')
+            metadata['status_message'] = task_get_data.get('status_message')
             if task_get_data.get('status_code') != 20000:
                 logging.error(f"DataForSEO Standard Task GET error: {task_get_data.get('status_message')}")
                 metadata['error'] = task_get_data.get('status_message')
@@ -821,7 +879,12 @@ def search_dataforseo(
                     return [], metadata
                 return []
 
+            metadata.update(_dataforseo_count_fields(task_get_data))
+            metadata['items_before_filters'] = metadata.get('items_count') or 0
             extracted = _extract_dataforseo_organic_results(task_get_data, num_results)
+            metadata['items_after_filters'] = len(extracted[:num_results])
+            if not extracted:
+                metadata['zero_reason'] = 'parser_empty' if (metadata.get('items_count') or 0) > 0 else 'real_zero_results'
             metadata['actual_cost'] = _extract_dataforseo_actual_cost(task_get_data)
             metadata['elapsed_ms'] = int((time.time() - start_ts) * 1000)
             if return_metadata:
@@ -830,9 +893,11 @@ def search_dataforseo(
 
         logging.error(f"DataForSEO Standard task not ready yet for task_id={task_id}")
         metadata['error'] = 'task_not_ready'
+        metadata['zero_reason'] = metadata.get('zero_reason') or 'provider_pending_timeout'
     except Exception as e:
         logging.error(f"DataForSEO Exception: {sanitize_log_message(str(e))}")
         metadata['error'] = sanitize_log_message(str(e))
+        metadata['zero_reason'] = 'provider_error'
 
     metadata['elapsed_ms'] = int((time.time() - start_ts) * 1000)
     if return_metadata:
@@ -991,6 +1056,14 @@ def smart_serp_search(keyword: str, config: Optional[Dict] = None, num_results: 
             }
         return results
 
+    def _status_from_dfs_diag(results: List[Dict[str, Any]], diagnostics: Dict[str, Any]) -> str:
+        if results:
+            return 'ok'
+        reason = (diagnostics or {}).get('zero_reason')
+        if reason in {'provider_error'} or (diagnostics or {}).get('error') and reason != 'provider_pending_timeout':
+            return 'error'
+        return 'empty'
+
     # --- 1. MODO EXPLÍCITO (Prioridad Máxima por argumento) ---
     if mode == 'serpapi' and cfg.get('serpapi_key'):
         return _return(search_serpapi(keyword, cfg['serpapi_key'], num_results, gl=country, hl=lang), provider_name='serpapi')
@@ -1007,9 +1080,11 @@ def smart_serp_search(keyword: str, config: Optional[Dict] = None, num_results: 
             detail=dfs_mode['detail'],
             execution_mode=dfs_mode['execution_mode'],
             return_metadata=True,
+            total_timeout_seconds=int(cfg.get('tos') or 0) or None,
         )
         return _return(
             dfs_results,
+            status=_status_from_dfs_diag(dfs_results, dfs_diag),
             provider_name=dfs_mode['provider_name'],
             diagnostics=dfs_diag,
         )
@@ -1043,9 +1118,11 @@ def smart_serp_search(keyword: str, config: Optional[Dict] = None, num_results: 
                  detail=dfs_mode['detail'],
                  execution_mode=dfs_mode['execution_mode'],
                  return_metadata=True,
+                 total_timeout_seconds=int(cfg.get('tos') or 0) or None,
              )
              return _return(
                  dfs_results,
+                 status=_status_from_dfs_diag(dfs_results, dfs_diag),
                  provider_name=dfs_mode['provider_name'],
                  diagnostics=dfs_diag,
              )
@@ -1080,9 +1157,11 @@ def smart_serp_search(keyword: str, config: Optional[Dict] = None, num_results: 
             detail=dfs_mode['detail'],
             execution_mode=dfs_mode['execution_mode'],
             return_metadata=True,
+            total_timeout_seconds=int(cfg.get('tos') or 0) or None,
         )
         return _return(
             dfs_results,
+            status=_status_from_dfs_diag(dfs_results, dfs_diag),
             provider_name=dfs_mode['provider_name'],
             diagnostics=dfs_diag,
         )
