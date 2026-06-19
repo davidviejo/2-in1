@@ -1,9 +1,24 @@
 import * as XLSX from 'xlsx';
 
 const CHECKLIST_CLUSTER_SHEET_NAME = 'Clusterización (Intenciones)';
+const FINAL_STRATEGY_SHEET_NAME = 'Estrategia final';
+const SERP_HISTORY_SHEET_NAME = 'Historial SERP';
 const BACKEND_STRATEGY_SHEET_NAME = 'Estrategia';
 const BACKEND_URLS_SHEET_NAME = 'URLs';
 
+const FINAL_KEYWORD_COLUMN = 'Keyword principal';
+const FINAL_VARIATIONS_COLUMN = 'Variaciones';
+const FINAL_INTENT_COLUMN = 'Intención';
+const FINAL_COVERAGE_COLUMN = 'Cobertura';
+const FINAL_SERP_URLS_COLUMN = 'URLs SERP principales';
+const FINAL_SERP_TITLES_COLUMN = 'Títulos SERP principales';
+const FINAL_KEYWORD_COUNT_COLUMN = 'Nº keywords';
+const FINAL_SERP_URL_COUNT_COLUMN = 'Nº URLs SERP';
+const HISTORY_KEYWORD_COLUMN = 'Keyword';
+const HISTORY_KEYWORD_TYPE_COLUMN = 'Tipo keyword';
+const HISTORY_RANK_COLUMN = 'Rank';
+const HISTORY_URL_COLUMN = 'URL';
+const HISTORY_TITLE_COLUMN = 'Título';
 const CLUSTER_URLS_COLUMN = 'URLs SERP';
 const CLUSTER_ROLE_COLUMN = 'Rol';
 const CLUSTER_KEYWORD_COLUMN = 'Keyword';
@@ -17,6 +32,50 @@ const CLUSTER_OPPORTUNITY_COLUMN = 'Opportunity Clusters';
 const BACKEND_PARENT_COLUMN = 'Padre';
 const BACKEND_RANK_COLUMN = 'Rank';
 const BACKEND_URL_COLUMN = 'URL';
+
+const cleanList = (values: unknown[]) => {
+  const seen = new Set<string>();
+  const cleaned: string[] = [];
+  values.forEach((value) => {
+    const text = String(value || '').trim();
+    if (!text) return;
+    const key = text.toLocaleLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    cleaned.push(text);
+  });
+  return cleaned;
+};
+
+const numberedTextToList = (value: unknown) => {
+  const text = String(value || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+  if (!text) return [];
+  return cleanList(
+    text
+      .replace(/(?!^)\s+(?=\d+[.)]\s+)/g, '\n')
+      .split('\n')
+      .flatMap((rawLine) => {
+        const line = rawLine
+          .trim()
+          .replace(/^[•\-–—]\s*/, '')
+          .replace(/^\d+[.)]\s*/, '')
+          .trim();
+        if (!line) return [];
+        if (!/^https?:\/\//i.test(line) && /[,;]/.test(line)) {
+          return line
+            .split(/[,;]/)
+            .map((part) => part.trim())
+            .filter(Boolean);
+        }
+        return [line];
+      }),
+  );
+};
+
+const listToNumberedText = (values: unknown[]) =>
+  cleanList(values)
+    .map((value, index) => `${index + 1}. ${value}`)
+    .join('\n');
 
 const splitSerpUrls = (value: unknown) =>
   String(value || '')
@@ -168,6 +227,172 @@ const buildChecklistWorkbook = (workbook: XLSX.WorkBook, topUrlLimit: number) =>
   return { workbook: nextWorkbook, totalClusters, totalKeywords: records.length };
 };
 
+const buildFinalStrategyWorkbook = (workbook: XLSX.WorkBook, topUrlLimit: number) => {
+  const strategyRows = toRows(workbook.Sheets[FINAL_STRATEGY_SHEET_NAME]);
+  const historyRows = toRows(workbook.Sheets[SERP_HISTORY_SHEET_NAME]);
+  if (strategyRows.length < 2 || historyRows.length < 2) {
+    throw new Error('El workbook debe incluir las pestañas Estrategia final e Historial SERP con datos.');
+  }
+
+  const strategyHeaders = strategyRows[0].map((header) => String(header));
+  const historyHeaders = historyRows[0].map((header) => String(header));
+  const strategyClusterIndex = findHeaderIndex(strategyHeaders, CLUSTER_ID_COLUMN);
+  const strategyKeywordIndex = findHeaderIndex(strategyHeaders, FINAL_KEYWORD_COLUMN);
+  const strategyVariationsIndex = findHeaderIndex(strategyHeaders, FINAL_VARIATIONS_COLUMN);
+  const strategyIntentIndex = findHeaderIndex(strategyHeaders, FINAL_INTENT_COLUMN);
+  const strategyCoverageIndex = findHeaderIndex(strategyHeaders, FINAL_COVERAGE_COLUMN);
+  const historyClusterIndex = findHeaderIndex(historyHeaders, CLUSTER_ID_COLUMN);
+  const historyKeywordIndex = findHeaderIndex(historyHeaders, HISTORY_KEYWORD_COLUMN);
+  const historyRankIndex = findHeaderIndex(historyHeaders, HISTORY_RANK_COLUMN);
+  const historyUrlIndex = findHeaderIndex(historyHeaders, HISTORY_URL_COLUMN);
+  const historyTitleIndex = findHeaderIndex(historyHeaders, HISTORY_TITLE_COLUMN);
+
+  const missingColumns = [
+    [strategyClusterIndex, `${FINAL_STRATEGY_SHEET_NAME}.${CLUSTER_ID_COLUMN}`],
+    [strategyKeywordIndex, `${FINAL_STRATEGY_SHEET_NAME}.${FINAL_KEYWORD_COLUMN}`],
+    [strategyVariationsIndex, `${FINAL_STRATEGY_SHEET_NAME}.${FINAL_VARIATIONS_COLUMN}`],
+    [historyClusterIndex, `${SERP_HISTORY_SHEET_NAME}.${CLUSTER_ID_COLUMN}`],
+    [historyKeywordIndex, `${SERP_HISTORY_SHEET_NAME}.${HISTORY_KEYWORD_COLUMN}`],
+    [historyRankIndex, `${SERP_HISTORY_SHEET_NAME}.${HISTORY_RANK_COLUMN}`],
+    [historyUrlIndex, `${SERP_HISTORY_SHEET_NAME}.${HISTORY_URL_COLUMN}`],
+  ]
+    .filter(([index]) => Number(index) < 0)
+    .map(([, label]) => label);
+  if (missingColumns.length > 0) {
+    throw new Error(`Faltan columnas requeridas: ${missingColumns.join(', ')}.`);
+  }
+
+  const strategyByCluster = new Map<
+    string,
+    { parent: string; variations: string[]; intent: string; coverage: string; order: number }
+  >();
+  strategyRows.slice(1).forEach((row, order) => {
+    const clusterId = String(getCell(row, strategyClusterIndex)).trim();
+    const parent = String(getCell(row, strategyKeywordIndex)).trim();
+    if (!clusterId || !parent) return;
+    strategyByCluster.set(clusterId, {
+      parent,
+      variations: numberedTextToList(getCell(row, strategyVariationsIndex)),
+      intent: String(getCell(row, strategyIntentIndex)).trim(),
+      coverage: String(getCell(row, strategyCoverageIndex)).trim(),
+      order,
+    });
+  });
+
+  const serpByClusterKeyword = new Map<string, Array<{ rank: number; url: string; title: string }>>();
+  historyRows.slice(1).forEach((row) => {
+    const clusterId = String(getCell(row, historyClusterIndex)).trim();
+    const keyword = String(getCell(row, historyKeywordIndex)).trim();
+    const rank = Number(getCell(row, historyRankIndex)) || Number.MAX_SAFE_INTEGER;
+    const url = String(getCell(row, historyUrlIndex)).trim();
+    const title = String(getCell(row, historyTitleIndex)).trim();
+    if (!clusterId || !keyword || !url || rank > topUrlLimit) return;
+    const key = `${clusterId}\u0000${keyword}`;
+    const urls = serpByClusterKeyword.get(key) || [];
+    urls.push({ rank, url, title });
+    serpByClusterKeyword.set(key, urls);
+  });
+
+  const records: KeywordRecord[] = [];
+  strategyByCluster.forEach((strategy, clusterId) => {
+    [strategy.parent, ...strategy.variations].forEach((keyword, index) => {
+      const serpRows = (serpByClusterKeyword.get(`${clusterId}\u0000${keyword}`) || [])
+        .sort((left, right) => left.rank - right.rank)
+        .slice(0, topUrlLimit);
+      if (serpRows.length === 0) return;
+      records.push({
+        row: [clusterId, keyword, index === 0 ? 'Principal' : 'Variación', strategy.intent, strategy.coverage],
+        keyword,
+        urls: serpRows.map((serpRow) => serpRow.url),
+        originalIndex: strategy.order * 1000 + index,
+      });
+    });
+  });
+
+  if (records.length === 0) {
+    throw new Error('No se encontraron keywords con URLs Top N en Estrategia final/Historial SERP.');
+  }
+
+  const groups = groupRecordsByTopUrls(records);
+  const finalHeaders = [
+    CLUSTER_ID_COLUMN,
+    FINAL_KEYWORD_COLUMN,
+    FINAL_VARIATIONS_COLUMN,
+    FINAL_KEYWORD_COUNT_COLUMN,
+    FINAL_INTENT_COLUMN,
+    FINAL_COVERAGE_COLUMN,
+    FINAL_SERP_URLS_COLUMN,
+    FINAL_SERP_URL_COUNT_COLUMN,
+    FINAL_SERP_TITLES_COLUMN,
+  ];
+  const historyOutputHeaders = [
+    CLUSTER_ID_COLUMN,
+    HISTORY_KEYWORD_COLUMN,
+    HISTORY_KEYWORD_TYPE_COLUMN,
+    HISTORY_RANK_COLUMN,
+    HISTORY_URL_COLUMN,
+    HISTORY_TITLE_COLUMN,
+  ];
+  const finalRows: unknown[][] = [];
+  const historyOutputRows: unknown[][] = [];
+
+  groups.forEach((group, groupIndex) => {
+    const clusterId = `top${topUrlLimit}-${String(groupIndex + 1).padStart(4, '0')}`;
+    const parentRecord = group.find((record) => getCell(record.row, 2) === 'Principal') || group[0];
+    const variations = group.filter((record) => record !== parentRecord).map((record) => record.keyword);
+    const mergedUrls = cleanList(group.flatMap((record) => record.urls)).slice(0, topUrlLimit);
+    const serpTitles = mergedUrls.map((url) => {
+      for (const record of group) {
+        const sourceClusterId = String(getCell(record.row, 0));
+        const rows = serpByClusterKeyword.get(`${sourceClusterId}\u0000${record.keyword}`) || [];
+        const match = rows.find((serpRow) => serpRow.url === url);
+        if (match?.title) return match.title;
+      }
+      return '';
+    });
+
+    finalRows.push([
+      clusterId,
+      parentRecord.keyword,
+      listToNumberedText(variations),
+      1 + variations.length,
+      getCell(parentRecord.row, 3),
+      getCell(parentRecord.row, 4),
+      listToNumberedText(mergedUrls),
+      mergedUrls.length,
+      listToNumberedText(serpTitles),
+    ]);
+
+    group.forEach((record) => {
+      const sourceClusterId = String(getCell(record.row, 0));
+      const rows = serpByClusterKeyword.get(`${sourceClusterId}\u0000${record.keyword}`) || [];
+      rows.forEach((serpRow) => {
+        historyOutputRows.push([
+          clusterId,
+          record.keyword,
+          record === parentRecord ? 'Principal' : 'Variación',
+          serpRow.rank,
+          serpRow.url,
+          serpRow.title,
+        ]);
+      });
+    });
+  });
+
+  const nextWorkbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    nextWorkbook,
+    XLSX.utils.aoa_to_sheet([finalHeaders, ...finalRows]),
+    FINAL_STRATEGY_SHEET_NAME,
+  );
+  XLSX.utils.book_append_sheet(
+    nextWorkbook,
+    XLSX.utils.aoa_to_sheet([historyOutputHeaders, ...historyOutputRows]),
+    SERP_HISTORY_SHEET_NAME,
+  );
+  return { workbook: nextWorkbook, totalClusters: groups.length, totalKeywords: records.length };
+};
+
 const buildBackendStrategyWorkbook = (workbook: XLSX.WorkBook, topUrlLimit: number) => {
   const strategyRows = toRows(workbook.Sheets[BACKEND_STRATEGY_SHEET_NAME]);
   const urlsRows = toRows(workbook.Sheets[BACKEND_URLS_SHEET_NAME]);
@@ -274,6 +499,18 @@ const buildBackendStrategyWorkbook = (workbook: XLSX.WorkBook, topUrlLimit: numb
 };
 
 export const buildTopSerpClusterWorkbook = (workbook: XLSX.WorkBook, topUrlLimit: number) => {
+  const finalRows = toRows(workbook.Sheets[FINAL_STRATEGY_SHEET_NAME]);
+  const historyRows = toRows(workbook.Sheets[SERP_HISTORY_SHEET_NAME]);
+  const hasFinalStrategyFormat =
+    hasHeaders(finalRows, [CLUSTER_ID_COLUMN, FINAL_KEYWORD_COLUMN, FINAL_VARIATIONS_COLUMN]) &&
+    hasHeaders(historyRows, [
+      CLUSTER_ID_COLUMN,
+      HISTORY_KEYWORD_COLUMN,
+      HISTORY_RANK_COLUMN,
+      HISTORY_URL_COLUMN,
+    ]);
+  if (hasFinalStrategyFormat) return buildFinalStrategyWorkbook(workbook, topUrlLimit);
+
   const strategyRows = toRows(workbook.Sheets[BACKEND_STRATEGY_SHEET_NAME]);
   const urlsRows = toRows(workbook.Sheets[BACKEND_URLS_SHEET_NAME]);
   const hasBackendStrategyFormat =
