@@ -100,6 +100,101 @@ const safeStringify = (value: unknown) => {
   }
 };
 
+const listToNumberedText = (values: unknown[]) => {
+  const seen = new Set<string>();
+  const cleaned: string[] = [];
+  values.forEach((value) => {
+    const text = String(value || '').trim();
+    if (!text) return;
+    const key = text.toLocaleLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    cleaned.push(text);
+  });
+  return cleaned.map((value, index) => `${index + 1}. ${value}`).join('\n');
+};
+
+const getClusterParentKeyword = (cluster: any) =>
+  String(cluster?.kwObjetivo || cluster?.parent || cluster?.keyword || cluster?.keywords?.[0] || '').trim();
+
+const getClusterVariations = (cluster: any, parentKeyword: string) => {
+  const rawVariations = Array.isArray(cluster?.variations)
+    ? cluster.variations
+    : Array.isArray(cluster?.children)
+      ? cluster.children
+      : Array.isArray(cluster?.keywords)
+        ? cluster.keywords
+        : [];
+  return rawVariations
+    .map((value: any) => (typeof value === 'string' ? value : value?.keyword || value?.query || ''))
+    .map((value: string) => value.trim())
+    .filter((value: string) => value && value.toLocaleLowerCase() !== parentKeyword.toLocaleLowerCase());
+};
+
+const getClusterSerpUrls = (cluster: any) =>
+  ((cluster?.topUrlsSample || cluster?.urls || []) as unknown[])
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+
+const buildFinalClusterWorkbookRows = (pages: SeoPage[]) => {
+  const finalHeaders = [
+    'Cluster ID',
+    'Keyword principal',
+    'Variaciones',
+    'Nº keywords',
+    'Intención',
+    'Cobertura',
+    'URLs propias',
+    'URLs SERP principales',
+    'Nº URLs SERP',
+    'Títulos SERP principales',
+  ];
+  const historyHeaders = ['Cluster ID', 'Keyword', 'Tipo keyword', 'Rank', 'URL', 'Título'];
+  const finalRows: unknown[][] = [];
+  const historyRows: unknown[][] = [];
+
+  pages.forEach((page) => {
+    const item = page.checklist.OPORTUNIDADES;
+    if (!item?.autoData?.clusters || !Array.isArray(item.autoData.clusters)) return;
+
+    item.autoData.clusters.forEach((cluster: any, index: number) => {
+      const parentKeyword = getClusterParentKeyword(cluster);
+      if (!parentKeyword) return;
+      const clusterId = String(cluster.clusterId || cluster.id || `${page.id}-cluster-${index + 1}`).trim();
+      const variations = getClusterVariations(cluster, parentKeyword);
+      const serpUrls = getClusterSerpUrls(cluster);
+
+      finalRows.push([
+        clusterId,
+        parentKeyword,
+        listToNumberedText(variations),
+        1 + variations.length,
+        cluster.intent || '',
+        cluster.coverage || (cluster.opportunity ? 'OPPORTUNITY' : cluster.owned ? 'OWNED' : 'OPPORTUNITY'),
+        listToNumberedText([page.url]),
+        listToNumberedText(serpUrls),
+        serpUrls.length,
+        '',
+      ]);
+
+      [parentKeyword, ...variations].forEach((keyword, keywordIndex) => {
+        serpUrls.forEach((url, urlIndex) => {
+          historyRows.push([
+            clusterId,
+            keyword,
+            keywordIndex === 0 ? 'Principal' : 'Variación',
+            urlIndex + 1,
+            url,
+            '',
+          ]);
+        });
+      });
+    });
+  });
+
+  return { finalHeaders, finalRows, historyHeaders, historyRows };
+};
+
 const matchesUrlFilter = (page: SeoPage, rawFilter: string) => {
   const { include, exclude } = parseFilterTokens(rawFilter);
   if (include.length === 0 && exclude.length === 0) return true;
@@ -406,7 +501,7 @@ export const SeoUrlList: React.FC<Props> = ({
     try {
       if (isMassiveExport) {
         setGscSyncStatus(
-          `Exportación masiva detectada (${exportPages.length.toLocaleString()} URLs). Generando 3 TSV completos...`,
+          `Exportación masiva detectada (${exportPages.length.toLocaleString()} URLs). Generando 4 TSV completos...`,
         );
 
         const summaryHeaders = [
@@ -481,72 +576,7 @@ export const SeoUrlList: React.FC<Props> = ({
           return row;
         });
 
-        const clusterHeaders = [
-          'Cliente',
-          'Proyecto',
-          'URL',
-          'KW Objetivo (PADRE)',
-          'RunId',
-          'Total Clusters',
-          'Owned Clusters',
-          'Opportunity Clusters',
-          'Cluster ID',
-          'Rol',
-          'Keyword',
-          'Intención',
-          'Cobertura',
-          'URLs SERP',
-        ];
-
-        const clusterRows: unknown[][] = [];
-
-        exportPages.forEach((p) => {
-          const item = p.checklist.OPORTUNIDADES;
-          if (item?.autoData?.clusters && Array.isArray(item.autoData.clusters)) {
-            const { summary, clusters } = item.autoData;
-
-            clusters.forEach((cluster: any) => {
-              clusterRows.push([
-                currentClient?.name || '',
-                currentClient?.name || '',
-                p.url,
-                cluster.kwObjetivo,
-                cluster.runId || '',
-                summary?.totalClusters || '',
-                summary?.ownedClusters || '',
-                summary?.opportunityClusters || '',
-                cluster.clusterId,
-                'PADRE',
-                cluster.kwObjetivo,
-                cluster.intent || '',
-                cluster.coverage || 'OPPORTUNITY',
-                (cluster.topUrlsSample || cluster.urls || []).join(' | '),
-              ]);
-
-              if (cluster.variations && Array.isArray(cluster.variations)) {
-                cluster.variations.forEach((v: any) => {
-                  const kw = typeof v === 'string' ? v : v.keyword;
-                  clusterRows.push([
-                    currentClient?.name || '',
-                    currentClient?.name || '',
-                    p.url,
-                    cluster.kwObjetivo,
-                    cluster.runId || '',
-                    summary?.totalClusters || '',
-                    summary?.ownedClusters || '',
-                    summary?.opportunityClusters || '',
-                    cluster.clusterId,
-                    'VARIACIÓN',
-                    kw,
-                    cluster.intent || '',
-                    cluster.coverage || 'OPPORTUNITY',
-                    '',
-                  ]);
-                });
-              }
-            });
-          }
-        });
+        const { finalHeaders, finalRows, historyHeaders, historyRows } = buildFinalClusterWorkbookRows(exportPages);
 
         const dateTag = new Date().toISOString().slice(0, 10);
         downloadTsv(
@@ -560,12 +590,17 @@ export const SeoUrlList: React.FC<Props> = ({
         );
         await new Promise((resolve) => setTimeout(resolve, EXPORT_DOWNLOAD_PAUSE_MS));
         downloadTsv(
-          buildTsv(clusterHeaders, clusterRows),
-          `${exportProjectName}_SEO_Checklist_Clusterizacion_${dateTag}.tsv`,
+          buildTsv(finalHeaders, finalRows),
+          `${exportProjectName}_SEO_Checklist_Estrategia_Final_${dateTag}.tsv`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, EXPORT_DOWNLOAD_PAUSE_MS));
+        downloadTsv(
+          buildTsv(historyHeaders, historyRows),
+          `${exportProjectName}_SEO_Checklist_Historial_SERP_${dateTag}.tsv`,
         );
 
         setGscSyncStatus(
-          `Exportación masiva completada. Se exportaron 3 datasets completos (Resumen, Detalle y Clusterización) con ${exportPages.length.toLocaleString()} URL(s).`,
+          `Exportación masiva completada. Se exportaron 4 datasets completos (Resumen, Detalle, Estrategia final e Historial SERP) con ${exportPages.length.toLocaleString()} URL(s).`,
         );
         return;
       }
@@ -659,77 +694,15 @@ export const SeoUrlList: React.FC<Props> = ({
         XLSX.utils.book_append_sheet(wb, wsSummary, 'Resumen Estado');
         XLSX.utils.book_append_sheet(wb, wsDetail, 'Detalle Completo');
 
-        const clusterHeaders = [
-          'Cliente',
-          'Proyecto',
-          'URL',
-          'KW Objetivo (PADRE)',
-          'RunId',
-          'Total Clusters',
-          'Owned Clusters',
-          'Opportunity Clusters',
-          'Cluster ID',
-          'Rol',
-          'Keyword',
-          'Intención',
-          'Cobertura',
-          'URLs SERP',
-        ];
-
-        const clusterRows: any[][] = [];
-
-        chunkPages.forEach((p) => {
-          const item = p.checklist.OPORTUNIDADES;
-          if (item?.autoData?.clusters && Array.isArray(item.autoData.clusters)) {
-            const { summary, clusters } = item.autoData;
-
-            clusters.forEach((cluster: any) => {
-              clusterRows.push([
-                currentClient?.name || '',
-                currentClient?.name || '',
-                p.url,
-                cluster.kwObjetivo,
-                cluster.runId || '',
-                summary?.totalClusters || '',
-                summary?.ownedClusters || '',
-                summary?.opportunityClusters || '',
-                cluster.clusterId,
-                'PADRE',
-                cluster.kwObjetivo,
-                cluster.intent || '',
-                cluster.coverage || 'OPPORTUNITY',
-                (cluster.topUrlsSample || cluster.urls || []).join('\n'),
-              ]);
-
-              if (cluster.variations && Array.isArray(cluster.variations)) {
-                cluster.variations.forEach((v: any) => {
-                  const kw = typeof v === 'string' ? v : v.keyword;
-                  clusterRows.push([
-                    currentClient?.name || '',
-                    currentClient?.name || '',
-                    p.url,
-                    cluster.kwObjetivo,
-                    cluster.runId || '',
-                    summary?.totalClusters || '',
-                    summary?.ownedClusters || '',
-                    summary?.opportunityClusters || '',
-                    cluster.clusterId,
-                    'VARIACIÓN',
-                    kw,
-                    cluster.intent || '',
-                    cluster.coverage || 'OPPORTUNITY',
-                    '',
-                  ]);
-                });
-              }
-            });
-          }
-        });
-
-        const wsClusters = XLSX.utils.aoa_to_sheet(
-          clusterRows.length > 0 ? [clusterHeaders, ...clusterRows] : [clusterHeaders],
+        const { finalHeaders, finalRows, historyHeaders, historyRows } = buildFinalClusterWorkbookRows(chunkPages);
+        const wsFinalStrategy = XLSX.utils.aoa_to_sheet(
+          finalRows.length > 0 ? [finalHeaders, ...finalRows] : [finalHeaders],
         );
-        XLSX.utils.book_append_sheet(wb, wsClusters, 'Clusterización (Intenciones)');
+        const wsSerpHistory = XLSX.utils.aoa_to_sheet(
+          historyRows.length > 0 ? [historyHeaders, ...historyRows] : [historyHeaders],
+        );
+        XLSX.utils.book_append_sheet(wb, wsFinalStrategy, 'Estrategia final');
+        XLSX.utils.book_append_sheet(wb, wsSerpHistory, 'Historial SERP');
 
         const fileSuffix = totalFiles > 1 ? `_part-${String(fileIndex + 1).padStart(2, '0')}` : '';
         XLSX.writeFile(

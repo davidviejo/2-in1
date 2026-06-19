@@ -15,6 +15,31 @@ const ACCEPTED_FILE_COLUMNS = ['id', 'parent', 'kw padre', 'kw_padre', 'keyword'
 
 const normalizeHeader = (value: unknown) => String(value || '').trim().toLowerCase();
 
+const numberedTextToList = (value: unknown) => {
+  const text = String(value || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+  if (!text) return [];
+  const seen = new Set<string>();
+  const items: string[] = [];
+  text
+    .replace(/(?!^)\s+(?=\d+[.)]\s+)/g, '\n')
+    .split('\n')
+    .flatMap((rawLine) => {
+      const line = rawLine.trim().replace(/^[•\-–—]\s*/, '').replace(/^\d+[.)]\s*/, '').trim();
+      if (!line) return [];
+      if (!/^https?:\/\//i.test(line) && /[,;]/.test(line)) {
+        return line.split(/[,;]/).map((part) => part.trim()).filter(Boolean);
+      }
+      return [line];
+    })
+    .forEach((item) => {
+      const key = item.toLocaleLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      items.push(item);
+    });
+  return items;
+};
+
 const getTopGscKeywords = (page: SeoPage): KwCandidate[] => {
   const rows = page.checklist?.OPORTUNIDADES?.autoData?.gscQueries;
   if (!Array.isArray(rows)) return [];
@@ -116,33 +141,44 @@ interface BackendClusterResult {
 const parseKeywordFile = async (file: File): Promise<ParsedFileKeyword[]> => {
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: 'array' });
-  const firstSheet = workbook.SheetNames[0];
-  if (!firstSheet) return [];
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[firstSheet], { defval: '' });
-
   const extracted: ParsedFileKeyword[] = [];
 
-  rows.forEach((row) => {
-    const normalizedMap = new Map<string, unknown>();
-    Object.entries(row).forEach(([key, value]) => normalizedMap.set(normalizeHeader(key), value));
-
-    const url = String(normalizedMap.get('url') || '').trim();
-    const parent = String(
-      normalizedMap.get('kw padre') || normalizedMap.get('kw_padre') || normalizedMap.get('parent') || '',
-    ).trim();
-    const mainKeyword = String(normalizedMap.get('keyword') || normalizedMap.get('kw') || '').trim();
-
-    const childrenRaw = String(normalizedMap.get('children') || normalizedMap.get('child') || '').trim();
-    const children = childrenRaw
-      .split(/[|;,]/)
-      .map((value) => value.trim())
-      .filter(Boolean);
-
-    [parent, mainKeyword, ...children].forEach((keyword) => {
-      if (!keyword) return;
-      extracted.push({ keyword, url });
+  if (workbook.Sheets['Estrategia final']) {
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets['Estrategia final'], { defval: '' });
+    rows.forEach((row) => {
+      const normalizedMap = new Map<string, unknown>();
+      Object.entries(row).forEach(([key, value]) => normalizedMap.set(normalizeHeader(key), value));
+      const parent = String(normalizedMap.get('keyword principal') || normalizedMap.get('keyword') || '').trim();
+      const ownedUrls = numberedTextToList(normalizedMap.get('urls propias'));
+      const fallbackUrl = ownedUrls[0] || '';
+      const variations = numberedTextToList(normalizedMap.get('variaciones'));
+      [parent, ...variations].forEach((keyword) => {
+        if (!keyword) return;
+        extracted.push({ keyword, url: fallbackUrl });
+      });
     });
-  });
+  } else {
+    const firstSheet = workbook.SheetNames[0];
+    if (!firstSheet) return [];
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[firstSheet], { defval: '' });
+
+    rows.forEach((row) => {
+      const normalizedMap = new Map<string, unknown>();
+      Object.entries(row).forEach(([key, value]) => normalizedMap.set(normalizeHeader(key), value));
+
+      const url = String(normalizedMap.get('url') || '').trim();
+      const parent = String(
+        normalizedMap.get('kw padre') || normalizedMap.get('kw_padre') || normalizedMap.get('parent') || '',
+      ).trim();
+      const mainKeyword = String(normalizedMap.get('keyword') || normalizedMap.get('kw') || '').trim();
+      const children = numberedTextToList(normalizedMap.get('children') || normalizedMap.get('child'));
+
+      [parent, mainKeyword, ...children].forEach((keyword) => {
+        if (!keyword) return;
+        extracted.push({ keyword, url });
+      });
+    });
+  }
 
   const deduped = new Map<string, ParsedFileKeyword>();
   extracted.forEach((row) => {
@@ -164,6 +200,7 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
   const [dataforseoExecutionMode, setDataforseoExecutionMode] = useState<'live' | 'standard' | 'priority'>('live');
   const [useDataforseoForClusterization, setUseDataforseoForClusterization] = useState(true);
   const [strategyWorkbookName, setStrategyWorkbookName] = useState('');
+  const [strategyWorkbookFile, setStrategyWorkbookFile] = useState<File | null>(null);
   const [fileKeywords, setFileKeywords] = useState<ParsedFileKeyword[]>([]);
   const [selectionConfirmed, setSelectionConfirmed] = useState(false);
   const [urlFilter, setUrlFilter] = useState('');
@@ -557,6 +594,7 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
         formData.append('dataforseo_execution_mode', dataforseoExecutionMode);
         if (dataforseoLogin) formData.append('dataforseo_login', dataforseoLogin);
         if (dataforseoPassword) formData.append('dataforseo_password', dataforseoPassword);
+        if (strategyWorkbookFile) formData.append('history_file', strategyWorkbookFile);
 
         const startResponse = await fetch(`${backendBaseUrl}/seo/start`, { method: 'POST', body: formData });
         const startPayload = await startResponse.json();
@@ -731,7 +769,7 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
           />
         </div>
         <div className="md:col-span-2">
-          <label className="text-xs">Archivo de keywords (formato backend: id + kw padre + children)</label>
+          <label className="text-xs">Archivo de estrategia final + historial SERP</label>
           <input
             type="file"
             accept=".csv,.xlsx,.xls"
@@ -739,6 +777,7 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
             onChange={async (e) => {
               const file = e.target.files?.[0];
               setStrategyWorkbookName(file?.name || '');
+              setStrategyWorkbookFile(file || null);
               if (!file) {
                 setFileKeywords([]);
                 return;
@@ -748,8 +787,8 @@ export const KwClusterizationPanel: React.FC<Props> = ({ pages, onBulkUpdate }) 
             }}
           />
           <div className="mt-2 rounded border border-dashed p-2 text-xs text-slate-600">
-            <p className="font-semibold">Plantilla backend (2 filas ejemplo)</p>
-            <p>Columnas aceptadas: {ACCEPTED_FILE_COLUMNS.join(', ')}</p>
+            <p className="font-semibold">Formatos admitidos</p>
+            <p>Preferente: pestañas Estrategia final + Historial SERP. Legacy: {ACCEPTED_FILE_COLUMNS.join(', ')}</p>
             <pre className="mt-1 overflow-auto text-[11px]">id,kw_padre,children,url,tipo\nCL-001,zapatillas running,comprar zapatillas running|zapatillas running mujer,https://midominio.com/zapatillas,principal\nCL-002,zapatillas trail,mejores zapatillas trail 2026|zapatillas trail impermeables,https://midominio.com/trail,secundaria</pre>
           </div>
         </div>
