@@ -336,27 +336,52 @@ const DataManagementPanel: React.FC = () => {
     if (!pendingBackup) return;
     const { payload, importedFromServer } = pendingBackup;
 
-    if (payload.storage) {
-      restoreMediaFlowStorageSnapshot(payload.storage);
+    setBackupImportProgress({
+      isImporting: true,
+      percent: 5,
+      step: 'Restaurando backup…',
+      detail: 'Aplicando datos en este navegador.',
+    });
+
+    try {
+      if (payload.storage) {
+        restoreMediaFlowStorageSnapshot(payload.storage);
+      }
+      setBackupImportProgress({
+        isImporting: true,
+        percent: 35,
+        step: 'Restaurando almacenamiento local…',
+      });
+
+      await restoreSeoChecklistIndexedDbSnapshot(payload.indexedDb?.seoChecklists);
+      setBackupImportProgress({
+        isImporting: true,
+        percent: 65,
+        step: 'Restaurando checklists SEO…',
+      });
+
+      restoreProjectData(
+        payload.clients,
+        payload.generalNotes || [],
+        payload.currentClientId,
+        { skipRemoteSync: importedFromServer },
+      );
+
+      if (payload.settings) {
+        updateSettings(payload.settings);
+      }
+
+      successAction(t('feedback.actions.restore_data'));
+      setPendingBackup(null);
+      setBackupImportProgress({ isImporting: true, percent: 100, step: 'Backup restaurado. Recargando…' });
+      setTimeout(() => window.location.reload(), 1200);
+    } catch (restoreError) {
+      console.error(restoreError);
+      error('No se pudo restaurar el backup. Revisa la consola y vuelve a intentarlo.', 7000);
+      setBackupImportProgress({ isImporting: false, percent: 0, step: '' });
     }
-    await restoreSeoChecklistIndexedDbSnapshot(payload.indexedDb?.seoChecklists);
-
-    restoreProjectData(
-      payload.clients,
-      payload.generalNotes || [],
-      payload.currentClientId,
-      { skipRemoteSync: importedFromServer },
-    );
-
-    if (payload.settings) {
-      updateSettings(payload.settings);
-    }
-
-    successAction(t('feedback.actions.restore_data'));
-    setPendingBackup(null);
-    setBackupImportProgress({ isImporting: false, percent: 0, step: '' });
-    setTimeout(() => window.location.reload(), 1200);
   };
+
 
   return (
     <div className="bg-slate-100 dark:bg-slate-800 rounded-xl p-4 mt-6 border border-slate-200 dark:border-slate-700">

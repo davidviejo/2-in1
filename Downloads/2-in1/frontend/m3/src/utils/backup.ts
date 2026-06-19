@@ -66,14 +66,38 @@ const CHECKLIST_DB_STORE = 'seo-checklists';
 
 const canUseIndexedDb = () => typeof window !== 'undefined' && typeof window.indexedDB !== 'undefined';
 
+const ensureSeoChecklistStore = (db: IDBDatabase) => {
+  if (!db.objectStoreNames.contains(CHECKLIST_DB_STORE)) {
+    db.createObjectStore(CHECKLIST_DB_STORE);
+  }
+};
+
+const openSeoChecklistDb = async (): Promise<IDBDatabase> => {
+  const openDb = (version?: number) =>
+    new Promise<IDBDatabase>((resolve, reject) => {
+      const request = version
+        ? window.indexedDB.open(CHECKLIST_DB_NAME, version)
+        : window.indexedDB.open(CHECKLIST_DB_NAME);
+
+      request.onupgradeneeded = () => ensureSeoChecklistStore(request.result);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error('No se pudo abrir IndexedDB de checklists SEO.'));
+    });
+
+  const db = await openDb();
+  if (db.objectStoreNames.contains(CHECKLIST_DB_STORE)) {
+    return db;
+  }
+
+  const nextVersion = db.version + 1;
+  db.close();
+  return openDb(nextVersion);
+};
+
 const readSeoChecklistIndexedDbSnapshot = async (): Promise<Record<string, unknown>> => {
   if (!canUseIndexedDb()) return {};
 
-  const db = await new Promise<IDBDatabase>((resolve, reject) => {
-    const request = window.indexedDB.open(CHECKLIST_DB_NAME, 1);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error || new Error('No se pudo abrir IndexedDB para backup.'));
-  });
+  const db = await openSeoChecklistDb();
 
   return new Promise((resolve, reject) => {
     const tx = db.transaction(CHECKLIST_DB_STORE, 'readonly');
@@ -335,11 +359,7 @@ export const restoreMediaFlowStorageSnapshot = (
 export const restoreSeoChecklistIndexedDbSnapshot = async (snapshot?: Record<string, unknown>) => {
   if (!snapshot || !canUseIndexedDb()) return;
 
-  const db = await new Promise<IDBDatabase>((resolve, reject) => {
-    const request = window.indexedDB.open(CHECKLIST_DB_NAME, 1);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error || new Error('No se pudo abrir IndexedDB para restaurar.'));
-  });
+  const db = await openSeoChecklistDb();
 
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(CHECKLIST_DB_STORE, 'readwrite');
