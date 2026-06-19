@@ -785,7 +785,7 @@ const Layout: React.FC<LayoutProps> = ({
 
       {/* Main Content */}
       <main className="flex-1 overflow-auto bg-slate-50/50 dark:bg-slate-900/50 w-full relative">
-        <div className="max-w-7xl mx-auto p-4 lg:p-8">
+        <div className="app-page-content mx-auto w-4/5 max-w-none p-4 lg:p-8">
           {howItWorksConfig && <HowItWorksPanel title={howItWorksConfig.title} steps={howItWorksConfig.steps} />}
           {children}
         </div>
