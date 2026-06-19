@@ -41,6 +41,137 @@ job_status = {
 _status_lock = threading.Lock()
 
 
+
+FINAL_STRATEGY_SHEET_NAME = 'Estrategia final'
+LEGACY_STRATEGY_SHEET_NAME = 'Estrategia'
+LEGACY_URLS_SHEET_NAME = 'URLs'
+LEGACY_OVERLAP_SHEET_NAME = 'Overlap SERP'
+SERP_HISTORY_SHEET_NAME = 'Historial SERP'
+SERP_HISTORY_COLUMNS = ['Cluster ID', 'Keyword', 'Tipo keyword', 'Rank', 'URL', 'Título']
+FINAL_EXPORT_COLUMNS = [
+    'Cluster ID', 'Keyword principal', 'Variaciones', 'Nº keywords', 'Intención', 'Cobertura',
+    'URLs propias', 'URLs SERP principales', 'Nº URLs SERP', 'Títulos SERP principales',
+    'Avg Palabras', 'Avg Imágenes', 'Entidades', 'Estructura'
+]
+INTERNAL_EXPORT_COLUMNS = {
+    'archivo origen', 'sheet origen', 'ids originales', 'match strict',
+    'nº urls coincidentes entre sheets', 'estado de unión', 'rol', 'keyword',
+    'urls coincidentes entre variaciones', 'urls coincidentes', 'dominios coincidentes',
+    'keyword padre', 'keyword variación', 'score', 'umbral', 'padre', 'rank', 'url', 'título'
+}
+
+
+def clean_list(values):
+    """Deduplica elementos no vacíos conservando el primer orden observado."""
+    seen = set(); cleaned = []
+    if values is None:
+        return cleaned
+    if not isinstance(values, (list, tuple, set)):
+        values = [values]
+    for value in values:
+        if pd.isna(value):
+            continue
+        text = str(value).strip()
+        if not text or text.lower() in {'nan', 'none'}:
+            continue
+        key = text.casefold()
+        if key not in seen:
+            seen.add(key); cleaned.append(text)
+    return cleaned
+
+
+def list_to_numbered_text(values):
+    """Convierte una lista interna a un bloque numerado estable y legible para Excel."""
+    return "\n".join(f"{idx}. {value}" for idx, value in enumerate(clean_list(values), 1))
+
+
+def numbered_text_to_list(value):
+    """Parsea bloques numerados de Excel/Sheets a lista, tolerando saltos y pegados manuales."""
+    if value is None or (not isinstance(value, str) and pd.isna(value)):
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return clean_list(value)
+    text = str(value).replace('\r\n', '\n').replace('\r', '\n').strip()
+    if not text or text.lower() in {'nan', 'none'}:
+        return []
+    text = re.sub(r'(?<!^)\s+(?=\d+[\.)]\s+)', '\n', text)
+    items = []
+    for raw_line in text.split('\n'):
+        line = raw_line.strip().strip('•-–—').strip()
+        if not line:
+            continue
+        line = re.sub(r'^\d+[\.)]\s*', '', line).strip()
+        if (',' in line or ';' in line) and not re.match(r'https?://', line, re.I):
+            items.extend(part.strip() for part in re.split(r'[,;]', line) if part.strip())
+        else:
+            items.append(line)
+    return clean_list(items)
+
+
+def _first_present(row, names, default=''):
+    for name in names:
+        if name in row and not pd.isna(row.get(name)):
+            value = row.get(name)
+            if str(value).strip():
+                return value
+    return default
+
+
+def _as_number_or_dash(value):
+    if value is None or (not isinstance(value, str) and pd.isna(value)):
+        return '-'
+    text = str(value).strip()
+    if not text or text == '-':
+        return '-'
+    try:
+        num = float(text)
+        return int(num) if num.is_integer() else num
+    except (TypeError, ValueError):
+        return value
+
+
+def _valid_url_list(values):
+    return all(re.match(r'^https?://[^\s]+$', url, re.I) for url in values)
+
+
+def validate_final_strategy_dataframe(df):
+    errors = []
+    missing = {'Cluster ID', 'Keyword principal'} - set(df.columns)
+    if missing:
+        errors.append(f"Faltan columnas obligatorias: {', '.join(sorted(missing))}")
+    internal = [col for col in df.columns if col.strip().casefold() in INTERNAL_EXPORT_COLUMNS]
+    if internal:
+        errors.append(f"La exportación final contiene columnas internas: {', '.join(internal)}")
+    if errors:
+        raise ValueError('; '.join(errors))
+    seen_ids = set()
+    for idx, row in df.iterrows():
+        row_num = idx + 2
+        cid = str(row.get('Cluster ID', '') or '').strip()
+        keyword = str(row.get('Keyword principal', '') or '').strip()
+        if not cid:
+            errors.append(f'Fila {row_num}: Cluster ID vacío')
+        if cid in seen_ids:
+            errors.append(f'Fila {row_num}: Cluster ID duplicado {cid}')
+        seen_ids.add(cid)
+        if not keyword:
+            errors.append(f'Fila {row_num}: Keyword principal vacía')
+        for col in ('URLs propias', 'URLs SERP principales'):
+            parsed = numbered_text_to_list(row.get(col, ''))
+            if parsed and not _valid_url_list(parsed):
+                errors.append(f'Fila {row_num}: {col} contiene URLs inválidas')
+        for col in ('Nº keywords', 'Nº URLs SERP', 'Avg Palabras', 'Avg Imágenes'):
+            value = row.get(col, '')
+            if value is None or (not isinstance(value, str) and pd.isna(value)) or str(value).strip() in {'', '-'}:
+                continue
+            try:
+                float(value)
+            except (TypeError, ValueError):
+                errors.append(f'Fila {row_num}: {col} debe ser numérico o vacío')
+    if errors:
+        raise ValueError('; '.join(errors))
+
+
 # --- UTILIDADES GENERALES ---
 
 def update_status(**kwargs):
@@ -657,84 +788,116 @@ def dispatcher(kw, cfg):
 
 # --- HISTÓRICO DESDE EXCEL ---
 
+def _cluster_from_final_row(row):
+    cid = str(_first_present(row, ['Cluster ID', 'ID Cluster'], '') or '').strip()
+    parent = str(_first_present(row, ['Keyword principal', 'Keyword Principal', 'Keyword', 'Keyword padre'], '') or '').strip()
+    variations = numbered_text_to_list(_first_present(row, ['Variaciones', 'Keywords secundarias', 'Keywords'], ''))
+    owned_urls = numbered_text_to_list(_first_present(row, ['URLs propias', 'URLs Propias', 'Owned URLs'], ''))
+    serp_urls = numbered_text_to_list(_first_present(row, ['URLs SERP principales', 'URLs SERP', 'URLs'], ''))
+    serp_titles = numbered_text_to_list(_first_present(row, ['Títulos SERP principales', 'Títulos SERP', 'Titulos SERP'], ''))
+    entities = numbered_text_to_list(_first_present(row, ['Entidades'], ''))
+    structure = numbered_text_to_list(_first_present(row, ['Estructura'], ''))
+    serp_dump = []
+    for idx, url in enumerate(serp_urls, 1):
+        serp_dump.append({'url': url, 'title': serp_titles[idx - 1] if idx - 1 < len(serp_titles) else '', 'rank': idx})
+    return {
+        'id': cid,
+        'parent': parent,
+        'children': [v for v in variations if v.casefold() != parent.casefold()],
+        'urls_set': set(serp_urls),
+        'serp_dump': serp_dump,
+        'analyzed': str(_first_present(row, ['Avg Palabras'], '-')).strip() not in {'', '-'},
+        'avg_words': _as_number_or_dash(_first_present(row, ['Avg Palabras'], '-')),
+        'avg_imgs': _as_number_or_dash(_first_present(row, ['Avg Imágenes', 'Avg Imagenes'], '-')),
+        'top_structure': structure or _first_present(row, ['Estructura'], '-'),
+        'entities': entities or _first_present(row, ['Entidades'], '-'),
+        'own_urls': owned_urls,
+        'own_count': len(owned_urls),
+        'coverage': _first_present(row, ['Cobertura'], '-'),
+        'intent': _first_present(row, ['Intención', 'Intencion'], '-') or classify_intent(parent),
+        'overlap_evidence': [],
+    }
+
+
+def _load_final_strategy_history(f):
+    df = pd.read_excel(f, sheet_name=FINAL_STRATEGY_SHEET_NAME)
+    validate_final_strategy_dataframe(df)
+    clusters = []
+    max_id = 0
+    for _, row in df.iterrows():
+        cluster = _cluster_from_final_row(row)
+        if not cluster['id'] or not cluster['parent']:
+            continue
+        try:
+            max_id = max(max_id, int(re.search(r'\d+', cluster['id']).group()))
+        except (AttributeError, TypeError, ValueError):
+            pass
+        clusters.append(cluster)
+    return clusters, max_id
+
+
+def _load_legacy_history(f):
+    df_s = pd.read_excel(f, sheet_name=LEGACY_STRATEGY_SHEET_NAME)
+    try:
+        df_u = pd.read_excel(f, sheet_name=LEGACY_URLS_SHEET_NAME)
+    except (ValueError, FileNotFoundError):
+        df_u = pd.DataFrame()
+    try:
+        df_o = pd.read_excel(f, sheet_name=LEGACY_OVERLAP_SHEET_NAME)
+    except (ValueError, FileNotFoundError):
+        df_o = pd.DataFrame()
+    clusters = {}
+    max_id = 0
+    for _, r in df_s.iterrows():
+        cid = r['Cluster ID']
+        try:
+            max_id = max(max_id, int(re.search(r'\d+', cid).group()))
+        except (AttributeError, TypeError, ValueError):
+            pass
+        if cid not in clusters:
+            clusters[cid] = {
+                'id': cid, 'parent': '', 'children': [], 'urls_set': set(), 'serp_dump': [],
+                'analyzed': str(r.get('Avg Palabras', '-')) != '-', 'avg_words': r.get('Avg Palabras', '-'),
+                'avg_imgs': r.get('Avg Imágenes', '-'), 'top_structure': r.get('Estructura', '-'),
+                'entities': r.get('Entidades', '-'), 'own_urls': numbered_text_to_list(r.get('URLs Propias', '')),
+                'own_count': 0, 'coverage': r.get('Cobertura', '-') if 'Cobertura' in df_s.columns else '-',
+                'intent': r.get('Intención', '-') if 'Intención' in df_s.columns else '-', 'overlap_evidence': []
+            }
+        if str(r.get('Rol', '')).upper() == 'PADRE':
+            clusters[cid]['parent'] = r.get('Keyword', '')
+        else:
+            clusters[cid]['children'].append(r.get('Keyword', ''))
+    for _, r in df_u.iterrows():
+        cid = r.get('Cluster ID')
+        if cid in clusters:
+            url = r.get('URL')
+            if url:
+                clusters[cid]['urls_set'].add(url)
+                clusters[cid]['serp_dump'].append({'url': url, 'title': r.get('Título', ''), 'rank': r.get('Rank', '')})
+    for c in clusters.values():
+        c['own_urls'] = clean_list(c.get('own_urls', [])); c['own_count'] = len(c['own_urls'])
+    if not df_o.empty:
+        for _, r in df_o.iterrows():
+            cid = r.get('Cluster ID')
+            if cid not in clusters:
+                continue
+            clusters[cid]['overlap_evidence'].append({
+                'baseKeyword': r.get('Keyword Padre', ''), 'variationKeyword': r.get('Keyword Variación', ''),
+                'commonUrls': numbered_text_to_list(r.get('URLs Coincidentes', '')),
+                'commonDomains': numbered_text_to_list(r.get('Dominios Coincidentes', '')),
+                'score': r.get('Score', '-'), 'threshold': r.get('Umbral', '-'),
+            })
+    return list(clusters.values()), max_id
+
+
 def load_history(f):
     try:
-        df_s = pd.read_excel(f, sheet_name='Estrategia')
-        df_u = pd.read_excel(f, sheet_name='URLs')
-        try:
-            df_o = pd.read_excel(f, sheet_name='Overlap SERP')
-        except Exception:
-            df_o = pd.DataFrame()
-        clusters = {}
-        max_id = 0
-        for _, r in df_s.iterrows():
-            cid = r['Cluster ID']
-            try:
-                max_id = max(max_id, int(re.search(r'\d+', cid).group()))
-            except Exception:
-                pass
-            if cid not in clusters:
-                clusters[cid] = {
-                    'id': cid,
-                    'parent': '',
-                    'children': [],
-                    'urls_set': set(),
-                    'serp_dump': [],
-                    'analyzed': str(r.get('Avg Palabras', '-')) != '-',
-                    'avg_words': r.get('Avg Palabras', '-'),
-                    'avg_imgs': r.get('Avg Imágenes', '-'),
-                    'top_structure': r.get('Estructura', '-'),
-                    'entities': r.get('Entidades', '-'),
-                    # Campos nuevos, si existen en el Excel se respetan
-                    'own_urls': [],
-                    'own_count': 0,
-                    'coverage': r.get('Cobertura', '-') if 'Cobertura' in df_s.columns else '-',
-                    'intent': r.get('Intención', '-') if 'Intención' in df_s.columns else '-',
-                    'overlap_evidence': []
-                }
-            if r['Rol'] == 'PADRE':
-                clusters[cid]['parent'] = r['Keyword']
-            else:
-                clusters[cid]['children'].append(r['Keyword'])
-
-        for _, r in df_u.iterrows():
-            cid = r['Cluster ID']
-            if cid in clusters:
-                clusters[cid]['urls_set'].add(r['URL'])
-                clusters[cid]['serp_dump'].append({
-                    'url': r['URL'],
-                    'title': r['Título'],
-                    'rank': r['Rank']
-                })
-
-        if not df_o.empty:
-            for _, r in df_o.iterrows():
-                cid = r.get('Cluster ID')
-                if cid not in clusters:
-                    continue
-                common_urls = [
-                    value.strip()
-                    for value in str(r.get('URLs Coincidentes', '') or '').split('\n')
-                    if value.strip()
-                ]
-                common_domains = [
-                    value.strip()
-                    for value in str(r.get('Dominios Coincidentes', '') or '').split(',')
-                    if value.strip()
-                ]
-                clusters[cid]['overlap_evidence'].append({
-                    'baseKeyword': r.get('Keyword Padre', ''),
-                    'variationKeyword': r.get('Keyword Variación', ''),
-                    'commonUrls': common_urls,
-                    'commonDomains': common_domains,
-                    'score': r.get('Score', '-'),
-                    'threshold': r.get('Umbral', '-'),
-                })
-
-        return list(clusters.values()), max_id
-    except Exception:
+        xl = pd.ExcelFile(f)
+        if FINAL_STRATEGY_SHEET_NAME in xl.sheet_names:
+            return _load_final_strategy_history(xl)
+        return _load_legacy_history(xl)
+    except (OSError, ValueError, KeyError, TypeError):
         return [], 0
-
 
 # --- CLUSTERING LOGIC (REUSABLE) ---
 
@@ -1507,93 +1670,110 @@ def build_optimization_prompt():
     final_prompt = "\n\n".join(prompt_parts)
     return jsonify({'status': 'ok', 'prompt': final_prompt})
 
+def _cluster_to_final_row(c):
+    an = c.get('analyzed', False)
+    variations = c.get('children', []) or []
+    serp_dump = c.get('serp_dump', []) or []
+    serp_urls = [u.get('url') for u in serp_dump if u.get('url')]
+    serp_titles = [u.get('title') for u in serp_dump if u.get('title')]
+    entities = c.get('entities', '-') if an else '-'
+    structure = c.get('top_structure', '-') if an else '-'
+    return {
+        'Cluster ID': c.get('id'),
+        'Keyword principal': c.get('parent'),
+        'Variaciones': list_to_numbered_text(variations),
+        'Nº keywords': 1 + len(clean_list(variations)),
+        'Intención': c.get('intent', '-') or classify_intent(c.get('parent', '')),
+        'Cobertura': c.get('coverage', '-'),
+        'URLs propias': list_to_numbered_text(c.get('own_urls', [])),
+        'URLs SERP principales': list_to_numbered_text(serp_urls),
+        'Nº URLs SERP': len(clean_list(serp_urls)),
+        'Títulos SERP principales': list_to_numbered_text(serp_titles),
+        'Avg Palabras': c.get('avg_words', '-') if an else '-',
+        'Avg Imágenes': c.get('avg_imgs', '-') if an else '-',
+        'Entidades': list_to_numbered_text(entities) if isinstance(entities, (list, tuple, set)) else entities,
+        'Estructura': list_to_numbered_text(structure) if isinstance(structure, (list, tuple, set)) else structure,
+    }
+
+
+def build_final_strategy_dataframe(clusters):
+    rows = [_cluster_to_final_row(c) for c in clusters if c.get('id') and c.get('parent')]
+    df = pd.DataFrame(rows, columns=FINAL_EXPORT_COLUMNS)
+    validate_final_strategy_dataframe(df)
+    return df
+
+
+def build_serp_history_dataframe(clusters):
+    rows = []
+    for cluster in clusters:
+        cid = cluster.get('id')
+        parent = cluster.get('parent') or ''
+        keyword_serps = cluster.get('keyword_serps') or {}
+        if not keyword_serps and cluster.get('serp_dump'):
+            keyword_serps = {parent: cluster.get('serp_dump') or []}
+        for keyword, results in keyword_serps.items():
+            keyword_type = 'Principal' if str(keyword).casefold() == str(parent).casefold() else 'Variación'
+            for idx, result in enumerate(results or [], 1):
+                url = result.get('url') or result.get('link') or ''
+                if not url:
+                    continue
+                rows.append({
+                    'Cluster ID': cid,
+                    'Keyword': keyword,
+                    'Tipo keyword': keyword_type,
+                    'Rank': result.get('rank') or idx,
+                    'URL': url,
+                    'Título': result.get('title') or result.get('titulo') or '',
+                })
+    return pd.DataFrame(rows, columns=SERP_HISTORY_COLUMNS)
+
+
+def _style_worksheet(ws, widths, wrap_columns):
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+    ws.freeze_panes = 'A2'
+    ws.auto_filter.ref = ws.dimensions
+    header_fill = PatternFill('solid', fgColor='1F4E78')
+    for cell in ws[1]:
+        cell.font = Font(bold=True, color='FFFFFF')
+        cell.fill = header_fill
+        cell.alignment = Alignment(vertical='center', wrap_text=True)
+    for idx, column_name in enumerate([cell.value for cell in ws[1]], 1):
+        letter = get_column_letter(idx)
+        ws.column_dimensions[letter].width = widths.get(column_name, 24)
+        if column_name in wrap_columns:
+            for cell in ws[letter][1:]:
+                cell.alignment = Alignment(wrap_text=True, vertical='top')
+
+
+def write_final_strategy_excel(clusters, output):
+    df = build_final_strategy_dataframe(clusters)
+    history_df = build_serp_history_dataframe(clusters)
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name=FINAL_STRATEGY_SHEET_NAME, index=False)
+        history_df.to_excel(writer, sheet_name=SERP_HISTORY_SHEET_NAME, index=False)
+        _style_worksheet(
+            writer.book[FINAL_STRATEGY_SHEET_NAME],
+            {
+                'Cluster ID': 14, 'Keyword principal': 32, 'Variaciones': 42, 'Nº keywords': 12,
+                'Intención': 18, 'Cobertura': 18, 'URLs propias': 45, 'URLs SERP principales': 55,
+                'Nº URLs SERP': 14, 'Títulos SERP principales': 45, 'Avg Palabras': 13,
+                'Avg Imágenes': 13, 'Entidades': 40, 'Estructura': 48,
+            },
+            {'Variaciones', 'URLs propias', 'URLs SERP principales', 'Títulos SERP principales', 'Entidades', 'Estructura'},
+        )
+        _style_worksheet(
+            writer.book[SERP_HISTORY_SHEET_NAME],
+            {'Cluster ID': 14, 'Keyword': 32, 'Tipo keyword': 16, 'Rank': 10, 'URL': 60, 'Título': 45},
+            {'URL', 'Título'},
+        )
+    return output
+
+
 @seo_bp.route('/download')
 def download():
     data = job_status['results']
-    r1, r2, r3 = [], [], []
-
-    def _format_overlap_urls(cluster, keyword=None):
-        urls = []
-        for evidence in cluster.get('overlap_evidence', []) or []:
-            if keyword and evidence.get('variationKeyword') != keyword and evidence.get('baseKeyword') != keyword:
-                continue
-            for url in evidence.get('commonUrls', []) or []:
-                if url and url not in urls:
-                    urls.append(url)
-        return "\n".join(urls)
-
-    for c in data:
-        an = c.get('analyzed', False)
-        r1.append({
-            'Cluster ID': c.get('id'),
-            'Rol': 'PADRE',
-            'Keyword': c.get('parent'),
-            'Avg Palabras': c.get('avg_words', '-') if an else '-',
-            'Avg Imágenes': c.get('avg_imgs', '-') if an else '-',
-            'Entidades': c.get('entities', '-') if an else '-',
-            'Estructura': c.get('top_structure', '-') if an else '-',
-            # NUEVO
-            'Cobertura': c.get('coverage', '-'),
-            'URLs Propias': ", ".join(c.get('own_urls', [])),
-            'Intención': c.get('intent', '-'),
-            'URLs Coincidentes entre Variaciones': _format_overlap_urls(c)
-        })
-
-        for ch in c.get('children', []):
-            r1.append({
-                'Cluster ID': c.get('id'),
-                'Rol': 'Variación',
-                'Keyword': ch,
-                'Avg Palabras': '-',
-                'Avg Imágenes': '-',
-                'Entidades': '-',
-                'Estructura': '-',
-                'Cobertura': '-',
-                'URLs Propias': '',
-                'Intención': c.get('intent', '-'),
-                'URLs Coincidentes entre Variaciones': _format_overlap_urls(c, ch)
-            })
-
-        for u in c.get('serp_dump', []):
-            r2.append({
-                'Cluster ID': c.get('id'),
-                'Padre': c.get('parent'),
-                'Rank': u.get('rank'),
-                'URL': u.get('url'),
-                'Título': u.get('title')
-            })
-
-        for evidence in c.get('overlap_evidence', []) or []:
-            r3.append({
-                'Cluster ID': c.get('id'),
-                'Keyword Padre': evidence.get('baseKeyword') or c.get('parent'),
-                'Keyword Variación': evidence.get('variationKeyword'),
-                'Score': evidence.get('score'),
-                'Umbral': evidence.get('threshold'),
-                'URLs Coincidentes': "\n".join(evidence.get('commonUrls', []) or []),
-                'Dominios Coincidentes': ", ".join(evidence.get('commonDomains', []) or [])
-            })
-
-
-    for row in (job_status.get('unclusterable_keywords') or []):
-        r1.append({
-            'Cluster ID': '',
-            'Rol': 'No clusterizable',
-            'Keyword': row.get('keyword'),
-            'Avg Palabras': '-',
-            'Avg Imágenes': '-',
-            'Entidades': '-',
-            'Estructura': '-',
-            'Cobertura': '-',
-            'URLs Propias': '',
-            'Intención': row.get('reason', 'No se pudo clusterizar'),
-            'URLs Coincidentes entre Variaciones': ''
-        })
-
     o = io.BytesIO()
-    with pd.ExcelWriter(o, engine='openpyxl') as w:
-        pd.DataFrame(r1).to_excel(w, sheet_name='Estrategia', index=False)
-        pd.DataFrame(r2).to_excel(w, sheet_name='URLs', index=False)
-        pd.DataFrame(r3).to_excel(w, sheet_name='Overlap SERP', index=False)
+    write_final_strategy_excel(data, o)
     o.seek(0)
-    return send_file(o, download_name='seo_v17.xlsx', as_attachment=True)
+    return send_file(o, download_name='seo_estrategia_final.xlsx', as_attachment=True)
