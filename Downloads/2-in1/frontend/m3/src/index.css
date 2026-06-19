@@ -48,6 +48,13 @@
   --color-info-soft: 12 74 110;
 }
 
+@layer components {
+  .app-page-content > :not(.overlay-backdrop) {
+    width: 100%;
+    max-width: none;
+  }
+}
+
 @layer utilities {
   .page-shell {
     @apply space-y-6 text-foreground;
