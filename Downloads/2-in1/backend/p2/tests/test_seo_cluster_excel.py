@@ -5,7 +5,9 @@ from openpyxl import load_workbook
 
 from apps.web.blueprints.seo_tool import (
     FINAL_STRATEGY_SHEET_NAME,
+    SERP_HISTORY_SHEET_NAME,
     build_final_strategy_dataframe,
+    build_serp_history_dataframe,
     list_to_numbered_text,
     load_history,
     numbered_text_to_list,
@@ -80,6 +82,10 @@ def test_export_new_format_single_sheet_no_internal_columns_and_roundtrip():
         'coverage': 'Cubierto',
         'own_urls': ['https://example.com/a', 'https://example.com/a'],
         'serp_dump': [{'url': 'https://serp.test/a', 'title': 'A', 'rank': 1}],
+        'keyword_serps': {
+            'padre': [{'url': 'https://serp.test/a', 'title': 'A', 'rank': 1}],
+            'hija': [{'url': 'https://serp.test/b', 'title': 'B', 'rank': 1}],
+        },
         'analyzed': True,
         'avg_words': 1200,
         'avg_imgs': 3,
@@ -92,15 +98,24 @@ def test_export_new_format_single_sheet_no_internal_columns_and_roundtrip():
         'URLs propias', 'URLs SERP principales', 'Nº URLs SERP', 'Títulos SERP principales',
         'Avg Palabras', 'Avg Imágenes', 'Entidades', 'Estructura'
     ]
+    history_df = build_serp_history_dataframe(clusters)
+    assert history_df[['Keyword', 'Tipo keyword', 'URL']].to_dict('records') == [
+        {'Keyword': 'padre', 'Tipo keyword': 'Principal', 'URL': 'https://serp.test/a'},
+        {'Keyword': 'hija', 'Tipo keyword': 'Variación', 'URL': 'https://serp.test/b'},
+    ]
     buf = io.BytesIO()
     write_final_strategy_excel(clusters, buf)
     buf.seek(0)
     wb = load_workbook(buf)
-    assert wb.sheetnames == [FINAL_STRATEGY_SHEET_NAME]
+    assert wb.sheetnames == [FINAL_STRATEGY_SHEET_NAME, SERP_HISTORY_SHEET_NAME]
     ws = wb[FINAL_STRATEGY_SHEET_NAME]
     assert ws.freeze_panes == 'A2'
     assert ws.auto_filter.ref is not None
     assert ws['C2'].alignment.wrap_text is True
+    history_ws = wb[SERP_HISTORY_SHEET_NAME]
+    assert history_ws['B2'].value == 'padre'
+    assert history_ws['C3'].value == 'Variación'
+    assert history_ws['E3'].value == 'https://serp.test/b'
     buf.seek(0)
     imported, _ = load_history(buf)
     assert imported[0]['children'] == ['hija', 'otra hija']

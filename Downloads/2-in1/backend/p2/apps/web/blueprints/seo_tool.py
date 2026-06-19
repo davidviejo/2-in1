@@ -46,6 +46,8 @@ FINAL_STRATEGY_SHEET_NAME = 'Estrategia final'
 LEGACY_STRATEGY_SHEET_NAME = 'Estrategia'
 LEGACY_URLS_SHEET_NAME = 'URLs'
 LEGACY_OVERLAP_SHEET_NAME = 'Overlap SERP'
+SERP_HISTORY_SHEET_NAME = 'Historial SERP'
+SERP_HISTORY_COLUMNS = ['Cluster ID', 'Keyword', 'Tipo keyword', 'Rank', 'URL', 'Título']
 FINAL_EXPORT_COLUMNS = [
     'Cluster ID', 'Keyword principal', 'Variaciones', 'Nº keywords', 'Intención', 'Cobertura',
     'URLs propias', 'URLs SERP principales', 'Nº URLs SERP', 'Títulos SERP principales',
@@ -1701,33 +1703,70 @@ def build_final_strategy_dataframe(clusters):
     return df
 
 
-def write_final_strategy_excel(clusters, output):
+def build_serp_history_dataframe(clusters):
+    rows = []
+    for cluster in clusters:
+        cid = cluster.get('id')
+        parent = cluster.get('parent') or ''
+        keyword_serps = cluster.get('keyword_serps') or {}
+        if not keyword_serps and cluster.get('serp_dump'):
+            keyword_serps = {parent: cluster.get('serp_dump') or []}
+        for keyword, results in keyword_serps.items():
+            keyword_type = 'Principal' if str(keyword).casefold() == str(parent).casefold() else 'Variación'
+            for idx, result in enumerate(results or [], 1):
+                url = result.get('url') or result.get('link') or ''
+                if not url:
+                    continue
+                rows.append({
+                    'Cluster ID': cid,
+                    'Keyword': keyword,
+                    'Tipo keyword': keyword_type,
+                    'Rank': result.get('rank') or idx,
+                    'URL': url,
+                    'Título': result.get('title') or result.get('titulo') or '',
+                })
+    return pd.DataFrame(rows, columns=SERP_HISTORY_COLUMNS)
+
+
+def _style_worksheet(ws, widths, wrap_columns):
     from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.utils import get_column_letter
+    ws.freeze_panes = 'A2'
+    ws.auto_filter.ref = ws.dimensions
+    header_fill = PatternFill('solid', fgColor='1F4E78')
+    for cell in ws[1]:
+        cell.font = Font(bold=True, color='FFFFFF')
+        cell.fill = header_fill
+        cell.alignment = Alignment(vertical='center', wrap_text=True)
+    for idx, column_name in enumerate([cell.value for cell in ws[1]], 1):
+        letter = get_column_letter(idx)
+        ws.column_dimensions[letter].width = widths.get(column_name, 24)
+        if column_name in wrap_columns:
+            for cell in ws[letter][1:]:
+                cell.alignment = Alignment(wrap_text=True, vertical='top')
+
+
+def write_final_strategy_excel(clusters, output):
     df = build_final_strategy_dataframe(clusters)
+    history_df = build_serp_history_dataframe(clusters)
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, sheet_name=FINAL_STRATEGY_SHEET_NAME, index=False)
-        ws = writer.book[FINAL_STRATEGY_SHEET_NAME]
-        ws.freeze_panes = 'A2'
-        ws.auto_filter.ref = ws.dimensions
-        header_fill = PatternFill('solid', fgColor='1F4E78')
-        for cell in ws[1]:
-            cell.font = Font(bold=True, color='FFFFFF')
-            cell.fill = header_fill
-            cell.alignment = Alignment(vertical='center', wrap_text=True)
-        wrap_columns = {'Variaciones', 'URLs propias', 'URLs SERP principales', 'Títulos SERP principales', 'Entidades', 'Estructura'}
-        widths = {
-            'Cluster ID': 14, 'Keyword principal': 32, 'Variaciones': 42, 'Nº keywords': 12,
-            'Intención': 18, 'Cobertura': 18, 'URLs propias': 45, 'URLs SERP principales': 55,
-            'Nº URLs SERP': 14, 'Títulos SERP principales': 45, 'Avg Palabras': 13,
-            'Avg Imágenes': 13, 'Entidades': 40, 'Estructura': 48,
-        }
-        for idx, column_name in enumerate(FINAL_EXPORT_COLUMNS, 1):
-            letter = get_column_letter(idx)
-            ws.column_dimensions[letter].width = widths.get(column_name, 24)
-            if column_name in wrap_columns:
-                for cell in ws[letter][1:]:
-                    cell.alignment = Alignment(wrap_text=True, vertical='top')
+        history_df.to_excel(writer, sheet_name=SERP_HISTORY_SHEET_NAME, index=False)
+        _style_worksheet(
+            writer.book[FINAL_STRATEGY_SHEET_NAME],
+            {
+                'Cluster ID': 14, 'Keyword principal': 32, 'Variaciones': 42, 'Nº keywords': 12,
+                'Intención': 18, 'Cobertura': 18, 'URLs propias': 45, 'URLs SERP principales': 55,
+                'Nº URLs SERP': 14, 'Títulos SERP principales': 45, 'Avg Palabras': 13,
+                'Avg Imágenes': 13, 'Entidades': 40, 'Estructura': 48,
+            },
+            {'Variaciones', 'URLs propias', 'URLs SERP principales', 'Títulos SERP principales', 'Entidades', 'Estructura'},
+        )
+        _style_worksheet(
+            writer.book[SERP_HISTORY_SHEET_NAME],
+            {'Cluster ID': 14, 'Keyword': 32, 'Tipo keyword': 16, 'Rank': 10, 'URL': 60, 'Título': 45},
+            {'URL', 'Título'},
+        )
     return output
 
 
