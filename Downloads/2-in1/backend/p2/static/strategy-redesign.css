@@ -1,0 +1,118 @@
+/* Shared redesign for backend tool pages, inspired by /frameworks. */
+.strategy-modern {
+  --strategy-ink: #0f172a;
+  --strategy-muted: #64748b;
+  --strategy-card: #fff;
+  --strategy-line: rgba(148, 163, 184, 0.24);
+  background: #fff !important;
+}
+
+html,
+body,
+body:has(.strategy-modern),
+main.strategy-modern,
+main.strategy-modern > div,
+.strategy-modern .container-fluid,
+.strategy-modern .container-fluid:not(.frameworks-page) {
+  background: #fff !important;
+  background-image: none !important;
+}
+
+.strategy-modern .container-fluid:not(.frameworks-page) {
+  background: #fff !important;
+  background-image: none !important;
+  width: min(100%, 80vw);
+  max-width: none;
+  margin-inline: auto;
+}
+
+@media (max-width: 1200px) {
+  .strategy-modern .container-fluid:not(.frameworks-page) {
+    width: 100%;
+  }
+}
+
+.strategy-modern h2:first-of-type {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 1.5rem !important;
+  padding: 2rem;
+  border: 0;
+  border-radius: 1.5rem;
+  color: #fff;
+  background:
+    radial-gradient(circle at 88% 22%, rgba(255,255,255,.18), transparent 16rem),
+    linear-gradient(135deg, #0f172a 0%, #1d4ed8 54%, #0ea5e9 100%);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+  font-weight: 800;
+}
+.strategy-modern h2:first-of-type::after {
+  content: none;
+}
+.strategy-modern .card,
+.strategy-modern .alert,
+.strategy-modern .nav-tabs {
+  border: 1px solid var(--strategy-line) !important;
+  border-radius: 1.25rem !important;
+  background: #fff !important;
+  background-image: none !important;
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08) !important;
+}
+.strategy-modern .card { overflow: hidden; }
+.strategy-modern .card.shadow,
+.strategy-modern .card.shadow-sm { box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08) !important; }
+.strategy-modern label,
+.strategy-modern .form-label,
+.strategy-modern h5,
+.strategy-modern h6 { color: var(--strategy-ink); }
+.strategy-modern .text-muted,
+.strategy-modern .small { color: var(--strategy-muted) !important; }
+
+.strategy-modern .bg-light,
+.strategy-modern .bg-slate-50,
+.strategy-modern .table-light,
+.strategy-modern .list-group-item {
+  background-color: #fff !important;
+  background-image: none !important;
+}
+
+.strategy-modern .form-control,
+.strategy-modern .form-select {
+  border-color: rgba(148, 163, 184, 0.34);
+  border-radius: .85rem;
+  background-color: #fff;
+}
+.strategy-modern .form-control:focus,
+.strategy-modern .form-select:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 .2rem rgba(37,99,235,.14);
+}
+.strategy-modern .btn {
+  border-radius: .9rem;
+  font-weight: 700;
+}
+.strategy-modern .btn-primary,
+.strategy-modern .btn-warning,
+.strategy-modern .btn-success,
+.strategy-modern .btn-dark {
+  border: 0;
+  background: linear-gradient(135deg, #0f172a 0%, #2563eb 100%) !important;
+  color: #fff !important;
+  box-shadow: 0 12px 28px rgba(37,99,235,.22);
+}
+.strategy-modern .nav-tabs {
+  gap: .5rem;
+  padding: .75rem;
+}
+.strategy-modern .nav-tabs .nav-link {
+  border: 0 !important;
+  border-radius: 999px !important;
+  color: #475569;
+  font-weight: 800;
+}
+.strategy-modern .nav-tabs .nav-link.active {
+  background: #0f172a !important;
+  color: #fff !important;
+}
+.strategy-modern table { overflow: hidden; border-radius: 1rem; }
+.strategy-modern .table-dark { --bs-table-bg: #0f172a; }
