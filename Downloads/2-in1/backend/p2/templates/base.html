@@ -135,7 +135,7 @@
     </style>
     <link rel="stylesheet" href="{{ url_for('static', filename='strategy-redesign.css') }}">
 </head>
-<body class="bg-slate-50 text-slate-900 overflow-hidden">
+<body class="bg-white text-slate-900 overflow-hidden">
 
     <div class="flex h-screen overflow-hidden">
 
@@ -308,7 +308,7 @@
         </aside>
 
         <!-- MAIN CONTENT -->
-        <main class="flex-1 overflow-auto bg-slate-50 relative w-full{% if request.path.startswith('/trends/media') or request.path.rstrip('/') in ['/seo', '/suggest', '/kw_intent', '/gap', '/overlap', '/benchmark'] %} strategy-modern{% endif %}">
+        <main class="flex-1 overflow-auto bg-white relative w-full strategy-modern">
             <div class="p-4 lg:p-8 min-h-full">
                 <!-- Bootstrap Container Wrapper for Legacy Support -->
                 <!-- We add 'container-fluid' class to ensure Bootstrap grids work inside this block -->

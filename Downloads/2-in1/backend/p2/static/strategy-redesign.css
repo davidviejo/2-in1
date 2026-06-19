@@ -1,4 +1,4 @@
-/* Shared redesign for Estrategia tools, inspired by /frameworks. */
+/* Shared redesign for backend tool pages, inspired by /frameworks. */
 .strategy-modern {
   --strategy-ink: #0f172a;
   --strategy-muted: #64748b;
@@ -7,15 +7,20 @@
   background: #fff !important;
 }
 
+html,
+body,
 body:has(.strategy-modern),
 main.strategy-modern,
 main.strategy-modern > div,
+.strategy-modern .container-fluid,
 .strategy-modern .container-fluid:not(.frameworks-page) {
   background: #fff !important;
   background-image: none !important;
 }
 
 .strategy-modern .container-fluid:not(.frameworks-page) {
+  background: #fff !important;
+  background-image: none !important;
   width: min(100%, 80vw);
   max-width: none;
   margin-inline: auto;
@@ -62,6 +67,15 @@ main.strategy-modern > div,
 .strategy-modern h6 { color: var(--strategy-ink); }
 .strategy-modern .text-muted,
 .strategy-modern .small { color: var(--strategy-muted) !important; }
+
+.strategy-modern .bg-light,
+.strategy-modern .bg-slate-50,
+.strategy-modern .table-light,
+.strategy-modern .list-group-item {
+  background-color: #fff !important;
+  background-image: none !important;
+}
+
 .strategy-modern .form-control,
 .strategy-modern .form-select {
   border-color: rgba(148, 163, 184, 0.34);
