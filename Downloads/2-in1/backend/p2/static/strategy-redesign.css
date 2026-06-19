@@ -4,13 +4,17 @@
   --strategy-muted: #64748b;
   --strategy-card: rgba(255, 255, 255, 0.92);
   --strategy-line: rgba(148, 163, 184, 0.24);
-  background:
-    radial-gradient(circle at 12% 0%, rgba(59, 130, 246, 0.13), transparent 28rem),
-    radial-gradient(circle at 94% 7%, rgba(14, 165, 233, 0.11), transparent 24rem),
-    linear-gradient(180deg, #f8fafc 0%, #eef4ff 100%);
+  background: #fff;
 }
 .strategy-modern .container-fluid:not(.frameworks-page) {
-  max-width: 1440px;
+  width: min(100%, 80vw);
+  max-width: none;
+  margin-inline: auto;
+}
+@media (max-width: 1200px) {
+  .strategy-modern .container-fluid:not(.frameworks-page) {
+    width: 100%;
+  }
 }
 .strategy-modern h2:first-of-type {
   position: relative;
@@ -27,19 +31,7 @@
   font-weight: 800;
 }
 .strategy-modern h2:first-of-type::after {
-  content: 'Framework visual · Estrategia';
-  display: block;
-  width: max-content;
-  margin-top: .75rem;
-  padding: .35rem .75rem;
-  border: 1px solid rgba(255,255,255,.28);
-  border-radius: 999px;
-  background: rgba(255,255,255,.14);
-  color: rgba(255,255,255,.82);
-  font-size: .78rem;
-  font-weight: 700;
-  letter-spacing: .08em;
-  text-transform: uppercase;
+  content: none;
 }
 .strategy-modern .card,
 .strategy-modern .alert,
