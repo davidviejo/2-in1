@@ -54,11 +54,20 @@
         <div class="tab-pane fade show active" id="home">
             <!-- Mini guía pestaña estrategia -->
             <div class="alert alert-light border small mb-3">
-                <strong>Cómo funciona esta pestaña:</strong><br>
-                1) Pega tus keywords y, si tienes, un Excel histórico de clusters. <br>
-                2) Elige país, idioma y motor de búsqueda (Google oficial, scraping o DuckDuckGo).<br>
-                3) Define <strong>Top N</strong> (nº de resultados por keyword) y <strong>Strict</strong> (qué tan exigente es el match entre keywords).<br>
-                4) Opcional: indica tu <strong>dominio objetivo</strong> para ver en qué clusters ya rankeas (<em>OWNED</em>) y cuáles son oportunidad.
+                <div class="fw-bold mb-1">Cómo funciona esta pestaña</div>
+                <ol class="mb-3 ps-3">
+                    <li>Pega tus keywords y, si tienes, un Excel histórico de clusters.</li>
+                    <li>Elige país, idioma y motor de búsqueda: DataForSEO, DuckDuckGo, Google CSE, SerpApi o scraping.</li>
+                    <li>Define <strong>Top N</strong>, <strong>TOS</strong> y <strong>Strict</strong> para controlar profundidad SERP, espera y umbral de coincidencias.</li>
+                    <li>Opcionalmente, indica tu <strong>dominio objetivo</strong> para marcar clusters <em>OWNED</em> y oportunidades.</li>
+                    <li>También puedes subir un sheet exportado y recalcular clusters con otro Top/Strict sin lanzar nuevas búsquedas.</li>
+                </ol>
+                <div class="fw-bold mb-1">Qué esperamos de esta pestaña</div>
+                <ul class="mb-0 ps-3">
+                    <li>Obtener una estrategia final limpia con clusters, keyword principal, variaciones, intención, cobertura y URLs SERP relevantes.</li>
+                    <li>Priorizar qué contenidos ya cubres y qué oportunidades conviene crear u optimizar.</li>
+                    <li>Exportar un Excel operativo sin columnas internas para trabajar la planificación SEO fuera de la herramienta.</li>
+                </ul>
             </div>
 
             <div class="card shadow p-4 mb-4" id="configPanel">
@@ -270,9 +279,19 @@
         <!-- TAB LABORATORIO -->
         <div class="tab-pane fade" id="lab">
             <div class="alert alert-light border small mb-3">
-                <strong>Cómo funciona esta pestaña:</strong><br>
-                1) Pega las URLs de tus competidores.<br>
-                2) Analiza todos los competidores.
+                <div class="fw-bold mb-1">Cómo funciona esta pestaña</div>
+                <ol class="mb-3 ps-3">
+                    <li>Añade una o varias URLs de competidores o pega HTML completo cuando quieras evitar scraping remoto.</li>
+                    <li>Usa la barra de acciones para pegar desde portapapeles, cargar ejemplos, limpiar o exportar resultados.</li>
+                    <li>Ejecuta el análisis masivo para extraer señales on-page rápidas: títulos, metas, estructura, contenido e incidencias.</li>
+                    <li>Compara una URL objetivo contra competidores y genera un prompt de optimización accionable.</li>
+                </ol>
+                <div class="fw-bold mb-1">Qué esperamos de esta pestaña</div>
+                <ul class="mb-0 ps-3">
+                    <li>Detectar patrones ganadores y carencias on-page entre las URLs que compiten por una misma intención.</li>
+                    <li>Producir un brief práctico para optimizar una página objetivo con contexto real de competidores.</li>
+                    <li>Dejar resultados reutilizables por la pestaña Bruto y exportables para revisión externa.</li>
+                </ul>
             </div>
             <div class="card shadow p-4">
                 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -331,10 +350,18 @@
 
         <div class="tab-pane fade" id="bruto">
             <div class="alert alert-light border small mb-3">
-                <strong>Cómo funciona esta pestaña:</strong><br>
-                1) Analiza URLs (igual que en Laboratorio).<br>
-                2) Se detectan automáticamente <strong>errores críticos/altos</strong> antes de abrir el HTML completo.<br>
-                3) Si hace falta, despliega y copia el HTML bruto para revisión profunda con IA/prompts.
+                <div class="fw-bold mb-1">Cómo funciona esta pestaña</div>
+                <ol class="mb-3 ps-3">
+                    <li>Reutiliza el último análisis masivo ejecutado en <strong>2. Laboratorio</strong>.</li>
+                    <li>Muestra primero errores críticos/altos y un resumen compacto antes de abrir el HTML completo.</li>
+                    <li>Permite desplegar el HTML bruto y copiar un brief IA de todas las URLs para una revisión profunda.</li>
+                </ol>
+                <div class="fw-bold mb-1">Qué esperamos de esta pestaña</div>
+                <ul class="mb-0 ps-3">
+                    <li>Acelerar la revisión técnica de HTML detectando problemas prioritarios sin perder acceso al código fuente.</li>
+                    <li>Facilitar auditorías con IA mediante briefs compactos y HTML verificable.</li>
+                    <li>Servir como capa de control para validar hallazgos del Laboratorio antes de decidir acciones.</li>
+                </ul>
             </div>
             <div class="card shadow p-4">
                 <div class="small text-muted mb-3">
