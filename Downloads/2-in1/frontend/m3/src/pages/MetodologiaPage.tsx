@@ -18,12 +18,16 @@ import {
   Target,
   Wrench,
 } from 'lucide-react';
+import { AdvancedMethodCtaPanel } from '@/components/metodologia/AdvancedMethodCtaPanel';
 import { AdvancedMethodNavigationMap } from '@/components/metodologia/AdvancedMethodNavigationMap';
 import { AdvancedMethodOverview } from '@/components/metodologia/AdvancedMethodOverview';
+import { AdvancedMethodNextSteps } from '@/components/metodologia/AdvancedMethodNextSteps';
 import { AdvancedMethodPhases } from '@/components/metodologia/AdvancedMethodPhases';
+import { AdvancedMethodStatus } from '@/components/metodologia/AdvancedMethodStatus';
 import { AdvancedToolRadar } from '@/components/metodologia/AdvancedToolRadar';
 import { MethodologyHeader } from '@/components/metodologia/MethodologyHeader';
 import { MethodologyProcessTimeline } from '@/components/metodologia/MethodologyProcessTimeline';
+import { MethodologySectionNav } from '@/components/metodologia/MethodologySectionNav';
 import {
   MethodologyResource,
   MethodologyResourcesPanel,
@@ -223,15 +227,15 @@ const MetodologiaPage: React.FC = () => {
         onEditFirstResource={() => editResource(deepDiveResources[0]?.name ?? '')}
       />
 
+      <MethodologySectionNav />
       <AdvancedMethodOverview />
+      <AdvancedMethodStatus />
       <AdvancedMethodNavigationMap />
+      <AdvancedMethodCtaPanel />
       <AdvancedMethodPhases />
       <AdvancedToolRadar />
       <SeoQueueConcept />
-
-      <span id="siguientes-pasos" className="sr-only">
-        Siguientes pasos recomendados
-      </span>
+      <AdvancedMethodNextSteps />
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr),370px]">
         <MethodologyProcessTimeline phases={methodologyPhases} />
         <MethodologyResourcesPanel

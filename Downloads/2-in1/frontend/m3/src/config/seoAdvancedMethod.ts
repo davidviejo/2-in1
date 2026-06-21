@@ -470,7 +470,7 @@ export const advancedToolCandidates: AdvancedToolCandidate[] = [
 
 export const futureSeoQueueWorkflow: FutureWorkflowExample = {
   title: 'Workflow: Auditoría mensual avanzada',
-  statusLabel: 'Preparado para implementación posterior · sin ejecución real en Fase 1A',
+  statusLabel: 'Preparado para implementación posterior · sin ejecución real',
   steps: [
     'Actualizar datos GSC.',
     'Detectar URLs con caída.',
@@ -483,3 +483,246 @@ export const futureSeoQueueWorkflow: FutureWorkflowExample = {
     'Esperar validación humana.',
   ],
 };
+
+export type MethodImplementationStatusState = 'completed' | 'in_progress' | 'pending';
+
+export interface MethodologySectionNavItem {
+  id: string;
+  label: string;
+  description: string;
+}
+
+export interface AdvancedMethodStatusItem {
+  label: string;
+  description: string;
+  state: MethodImplementationStatusState;
+}
+
+export interface AdvancedMethodPhaseFilter {
+  id: string;
+  label: string;
+  area?: AdvancedMethodArea;
+  phaseIds?: string[];
+}
+
+export interface AdvancedToolRadarFilter {
+  id: string;
+  label: string;
+  priority?: AdvancedToolCandidate['suggestedPriority'];
+  area?: AdvancedMethodArea;
+}
+
+export interface AdvancedMethodCta {
+  label: string;
+  description: string;
+  path: string;
+  area: AdvancedMethodArea;
+}
+
+export interface AdvancedMethodNextStep {
+  phase: string;
+  title: string;
+  description: string;
+  state: MethodImplementationStatusState;
+}
+
+export const methodologySectionNavItems: MethodologySectionNavItem[] = [
+  {
+    id: 'overview',
+    label: 'Overview',
+    description: 'Visión transversal del framework.',
+  },
+  {
+    id: 'mapa-operativo',
+    label: 'Mapa operativo',
+    description: 'Dónde se ejecuta cada parte.',
+  },
+  {
+    id: 'fases',
+    label: 'Fases',
+    description: 'Criterios, entregables y checkpoints.',
+  },
+  {
+    id: 'herramientas',
+    label: 'Herramientas',
+    description: 'Radar de candidatas futuras.',
+  },
+  {
+    id: 'cola-seo',
+    label: 'Cola SEO',
+    description: 'Automatización conceptual sin ejecución real.',
+  },
+  {
+    id: 'siguientes-pasos',
+    label: 'Siguientes pasos',
+    description: 'Roadmap recomendado de implantación.',
+  },
+];
+
+export const advancedMethodStatusItems: AdvancedMethodStatusItem[] = [
+  {
+    label: 'Documentado',
+    description: 'La metodología ya explica fases, criterios y estándares desde configuración.',
+    state: 'completed',
+  },
+  {
+    label: 'Componentizado',
+    description: 'La UI está dividida en componentes mantenibles y reutilizables.',
+    state: 'completed',
+  },
+  {
+    label: 'Conectado visualmente',
+    description: 'Metodología orienta hacia Intelligence, Estrategia, Acciones y Tools Hub.',
+    state: 'in_progress',
+  },
+  {
+    label: 'Pendiente de datos reales',
+    description: 'Aún no consume clientes, proyectos, GSC, tareas ni snapshots reales.',
+    state: 'pending',
+  },
+  {
+    label: 'Pendiente de automatización',
+    description: 'La Cola SEO sigue siendo conceptual, sin ejecución, colas ni logs reales.',
+    state: 'pending',
+  },
+  {
+    label: 'Pendiente de reporting',
+    description: 'Los entregables y exportaciones avanzadas quedan para fases posteriores.',
+    state: 'pending',
+  },
+];
+
+export const advancedMethodPhaseFilters: AdvancedMethodPhaseFilter[] = [
+  { id: 'all', label: 'Todas' },
+  { id: 'intelligence', label: 'Intelligence', area: 'Intelligence' },
+  { id: 'estrategia', label: 'Estrategia', area: 'Estrategia' },
+  { id: 'acciones', label: 'Acciones', area: 'Acciones' },
+  { id: 'tools-hub', label: 'Tools Hub', area: 'Tools Hub' },
+  { id: 'reporting-validacion', label: 'Reporting / Validación', phaseIds: ['validacion'] },
+];
+
+export const advancedToolRadarFilters: AdvancedToolRadarFilter[] = [
+  { id: 'all', label: 'Todas' },
+  { id: 'p1', label: 'P1', priority: 'P1' },
+  { id: 'p2', label: 'P2', priority: 'P2' },
+  { id: 'p3', label: 'P3', priority: 'P3' },
+  { id: 'intelligence', label: 'Intelligence', area: 'Intelligence' },
+  { id: 'estrategia', label: 'Estrategia', area: 'Estrategia' },
+  { id: 'acciones', label: 'Acciones', area: 'Acciones' },
+  { id: 'tools-hub', label: 'Tools Hub', area: 'Tools Hub' },
+  { id: 'workflow', label: 'Workflow', area: 'Workflow' },
+];
+
+export const advancedMethodCtas: AdvancedMethodCta[] = [
+  {
+    label: 'Analizar en Intelligence',
+    description: 'Abrir el panel principal para lectura inicial de señales y contexto.',
+    path: '/app',
+    area: 'Intelligence',
+  },
+  {
+    label: 'Auditar en Checklist',
+    description: 'Revisar controles técnicos/editoriales antes de priorizar.',
+    path: '/app/checklist',
+    area: 'Intelligence',
+  },
+  {
+    label: 'Revisar impacto GSC',
+    description: 'Contrastar cambios de rendimiento con datos de Search Console.',
+    path: '/app/gsc-impact',
+    area: 'Intelligence',
+  },
+  {
+    label: 'Priorizar en Roadmap',
+    description: 'Convertir decisiones en roadmap cliente sin duplicar planificación.',
+    path: '/app/client-roadmap',
+    area: 'Estrategia',
+  },
+  {
+    label: 'Generar Roadmap IA',
+    description: 'Explorar propuestas asistidas antes de aprobar ejecución.',
+    path: '/app/ai-roadmap',
+    area: 'Estrategia',
+  },
+  {
+    label: 'Ejecutar en Kanban',
+    description: 'Llevar acciones aprobadas al tablero operativo existente.',
+    path: '/app/kanban',
+    area: 'Acciones',
+  },
+  {
+    label: 'Planificar en Gantt',
+    description: 'Secuenciar entregables, dependencias y fechas de ejecución.',
+    path: '/app/gantt',
+    area: 'Acciones',
+  },
+  {
+    label: 'Validar tareas realizadas',
+    description: 'Cerrar evidencias, aprendizajes y resultados de tareas completadas.',
+    path: '/app/completed-tasks',
+    area: 'Acciones',
+  },
+  {
+    label: 'Gobernar en Tools Hub',
+    description: 'Revisar catálogo, estado y gobierno de herramientas existentes/futuras.',
+    path: '/app/tools-hub',
+    area: 'Tools Hub',
+  },
+];
+
+export const advancedMethodNextSteps: AdvancedMethodNextStep[] = [
+  {
+    phase: 'Fase 1A',
+    title: 'Método config-driven integrado en Metodología',
+    description: 'Framework transversal visible sin backend, endpoints ni automatización real.',
+    state: 'completed',
+  },
+  {
+    phase: 'Fase 1A.1',
+    title: 'Componentización y estabilización',
+    description: 'Página limpiada como orquestador y contenido centralizado en configuración.',
+    state: 'completed',
+  },
+  {
+    phase: 'Fase 1B',
+    title: 'Navegación interna, filtros y accionabilidad visual',
+    description: 'Mejorar lectura y acceso a áreas operativas sin conectar datos reales.',
+    state: 'in_progress',
+  },
+  {
+    phase: 'Fase 2',
+    title: 'Conexión read-only con datos existentes',
+    description: 'Leer clientes, proyectos, tareas, GSC o snapshots sin modificar modelos backend.',
+    state: 'pending',
+  },
+  {
+    phase: 'Fase 3',
+    title: 'Priorización impacto/esfuerzo',
+    description: 'Añadir scoring visible y trazable para ordenar iniciativas.',
+    state: 'pending',
+  },
+  {
+    phase: 'Fase 4',
+    title: 'Tools Hub avanzado',
+    description: 'Gobierno ampliado, estados, scoring y ownership de herramientas.',
+    state: 'pending',
+  },
+  {
+    phase: 'Fase 5',
+    title: 'Cola SEO dry-run',
+    description: 'Simular workflows con dependencias, logs y revisión sin acciones reales.',
+    state: 'pending',
+  },
+  {
+    phase: 'Fase 6',
+    title: 'Ejecución controlada con revisión humana',
+    description: 'Habilitar acciones sensibles solo con confirmación, permisos y auditoría.',
+    state: 'pending',
+  },
+  {
+    phase: 'Fase 7',
+    title: 'Reporting y exportaciones',
+    description: 'Convertir evidencias, tareas y resultados en entregables exportables.',
+    state: 'pending',
+  },
+];

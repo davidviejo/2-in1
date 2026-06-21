@@ -16,8 +16,8 @@ export const SeoQueueConcept: React.FC = () => (
         <p className="mt-2 max-w-4xl text-sm leading-6 text-muted-foreground">
           Esta sección deja preparada la dirección de producto: en fases posteriores podrá ejecutar
           acciones secuenciales, acciones paralelas seguras, dry-run, logs, errores, reintentos,
-          pausas, revisión humana y envío de resultados a tareas, roadmap o entregables. En Fase
-          1A.1 no ejecuta nada.
+          pausas, revisión humana y envío de resultados a tareas, roadmap o entregables. En esta
+          fase sigue sin ejecutar nada.
         </p>
       </div>
       <Link to="/app/kanban">
