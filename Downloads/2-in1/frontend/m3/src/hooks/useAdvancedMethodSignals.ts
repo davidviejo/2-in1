@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useProject } from '@/context/ProjectContext';
+import { useToolsCatalogSignals } from '@/hooks/useToolsCatalogSignals';
 import type { Task } from '@/types';
 
 export type AdvancedMethodSignalStatus = 'available' | 'empty' | 'unavailable' | 'not_detectable';
@@ -75,6 +76,7 @@ const countTaskStatuses = (tasks: Task[]) => {
 
 export const useAdvancedMethodSignals = (): AdvancedMethodSignalsContext => {
   const { currentClient, currentClientId, generalNotes, modules } = useProject();
+  const toolsCatalogSignals = useToolsCatalogSignals();
 
   return useMemo(() => {
     const hasActiveClient = Boolean(currentClientId && currentClient);
@@ -250,11 +252,14 @@ export const useAdvancedMethodSignals = (): AdvancedMethodSignalsContext => {
       signal({
         id: 'tools-catalog',
         title: 'Catálogo Tools Hub',
-        description: 'Lectura del catálogo real de Tools Hub desde una fuente compartida.',
-        status: 'not_detectable',
-        value: 'No detectable',
-        detail:
-          'Tools Hub existe como ruta, pero no expone un catálogo compartido limpio para este panel.',
+        description: 'Lectura del catálogo compartido de herramientas en modo read-only.',
+        status: toolsCatalogSignals.hasCatalog ? 'available' : 'not_detectable',
+        value: toolsCatalogSignals.hasCatalog
+          ? `${toolsCatalogSignals.total} herramientas`
+          : 'No detectable',
+        detail: toolsCatalogSignals.hasCatalog
+          ? `${toolsCatalogSignals.byPriority.P1} P1 · ${toolsCatalogSignals.readyForDryRun} con dry-run · ${toolsCatalogSignals.requiresHumanReview} requieren revisión humana`
+          : 'No hay fuente compartida de catálogo disponible para este panel.',
         area: 'Tools Hub',
         route: { label: 'Abrir Tools Hub', path: '/app/tools-hub' },
       }),
@@ -277,5 +282,5 @@ export const useAdvancedMethodSignals = (): AdvancedMethodSignalsContext => {
       summary,
       signals,
     };
-  }, [currentClient, currentClientId, generalNotes.length, modules]);
+  }, [currentClient, currentClientId, generalNotes.length, modules, toolsCatalogSignals]);
 };

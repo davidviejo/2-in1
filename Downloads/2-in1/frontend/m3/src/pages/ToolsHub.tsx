@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowUpRight, Loader2, Power, TriangleAlert, Wrench } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -6,6 +6,7 @@ import { Button } from '../components/ui/Button';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import { Modal } from '../components/ui/Modal';
 import { api, LauncherAppItem, LauncherSectionItem, ToolCatalogItem } from '../services/api';
+import { useToolsCatalogSignals } from '@/hooks/useToolsCatalogSignals';
 
 const statusVariant: Record<ToolCatalogItem['status'], 'warning' | 'success' | 'primary'> = {
   legacy: 'warning',
@@ -13,7 +14,9 @@ const statusVariant: Record<ToolCatalogItem['status'], 'warning' | 'success' | '
   beta: 'primary',
 };
 
-const availabilityBadge = (tool: Pick<ToolCatalogItem, 'runtime' | 'available'>): { label: string; variant: 'danger' | 'warning' | 'success' } => {
+const availabilityBadge = (
+  tool: Pick<ToolCatalogItem, 'runtime' | 'available'>,
+): { label: string; variant: 'danger' | 'warning' | 'success' } => {
   if (!tool.runtime.enabled || !tool.available) {
     return { label: 'Deshabilitada', variant: 'danger' };
   }
@@ -74,7 +77,10 @@ export const resolveAppUrl = (tool: Pick<LauncherApp, 'path' | 'healthcheckTarge
 const PANEL_STORAGE_KEY = 'tools_hub_enabled_apps';
 const STATUS_POLLING_MS = 5000;
 
-const runtimeStatusBadgeVariant: Record<AppRuntimeStatus, 'warning' | 'primary' | 'success' | 'neutral' | 'danger'> = {
+const runtimeStatusBadgeVariant: Record<
+  AppRuntimeStatus,
+  'warning' | 'primary' | 'success' | 'neutral' | 'danger'
+> = {
   installing: 'warning',
   starting: 'primary',
   running: 'success',
@@ -91,7 +97,14 @@ const ToolsHub: React.FC = () => {
   const [tools, setTools] = useState<ToolCatalogItem[]>([]);
   const [launcherSections, setLauncherSections] = useState<LauncherSectionItem[]>([]);
   const [launcherApps, setLauncherApps] = useState<LauncherAppItem[]>([]);
-  const [enabledApps, setEnabledApps] = useState<Record<string, boolean>>({});
+  const [enabledApps, setEnabledApps] = useState<Record<string, boolean>>(() => {
+    try {
+      const stored = localStorage.getItem(PANEL_STORAGE_KEY);
+      return stored ? (JSON.parse(stored) as Record<string, boolean>) : {};
+    } catch {
+      return {};
+    }
+  });
   const [appRuntimeStatus, setAppRuntimeStatus] = useState<Record<string, AppRuntimeInfo>>({});
   const [appErrors, setAppErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -101,24 +114,17 @@ const ToolsHub: React.FC = () => {
   const [logsLines, setLogsLines] = useState<string[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [logsError, setLogsError] = useState('');
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(PANEL_STORAGE_KEY);
-      if (stored) {
-        setEnabledApps(JSON.parse(stored) as Record<string, boolean>);
-      }
-    } catch {
-      setEnabledApps({});
-    }
-  }, []);
+  const sharedCatalogSignals = useToolsCatalogSignals();
 
   useEffect(() => {
     let mounted = true;
 
     const loadData = async () => {
       try {
-        const [toolsRes, launcherRes] = await Promise.all([api.getToolsCatalog(), api.getLauncherCatalog()]);
+        const [toolsRes, launcherRes] = await Promise.all([
+          api.getToolsCatalog(),
+          api.getLauncherCatalog(),
+        ]);
         if (mounted) {
           setTools(toolsRes.tools || []);
           setLauncherSections(launcherRes.sections || []);
@@ -172,7 +178,8 @@ const ToolsHub: React.FC = () => {
       status: app.status,
       runtime: app.runtime,
       available: true,
-      healthcheckTarget: app.launcher?.healthcheck?.type === 'http' ? app.launcher?.healthcheck?.target : undefined,
+      healthcheckTarget:
+        app.launcher?.healthcheck?.type === 'http' ? app.launcher?.healthcheck?.target : undefined,
     }));
 
     return [...dynamicApps, ...independentTools];
@@ -190,7 +197,10 @@ const ToolsHub: React.FC = () => {
     [launcherSections],
   );
 
-  const isEnabledInPanel = (appId: string) => enabledApps[appId] ?? true;
+  const isEnabledInPanel = useCallback(
+    (appId: string) => enabledApps[appId] ?? true,
+    [enabledApps],
+  );
 
   const updateEnabledApp = (appId: string, enabled: boolean) => {
     setEnabledApps((prev) => {
@@ -200,7 +210,10 @@ const ToolsHub: React.FC = () => {
     });
   };
 
-  const pollableApps = useMemo(() => unifiedApps.filter((app) => isEnabledInPanel(app.id)), [unifiedApps, enabledApps]);
+  const pollableApps = useMemo(
+    () => unifiedApps.filter((app) => isEnabledInPanel(app.id)),
+    [unifiedApps, isEnabledInPanel],
+  );
 
   useEffect(() => {
     if (pollableApps.length === 0) {
@@ -211,7 +224,10 @@ const ToolsHub: React.FC = () => {
 
     const pollStatuses = async () => {
       const results = await Promise.allSettled(
-        pollableApps.map(async (app) => ({ appId: app.id, data: await api.launcherStatus(app.id) })),
+        pollableApps.map(async (app) => ({
+          appId: app.id,
+          data: await api.launcherStatus(app.id),
+        })),
       );
 
       if (cancelled) return;
@@ -248,22 +264,39 @@ const ToolsHub: React.FC = () => {
     setAppRuntimeStatus((prev) => ({
       ...prev,
       [appId]: {
-        status: action === 'install' ? 'installing' : action === 'start' ? 'starting' : prev[appId]?.status ?? 'stopped',
+        status:
+          action === 'install'
+            ? 'installing'
+            : action === 'start'
+              ? 'starting'
+              : (prev[appId]?.status ?? 'stopped'),
         pid: prev[appId]?.pid ?? null,
       },
     }));
 
     try {
-      const response = action === 'install' ? await api.launcherInstall(appId) : action === 'start' ? await api.launcherStart(appId) : await api.launcherStop(appId);
+      const response =
+        action === 'install'
+          ? await api.launcherInstall(appId)
+          : action === 'start'
+            ? await api.launcherStart(appId)
+            : await api.launcherStop(appId);
       setAppRuntimeStatus((prev) => ({
         ...prev,
         [appId]: {
-          status: response.status ? toRuntimeStatus(response.status) : action === 'start' ? 'running' : 'stopped',
+          status: response.status
+            ? toRuntimeStatus(response.status)
+            : action === 'start'
+              ? 'running'
+              : 'stopped',
           pid: response.pid ?? null,
         },
       }));
     } catch {
-      setAppRuntimeStatus((prev) => ({ ...prev, [appId]: { status: 'error', pid: prev[appId]?.pid ?? null } }));
+      setAppRuntimeStatus((prev) => ({
+        ...prev,
+        [appId]: { status: 'error', pid: prev[appId]?.pid ?? null },
+      }));
       setAppErrors((prev) => ({
         ...prev,
         [appId]: `No se pudo ejecutar la acción ${action} para la app.`,
@@ -294,7 +327,11 @@ const ToolsHub: React.FC = () => {
   const openApp = (tool: LauncherApp) => {
     const runtimeStatus = appRuntimeStatus[tool.id]?.status ?? 'stopped';
     const healthcheckOk = tool.runtime.enabled && tool.available;
-    if (!isEnabledInPanel(tool.id) || !tool.path || (!healthcheckOk && runtimeStatus !== 'running')) {
+    if (
+      !isEnabledInPanel(tool.id) ||
+      !tool.path ||
+      (!healthcheckOk && runtimeStatus !== 'running')
+    ) {
       return;
     }
 
@@ -320,7 +357,7 @@ const ToolsHub: React.FC = () => {
       const enabled = apps.filter((app) => isEnabledInPanel(app.id)).length;
       return { section: section.id, total: apps.length, enabled };
     });
-  }, [unifiedApps, sections, enabledApps]);
+  }, [unifiedApps, sections, isEnabledInPanel]);
 
   return (
     <div className="space-y-6">
@@ -333,14 +370,16 @@ const ToolsHub: React.FC = () => {
               Panel central de apps
             </h1>
             <p className="mt-2 max-w-3xl text-sm text-muted">
-              Centraliza el acceso a frontend, backend y apps integradas en carpeta raíz, sin abrir una terminal por
-              cada app.
+              Centraliza el acceso a frontend, backend y apps integradas en carpeta raíz, sin abrir
+              una terminal por cada app.
             </p>
           </div>
           <div className="flex flex-wrap gap-2 text-xs">
             <Badge variant="warning">Legacy: {groupedCount.legacy}</Badge>
             <Badge variant="success">Migrada: {groupedCount.migrada}</Badge>
             <Badge variant="primary">Beta: {groupedCount.beta}</Badge>
+            <Badge variant="neutral">Catálogo método: {sharedCatalogSignals.total}</Badge>
+            <Badge variant="success">P1 safe: {sharedCatalogSignals.p1ReadOnlySafe}</Badge>
           </div>
         </div>
       </Card>
@@ -348,9 +387,12 @@ const ToolsHub: React.FC = () => {
       <Card className="border-border bg-surface p-4">
         <div className="flex flex-wrap gap-3 text-xs text-muted">
           {sectionSummary.map((item) => (
-            <div key={item.section} className="rounded-lg border border-border bg-surface-alt px-3 py-2">
-              {sections.find((section) => section.id === item.section)?.title ?? item.section}: {item.enabled}/{item.total}{' '}
-              activas
+            <div
+              key={item.section}
+              className="rounded-lg border border-border bg-surface-alt px-3 py-2"
+            >
+              {sections.find((section) => section.id === item.section)?.title ?? item.section}:{' '}
+              {item.enabled}/{item.total} activas
             </div>
           ))}
         </div>
@@ -389,7 +431,10 @@ const ToolsHub: React.FC = () => {
                   const runtimeStatus = appRuntimeStatus[tool.id]?.status ?? 'stopped';
                   const runtimePid = appRuntimeStatus[tool.id]?.pid ?? null;
                   const runtimeBlocked = !tool.runtime.enabled || tool.runtime.degraded;
-                  const canOpen = visibleInPanel && Boolean(tool.path) && (runtimeStatus === 'running' || (tool.runtime.enabled && tool.available));
+                  const canOpen =
+                    visibleInPanel &&
+                    Boolean(tool.path) &&
+                    (runtimeStatus === 'running' || (tool.runtime.enabled && tool.available));
 
                   return (
                     <Card key={tool.id} className="border-border bg-surface-alt p-4">
@@ -401,7 +446,9 @@ const ToolsHub: React.FC = () => {
                         <div className="flex flex-col items-end gap-2">
                           <Badge variant={statusVariant[tool.status]}>{tool.status}</Badge>
                           <Badge variant={runtimeBadge.variant}>{runtimeBadge.label}</Badge>
-                          <Badge variant={runtimeStatusBadgeVariant[runtimeStatus]}>estado: {runtimeStatus}</Badge>
+                          <Badge variant={runtimeStatusBadgeVariant[runtimeStatus]}>
+                            estado: {runtimeStatus}
+                          </Badge>
                           <Badge variant="neutral">PID: {runtimePid ?? '—'}</Badge>
                         </div>
                       </div>
@@ -421,7 +468,12 @@ const ToolsHub: React.FC = () => {
                           variant="secondary"
                           size="sm"
                           onClick={() => executeAction(tool.id, 'install')}
-                          disabled={!visibleInPanel || runtimeBlocked || runtimeStatus === 'installing' || runtimeStatus === 'starting'}
+                          disabled={
+                            !visibleInPanel ||
+                            runtimeBlocked ||
+                            runtimeStatus === 'installing' ||
+                            runtimeStatus === 'starting'
+                          }
                         >
                           Instalar
                         </Button>
@@ -429,7 +481,13 @@ const ToolsHub: React.FC = () => {
                           variant="secondary"
                           size="sm"
                           onClick={() => executeAction(tool.id, 'start')}
-                          disabled={!visibleInPanel || runtimeBlocked || runtimeStatus === 'running' || runtimeStatus === 'starting' || runtimeStatus === 'installing'}
+                          disabled={
+                            !visibleInPanel ||
+                            runtimeBlocked ||
+                            runtimeStatus === 'running' ||
+                            runtimeStatus === 'starting' ||
+                            runtimeStatus === 'installing'
+                          }
                         >
                           Iniciar
                         </Button>
@@ -441,16 +499,28 @@ const ToolsHub: React.FC = () => {
                         >
                           Parar
                         </Button>
-                        <Button variant="secondary" size="sm" onClick={() => openLogs(tool.id)} disabled={!visibleInPanel}>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => openLogs(tool.id)}
+                          disabled={!visibleInPanel}
+                        >
                           Ver logs
                         </Button>
-                        <Button variant="secondary" size="sm" onClick={() => openApp(tool)} disabled={!canOpen}>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => openApp(tool)}
+                          disabled={!canOpen}
+                        >
                           Abrir
                           <ArrowUpRight size={16} />
                         </Button>
                       </div>
 
-                      {appErrors[tool.id] && <p className="mt-3 text-xs text-danger">{appErrors[tool.id]}</p>}
+                      {appErrors[tool.id] && (
+                        <p className="mt-3 text-xs text-danger">{appErrors[tool.id]}</p>
+                      )}
                       {tool.runtime.degraded && (
                         <p className="mt-2 text-xs text-warning">
                           Runtime degradado: esta app no puede iniciarse desde ToolsHub.
@@ -477,7 +547,12 @@ const ToolsHub: React.FC = () => {
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-muted">Tail inicial: 200 líneas</p>
-            <Button variant="secondary" size="sm" onClick={() => logsAppId && refreshLogs(logsAppId)} disabled={logsLoading}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => logsAppId && refreshLogs(logsAppId)}
+              disabled={logsLoading}
+            >
               Refrescar
             </Button>
           </div>

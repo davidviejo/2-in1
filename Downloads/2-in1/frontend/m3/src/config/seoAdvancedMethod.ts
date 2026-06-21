@@ -1,3 +1,5 @@
+import { sharedToolsCatalog, ToolCatalogArea, ToolCatalogLevel } from './toolsCatalog';
+
 export type AdvancedMethodArea =
   | 'Intelligence'
   | 'Estrategia'
@@ -303,170 +305,32 @@ export const advancedMethodPhases: AdvancedMethodPhase[] = [
   },
 ];
 
-export const advancedToolCandidates: AdvancedToolCandidate[] = [
-  {
-    id: 'cannibalization-detector',
-    name: 'Detector de canibalización',
-    seoImpact: 'Alto',
-    technicalDifficulty: 'Medio',
-    dependencies: ['GSC queries/pages', 'clusters', 'reglas de intención'],
-    risk: 'Medio',
-    existingCodeReuse: 'Alto',
-    suggestedPriority: 'P1',
-    shouldLiveIn: 'Intelligence',
-    description:
-      'Detecta URLs que compiten por las mismas consultas y propone consolidación o diferenciación.',
-  },
-  {
-    id: 'internal-linking-recommender',
-    name: 'Recomendador de enlazado interno',
-    seoImpact: 'Alto',
-    technicalDifficulty: 'Alto',
-    dependencies: ['crawler', 'link graph', 'clusters', 'prioridad de URLs'],
-    risk: 'Medio',
-    existingCodeReuse: 'Alto',
-    suggestedPriority: 'P1',
-    shouldLiveIn: 'Workflow',
-    description:
-      'Propone enlaces internos seguros a partir de arquitectura, clusters y oportunidades.',
-  },
-  {
-    id: 'indexation-monitor',
-    name: 'Monitor de indexación',
-    seoImpact: 'Alto',
-    technicalDifficulty: 'Medio',
-    dependencies: ['GSC inspection', 'sitemap', 'crawler'],
-    risk: 'Alto',
-    existingCodeReuse: 'Alto',
-    suggestedPriority: 'P1',
-    shouldLiveIn: 'Intelligence',
-    description: 'Monitoriza URLs sin indexar, cambios de cobertura y prioridades de revisión.',
-  },
-  {
-    id: 'serp-kw-clusterizer',
-    name: 'Clusterizador SERP/KW',
-    seoImpact: 'Alto',
-    technicalDifficulty: 'Alto',
-    dependencies: ['SERP provider', 'keywords', 'similaridad semántica'],
-    risk: 'Medio',
-    existingCodeReuse: 'Medio',
-    suggestedPriority: 'P2',
-    shouldLiveIn: 'Intelligence',
-    description: 'Agrupa keywords por similitud SERP e intención para estrategia de contenidos.',
-  },
-  {
-    id: 'ai-brief-generator',
-    name: 'Generador de briefs IA',
-    seoImpact: 'Alto',
-    technicalDifficulty: 'Medio',
-    dependencies: ['LLM', 'SERP/KW', 'plantillas editoriales'],
-    risk: 'Medio',
-    existingCodeReuse: 'Alto',
-    suggestedPriority: 'P1',
-    shouldLiveIn: 'Estrategia',
-    description: 'Genera briefs revisables a partir de oportunidades, gaps y criterios del método.',
-  },
-  {
-    id: 'schema-validator',
-    name: 'Validador de schema',
-    seoImpact: 'Medio',
-    technicalDifficulty: 'Medio',
-    dependencies: ['HTML fetch', 'schema parser', 'reglas de validación'],
-    risk: 'Bajo',
-    existingCodeReuse: 'Alto',
-    suggestedPriority: 'P1',
-    shouldLiveIn: 'Tools Hub',
-    description: 'Valida marcado estructurado y genera recomendaciones de corrección.',
-  },
-  {
-    id: 'url-kw-meta-matrix',
-    name: 'Matriz URL + KW + Title + Meta',
-    seoImpact: 'Alto',
-    technicalDifficulty: 'Medio',
-    dependencies: ['crawler', 'GSC', 'checklist'],
-    risk: 'Bajo',
-    existingCodeReuse: 'Alto',
-    suggestedPriority: 'P1',
-    shouldLiveIn: 'Intelligence',
-    description:
-      'Cruza URLs, keywords y metadatos para detectar gaps, duplicados y oportunidades de CTR.',
-  },
-  {
-    id: 'report-generator',
-    name: 'Generador de informes',
-    seoImpact: 'Alto',
-    technicalDifficulty: 'Medio',
-    dependencies: ['snapshots', 'tareas', 'GSC', 'exportaciones'],
-    risk: 'Medio',
-    existingCodeReuse: 'Medio',
-    suggestedPriority: 'P2',
-    shouldLiveIn: 'Acciones',
-    description: 'Compone entregables ejecutivos y técnicos con evidencias y before/after.',
-  },
-  {
-    id: 'link-building-crm',
-    name: 'CRM de link building',
-    seoImpact: 'Medio',
-    technicalDifficulty: 'Alto',
-    dependencies: ['prospectos', 'contactos', 'estados', 'privacidad'],
-    risk: 'Alto',
-    existingCodeReuse: 'Medio',
-    suggestedPriority: 'P3',
-    shouldLiveIn: 'Acciones',
-    description: 'Gestiona oportunidades, contactos y seguimiento de campañas de autoridad.',
-  },
-  {
-    id: 'content-gap-analysis',
-    name: 'Análisis de gaps de contenido',
-    seoImpact: 'Alto',
-    technicalDifficulty: 'Medio',
-    dependencies: ['competidores', 'SERP', 'keywords', 'clusters'],
-    risk: 'Medio',
-    existingCodeReuse: 'Alto',
-    suggestedPriority: 'P1',
-    shouldLiveIn: 'Intelligence',
-    description:
-      'Identifica temas, formatos y URLs faltantes frente a competidores o intención de búsqueda.',
-  },
-  {
-    id: 'geo-aeo-llms',
-    name: 'GEO/AEO/LLMs',
-    seoImpact: 'Alto',
-    technicalDifficulty: 'Alto',
-    dependencies: ['prompts', 'LLM providers', 'competidores', 'histórico'],
-    risk: 'Alto',
-    existingCodeReuse: 'Alto',
-    suggestedPriority: 'P2',
-    shouldLiveIn: 'Intelligence',
-    description:
-      'Evalúa visibilidad en respuestas IA, entidades, menciones y señales de autoridad.',
-  },
-  {
-    id: 'before-after-control',
-    name: 'Control before/after',
-    seoImpact: 'Alto',
-    technicalDifficulty: 'Medio',
-    dependencies: ['snapshots', 'tareas realizadas', 'GSC'],
-    risk: 'Bajo',
-    existingCodeReuse: 'Alto',
-    suggestedPriority: 'P1',
-    shouldLiveIn: 'Acciones',
-    description: 'Relaciona acciones completadas con evolución de métricas y evidencia de impacto.',
-  },
-  {
-    id: 'impact-effort-prioritizer',
-    name: 'Priorizador impacto/esfuerzo',
-    seoImpact: 'Alto',
-    technicalDifficulty: 'Medio',
-    dependencies: ['insights', 'tareas', 'estimación de esfuerzo', 'valor de negocio'],
-    risk: 'Medio',
-    existingCodeReuse: 'Alto',
-    suggestedPriority: 'P1',
-    shouldLiveIn: 'Estrategia',
-    description:
-      'Ordena iniciativas por impacto, esfuerzo, urgencia, confianza y valor para negocio.',
-  },
-];
+const toolLevelToAdvancedLevel = (level: ToolCatalogLevel): AdvancedMethodLevel => {
+  if (level === 'high') return 'Alto';
+  if (level === 'medium') return 'Medio';
+  return 'Bajo';
+};
+
+const toolAreaToAdvancedArea = (area: ToolCatalogArea): AdvancedMethodArea => {
+  if (area === 'strategy') return 'Estrategia';
+  if (area === 'actions') return 'Acciones';
+  if (area === 'tools' || area === 'technical') return 'Tools Hub';
+  if (area === 'automation') return 'Workflow';
+  return 'Intelligence';
+};
+
+export const advancedToolCandidates: AdvancedToolCandidate[] = sharedToolsCatalog.map((tool) => ({
+  id: tool.id,
+  name: tool.name,
+  seoImpact: toolLevelToAdvancedLevel(tool.seoImpact),
+  technicalDifficulty: toolLevelToAdvancedLevel(tool.technicalDifficulty),
+  dependencies: tool.dependencies,
+  risk: toolLevelToAdvancedLevel(tool.risk),
+  existingCodeReuse: toolLevelToAdvancedLevel(tool.reusableCode),
+  suggestedPriority: tool.priority,
+  shouldLiveIn: toolAreaToAdvancedArea(tool.area),
+  description: tool.description,
+}));
 
 export const futureSeoQueueWorkflow: FutureWorkflowExample = {
   title: 'Workflow: Auditoría mensual avanzada',
@@ -593,6 +457,11 @@ export const advancedMethodStatusItems: AdvancedMethodStatusItem[] = [
   {
     label: 'Scoring impacto/esfuerzo visual',
     description: 'Recomendaciones metodológicas calculadas sin crear tareas ni editar roadmap.',
+    state: 'completed',
+  },
+  {
+    label: 'Tools Hub avanzado read-only',
+    description: 'Catálogo compartido y señales de gobierno disponibles sin ejecutar herramientas.',
     state: 'in_progress',
   },
   {
@@ -714,13 +583,13 @@ export const advancedMethodNextSteps: AdvancedMethodNextStep[] = [
     phase: 'Fase 3',
     title: 'Priorización impacto/esfuerzo',
     description: 'Añadir scoring visible y trazable para ordenar iniciativas.',
-    state: 'in_progress',
+    state: 'completed',
   },
   {
     phase: 'Fase 4',
     title: 'Tools Hub avanzado',
     description: 'Gobierno ampliado, estados, scoring y ownership de herramientas.',
-    state: 'pending',
+    state: 'in_progress',
   },
   {
     phase: 'Fase 5',

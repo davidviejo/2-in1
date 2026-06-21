@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { AdvancedMethodSignal, useAdvancedMethodSignals } from '@/hooks/useAdvancedMethodSignals';
+import { useToolsCatalogSignals } from '@/hooks/useToolsCatalogSignals';
 
 export type AdvancedMethodPriorityLevel = 'low' | 'medium' | 'high';
 export type AdvancedMethodReadiness = 'ready' | 'partial' | 'blocked';
@@ -57,6 +58,7 @@ const createRecommendation = (
 
 export const useAdvancedMethodPrioritization = (): AdvancedMethodPrioritizationResult => {
   const { hasActiveClient, signals } = useAdvancedMethodSignals();
+  const toolsSignals = useToolsCatalogSignals();
 
   return useMemo(() => {
     const activeClient = getSignal(signals, 'active-client');
@@ -255,7 +257,87 @@ export const useAdvancedMethodPrioritization = (): AdvancedMethodPrioritizationR
       );
     }
 
-    // Regla G: Tools Hub existe como ruta, pero sin fuente compartida detectable para scoring real.
+    // Regla G: el catálogo compartido permite recomendaciones reales de gobierno de herramientas.
+    if (isAvailable(toolsCatalog) && toolsSignals.p1ReadOnlySafe > 0) {
+      recommendations.push(
+        createRecommendation({
+          id: 'prioritize-safe-p1-tools',
+          title: 'Priorizar integración metodológica de herramientas P1 seguras',
+          description:
+            'Hay herramientas P1 read-only safe en el catálogo compartido; pueden conectarse al método sin ejecución automática.',
+          impact: 'high',
+          effort: 'medium',
+          readiness: 'ready',
+          category: 'tools',
+          reason: `${toolsSignals.p1ReadOnlySafe} herramientas P1 son seguras en modo lectura y ya tienen ruta recomendada.`,
+          missingSignals: [],
+          recommendedRoute: '/app/tools-hub',
+          recommendedCtaLabel: 'Gobernar en Tools Hub',
+          confidence: 'high',
+        }),
+      );
+    }
+
+    if (isAvailable(toolsCatalog) && toolsSignals.candidateOrPlanned >= 6) {
+      recommendations.push(
+        createRecommendation({
+          id: 'order-tools-backlog-before-automation',
+          title: 'Ordenar backlog de herramientas antes de automatizar',
+          description:
+            'El catálogo contiene varias herramientas candidatas o planificadas; conviene priorizar gobierno antes de Cola SEO.',
+          impact: 'medium',
+          effort: 'medium',
+          readiness: 'partial',
+          category: 'tools',
+          reason: `${toolsSignals.candidateOrPlanned} herramientas están en estado candidate/planned.`,
+          missingSignals: ['Scoring operativo por ownership y dependencias'],
+          recommendedRoute: '/app/tools-hub',
+          recommendedCtaLabel: 'Revisar catálogo',
+          confidence: 'medium',
+        }),
+      );
+    }
+
+    if (isAvailable(toolsCatalog) && toolsSignals.queueWithoutDryRun > 0) {
+      recommendations.push(
+        createRecommendation({
+          id: 'define-dry-run-before-seo-queue',
+          title: 'Definir dry-run antes de incluir herramientas en Cola SEO',
+          description:
+            'Algunas herramientas están marcadas como aptas para cola futura, pero todavía no soportan dry-run.',
+          impact: 'high',
+          effort: 'medium',
+          readiness: 'partial',
+          category: 'tools',
+          reason: `${toolsSignals.queueWithoutDryRun} herramientas podrían entrar en cola sin dry-run definido.`,
+          missingSignals: ['Contrato dry-run por herramienta'],
+          recommendedRoute: '/app/tools-hub',
+          recommendedCtaLabel: 'Revisar guardrails',
+          confidence: 'high',
+        }),
+      );
+    }
+
+    if (isAvailable(toolsCatalog) && toolsSignals.requiresHumanReview > 0) {
+      recommendations.push(
+        createRecommendation({
+          id: 'define-human-review-policy',
+          title: 'Marcar políticas de revisión humana antes de ejecución asistida',
+          description:
+            'El catálogo identifica herramientas que requieren revisión humana; esto debe gobernarse antes de automatizar.',
+          impact: 'high',
+          effort: 'medium',
+          readiness: 'partial',
+          category: 'tools',
+          reason: `${toolsSignals.requiresHumanReview} herramientas requieren revisión humana explícita.`,
+          missingSignals: ['Política de aprobación por herramienta'],
+          recommendedRoute: '/app/tools-hub',
+          recommendedCtaLabel: 'Definir políticas',
+          confidence: 'high',
+        }),
+      );
+    }
+
     if (isMissing(toolsCatalog)) {
       recommendations.push(
         createRecommendation({
@@ -290,5 +372,5 @@ export const useAdvancedMethodPrioritization = (): AdvancedMethodPrioritizationR
     );
 
     return { recommendations, summary };
-  }, [hasActiveClient, signals]);
+  }, [hasActiveClient, signals, toolsSignals]);
 };

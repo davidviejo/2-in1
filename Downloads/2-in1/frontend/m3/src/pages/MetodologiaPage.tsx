@@ -26,6 +26,7 @@ import { AdvancedMethodPhases } from '@/components/metodologia/AdvancedMethodPha
 import { AdvancedMethodPrioritization } from '@/components/metodologia/AdvancedMethodPrioritization';
 import { AdvancedMethodRealContext } from '@/components/metodologia/AdvancedMethodRealContext';
 import { AdvancedMethodStatus } from '@/components/metodologia/AdvancedMethodStatus';
+import { AdvancedToolsGovernanceSummary } from '@/components/metodologia/AdvancedToolsGovernanceSummary';
 import { AdvancedToolRadar } from '@/components/metodologia/AdvancedToolRadar';
 import { MethodologyHeader } from '@/components/metodologia/MethodologyHeader';
 import { MethodologyProcessTimeline } from '@/components/metodologia/MethodologyProcessTimeline';
@@ -234,6 +235,7 @@ const MetodologiaPage: React.FC = () => {
       <AdvancedMethodStatus />
       <AdvancedMethodRealContext />
       <AdvancedMethodPrioritization />
+      <AdvancedToolsGovernanceSummary />
       <AdvancedMethodNavigationMap />
       <AdvancedMethodCtaPanel />
       <AdvancedMethodPhases />
