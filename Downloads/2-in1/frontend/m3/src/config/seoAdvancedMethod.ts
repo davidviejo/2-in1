@@ -533,6 +533,11 @@ export const methodologySectionNavItems: MethodologySectionNavItem[] = [
     description: 'Visión transversal del framework.',
   },
   {
+    id: 'contexto-real',
+    label: 'Contexto real',
+    description: 'Señales read-only disponibles del proyecto.',
+  },
+  {
     id: 'mapa-operativo',
     label: 'Mapa operativo',
     description: 'Dónde se ejecuta cada parte.',
@@ -576,9 +581,9 @@ export const advancedMethodStatusItems: AdvancedMethodStatusItem[] = [
     state: 'in_progress',
   },
   {
-    label: 'Pendiente de datos reales',
-    description: 'Aún no consume clientes, proyectos, GSC, tareas ni snapshots reales.',
-    state: 'pending',
+    label: 'Conexión read-only con datos existentes',
+    description: 'Metodología ya puede leer señales disponibles sin escribir ni persistir cambios.',
+    state: 'in_progress',
   },
   {
     label: 'Pendiente de automatización',
@@ -687,13 +692,13 @@ export const advancedMethodNextSteps: AdvancedMethodNextStep[] = [
     phase: 'Fase 1B',
     title: 'Navegación interna, filtros y accionabilidad visual',
     description: 'Mejorar lectura y acceso a áreas operativas sin conectar datos reales.',
-    state: 'in_progress',
+    state: 'completed',
   },
   {
     phase: 'Fase 2',
     title: 'Conexión read-only con datos existentes',
     description: 'Leer clientes, proyectos, tareas, GSC o snapshots sin modificar modelos backend.',
-    state: 'pending',
+    state: 'in_progress',
   },
   {
     phase: 'Fase 3',

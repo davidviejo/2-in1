@@ -23,6 +23,7 @@ import { AdvancedMethodNavigationMap } from '@/components/metodologia/AdvancedMe
 import { AdvancedMethodOverview } from '@/components/metodologia/AdvancedMethodOverview';
 import { AdvancedMethodNextSteps } from '@/components/metodologia/AdvancedMethodNextSteps';
 import { AdvancedMethodPhases } from '@/components/metodologia/AdvancedMethodPhases';
+import { AdvancedMethodRealContext } from '@/components/metodologia/AdvancedMethodRealContext';
 import { AdvancedMethodStatus } from '@/components/metodologia/AdvancedMethodStatus';
 import { AdvancedToolRadar } from '@/components/metodologia/AdvancedToolRadar';
 import { MethodologyHeader } from '@/components/metodologia/MethodologyHeader';
@@ -230,6 +231,7 @@ const MetodologiaPage: React.FC = () => {
       <MethodologySectionNav />
       <AdvancedMethodOverview />
       <AdvancedMethodStatus />
+      <AdvancedMethodRealContext />
       <AdvancedMethodNavigationMap />
       <AdvancedMethodCtaPanel />
       <AdvancedMethodPhases />
