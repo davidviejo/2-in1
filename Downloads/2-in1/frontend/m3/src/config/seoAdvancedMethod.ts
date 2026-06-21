@@ -538,6 +538,11 @@ export const methodologySectionNavItems: MethodologySectionNavItem[] = [
     description: 'Señales read-only disponibles del proyecto.',
   },
   {
+    id: 'priorizacion',
+    label: 'Priorización',
+    description: 'Scoring visual read-only de impacto/esfuerzo.',
+  },
+  {
     id: 'mapa-operativo',
     label: 'Mapa operativo',
     description: 'Dónde se ejecuta cada parte.',
@@ -583,6 +588,11 @@ export const advancedMethodStatusItems: AdvancedMethodStatusItem[] = [
   {
     label: 'Conexión read-only con datos existentes',
     description: 'Metodología ya puede leer señales disponibles sin escribir ni persistir cambios.',
+    state: 'completed',
+  },
+  {
+    label: 'Scoring impacto/esfuerzo visual',
+    description: 'Recomendaciones metodológicas calculadas sin crear tareas ni editar roadmap.',
     state: 'in_progress',
   },
   {
@@ -698,13 +708,13 @@ export const advancedMethodNextSteps: AdvancedMethodNextStep[] = [
     phase: 'Fase 2',
     title: 'Conexión read-only con datos existentes',
     description: 'Leer clientes, proyectos, tareas, GSC o snapshots sin modificar modelos backend.',
-    state: 'in_progress',
+    state: 'completed',
   },
   {
     phase: 'Fase 3',
     title: 'Priorización impacto/esfuerzo',
     description: 'Añadir scoring visible y trazable para ordenar iniciativas.',
-    state: 'pending',
+    state: 'in_progress',
   },
   {
     phase: 'Fase 4',
