@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowUpRight, Loader2, Power, TriangleAlert, Wrench } from 'lucide-react';
+import { ToolsCatalogConsistencyPanel } from '@/components/tools/ToolsCatalogConsistencyPanel';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import { Modal } from '../components/ui/Modal';
 import { api, LauncherAppItem, LauncherSectionItem, ToolCatalogItem } from '../services/api';
+import { useToolsCatalogReconciliation } from '@/hooks/useToolsCatalogReconciliation';
 import { useToolsCatalogSignals } from '@/hooks/useToolsCatalogSignals';
 
 const statusVariant: Record<ToolCatalogItem['status'], 'warning' | 'success' | 'primary'> = {
@@ -115,6 +117,10 @@ const ToolsHub: React.FC = () => {
   const [logsLoading, setLogsLoading] = useState(false);
   const [logsError, setLogsError] = useState('');
   const sharedCatalogSignals = useToolsCatalogSignals();
+  const catalogReconciliation = useToolsCatalogReconciliation({
+    backendTools: tools,
+    launcherApps,
+  });
 
   useEffect(() => {
     let mounted = true;
@@ -383,6 +389,8 @@ const ToolsHub: React.FC = () => {
           </div>
         </div>
       </Card>
+
+      <ToolsCatalogConsistencyPanel reconciliation={catalogReconciliation} />
 
       <Card className="border-border bg-surface p-4">
         <div className="flex flex-wrap gap-3 text-xs text-muted">

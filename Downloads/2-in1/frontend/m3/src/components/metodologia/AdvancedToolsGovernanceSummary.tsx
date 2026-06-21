@@ -2,10 +2,12 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
+import { useToolsCatalogReconciliation } from '@/hooks/useToolsCatalogReconciliation';
 import { useToolsCatalogSignals } from '@/hooks/useToolsCatalogSignals';
 
 export const AdvancedToolsGovernanceSummary: React.FC = () => {
   const signals = useToolsCatalogSignals();
+  const reconciliation = useToolsCatalogReconciliation();
 
   return (
     <Card className="border-border bg-white p-5 shadow-sm sm:p-6">
@@ -43,6 +45,16 @@ export const AdvancedToolsGovernanceSummary: React.FC = () => {
         <Metric label="Legacy" value={signals.byStatus.legacy} variant="warning" />
         <Metric label="Migradas" value={signals.byStatus.migrated} variant="success" />
         <Metric label="Beta" value={signals.byStatus.beta} variant="primary" />
+        <Metric
+          label="Consistencia"
+          value={`${reconciliation.summary.consistencyScore}%`}
+          variant={reconciliation.summary.consistencyLevel === 'high' ? 'success' : 'warning'}
+        />
+        <Metric
+          label="Divergencias"
+          value={reconciliation.summary.criticalDivergences}
+          variant={reconciliation.summary.criticalDivergences > 0 ? 'warning' : 'success'}
+        />
       </div>
     </Card>
   );

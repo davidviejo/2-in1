@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { AdvancedMethodSignal, useAdvancedMethodSignals } from '@/hooks/useAdvancedMethodSignals';
+import { useToolsCatalogReconciliation } from '@/hooks/useToolsCatalogReconciliation';
 import { useToolsCatalogSignals } from '@/hooks/useToolsCatalogSignals';
 
 export type AdvancedMethodPriorityLevel = 'low' | 'medium' | 'high';
@@ -59,6 +60,7 @@ const createRecommendation = (
 export const useAdvancedMethodPrioritization = (): AdvancedMethodPrioritizationResult => {
   const { hasActiveClient, signals } = useAdvancedMethodSignals();
   const toolsSignals = useToolsCatalogSignals();
+  const reconciliation = useToolsCatalogReconciliation();
 
   return useMemo(() => {
     const activeClient = getSignal(signals, 'active-client');
@@ -358,6 +360,92 @@ export const useAdvancedMethodPrioritization = (): AdvancedMethodPrioritizationR
       );
     }
 
+    // Regla H: reconciliación entre catálogo metodológico, backend y launcher antes de automatizar.
+    if (reconciliation.summary.criticalDivergences > 0) {
+      recommendations.push(
+        createRecommendation({
+          id: 'resolve-tools-catalog-consistency',
+          title: 'Resolver consistencia del catálogo antes de automatizar',
+          description:
+            'Hay divergencias entre catálogo metodológico, backend o launcher; conviene resolverlas antes de diseñar Cola SEO.',
+          impact: 'high',
+          effort: 'medium',
+          readiness: 'partial',
+          category: 'tools',
+          reason: `${reconciliation.summary.criticalDivergences} divergencias críticas detectadas en la reconciliación read-only.`,
+          missingSignals: ['Catálogo reconciliado sin divergencias críticas'],
+          recommendedRoute: '/app/tools-hub',
+          recommendedCtaLabel: 'Revisar consistencia',
+          confidence: 'high',
+        }),
+      );
+    }
+
+    if (
+      reconciliation.summary.consistencyLevel === 'high' &&
+      toolsSignals.readyForDryRun > 0 &&
+      toolsSignals.readOnlySafe > 0
+    ) {
+      recommendations.push(
+        createRecommendation({
+          id: 'prepare-tools-for-seo-queue-dry-run',
+          title: 'Preparar selección de herramientas candidatas para Cola SEO dry-run',
+          description:
+            'La consistencia del catálogo es alta y ya hay herramientas seguras con dry-run para diseñar una fase de simulación.',
+          impact: 'high',
+          effort: 'medium',
+          readiness: 'partial',
+          category: 'tools',
+          reason: `${toolsSignals.readyForDryRun} herramientas soportan dry-run y ${toolsSignals.readOnlySafe} son read-only safe.`,
+          missingSignals: ['Diseño de Cola SEO dry-run'],
+          recommendedRoute: '/app/tools-hub',
+          recommendedCtaLabel: 'Preparar selección',
+          confidence: 'medium',
+        }),
+      );
+    }
+
+    if (reconciliation.summary.backendOnly > 0) {
+      recommendations.push(
+        createRecommendation({
+          id: 'classify-backend-only-tools',
+          title: 'Clasificar herramientas backend dentro del gobierno metodológico',
+          description:
+            'Existen herramientas operativas detectadas solo en backend; deben clasificarse antes de aparecer en metodología.',
+          impact: 'medium',
+          effort: 'medium',
+          readiness: 'partial',
+          category: 'tools',
+          reason: `${reconciliation.summary.backendOnly} herramientas aparecen solo en catálogo backend.`,
+          missingSignals: ['Clasificación metodológica de herramientas backend'],
+          recommendedRoute: '/app/tools-hub',
+          recommendedCtaLabel: 'Clasificar backend',
+          confidence: 'medium',
+        }),
+      );
+    }
+
+    if (reconciliation.summary.methodologyOnly > 0) {
+      recommendations.push(
+        createRecommendation({
+          id: 'validate-methodology-only-tools',
+          title:
+            'Validar si herramientas planificadas deben implementarse o mantenerse como backlog',
+          description:
+            'Hay herramientas solo en metodología; deben validarse como candidatas reales, backlog o no disponibles.',
+          impact: 'medium',
+          effort: 'medium',
+          readiness: 'partial',
+          category: 'tools',
+          reason: `${reconciliation.summary.methodologyOnly} herramientas están solo en el catálogo metodológico.`,
+          missingSignals: ['Decisión de implementación o backlog por herramienta'],
+          recommendedRoute: '/app/tools-hub',
+          recommendedCtaLabel: 'Validar backlog',
+          confidence: 'medium',
+        }),
+      );
+    }
+
     const summary = recommendations.reduce<AdvancedMethodPrioritizationSummary>(
       (acc, recommendation) => {
         acc.total += 1;
@@ -372,5 +460,5 @@ export const useAdvancedMethodPrioritization = (): AdvancedMethodPrioritizationR
     );
 
     return { recommendations, summary };
-  }, [hasActiveClient, signals, toolsSignals]);
+  }, [hasActiveClient, reconciliation, signals, toolsSignals]);
 };

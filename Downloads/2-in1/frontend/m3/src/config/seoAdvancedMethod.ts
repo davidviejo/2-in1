@@ -462,6 +462,12 @@ export const advancedMethodStatusItems: AdvancedMethodStatusItem[] = [
   {
     label: 'Tools Hub avanzado read-only',
     description: 'Catálogo compartido y señales de gobierno disponibles sin ejecutar herramientas.',
+    state: 'completed',
+  },
+  {
+    label: 'Reconciliación de catálogo',
+    description:
+      'Comparación read-only entre metodología, backend y launcher para detectar divergencias.',
     state: 'in_progress',
   },
   {
@@ -586,9 +592,15 @@ export const advancedMethodNextSteps: AdvancedMethodNextStep[] = [
     state: 'completed',
   },
   {
-    phase: 'Fase 4',
-    title: 'Tools Hub avanzado',
+    phase: 'Fase 4A',
+    title: 'Tools Hub avanzado read-only',
     description: 'Gobierno ampliado, estados, scoring y ownership de herramientas.',
+    state: 'completed',
+  },
+  {
+    phase: 'Fase 4B',
+    title: 'Reconciliación de catálogo',
+    description: 'Comparar metodología, backend y launcher sin ejecutar herramientas.',
     state: 'in_progress',
   },
   {
