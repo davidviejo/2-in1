@@ -437,6 +437,11 @@ export const methodologySectionNavItems: MethodologySectionNavItem[] = [
     description: 'Selección manual y paquete simulado.',
   },
   {
+    id: 'gobernanza-cola-seo',
+    label: 'Gobernanza',
+    description: 'Permisos, contratos y readiness Fase 6.',
+  },
+  {
     id: 'siguientes-pasos',
     label: 'Siguientes pasos',
     description: 'Roadmap recomendado de implantación.',
@@ -488,6 +493,12 @@ export const advancedMethodStatusItems: AdvancedMethodStatusItem[] = [
   {
     label: 'Selección manual de piloto',
     description: 'Preparación local de paquetes simulados sin persistir ni ejecutar acciones.',
+    state: 'completed',
+  },
+  {
+    label: 'Gobernanza para ejecución controlada',
+    description:
+      'Permisos, contratos dry-run, auditoría y rollback definidos como contrato futuro.',
     state: 'in_progress',
   },
   {
@@ -633,6 +644,12 @@ export const advancedMethodNextSteps: AdvancedMethodNextStep[] = [
     phase: 'Fase 5B',
     title: 'Selección manual de workflows',
     description: 'Preparar paquetes de acción simulados sin ejecución ni persistencia automática.',
+    state: 'completed',
+  },
+  {
+    phase: 'Fase 5C',
+    title: 'Hardening de gobernanza',
+    description: 'Definir permisos, contratos dry-run, auditoría, rollback y readiness de Fase 6.',
     state: 'in_progress',
   },
   {

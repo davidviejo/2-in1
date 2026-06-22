@@ -1,4 +1,8 @@
 import { useMemo } from 'react';
+import {
+  seoQueueStepGovernancePolicies,
+  seoQueueToolDryRunContracts,
+} from '@/config/seoQueueGovernance';
 import { seoQueueWorkflows } from '@/config/seoQueueWorkflows';
 import { AdvancedMethodSignal, useAdvancedMethodSignals } from '@/hooks/useAdvancedMethodSignals';
 import { useToolsCatalogReconciliation } from '@/hooks/useToolsCatalogReconciliation';
@@ -576,6 +580,115 @@ export const useAdvancedMethodPrioritization = (): AdvancedMethodPrioritizationR
           ],
           recommendedRoute: '/app/metodologia#piloto-cola-seo',
           recommendedCtaLabel: 'Revisar requisitos',
+          confidence: 'medium',
+        }),
+      );
+    }
+
+    // Regla K: hardening de gobernanza Fase 5C antes de cualquier ejecución controlada.
+    const requiredGovernanceToolIds = Array.from(
+      new Set(seoQueueWorkflows.flatMap((workflow) => workflow.requiredTools)),
+    );
+    const governanceContractToolIds = new Set(
+      seoQueueToolDryRunContracts.map((contract) => contract.toolId),
+    );
+    const missingGovernanceContracts = requiredGovernanceToolIds.filter(
+      (toolId) => !governanceContractToolIds.has(toolId),
+    );
+    const blockedGovernanceContracts = seoQueueToolDryRunContracts.filter(
+      (contract) => contract.readinessForPhase6 === 'blocked',
+    );
+    const stepsWithoutGovernancePolicy = seoQueueWorkflows.flatMap((workflow) =>
+      workflow.steps.filter(
+        (step) => !seoQueueStepGovernancePolicies.some((policy) => policy.stepType === step.type),
+      ),
+    );
+    const toolsWithoutAuditOrRollback = seoQueueToolDryRunContracts.filter(
+      (contract) =>
+        contract.auditRequirements.length === 0 || contract.rollbackRequirements.length === 0,
+    );
+
+    if (missingGovernanceContracts.length > 0 || blockedGovernanceContracts.length > 0) {
+      recommendations.push(
+        createRecommendation({
+          id: 'define-dry-run-contracts-before-controlled-execution',
+          title: 'Definir contratos dry-run antes de ejecución controlada',
+          description:
+            'Fase 6 no debe diseñarse hasta que cada herramienta requerida tenga contrato dry-run suficiente y sin estado bloqueado.',
+          impact: 'high',
+          effort: 'medium',
+          readiness: 'blocked',
+          category: 'tools',
+          reason: `${missingGovernanceContracts.length} herramientas sin contrato y ${blockedGovernanceContracts.length} contratos bloqueados.`,
+          missingSignals: ['Contratos dry-run completos por herramienta'],
+          recommendedRoute: '/app/metodologia#gobernanza-cola-seo',
+          recommendedCtaLabel: 'Revisar gobernanza',
+          confidence: 'high',
+        }),
+      );
+    }
+
+    if (stepsWithoutGovernancePolicy.length > 0) {
+      recommendations.push(
+        createRecommendation({
+          id: 'complete-human-approval-policy',
+          title: 'Completar política de aprobación humana',
+          description:
+            'Todos los tipos de paso necesitan política de aprobación antes de evaluar ejecución futura.',
+          impact: 'high',
+          effort: 'medium',
+          readiness: 'blocked',
+          category: 'tools',
+          reason: `${stepsWithoutGovernancePolicy.length} pasos no tienen política de gobernanza asignada.`,
+          missingSignals: ['Política humana por tipo de paso'],
+          recommendedRoute: '/app/metodologia#gobernanza-cola-seo',
+          recommendedCtaLabel: 'Ver política humana',
+          confidence: 'high',
+        }),
+      );
+    }
+
+    if (toolsWithoutAuditOrRollback.length > 0) {
+      recommendations.push(
+        createRecommendation({
+          id: 'define-audit-and-rollback-before-phase-6',
+          title: 'Definir auditoría y rollback antes de Fase 6',
+          description:
+            'Las herramientas candidatas necesitan requisitos de auditoría y rollback explícitos antes de cualquier ejecución controlada.',
+          impact: 'high',
+          effort: 'high',
+          readiness: 'blocked',
+          category: 'tools',
+          reason: `${toolsWithoutAuditOrRollback.length} contratos no tienen auditoría o rollback completos.`,
+          missingSignals: ['Auditoría y rollback por herramienta'],
+          recommendedRoute: '/app/metodologia#gobernanza-cola-seo',
+          recommendedCtaLabel: 'Revisar contratos',
+          confidence: 'high',
+        }),
+      );
+    }
+
+    if (
+      missingGovernanceContracts.length === 0 &&
+      blockedGovernanceContracts.length === 0 &&
+      stepsWithoutGovernancePolicy.length === 0 &&
+      toolsWithoutAuditOrRollback.length === 0
+    ) {
+      recommendations.push(
+        createRecommendation({
+          id: 'prepare-technical-design-for-phase-6-without-activation',
+          title: 'Preparar diseño técnico de Fase 6 sin activar ejecución todavía',
+          description:
+            'La gobernanza base está cubierta; el siguiente paso es diseñar arquitectura técnica, permisos y auditoría sin habilitar ejecución real.',
+          impact: 'high',
+          effort: 'medium',
+          readiness: 'partial',
+          category: 'tools',
+          reason:
+            'Contratos, política humana, auditoría y rollback están modelados como contrato frontend.',
+          missingSignals: ['Diseño técnico y validación de seguridad de Fase 6'],
+          recommendedRoute: '/app/metodologia#gobernanza-cola-seo',
+          recommendedCtaLabel: 'Preparar Fase 6',
           confidence: 'medium',
         }),
       );
