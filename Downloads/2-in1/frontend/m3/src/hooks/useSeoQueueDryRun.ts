@@ -42,6 +42,13 @@ export interface SeoQueueDryRunWorkflow {
   missingTools: string[];
   blockedReasons: string[];
   expectedOutputs: string[];
+  pilotSuitability: SeoQueueWorkflowConfig['pilotSuitability'];
+  minimumRequirements: string[];
+  humanApprovalPolicy: string[];
+  suggestedOwnerArea: string;
+  suggestedReviewers: string[];
+  packageOutputs: string[];
+  nextPhaseWarnings: string[];
   simulatedLogs: string[];
   steps: SeoQueueDryRunStep[];
   readySteps: number;
@@ -209,6 +216,13 @@ export const useSeoQueueDryRun = (): SeoQueueDryRunResult => {
         missingTools: workflowMissingTools,
         blockedReasons: workflowBlockedReasons,
         expectedOutputs: workflow.expectedOutputs,
+        pilotSuitability: workflow.pilotSuitability,
+        minimumRequirements: workflow.minimumRequirements,
+        humanApprovalPolicy: workflow.humanApprovalPolicy,
+        suggestedOwnerArea: workflow.suggestedOwnerArea,
+        suggestedReviewers: workflow.suggestedReviewers,
+        packageOutputs: workflow.packageOutputs,
+        nextPhaseWarnings: workflow.nextPhaseWarnings,
         simulatedLogs: steps.flatMap((step) => step.dryRunLogMessages),
         steps,
         readySteps,

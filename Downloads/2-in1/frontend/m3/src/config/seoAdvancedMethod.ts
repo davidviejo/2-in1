@@ -432,6 +432,11 @@ export const methodologySectionNavItems: MethodologySectionNavItem[] = [
     description: 'Simulación frontend de workflows sin ejecución.',
   },
   {
+    id: 'piloto-cola-seo',
+    label: 'Piloto',
+    description: 'Selección manual y paquete simulado.',
+  },
+  {
     id: 'siguientes-pasos',
     label: 'Siguientes pasos',
     description: 'Roadmap recomendado de implantación.',
@@ -478,6 +483,11 @@ export const advancedMethodStatusItems: AdvancedMethodStatusItem[] = [
   {
     label: 'Cola SEO dry-run simulada',
     description: 'Workflows frontend simulados con bloqueos, logs y outputs sin ejecución real.',
+    state: 'completed',
+  },
+  {
+    label: 'Selección manual de piloto',
+    description: 'Preparación local de paquetes simulados sin persistir ni ejecutar acciones.',
     state: 'in_progress',
   },
   {
@@ -617,13 +627,13 @@ export const advancedMethodNextSteps: AdvancedMethodNextStep[] = [
     phase: 'Fase 5A',
     title: 'Cola SEO dry-run simulada',
     description: 'Simular workflows con dependencias, logs y revisión sin acciones reales.',
-    state: 'in_progress',
+    state: 'completed',
   },
   {
     phase: 'Fase 5B',
     title: 'Selección manual de workflows',
-    description: 'Preparar selección humana de workflows dry-run sin ejecución real.',
-    state: 'pending',
+    description: 'Preparar paquetes de acción simulados sin ejecución ni persistencia automática.',
+    state: 'in_progress',
   },
   {
     phase: 'Fase 6',

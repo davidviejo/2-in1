@@ -8,6 +8,7 @@ export type SeoQueueWorkflowCategory =
   | 'tools-governance';
 
 export type SeoQueueRiskLevel = 'low' | 'medium' | 'high';
+export type SeoQueuePilotSuitability = 'low' | 'medium' | 'high';
 export type SeoQueueStepType =
   | 'precheck'
   | 'analysis'
@@ -44,6 +45,13 @@ export interface SeoQueueWorkflowConfig {
   requiresHumanReview: boolean;
   estimatedSteps: number;
   expectedOutputs: string[];
+  pilotSuitability: SeoQueuePilotSuitability;
+  minimumRequirements: string[];
+  humanApprovalPolicy: string[];
+  suggestedOwnerArea: string;
+  suggestedReviewers: string[];
+  packageOutputs: string[];
+  nextPhaseWarnings: string[];
   steps: SeoQueueDryRunStepConfig[];
 }
 
@@ -62,6 +70,28 @@ export const seoQueueWorkflows: SeoQueueWorkflowConfig[] = [
     requiresHumanReview: true,
     estimatedSteps: 5,
     expectedOutputs: ['Resumen de hallazgos', 'Lista de bloqueos', 'Propuesta de prioridades'],
+    pilotSuitability: 'high',
+    minimumRequirements: [
+      'Cliente activo',
+      'Señales GSC disponibles',
+      'Backlog o tareas existentes',
+      'Catálogo de herramientas reconciliado',
+    ],
+    humanApprovalPolicy: [
+      'Aprobación obligatoria antes de convertir prioridades en tareas.',
+      'Revisión recomendada de cualquier recomendación impacto/esfuerzo.',
+    ],
+    suggestedOwnerArea: 'Estrategia / Intelligence',
+    suggestedReviewers: ['SEO Lead', 'Responsable de cuenta', 'Cliente'],
+    packageOutputs: [
+      'Plan mensual simulado',
+      'Bloqueos por señal/herramienta',
+      'Checklist de validación humana',
+    ],
+    nextPhaseWarnings: [
+      'No convertir recomendaciones en tareas sin aprobación humana.',
+      'No ejecutar herramientas hasta definir permisos y auditoría.',
+    ],
     steps: [
       {
         id: 'audit-precheck',
@@ -157,6 +187,23 @@ export const seoQueueWorkflows: SeoQueueWorkflowConfig[] = [
     requiresHumanReview: true,
     estimatedSteps: 3,
     expectedOutputs: ['Posibles canibalizaciones', 'Recomendaciones de consolidación'],
+    pilotSuitability: 'medium',
+    minimumRequirements: ['Cliente activo', 'GSC disponible', 'Clusters SEO disponibles'],
+    humanApprovalPolicy: [
+      'Aprobación obligatoria antes de consolidar, redirigir o reescribir URLs.',
+      'Revisión editorial de cualquier conflicto de intención.',
+    ],
+    suggestedOwnerArea: 'Intelligence / Estrategia',
+    suggestedReviewers: ['SEO Lead', 'Editor SEO'],
+    packageOutputs: [
+      'Mapa simulado de conflictos',
+      'Criterios de consolidación',
+      'Riesgos editoriales',
+    ],
+    nextPhaseWarnings: [
+      'No aplicar consolidaciones automáticas.',
+      'Validar intención y negocio antes de decidir URL canónica.',
+    ],
     steps: [
       {
         id: 'cannibalization-precheck',
@@ -218,6 +265,19 @@ export const seoQueueWorkflows: SeoQueueWorkflowConfig[] = [
     requiresHumanReview: true,
     estimatedSteps: 3,
     expectedOutputs: ['Ideas de enlaces', 'Bloqueos por falta de grafo'],
+    pilotSuitability: 'medium',
+    minimumRequirements: ['Cliente activo', 'Clusters SEO disponibles', 'Herramienta con dry-run'],
+    humanApprovalPolicy: [
+      'Aprobación editorial obligatoria antes de publicar enlaces.',
+      'Revisión recomendada de anchors y páginas destino.',
+    ],
+    suggestedOwnerArea: 'Acciones / Content SEO',
+    suggestedReviewers: ['SEO Lead', 'Editor SEO', 'Content Manager'],
+    packageOutputs: ['Preview de enlaces', 'Bloqueos por grafo', 'Checklist editorial'],
+    nextPhaseWarnings: [
+      'No insertar enlaces automáticamente.',
+      'Revisar intención, anchor y contexto antes de cualquier implementación.',
+    ],
     steps: [
       {
         id: 'linking-precheck',
@@ -279,6 +339,23 @@ export const seoQueueWorkflows: SeoQueueWorkflowConfig[] = [
     requiresHumanReview: true,
     estimatedSteps: 3,
     expectedOutputs: ['URLs a revisar', 'Riesgos de indexación'],
+    pilotSuitability: 'medium',
+    minimumRequirements: ['Cliente activo', 'GSC disponible', 'Política de uso de APIs sensible'],
+    humanApprovalPolicy: [
+      'Aprobación obligatoria antes de llamadas sensibles de inspección/indexación.',
+      'Revisión técnica de cuotas, permisos y riesgos.',
+    ],
+    suggestedOwnerArea: 'Intelligence / Técnico',
+    suggestedReviewers: ['SEO Técnico', 'SEO Lead'],
+    packageOutputs: [
+      'Listado simulado de URLs críticas',
+      'Riesgos por cobertura',
+      'Guardrails de cuotas',
+    ],
+    nextPhaseWarnings: [
+      'No llamar APIs de inspección sin permisos explícitos.',
+      'No solicitar indexación desde el simulador.',
+    ],
     steps: [
       {
         id: 'indexation-precheck',
@@ -340,6 +417,23 @@ export const seoQueueWorkflows: SeoQueueWorkflowConfig[] = [
     requiresHumanReview: true,
     estimatedSteps: 3,
     expectedOutputs: ['Brief borrador', 'Checklist editorial'],
+    pilotSuitability: 'medium',
+    minimumRequirements: [
+      'Cliente activo',
+      'Roadmap IA o contexto editorial',
+      'Plantilla de brief aprobada',
+    ],
+    humanApprovalPolicy: [
+      'Aprobación editorial obligatoria antes de producir o entregar briefs reales.',
+      'Revisión recomendada de fuentes, intención y tono.',
+    ],
+    suggestedOwnerArea: 'Estrategia / Content SEO',
+    suggestedReviewers: ['Editor SEO', 'Content Manager', 'SEO Lead'],
+    packageOutputs: ['Estructura de brief simulada', 'Checklist editorial', 'Bloqueos por datos'],
+    nextPhaseWarnings: [
+      'No llamar modelos LLM desde el simulador.',
+      'No publicar briefs sin revisión editorial humana.',
+    ],
     steps: [
       {
         id: 'brief-precheck',
@@ -401,6 +495,23 @@ export const seoQueueWorkflows: SeoQueueWorkflowConfig[] = [
     requiresHumanReview: false,
     estimatedSteps: 2,
     expectedOutputs: ['Resumen before/after', 'Aprendizajes'],
+    pilotSuitability: 'high',
+    minimumRequirements: [
+      'Cliente activo',
+      'Tareas completadas o snapshots',
+      'Ventana de medición definida',
+    ],
+    humanApprovalPolicy: [
+      'Revisión recomendada del análisis antes de reportarlo al cliente.',
+      'Aprobación previa si se exporta como entregable formal.',
+    ],
+    suggestedOwnerArea: 'Validación / Reporting',
+    suggestedReviewers: ['SEO Lead', 'Responsable de cuenta'],
+    packageOutputs: ['Resumen before/after simulado', 'Aprendizajes', 'Preguntas abiertas'],
+    nextPhaseWarnings: [
+      'No emitir reporte final sin validar ventana y atribución.',
+      'No cerrar acciones futuras automáticamente.',
+    ],
     steps: [
       {
         id: 'before-after-precheck',
@@ -449,6 +560,27 @@ export const seoQueueWorkflows: SeoQueueWorkflowConfig[] = [
       'Bloqueos de catálogo',
       'Políticas de revisión',
       'Lista de herramientas aptas',
+    ],
+    pilotSuitability: 'high',
+    minimumRequirements: [
+      'Catálogo compartido disponible',
+      'Reconciliación backend/launcher revisada',
+      'Política humana definida',
+    ],
+    humanApprovalPolicy: [
+      'Aprobación obligatoria antes de habilitar cualquier herramienta en cola real.',
+      'Revisión técnica de dry-run, logs y permisos por herramienta.',
+    ],
+    suggestedOwnerArea: 'Tools Hub / Producto',
+    suggestedReviewers: ['Product Owner', 'SEO Lead', 'Tech Lead'],
+    packageOutputs: [
+      'Matriz de herramientas aptas',
+      'Bloqueos de catálogo',
+      'Política de aprobación',
+    ],
+    nextPhaseWarnings: [
+      'No pasar a ejecución real sin contratos dry-run por herramienta.',
+      'No habilitar herramientas con divergencias críticas.',
     ],
     steps: [
       {

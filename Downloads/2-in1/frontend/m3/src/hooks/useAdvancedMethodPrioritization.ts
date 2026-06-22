@@ -512,6 +512,75 @@ export const useAdvancedMethodPrioritization = (): AdvancedMethodPrioritizationR
       );
     }
 
+    // Regla J: selección manual de piloto y paquete simulado de Fase 5B.
+    const highSuitabilityWorkflowCount = seoQueueWorkflows.filter(
+      (workflow) => workflow.pilotSuitability === 'high',
+    ).length;
+    const hasPilotCandidate =
+      hasActiveClient &&
+      highSuitabilityWorkflowCount > 0 &&
+      reconciliation.summary.criticalDivergences === 0 &&
+      toolsSignals.readyForDryRun > 0;
+
+    if (hasPilotCandidate) {
+      recommendations.push(
+        createRecommendation({
+          id: 'select-pilot-workflow-for-phase-6-prep',
+          title: 'Seleccionar workflow piloto para preparar Fase 6',
+          description:
+            'Hay workflows con suitability alta y guardrails suficientes para revisarlos como pilotos simulados antes de cualquier ejecución real.',
+          impact: 'high',
+          effort: 'medium',
+          readiness: 'partial',
+          category: 'tools',
+          reason: `${highSuitabilityWorkflowCount} workflows tienen suitability alta para piloto y la selección sigue en estado local/read-only.`,
+          missingSignals: ['Decisión humana de workflow piloto'],
+          recommendedRoute: '/app/metodologia#piloto-cola-seo',
+          recommendedCtaLabel: 'Seleccionar piloto',
+          confidence: 'medium',
+        }),
+      );
+
+      recommendations.push(
+        createRecommendation({
+          id: 'review-simulated-action-package-before-controlled-execution',
+          title: 'Revisar paquete de acción antes de permitir ejecución controlada',
+          description:
+            'El selector puede preparar un paquete simulado con requisitos, pasos, bloqueos y política humana sin crear tareas ni modificar roadmap.',
+          impact: 'high',
+          effort: 'low',
+          readiness: 'partial',
+          category: 'tools',
+          reason:
+            'El paquete de acción es una vista previa en memoria para preparar gobernanza de Fase 6.',
+          missingSignals: ['Aprobación humana del paquete simulado'],
+          recommendedRoute: '/app/metodologia#piloto-cola-seo',
+          recommendedCtaLabel: 'Revisar paquete',
+          confidence: 'medium',
+        }),
+      );
+    } else if (hasActiveClient) {
+      recommendations.push(
+        createRecommendation({
+          id: 'resolve-minimum-blockers-before-piloting-seo-queue',
+          title: 'Resolver bloqueos mínimos antes de pilotar Cola SEO',
+          description:
+            'No hay condiciones suficientes para seleccionar un piloto con seguridad; primero hay que resolver señales, dry-run o divergencias de catálogo.',
+          impact: 'high',
+          effort: 'medium',
+          readiness: 'blocked',
+          category: 'tools',
+          reason: 'Faltan condiciones mínimas para tratar un workflow como piloto seguro.',
+          missingSignals: [
+            'Cliente activo, herramientas dry-run y catálogo sin divergencias críticas',
+          ],
+          recommendedRoute: '/app/metodologia#piloto-cola-seo',
+          recommendedCtaLabel: 'Revisar requisitos',
+          confidence: 'medium',
+        }),
+      );
+    }
+
     const summary = recommendations.reduce<AdvancedMethodPrioritizationSummary>(
       (acc, recommendation) => {
         acc.total += 1;
