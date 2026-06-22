@@ -1,5 +1,8 @@
 import React, { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
+  Activity,
+  ArrowRight,
   BookOpen,
   FileText,
   Files,
@@ -174,6 +177,12 @@ const initialDeepDiveResources: MethodologyResource[] = [
 ];
 
 const resourceTabs = ['Documentación', 'Sheets', 'Enlaces', 'Plantillas'] as const;
+
+const levelBadgeVariant: Record<AdvancedMethodLevel, 'success' | 'warning' | 'danger'> = {
+  Alto: 'danger',
+  Medio: 'warning',
+  Bajo: 'success',
+};
 
 const MetodologiaPage: React.FC = () => {
   const [deepDiveResources, setDeepDiveResources] = useState(initialDeepDiveResources);
