@@ -427,6 +427,11 @@ export const methodologySectionNavItems: MethodologySectionNavItem[] = [
     description: 'Automatización conceptual sin ejecución real.',
   },
   {
+    id: 'cola-seo-dry-run',
+    label: 'Dry-run',
+    description: 'Simulación frontend de workflows sin ejecución.',
+  },
+  {
     id: 'siguientes-pasos',
     label: 'Siguientes pasos',
     description: 'Roadmap recomendado de implantación.',
@@ -468,6 +473,11 @@ export const advancedMethodStatusItems: AdvancedMethodStatusItem[] = [
     label: 'Reconciliación de catálogo',
     description:
       'Comparación read-only entre metodología, backend y launcher para detectar divergencias.',
+    state: 'completed',
+  },
+  {
+    label: 'Cola SEO dry-run simulada',
+    description: 'Workflows frontend simulados con bloqueos, logs y outputs sin ejecución real.',
     state: 'in_progress',
   },
   {
@@ -601,12 +611,18 @@ export const advancedMethodNextSteps: AdvancedMethodNextStep[] = [
     phase: 'Fase 4B',
     title: 'Reconciliación de catálogo',
     description: 'Comparar metodología, backend y launcher sin ejecutar herramientas.',
+    state: 'completed',
+  },
+  {
+    phase: 'Fase 5A',
+    title: 'Cola SEO dry-run simulada',
+    description: 'Simular workflows con dependencias, logs y revisión sin acciones reales.',
     state: 'in_progress',
   },
   {
-    phase: 'Fase 5',
-    title: 'Cola SEO dry-run',
-    description: 'Simular workflows con dependencias, logs y revisión sin acciones reales.',
+    phase: 'Fase 5B',
+    title: 'Selección manual de workflows',
+    description: 'Preparar selección humana de workflows dry-run sin ejecución real.',
     state: 'pending',
   },
   {

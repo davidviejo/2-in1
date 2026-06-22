@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { seoQueueWorkflows } from '@/config/seoQueueWorkflows';
 import { AdvancedMethodSignal, useAdvancedMethodSignals } from '@/hooks/useAdvancedMethodSignals';
 import { useToolsCatalogReconciliation } from '@/hooks/useToolsCatalogReconciliation';
 import { useToolsCatalogSignals } from '@/hooks/useToolsCatalogSignals';
@@ -442,6 +443,71 @@ export const useAdvancedMethodPrioritization = (): AdvancedMethodPrioritizationR
           recommendedRoute: '/app/tools-hub',
           recommendedCtaLabel: 'Validar backlog',
           confidence: 'medium',
+        }),
+      );
+    }
+
+    // Regla I: recomendaciones de la Cola SEO dry-run simulada, sin ejecución real.
+    if (
+      hasActiveClient &&
+      reconciliation.summary.criticalDivergences === 0 &&
+      toolsSignals.readyForDryRun > 0
+    ) {
+      recommendations.push(
+        createRecommendation({
+          id: 'review-seo-queue-dry-run-workflows',
+          title: 'Revisar workflows dry-run antes de diseñar ejecución real',
+          description:
+            'Existen herramientas con dry-run y catálogo sin divergencias críticas; la siguiente decisión es revisar simulaciones, no ejecutar.',
+          impact: 'high',
+          effort: 'medium',
+          readiness: 'partial',
+          category: 'tools',
+          reason: `${seoQueueWorkflows.length} workflows dry-run están definidos como simulación frontend.`,
+          missingSignals: ['Selección humana de workflow dry-run'],
+          recommendedRoute: '/app/metodologia#cola-seo-dry-run',
+          recommendedCtaLabel: 'Ver dry-run',
+          confidence: 'medium',
+        }),
+      );
+    }
+
+    if (!hasActiveClient) {
+      recommendations.push(
+        createRecommendation({
+          id: 'resolve-minimum-signals-before-seo-queue',
+          title: 'Resolver señales mínimas antes de preparar Cola SEO',
+          description:
+            'Sin cliente activo todos los workflows dry-run quedan bloqueados por seguridad.',
+          impact: 'high',
+          effort: 'medium',
+          readiness: 'blocked',
+          category: 'tools',
+          reason: 'La Cola SEO dry-run requiere contexto mínimo de cliente para simular pasos.',
+          missingSignals: ['Cliente activo'],
+          recommendedRoute: '/app',
+          recommendedCtaLabel: 'Abrir Dashboard',
+          confidence: 'high',
+        }),
+      );
+    }
+
+    if (toolsSignals.requiresHumanReview > 0) {
+      recommendations.push(
+        createRecommendation({
+          id: 'define-approval-policy-for-dry-run',
+          title: 'Definir política de aprobación humana por tipo de acción',
+          description:
+            'La simulación detecta herramientas que requieren revisión humana; deben tener política antes de pasar a selección manual.',
+          impact: 'high',
+          effort: 'medium',
+          readiness: 'partial',
+          category: 'tools',
+          reason: `${toolsSignals.requiresHumanReview} herramientas del catálogo requieren revisión humana.`,
+          missingSignals: ['Política de aprobación humana'],
+          recommendedRoute: '/app/tools-hub',
+          recommendedCtaLabel: 'Revisar políticas',
+          confidence: 'high',
         }),
       );
     }

@@ -37,6 +37,7 @@ import {
   MethodologyResourcesTable,
 } from '@/components/metodologia/MethodologyResources';
 import { SeoQueueConcept } from '@/components/metodologia/SeoQueueConcept';
+import { SeoQueueDryRunPanel } from '@/components/metodologia/SeoQueueDryRunPanel';
 
 const kpiCards = [
   {
@@ -241,6 +242,7 @@ const MetodologiaPage: React.FC = () => {
       <AdvancedMethodPhases />
       <AdvancedToolRadar />
       <SeoQueueConcept />
+      <SeoQueueDryRunPanel />
       <AdvancedMethodNextSteps />
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr),370px]">
         <MethodologyProcessTimeline phases={methodologyPhases} />
