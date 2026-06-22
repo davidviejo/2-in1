@@ -61,26 +61,28 @@ export const SeoQueuePilotSelector: React.FC = () => {
   };
 
   return (
-    <Card className="border-border bg-white p-5 shadow-sm sm:p-6" id="piloto-cola-seo">
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <Badge variant="primary">Fase 5B · selección local</Badge>
-          <h2 className="mt-3 text-xl font-semibold text-foreground">
-            Selección manual de workflows piloto
-          </h2>
-          <p className="mt-2 max-w-4xl text-sm leading-6 text-muted-foreground">
-            Selecciona un workflow dry-run candidato, revisa requisitos, aprobación humana y paquete
-            de acción simulado. Esta vista no crea tareas, no modifica roadmap, no ejecuta
-            herramientas y no persiste selección.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2 md:justify-end">
-          <Badge variant="success">{candidateWorkflows.length} candidatos</Badge>
-          <Badge variant="neutral">{notRecommendedWorkflows.length} no recomendados</Badge>
+    <Card className="overflow-hidden border-border bg-white p-0 shadow-sm" id="piloto-cola-seo">
+      <div className="border-b border-border bg-surface-alt p-5 sm:p-6">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <Badge variant="primary">Fase 5B · selección local</Badge>
+            <h2 className="mt-3 text-xl font-semibold text-foreground">
+              Selección manual de workflows piloto
+            </h2>
+            <p className="mt-2 max-w-4xl text-sm leading-6 text-muted-foreground">
+              Selecciona un workflow dry-run candidato, revisa requisitos, aprobación humana y
+              paquete de acción simulado. Esta vista no crea tareas, no modifica roadmap, no ejecuta
+              herramientas y no persiste selección.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2 md:justify-end">
+            <Badge variant="success">{candidateWorkflows.length} candidatos</Badge>
+            <Badge variant="neutral">{notRecommendedWorkflows.length} no recomendados</Badge>
+          </div>
         </div>
       </div>
 
-      <div className="mt-5 grid gap-4 xl:grid-cols-[340px,minmax(0,1fr)]">
+      <div className="grid gap-4 p-5 sm:p-6 xl:grid-cols-[340px,minmax(0,1fr)]">
         <div className="space-y-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Workflows disponibles ({workflows.length})
@@ -246,7 +248,7 @@ export const SeoQueuePilotSelector: React.FC = () => {
         ) : null}
       </div>
 
-      <div className="mt-5 flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 border-t border-border bg-surface-alt p-5 sm:p-6">
         {preparationCtas.map((cta) => (
           <Link
             key={cta.path}

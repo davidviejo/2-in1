@@ -14,7 +14,7 @@ export const SeoQueueConcept: React.FC = () => (
           Automatización semiasistida / Cola SEO
         </h2>
         <p className="mt-2 max-w-4xl text-sm leading-6 text-muted-foreground">
-          Esta sección deja preparada la dirección de producto: en fases posteriores podrá ejecutar
+          Esta sección deja preparada la dirección de producto: en fases posteriores podrá coordinar
           acciones secuenciales, acciones paralelas seguras, dry-run, logs, errores, reintentos,
           pausas, revisión humana y envío de resultados a tareas, roadmap o entregables. En esta
           fase sigue sin ejecutar nada.

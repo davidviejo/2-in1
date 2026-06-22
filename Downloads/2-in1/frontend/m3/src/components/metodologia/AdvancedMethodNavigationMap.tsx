@@ -9,7 +9,7 @@ export const AdvancedMethodNavigationMap: React.FC = () => (
   <Card className="border-border bg-white p-5 shadow-sm sm:p-6" id="mapa-operativo">
     <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
       <div>
-        <h2 className="text-xl font-semibold text-foreground">Dónde se ejecuta cada parte</h2>
+        <h2 className="text-xl font-semibold text-foreground">Dónde se prepara cada parte</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Mapa transversal para usar el método sin crear una sección monolítica nueva.
         </p>

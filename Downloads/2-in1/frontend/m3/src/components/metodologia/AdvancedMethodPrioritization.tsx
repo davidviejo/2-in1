@@ -65,7 +65,7 @@ const confidenceLabel: Record<AdvancedMethodConfidence, string> = {
 
 const filters: PrioritizationFilter[] = [
   { id: 'all', label: 'Todas', predicate: () => true },
-  { id: 'ready', label: 'Listas para ejecutar', predicate: (item) => item.readiness === 'ready' },
+  { id: 'ready', label: 'Listas para revisar', predicate: (item) => item.readiness === 'ready' },
   { id: 'partial', label: 'Parciales', predicate: (item) => item.readiness === 'partial' },
   { id: 'blocked', label: 'Bloqueadas', predicate: (item) => item.readiness === 'blocked' },
   { id: 'high-impact', label: 'Alto impacto', predicate: (item) => item.impact === 'high' },

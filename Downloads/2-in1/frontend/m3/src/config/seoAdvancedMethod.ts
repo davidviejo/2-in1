@@ -409,7 +409,7 @@ export const methodologySectionNavItems: MethodologySectionNavItem[] = [
   {
     id: 'mapa-operativo',
     label: 'Mapa operativo',
-    description: 'Dónde se ejecuta cada parte.',
+    description: 'Dónde se prepara cada parte.',
   },
   {
     id: 'fases',
@@ -566,8 +566,8 @@ export const advancedMethodCtas: AdvancedMethodCta[] = [
     area: 'Estrategia',
   },
   {
-    label: 'Ejecutar en Kanban',
-    description: 'Llevar acciones aprobadas al tablero operativo existente.',
+    label: 'Revisar Kanban',
+    description: 'Revisar acciones aprobadas en el tablero operativo existente.',
     path: '/app/kanban',
     area: 'Acciones',
   },

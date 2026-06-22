@@ -101,7 +101,7 @@ const methodologyPhases = [
   },
   {
     title: 'Implementación',
-    description: 'Ejecutamos los cambios técnicos, editoriales y estratégicos definidos.',
+    description: 'Preparamos cambios técnicos, editoriales y estratégicos con controles definidos.',
     chips: ['Cambios', 'Producción'],
     icon: Wrench,
   },
@@ -157,7 +157,7 @@ const initialDeepDiveResources: MethodologyResource[] = [
   },
   {
     name: 'Checklist de implementación',
-    description: 'Seguimiento de tareas ejecutadas y control de cambios.',
+    description: 'Seguimiento de tareas revisadas y control de cambios.',
     type: 'Google Sheets',
     linkText: 'Abrir sheet',
     usage: 'Implementación',
@@ -226,7 +226,7 @@ const MetodologiaPage: React.FC = () => {
   };
 
   return (
-    <section className="space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+    <section className="space-y-6 bg-surface-alt px-4 py-6 sm:px-6 lg:px-8">
       <MethodologyHeader
         kpiCards={kpiCards}
         onAddResource={addResource}

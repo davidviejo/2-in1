@@ -45,21 +45,23 @@ export const SeoQueueDryRunPanel: React.FC = () => {
     workflows[0];
 
   return (
-    <Card className="border-border bg-white p-5 shadow-sm sm:p-6" id="cola-seo-dry-run">
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <Badge variant="warning">Dry-run simulado</Badge>
-          <h2 className="mt-3 text-xl font-semibold text-foreground">Cola SEO dry-run</h2>
-          <p className="mt-2 max-w-4xl text-sm leading-6 text-muted-foreground">
-            Simulador frontend de workflows. No ejecuta herramientas, no crea jobs, no crea tareas,
-            no edita roadmap y no escribe datos. Solo muestra preparación, bloqueos, logs simulados
-            y outputs esperados.
-          </p>
+    <Card className="overflow-hidden border-border bg-white p-0 shadow-sm" id="cola-seo-dry-run">
+      <div className="border-b border-border bg-surface-alt p-5 sm:p-6">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <Badge variant="warning">Dry-run simulado</Badge>
+            <h2 className="mt-3 text-xl font-semibold text-foreground">Cola SEO dry-run</h2>
+            <p className="mt-2 max-w-4xl text-sm leading-6 text-muted-foreground">
+              Simulador frontend de workflows. No ejecuta herramientas, no crea jobs, no crea
+              tareas, no edita roadmap y no escribe datos. Solo muestra preparación, bloqueos, logs
+              simulados y outputs esperados.
+            </p>
+          </div>
+          <Badge variant={readinessVariant[summary.readiness]}>{summary.readiness}</Badge>
         </div>
-        <Badge variant={readinessVariant[summary.readiness]}>{summary.readiness}</Badge>
       </div>
 
-      <div className="mt-5 grid gap-3 md:grid-cols-4">
+      <div className="grid gap-3 p-5 sm:p-6 md:grid-cols-4">
         <Metric label="Workflows" value={summary.total} variant="neutral" />
         <Metric label="Simulables" value={summary.simulable} variant="success" />
         <Metric label="Parciales" value={summary.partial} variant="warning" />
@@ -70,7 +72,10 @@ export const SeoQueueDryRunPanel: React.FC = () => {
         <Metric label="Paralelizables" value={summary.parallelSteps} variant="neutral" />
       </div>
 
-      <div className="mt-5 flex flex-wrap gap-2" aria-label="Filtros de workflows dry-run">
+      <div
+        className="flex flex-wrap gap-2 px-5 pb-5 sm:px-6"
+        aria-label="Filtros de workflows dry-run"
+      >
         {workflowFilters.map((filter) => {
           const isActive = filter.id === activeFilterId;
           return (
@@ -90,7 +95,7 @@ export const SeoQueueDryRunPanel: React.FC = () => {
         })}
       </div>
 
-      <div className="mt-5 grid gap-4 xl:grid-cols-[340px,minmax(0,1fr)]">
+      <div className="grid gap-4 px-5 pb-5 sm:px-6 xl:grid-cols-[340px,minmax(0,1fr)]">
         <div className="space-y-3">
           {filteredWorkflows.map((workflow) => (
             <button
@@ -204,7 +209,7 @@ export const SeoQueueDryRunPanel: React.FC = () => {
         ) : null}
       </div>
 
-      <div className="mt-5 flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 border-t border-border bg-surface-alt p-5 sm:p-6">
         {routeCtas.map((cta) => (
           <Link
             key={cta.path}
