@@ -76,7 +76,10 @@ const isMaskedSecret = (value?: string): boolean => {
 const stripServerManagedSecrets = (settings: AppSettings): AppSettings => {
   const next = { ...settings };
   for (const key of SERVER_SETTINGS_KEYS) {
-    delete (next as Record<string, unknown>)[key];
+    const value = next[key];
+    if (typeof value !== 'string' || isMaskedSecret(value)) {
+      delete (next as Record<string, unknown>)[key];
+    }
   }
   return next;
 };
